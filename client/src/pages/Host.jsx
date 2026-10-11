@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { connectSocket } from '../net/socket.js';
+import PlayerList from '../components/PlayerList.jsx';
 
 // The big-screen page: creates a room as soon as it loads and shows the code.
-// M3 adds the live player list; M4 adds surviving a refresh.
+// M4 adds surviving a refresh.
 export default function Host() {
   // 'connecting' → 'creating' → 'ready', or 'closed' / 'disconnected' / 'error'
   const [status, setStatus] = useState('connecting');
@@ -58,6 +59,7 @@ export default function Host() {
         Players ({room.players.length}/{room.maxPlayers})
       </p>
       {room.players.length === 0 && <p className="muted">Waiting for players to join…</p>}
+      <PlayerList players={room.players} large />
     </main>
   );
 }

@@ -45,3 +45,91 @@ body {
   letter-spacing: 0.15em;
   font-family: ui-monospace, monospace;
 }
+
+.mono {
+  font-family: ui-monospace, monospace;
+}
+
+/* Player list (host + phones) */
+.player-list {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: center;
+}
+
+.player-list li {
+  padding: 0.4rem 0.9rem;
+  border-radius: 999px;
+  background: #e2e2f0;
+  overflow-wrap: anywhere; /* long names wrap instead of stretching the page */
+}
+
+.player-list-large li {
+  font-size: 1.75rem;
+  padding: 0.6rem 1.4rem;
+}
+
+.player-list li.disconnected {
+  opacity: 0.45;
+}
+
+.you-tag {
+  color: #6b6b80;
+}
+
+/* Join (phones): big touch targets */
+.join {
+  text-align: center;
+}
+
+.join-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-width: 20rem;
+  margin: 0 auto;
+  text-align: left;
+}
+
+.join-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-weight: 600;
+}
+
+.join-form input {
+  font-size: 1.25rem; /* 16px+ also stops iPhones from zooming in on focus */
+  padding: 0.6rem 0.75rem;
+  border: 2px solid #c8c8da;
+  border-radius: 0.5rem;
+}
+
+.code-input {
+  text-transform: uppercase;
+  letter-spacing: 0.3em;
+  text-align: center;
+  font-size: 2rem !important;
+}
+
+.join-form button {
+  font-size: 1.25rem;
+  padding: 0.8rem;
+  border: none;
+  border-radius: 0.5rem;
+  background: #4a3aff;
+  color: white;
+  font-weight: 700;
+}
+
+.join-form button:disabled {
+  background: #a9a3e8;
+}
+
+.error {
+  color: #b00020;
+  margin: 0;
+}

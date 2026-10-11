@@ -73,3 +73,94 @@ test('closing the host socket removes the room', async () => {
   await eventually(() => server.rooms.getRoom(code) === undefined);
   assert.equal(server.rooms.members.size, 0);
 });
+
+// --- Joining (M3) ---------------------------------------------------------------
+
+/** Opens a host, creates a room, and returns { host, code } with the create messages consumed. */
+async function hostRoom() {
+  const host = await openClient(url);
+  host.send({ type: 'host:create_room' });
+  const { code } = await host.next();
+  await host.next(); // initial room:state
+  return { host, code };
+}
+
+/** Reads messages until one of the given type arrives (skipping others). */
+async function nextOfType(client, type) {
+  for (;;) {
+    const msg = await client.next();
+    if (msg.type === type) return msg;
+  }
+}
+
+test('two players join; host and both players see the same live list', async () => {
+  const { host, code } = await hostRoom();
+
+  const alex = await openClient(url);
+  alex.send({ type: 'player:join', code: code.toLowerCase(), name: 'Alex' }); // lowercase code is fine
+  const joined = await alex.next();
+  assert.equal(joined.type, 'room:joined');
+  assert.equal(joined.name, 'Alex');
+
+  const blake = await openClient(url);
+  blake.send({ type: 'player:join', code, name: 'Blake' });
+  await nextOfType(blake, 'room:joined');
+
+  // Host sees one update per join; the second one has both names.
+  await nextOfType(host, 'room:state');
+  const hostState = await nextOfType(host, 'room:state');
+  assert.deepEqual(hostState.players.map((p) => p.name), ['Alex', 'Blake']);
+
+  const alexState = await nextOfType(alex, 'room:state'); // after own join
+  assert.deepEqual(alexState.players.map((p) => p.name), ['Alex']);
+  assert.deepEqual((await nextOfType(alex, 'room:state')).players.map((p) => p.name), ['Alex', 'Blake']);
+
+  for (const c of [host, alex, blake]) c.close();
+});
+
+test('duplicate name gets NAME_TAKEN and the socket can retry with another name', async () => {
+  const { host, code } = await hostRoom();
+  const alex = await openClient(url);
+  alex.send({ type: 'player:join', code, name: 'Alex' });
+  await nextOfType(alex, 'room:joined');
+
+  const copycat = await openClient(url);
+  copycat.send({ type: 'player:join', code, name: 'ALEX' });
+  const err = await copycat.next();
+  assert.equal(err.code, 'NAME_TAKEN');
+  assert.equal(err.requestType, 'player:join');
+
+  copycat.send({ type: 'player:join', code, name: 'Alex 2' });
+  assert.equal((await copycat.next()).type, 'room:joined');
+  for (const c of [host, alex, copycat]) c.close();
+});
+
+test('wrong code gets ROOM_NOT_FOUND', async () => {
+  const player = await openClient(url);
+  player.send({ type: 'player:join', code: 'ZZZZ', name: 'Alex' });
+  assert.equal((await player.next()).code, 'ROOM_NOT_FOUND');
+  player.close();
+});
+
+test('a player closing their tab disappears from the host list', async () => {
+  const { host, code } = await hostRoom();
+  const alex = await openClient(url);
+  alex.send({ type: 'player:join', code, name: 'Alex' });
+  await nextOfType(alex, 'room:joined');
+  assert.equal((await nextOfType(host, 'room:state')).players.length, 1);
+
+  alex.close();
+  assert.deepEqual((await nextOfType(host, 'room:state')).players, []);
+  host.close();
+});
+
+test('host leaving sends room:closed to players', async () => {
+  const { host, code } = await hostRoom();
+  const alex = await openClient(url);
+  alex.send({ type: 'player:join', code, name: 'Alex' });
+  await nextOfType(alex, 'room:joined');
+
+  host.close();
+  assert.deepEqual(await nextOfType(alex, 'room:closed'), { type: 'room:closed', reason: 'host_left' });
+  alex.close();
+});

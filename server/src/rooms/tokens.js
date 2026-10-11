@@ -10,3 +10,12 @@ import { randomBytes } from 'node:crypto';
 export function newToken() {
   return randomBytes(16).toString('base64url');
 }
+
+/**
+ * A new PUBLIC player id like "p_3f9a01bc". Not a secret: it's broadcast to everyone in
+ * the room so they can refer to players (kick, game moves). Only needs to be unique
+ * within a room; RoomManager checks for the (very unlikely) collision.
+ */
+export function newPlayerId() {
+  return `p_${randomBytes(4).toString('hex')}`;
+}

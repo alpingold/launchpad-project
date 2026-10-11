@@ -4,7 +4,8 @@ import { SERVER } from '../protocol/messageTypes.js';
 import { Room } from './Room.js';
 import { RoomError } from './RoomError.js';
 import { generateRoomCode } from './roomCode.js';
-import { newToken } from './tokens.js';
+import { newToken, newPlayerId } from './tokens.js';
+import { validateName } from './names.js';
 
 /**
  * @typedef {Object} Membership   what a connection is doing right now
@@ -72,6 +73,48 @@ export class RoomManager {
     return room;
   }
 
+  /**
+   * player:join — adds this connection to a room as a new player.
+   * Checks run in the order a person would want to hear about them:
+   * wrong code → game already running → room full → bad name → name taken.
+   */
+  joinRoom(connId, code, rawName) {
+    if (this.members.has(connId)) throw new RoomError('ALREADY_IN_ROOM');
+
+    const room = this.rooms.get(code);
+    if (!room) throw new RoomError('ROOM_NOT_FOUND');
+    if (room.phase !== 'lobby') throw new RoomError('GAME_IN_PROGRESS');
+    if (room.players.size >= room.maxPlayers) throw new RoomError('ROOM_FULL');
+
+    const checked = validateName(rawName);
+    if (!checked.ok) throw new RoomError('NAME_INVALID');
+    for (const player of room.players.values()) {
+      if (player.nameKey === checked.nameKey) throw new RoomError('NAME_TAKEN');
+    }
+
+    let playerId = newPlayerId();
+    while (room.players.has(playerId)) playerId = newPlayerId();
+
+    /** @type {import('./Room.js').Player} */
+    const player = {
+      id: playerId,
+      token: newToken(), // SECRET: lets this player reclaim their spot after a refresh (M4)
+      name: checked.name,
+      nameKey: checked.nameKey,
+      connId,
+      connected: true,
+      joinedAt: this.now(),
+    };
+    room.players.set(playerId, player);
+    room.lastActivityAt = this.now();
+    this.members.set(connId, { code, role: 'player', playerId });
+
+    // The token goes only to this player; everyone (including them) gets the new list.
+    this.send(connId, { type: SERVER.ROOM_JOINED, code, playerId, token: player.token, name: player.name });
+    this.broadcastState(room);
+    return player;
+  }
+
   // --- Connection events ------------------------------------------------------
 
   /** Called by the transport whenever a socket closes, for any reason. */
@@ -88,6 +131,12 @@ export class RoomManager {
       // M4 replaces this with a 30-second grace period so a refresh doesn't end the party.
       room.host.connId = null;
       this.closeRoom(room, 'host_left');
+    } else {
+      // TEMPORARY (M3): the player is removed immediately.
+      // M4 keeps their spot for 30 seconds so a refresh or phone sleep doesn't kick them.
+      room.players.delete(membership.playerId);
+      room.lastActivityAt = this.now();
+      this.broadcastState(room);
     }
   }
 
