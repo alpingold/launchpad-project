@@ -1,0 +1,22 @@
+{
+  "assets": [
+    {
+      "id": "go-sign",
+      "file": "go-sign.svg",
+      "alt": "Green GO sign",
+      "tags": ["signal", "ui"],
+      "width": 256,
+      "height": 256,
+      "credit": "Placeholder (hand-written SVG)"
+    },
+    {
+      "id": "trophy",
+      "file": "trophy.svg",
+      "alt": "Gold trophy",
+      "tags": ["reward", "ui"],
+      "width": 256,
+      "height": 256,
+      "credit": "Placeholder (hand-written SVG)"
+    }
+  ]
+}

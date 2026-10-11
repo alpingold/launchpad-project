@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <!-- Placeholder art: a simple gold trophy. Replace with your own drawing/render (same id). -->
+  <path d="M72 40 h112 v48 a56 56 0 0 1 -112 0 z" fill="#f2b705"/>
+  <path d="M72 56 h-28 a28 28 0 0 0 28 44" fill="none" stroke="#f2b705" stroke-width="12"/>
+  <path d="M184 56 h28 a28 28 0 0 1 -28 44" fill="none" stroke="#f2b705" stroke-width="12"/>
+  <rect x="116" y="140" width="24" height="44" fill="#d99a00"/>
+  <rect x="80" y="184" width="96" height="28" rx="6" fill="#8a5a00"/>
+</svg>

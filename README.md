@@ -33,3 +33,15 @@ npx --prefix e2e playwright install chromium   # downloads a test browser (~150 
 
 Useful while writing tests: `npm --prefix e2e run test:headed` (watch the browsers),
 `npm --prefix e2e run report` (step-by-step trace of a failed test).
+
+## Game art
+
+Games show pictures by **asset id** (e.g. `go-sign`), never by URL. The library lives in
+`client/public/game-assets/`:
+
+- `manifest.json` lists every asset: `id`, `file`, `alt` (description for screen readers), `tags`, `credit`.
+- To replace a placeholder with your own drawing or Blender render: export a PNG (transparent
+  background works well), put it in the folder, and change that entry's `file`. Keep the `id`,
+  and games pick it up without code changes.
+- To add new art: add the file and a new manifest entry. `npm test` checks that every entry's
+  file exists and that games only use ids that are in the manifest.
