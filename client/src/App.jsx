@@ -1,41 +1,24 @@
-import { useEffect, useState } from 'react';
+import Home from './pages/Home.jsx';
 import Host from './pages/Host.jsx';
 import Join from './pages/Join.jsx';
+import NotFound from './pages/NotFound.jsx';
 
-// Picks a page from the URL path. Plain links (<a href>) cause a full page load,
-// which is all we need for a handful of pages (decision D12: no router library).
-// M6 replaces the placeholder home page with the real one.
-export default function App() {
-  switch (window.location.pathname) {
-    case '/host':
-      return <Host />;
-    case '/join':
-      return <Join />;
-    default:
-      return <PlaceholderHome />;
-  }
+// The site's pages, by URL path. Plain links (<a href>) do a full page load, which is all a
+// handful of pages needs (decision D12: no router library). Adding a page = one line here.
+const PAGES = {
+  '/': Home,
+  '/host': Host,
+  '/join': Join,
+};
+
+/** "/join/" and "/join" are the same page. */
+function currentPath() {
+  const path = window.location.pathname.replace(/\/+$/, '');
+  return path === '' ? '/' : path;
 }
 
-function PlaceholderHome() {
-  const [status, setStatus] = useState('checking…');
-
-  useEffect(() => {
-    fetch('/api/health')
-      .then((res) => res.json())
-      .then((data) => setStatus(data.ok ? 'server is up ✅' : 'unexpected reply'))
-      .catch(() => setStatus('server unreachable ❌ (is `npm run dev:server` running?)'));
-  }, []);
-
-  return (
-    <main className="page">
-      <h1>LaunchPad Party</h1>
-      <p>Status: {status}</p>
-      <p>
-        <a href="/host">Host a game →</a>
-      </p>
-      <p>
-        <a href="/join">Join a game →</a>
-      </p>
-    </main>
-  );
+export default function App() {
+  const path = currentPath();
+  const Page = Object.hasOwn(PAGES, path) ? PAGES[path] : NotFound;
+  return <Page />;
 }

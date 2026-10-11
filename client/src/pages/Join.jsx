@@ -187,8 +187,8 @@ export default function Join() {
           <input
             className="mono code-input"
             value={code}
-            onChange={(e) => setCode(e.target.value.toUpperCase())}
-            maxLength={4}
+            // Letters only, then at most 4 (same as the home page's code box).
+            onChange={(e) => setCode(e.target.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 4))}
             autoComplete="off"
             autoCapitalize="characters"
             spellCheck={false}

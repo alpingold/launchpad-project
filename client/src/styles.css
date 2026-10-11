@@ -326,3 +326,89 @@ body {
 .small {
   font-size: 0.9rem;
 }
+
+/* M6: home page */
+.home {
+  max-width: 56rem;
+}
+
+.hero {
+  text-align: center;
+  padding: 1.5rem 0 0.5rem;
+}
+
+.hero h1 {
+  font-size: clamp(2.5rem, 8vw, 4rem);
+  margin: 0;
+}
+
+.tagline {
+  font-size: 1.3rem;
+  margin: 0.5rem 0;
+}
+
+.home-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: 1rem;
+  margin: 1.5rem 0 2rem;
+}
+
+.card {
+  background: white;
+  border: 1px solid #e2e2f0;
+  border-radius: 1rem;
+  padding: 1.25rem;
+}
+
+.card h2,
+.card h3 {
+  margin-top: 0;
+}
+
+.home-join-form {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.home-join-form .code-input {
+  width: 9rem;
+  min-width: 0;
+  flex: 1;
+  padding: 0.4rem;
+  border: 2px solid #c8c8da;
+  border-radius: 0.5rem;
+}
+
+/* Lets a link look like the primary button. */
+a.primary-button {
+  display: inline-block;
+  text-decoration: none;
+}
+
+.steps {
+  padding-left: 1.5rem;
+  line-height: 1.6;
+}
+
+.steps li {
+  margin-bottom: 0.5rem;
+}
+
+.game-cards {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: 1rem;
+}
+
+/* Hidden on screen but still read by screen readers (for labels the design doesn't show). */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
