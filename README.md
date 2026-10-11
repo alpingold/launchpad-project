@@ -12,9 +12,24 @@ npm run dev:client      # terminal 2: Vite on http://localhost:5173 (open this o
 
 Vite forwards `/api` and `/ws` to the server, so the browser only talks to :5173.
 To test from phones on the same Wi-Fi: `cd client && npx vite --host`, then open the "Network" URL it prints.
+On WSL2, phones can't reach WSL by default: add `networkingMode=mirrored` under `[wsl2]` in
+`C:\Users\<you>\.wslconfig`, run `wsl --shutdown`, and allow port 5173 in Windows Firewall.
+Some networks (e.g. campus Wi-Fi) block device-to-device traffic; a phone hotspot works instead.
 
 ## Test
 
 ```sh
-npm test                # runs the server tests with Node's built-in test runner
+npm test                # server unit + integration tests (Node's built-in test runner)
+npm run test:e2e        # browser tests: real Chromium pages against the real client + server
 ```
+
+The browser tests (`e2e/`) start their own server on :3100 and client on :5174 with 2-second
+grace periods, so they don't touch your dev servers. First-time setup:
+
+```sh
+npm --prefix e2e install
+npx --prefix e2e playwright install chromium   # downloads a test browser (~150 MB, once)
+```
+
+Useful while writing tests: `npm --prefix e2e run test:headed` (watch the browsers),
+`npm --prefix e2e run report` (step-by-step trace of a failed test).

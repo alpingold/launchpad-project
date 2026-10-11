@@ -44,12 +44,13 @@ export const config = {
   MAX_ROOMS: 1000,
 
   // How long a disconnected host can take to come back (refresh, laptop sleep) before
-  // the room closes for everyone.
-  HOST_GRACE_MS: 30_000,
+  // the room closes for everyone. The browser tests set a short value through an
+  // environment variable so they don't wait 30 s.
+  HOST_GRACE_MS: Number(process.env.HOST_GRACE_MS) || 30_000,
 
   // How long a disconnected player's spot is kept in the lobby. During a game the spot
   // is kept until the game ends instead (decision D6).
-  PLAYER_GRACE_MS: 30_000,
+  PLAYER_GRACE_MS: Number(process.env.PLAYER_GRACE_MS) || 30_000,
 
   // Rooms with no joins/leaves/reconnects for this long are closed by the sweeper,
   // which runs every ROOM_SWEEP_INTERVAL_MS. Catches rooms forgotten on an open laptop.

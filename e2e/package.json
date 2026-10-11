@@ -1,0 +1,14 @@
+{
+  "name": "launchpad-party-e2e",
+  "private": true,
+  "type": "module",
+  "description": "Browser tests: real Chromium pages driving the real server and client.",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.0"
+  }
+}
