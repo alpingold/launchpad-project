@@ -20,9 +20,14 @@ export const test = base.extend({
     }
 
     const people = {
-      /** Opens the host screen and waits for a room code. */
-      async host() {
+      /**
+       * Opens the host screen and waits for a room code.
+       * With `gameOptions`, every host:start_game this page sends gets those options added
+       * (e.g. { rounds: 1 } for a short game), without any test-only code in the app.
+       */
+      async host({ gameOptions } = {}) {
         const { context, page } = await newPage();
+        if (gameOptions) await addGameOptions(page, gameOptions);
         await page.goto('/host');
         const codeEl = page.locator('.room-code');
         await expect(codeEl).toHaveText(/^[A-Z]{4}$/);
@@ -83,6 +88,18 @@ async function controlWebSockets(page) {
       blocked = false;
     },
   };
+}
+
+/** Rewrites outgoing host:start_game messages to include `options`. */
+async function addGameOptions(page, options) {
+  await page.routeWebSocket(/\/ws$/, (ws) => {
+    const server = ws.connectToServer(); // server → page messages pass through untouched
+    ws.onMessage((message) => {
+      const msg = JSON.parse(message);
+      if (msg.type === 'host:start_game') msg.options = { ...msg.options, ...options };
+      server.send(JSON.stringify(msg));
+    });
+  });
 }
 
 /** The host screen's player list items. */
