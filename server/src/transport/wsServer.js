@@ -1,0 +1,143 @@
+import { WebSocketServer } from 'ws';
+import { config } from '../config.js';
+import { Connection } from './connection.js';
+import { parseClientMessage } from '../protocol/validate.js';
+
+// WebSocket close codes we use (defined by the WebSocket standard, RFC 6455).
+const CLOSE_POLICY_VIOLATION = 1008; // client broke the rules (spam, garbage)
+const CLOSE_GOING_AWAY = 1001; // server shutting down
+
+/**
+ * @typedef {Object} TransportHandlers
+ * @property {(conn: Connection, msg: {type: string}) => void} onMessage
+ *   Called with every message that passed validation and the rate limit.
+ * @property {(conn: Connection) => void} [onDisconnect]
+ *   Called once when a connection closes for any reason (left, crashed, heartbeat timeout).
+ */
+
+/**
+ * Attaches a WebSocket server to an existing http.Server.
+ *
+ * This is the transport layer: it handles sockets, heartbeats, limits and errors,
+ * and hands clean, validated messages to `handlers`. It knows nothing about rooms.
+ *
+ * @param {import('node:http').Server} httpServer
+ * @param {TransportHandlers} handlers
+ * @param {Partial<typeof config>} [overrides]  lets tests use e.g. a 50ms heartbeat
+ */
+export function attachWebSocketServer(httpServer, handlers, overrides = {}) {
+  const cfg = { ...config, ...overrides };
+
+  /** @type {Map<string, Connection>} every open connection, by id */
+  const connections = new Map();
+  let nextId = 1;
+
+  // `noServer: true` means WE decide which HTTP upgrade requests become WebSockets
+  // (see the 'upgrade' handler below). That gives us one place to check the path now,
+  // and the login cookie and Origin header in M7.
+  const wss = new WebSocketServer({
+    noServer: true,
+    maxPayload: cfg.WS_MAX_PAYLOAD_BYTES, // `ws` closes oversized frames with code 1009
+  });
+
+  function onUpgrade(req, socket, head) {
+    // A network error on the raw socket during the handshake must not crash the server.
+    socket.on('error', (err) => console.warn('[ws] upgrade socket error:', err.message));
+
+    const { pathname } = new URL(req.url ?? '/', 'http://localhost');
+    if (pathname !== cfg.WS_PATH) {
+      socket.end('HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n');
+      return;
+    }
+    wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req));
+  }
+  httpServer.on('upgrade', onUpgrade);
+
+  wss.on('connection', (ws) => {
+    const conn = new Connection(`c${nextId++}`, ws, {
+      ratePerSec: cfg.RATE_LIMIT_PER_SEC,
+      burst: cfg.RATE_LIMIT_BURST,
+    });
+    connections.set(conn.id, conn);
+
+    // REQUIRED: in Node, an 'error' event with no listener crashes the whole process.
+    // One misbehaving client (bad frame, reset connection) must only affect itself.
+    ws.on('error', (err) => console.warn(`[ws] ${conn.id} error:`, err.message));
+
+    ws.on('pong', () => {
+      conn.isAlive = true;
+    });
+
+    ws.on('message', (data, isBinary) => handleFrame(conn, data, isBinary));
+
+    ws.on('close', () => {
+      connections.delete(conn.id);
+      try {
+        handlers.onDisconnect?.(conn);
+      } catch (err) {
+        console.error(`[ws] onDisconnect failed for ${conn.id}:`, err);
+      }
+    });
+  });
+
+  /** Runs for every frame a client sends: rate limit → validate → hand off. */
+  function handleFrame(conn, data, isBinary) {
+    // 1. Rate limit. Over the limit: drop the message. Only the first drop in a row
+    //    gets an error reply, so a spammer can't make us send a flood back.
+    if (!conn.rateLimiter.tryRemoveToken()) {
+      conn.rateLimitStrikes++;
+      if (conn.rateLimitStrikes === 1) conn.sendError('RATE_LIMITED');
+      if (conn.rateLimitStrikes >= cfg.MAX_RATE_LIMIT_STRIKES) {
+        conn.ws.close(CLOSE_POLICY_VIOLATION, 'rate limit');
+      }
+      return;
+    }
+    conn.rateLimitStrikes = 0;
+
+    // 2. Validate. Bad messages get an error reply and the socket stays open,
+    //    but too many of them means the client is broken or hostile.
+    const result = parseClientMessage(data, { isBinary });
+    if (!result.ok) {
+      conn.badMessageCount++;
+      conn.sendError(result.code, { requestType: result.requestType, field: result.field });
+      if (conn.badMessageCount > cfg.MAX_BAD_MESSAGES) {
+        conn.ws.close(CLOSE_POLICY_VIOLATION, 'too many invalid messages');
+      }
+      return;
+    }
+
+    // 3. Hand off. If OUR code has a bug and throws, log it and tell the client,
+    //    but keep the server (and everyone else's game) running.
+    try {
+      handlers.onMessage(conn, result.msg);
+    } catch (err) {
+      console.error(`[ws] handler failed for ${conn.id} (${result.msg.type}):`, err);
+      conn.sendError('INTERNAL_ERROR', { requestType: result.msg.type });
+    }
+  }
+
+  // Heartbeat: phones that lose signal or sleep often vanish without closing the socket.
+  // Every interval: anyone who didn't answer the last ping is terminated (which fires
+  // 'close' → onDisconnect, the normal cleanup path). Everyone else gets a new ping.
+  // Browsers answer pings automatically; no client code is needed.
+  const heartbeat = setInterval(() => {
+    for (const conn of connections.values()) {
+      if (!conn.isAlive) {
+        conn.ws.terminate();
+        continue;
+      }
+      conn.isAlive = false;
+      conn.ws.ping();
+    }
+  }, cfg.HEARTBEAT_INTERVAL_MS);
+
+  /** Stops the heartbeat and closes every connection (used on shutdown and in tests). */
+  function close() {
+    clearInterval(heartbeat);
+    httpServer.off('upgrade', onUpgrade);
+    for (const conn of connections.values()) conn.ws.close(CLOSE_GOING_AWAY, 'server shutting down');
+    wss.close();
+  }
+
+  return { connections, close };
+}

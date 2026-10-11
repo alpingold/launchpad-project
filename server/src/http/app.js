@@ -16,21 +16,21 @@ export function createApp() {
   app.use(express.json({ limit: config.HTTP_JSON_LIMIT }));
 
   // Health check: the client (and later the VPS) can call this to see if the server is up.
-  app.get('/api/health', (req, res) => {
+  app.get('/api/health', (_req, res) => {
     res.json({ ok: true });
   });
 
   // Any other /api path is a clean JSON 404 instead of Express's HTML page.
-  app.use('/api', (req, res) => {
+  app.use('/api', (_req, res) => {
     res.status(404).json({ error: 'NOT_FOUND' });
   });
 
   // Last-resort error handler. Express calls this when a route throws or
   // when express.json() gets a malformed or oversized body.
   // We log the details on the server but never send stack traces to clients.
-  // (Express recognizes an error handler by its 4 parameters, so `next` must stay.)
-  // eslint-disable-next-line no-unused-vars
-  app.use((err, req, res, next) => {
+  // Express recognizes an error handler by having exactly 4 parameters, so `_req` and
+  // `_next` must stay even though we don't use them (the _ prefix says "unused on purpose").
+  app.use((err, _req, res, _next) => {
     const status = Number.isInteger(err.status) && err.status >= 400 && err.status < 500 ? err.status : 500;
     if (status === 500) console.error('[http] unexpected error:', err);
     res.status(status).json({ error: status === 500 ? 'INTERNAL_ERROR' : 'BAD_REQUEST' });
