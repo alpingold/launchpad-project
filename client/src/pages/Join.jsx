@@ -123,6 +123,9 @@ export default function Join() {
         </p>
         {room && !room.hostConnected ? (
           <p className="muted">The host disconnected. Waiting for them to come back…</p>
+        ) : room?.phase === 'in_game' ? (
+          // M5b replaces this with the game's views (buttons, choices, ...).
+          <p className="game-status">Game in progress…</p>
         ) : (
           <p className="muted">Waiting for the host to start a game…</p>
         )}

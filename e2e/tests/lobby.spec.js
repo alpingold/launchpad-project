@@ -124,3 +124,9 @@ test('host "End room" closes it for everyone', async ({ people }) => {
   await expect(host.page.locator('.room-code')).toHaveText(/^[A-Z]{4}$/);
   await expect(host.page.locator('.room-code')).not.toHaveText(host.code);
 });
+
+test('host sees the game picker; with no games installed it says so', async ({ people }) => {
+  const host = await people.host();
+  await expect(host.page.getByText('No games installed yet.')).toBeVisible();
+  await expect(host.page.getByRole('button', { name: 'Start game' })).toHaveCount(0);
+});

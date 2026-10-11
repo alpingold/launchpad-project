@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { connectSocket } from '../net/socket.js';
 import { loadSession, saveSession, clearSession } from '../net/storage.js';
 import PlayerList from '../components/PlayerList.jsx';
+import GamePicker from '../components/GamePicker.jsx';
 
 const SESSION_KEY = 'host'; // sessionStorage: { code, hostToken } of the room this tab hosts
 
@@ -20,6 +21,7 @@ export default function Host() {
   const [room, setRoom] = useState(null); // latest room:state
   const [ended, setEnded] = useState(null); // why the room ended, or null while it's alive
   const [error, setError] = useState(null);
+  const [notice, setNotice] = useState(null); // short message, e.g. why a game couldn't start
   const socketRef = useRef(null);
   const endedRef = useRef(false); // readable inside socket callbacks without re-subscribing
 
@@ -49,9 +51,16 @@ export default function Host() {
           case 'room:closed':
             end(msg.reason);
             break;
+          case 'game:started':
+            setNotice(null);
+            break;
+          case 'game:ended':
+            if (msg.results.error) setNotice('The game hit a problem and was stopped.');
+            break;
           case 'error':
             if (msg.requestType === 'host:resume') end('expired');
             else if (msg.requestType === 'host:create_room') setError(msg.message);
+            else if (msg.requestType === 'host:start_game') setNotice(msg.message);
             else console.warn('[host] server error:', msg.code);
             break;
         }
@@ -69,6 +78,10 @@ export default function Host() {
 
   function endRoom() {
     if (window.confirm('End the room for everyone?')) socketRef.current.send({ type: 'room:leave' });
+  }
+
+  function startGame(gameId) {
+    socketRef.current.send({ type: 'host:start_game', gameId });
   }
 
   function kick(player) {
@@ -120,6 +133,17 @@ export default function Host() {
       </p>
       {room.players.length === 0 && <p className="muted">Waiting for players to join…</p>}
       <PlayerList players={room.players} large onKick={kick} />
+      {notice && (
+        <p className="error" role="alert">
+          {notice}
+        </p>
+      )}
+      {room.phase === 'in_game' ? (
+        // M5b replaces this with the game's big-screen views.
+        <p className="game-status">Game in progress…</p>
+      ) : (
+        <GamePicker playerCount={room.players.length} onStart={startGame} disabled={!connected} />
+      )}
       <p>
         <button type="button" className="secondary-button" onClick={endRoom} disabled={!connected}>
           End room
