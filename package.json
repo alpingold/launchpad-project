@@ -1,0 +1,13 @@
+{
+  "name": "launchpad-party",
+  "private": true,
+  "description": "Root scripts only. The server and client are separate programs with their own package.json.",
+  "scripts": {
+    "install:all": "npm --prefix server install && npm --prefix client install",
+    "dev:server": "npm --prefix server run dev",
+    "dev:client": "npm --prefix client run dev",
+    "test": "npm --prefix server test",
+    "build": "npm --prefix client run build",
+    "start": "npm --prefix server start"
+  }
+}
