@@ -1,0 +1,67 @@
+import { config } from '../config.js';
+
+/**
+ * @typedef {Object} Player   (filled in by M3)
+ * @property {string} id         public id, safe to broadcast
+ * @property {string} token      SECRET, only ever sent to this player
+ * @property {string} name
+ * @property {string} nameKey    lowercase name, for the uniqueness check
+ * @property {string | null} connId
+ * @property {boolean} connected
+ */
+
+/**
+ * The data for one room. Plain state plus small helpers; the rules for changing it
+ * (who may join, what happens on disconnect) live in RoomManager.
+ */
+export class Room {
+  /**
+   * @param {string} code
+   * @param {{ hostToken: string, hostConnId: string, now: number }} init
+   */
+  constructor(code, { hostToken, hostConnId, now }) {
+    this.code = code;
+    /** @type {'lobby' | 'in_game' | 'closed'} */
+    this.phase = 'lobby';
+
+    this.host = {
+      token: hostToken, // SECRET
+      connId: hostConnId, // null while the host is disconnected (M4)
+      userId: null, // logged-in account (M7)
+    };
+
+    /** @type {Map<string, Player>} keyed by player id; a Map keeps join order */
+    this.players = new Map();
+    this.maxPlayers = config.MAX_PLAYERS;
+    this.game = null; // GameRunner (M5)
+
+    this.createdAt = now;
+    this.lastActivityAt = now;
+  }
+
+  /** Connection ids of everyone currently connected to this room (host first). */
+  connectedIds() {
+    const ids = [];
+    if (this.host.connId) ids.push(this.host.connId);
+    for (const player of this.players.values()) {
+      if (player.connId) ids.push(player.connId);
+    }
+    return ids;
+  }
+
+  /**
+   * The room as everyone is allowed to see it: the body of a `room:state` message.
+   * Built field by field on purpose, so secrets (host token, player tokens)
+   * can never leak by accident when new fields are added to Room or Player.
+   */
+  toPublicState() {
+    return {
+      code: this.code,
+      phase: this.phase,
+      hostConnected: this.host.connId !== null,
+      maxPlayers: this.maxPlayers,
+      players: [...this.players.values()].map((p) => ({ id: p.id, name: p.name, connected: p.connected })),
+      gameId: null, // set while a game runs (M5)
+    };
+  }
+}

@@ -24,8 +24,4 @@ export const SERVER = Object.freeze({
   GAME_STARTED: 'game:started',
   GAME_MESSAGE: 'game:message',
   GAME_ENDED: 'game:ended',
-
-  // TEMPORARY (M1 only): the server echoes each valid message back so you can
-  // see what validation produced. Removed when the real router arrives in M2.
-  DEBUG_ECHO: 'debug:echo',
 });

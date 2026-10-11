@@ -1,8 +1,19 @@
 import { useEffect, useState } from 'react';
+import Host from './pages/Host.jsx';
 
-// M0 placeholder: proves the client can reach the server through the Vite proxy.
-// Real pages (Home, Host, Join, Login) replace this in later milestones.
+// Picks a page from the URL path. Plain links (<a href>) cause a full page load,
+// which is all we need for a handful of pages (decision D12: no router library).
+// M6 replaces the placeholder home page with the real one.
 export default function App() {
+  switch (window.location.pathname) {
+    case '/host':
+      return <Host />;
+    default:
+      return <PlaceholderHome />;
+  }
+}
+
+function PlaceholderHome() {
   const [status, setStatus] = useState('checking…');
 
   useEffect(() => {
@@ -16,6 +27,9 @@ export default function App() {
     <main className="page">
       <h1>LaunchPad Party</h1>
       <p>Status: {status}</p>
+      <p>
+        <a href="/host">Host a game →</a>
+      </p>
     </main>
   );
 }

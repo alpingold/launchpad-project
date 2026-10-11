@@ -13,3 +13,35 @@ body {
   margin: 0 auto;
   padding: 2rem 1rem;
 }
+
+.muted {
+  color: #6b6b80;
+}
+
+/* Host (big screen): readable from across a room */
+.host {
+  text-align: center;
+  font-size: 1.5rem;
+}
+
+.host-label {
+  margin: 1.5rem 0 0;
+  color: #6b6b80;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 1rem;
+}
+
+.host-url {
+  margin: 0.25rem 0;
+  font-size: 2rem;
+  font-weight: 600;
+}
+
+.room-code {
+  margin: 0.25rem 0 1.5rem;
+  font-size: clamp(4rem, 15vw, 9rem);
+  font-weight: 800;
+  letter-spacing: 0.15em;
+  font-family: ui-monospace, monospace;
+}

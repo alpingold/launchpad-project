@@ -21,10 +21,8 @@ export class Connection {
     // Heartbeat: set to false when we ping, back to true when the pong arrives.
     this.isAlive = true;
 
-    // Filled in by the room layer (M2+). null means "not in a room yet".
-    this.roomCode = null;
-    this.role = null; // 'host' | 'player' | null
-    this.playerId = null;
+    // Note: which room this connection is in (and as host or player) is NOT stored here.
+    // RoomManager owns that, so there is exactly one copy of the truth. See RoomManager.members.
 
     // Filled in from the login cookie at connect time (M7).
     this.userId = null;

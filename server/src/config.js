@@ -34,6 +34,15 @@ export const config = {
   // Consecutive rate-limited messages before we give up and close the connection.
   MAX_RATE_LIMIT_STRIKES: 20,
 
+  // --- Rooms ---
+
+  // Global player cap for any room. A game may set a lower max when it starts (M5).
+  MAX_PLAYERS: 12,
+
+  // Most rooms that can exist at once. Each room is tiny, so this is a safety
+  // valve against someone scripting thousands of create_room calls, not a real capacity limit.
+  MAX_ROOMS: 1000,
+
   // Longest raw name string accepted before normalization. The real display-name
   // rules (1–16 characters, etc.) come in M3; this just stops absurd input early.
   NAME_RAW_MAX_LENGTH: 64,
