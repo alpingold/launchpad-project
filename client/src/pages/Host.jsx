@@ -3,6 +3,9 @@ import { connectSocket } from '../net/socket.js';
 import { loadSession, saveSession, clearSession } from '../net/storage.js';
 import PlayerList from '../components/PlayerList.jsx';
 import GamePicker from '../components/GamePicker.jsx';
+import GameScreen from '../game/GameScreen.jsx';
+import LastGameResults from '../game/LastGameResults.jsx';
+import { useGameMessages } from '../game/useGameMessages.js';
 
 const SESSION_KEY = 'host'; // sessionStorage: { code, hostToken } of the room this tab hosts
 
@@ -22,6 +25,7 @@ export default function Host() {
   const [ended, setEnded] = useState(null); // why the room ended, or null while it's alive
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState(null); // short message, e.g. why a game couldn't start
+  const [game, handleGameMessage] = useGameMessages();
   const socketRef = useRef(null);
   const endedRef = useRef(false); // readable inside socket callbacks without re-subscribing
 
@@ -41,6 +45,7 @@ export default function Host() {
         else socket.send({ type: 'host:create_room' });
       },
       onMessage(msg) {
+        handleGameMessage(msg); // game:started / game:message / game:ended
         switch (msg.type) {
           case 'room:created':
             saveSession(SESSION_KEY, { code: msg.code, hostToken: msg.hostToken });
@@ -69,7 +74,7 @@ export default function Host() {
     });
     socketRef.current = socket;
     return () => socket.close();
-  }, []);
+  }, [handleGameMessage]);
 
   function startNewRoom() {
     clearSession(SESSION_KEY);
@@ -117,13 +122,34 @@ export default function Host() {
     );
   }
 
+  const banner = !connected && (
+    <p className="banner" role="status">
+      Connection lost. Reconnecting… (players keep their spots)
+    </p>
+  );
+  const endRoomButton = (
+    <p>
+      <button type="button" className="secondary-button" onClick={endRoom} disabled={!connected}>
+        End room
+      </button>
+    </p>
+  );
+
+  // During a game the big screen is the game: just a small room label above it.
+  if (room.phase === 'in_game') {
+    return (
+      <main className="page host host-game">
+        {banner}
+        <p className="host-label">Room {room.code}</p>
+        <GameScreen view={game.view} viewKey={game.viewKey} players={room.players} clockOffset={game.clockOffset} />
+        {endRoomButton}
+      </main>
+    );
+  }
+
   return (
     <main className="page host">
-      {!connected && (
-        <p className="banner" role="status">
-          Connection lost. Reconnecting… (players keep their spots)
-        </p>
-      )}
+      {banner}
       <p className="host-label">Join at</p>
       <p className="host-url">{window.location.host}/join</p>
       <p className="host-label">Room code</p>
@@ -138,17 +164,9 @@ export default function Host() {
           {notice}
         </p>
       )}
-      {room.phase === 'in_game' ? (
-        // M5b replaces this with the game's big-screen views.
-        <p className="game-status">Game in progress…</p>
-      ) : (
-        <GamePicker playerCount={room.players.length} onStart={startGame} disabled={!connected} />
-      )}
-      <p>
-        <button type="button" className="secondary-button" onClick={endRoom} disabled={!connected}>
-          End room
-        </button>
-      </p>
+      <LastGameResults results={game.lastResults} players={room.players} />
+      <GamePicker playerCount={room.players.length} onStart={startGame} disabled={!connected} />
+      {endRoomButton}
     </main>
   );
 }

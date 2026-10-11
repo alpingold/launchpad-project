@@ -1,5 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { validateView, VIEW_KINDS } from '../../src/games/views.js';
 
 test('lists the five starting view kinds', () => {
@@ -49,4 +51,14 @@ test('rejects bad field values with a message naming the field', () => {
     [{ view: 'scoreboard', title: 'R', rows: Array(13).fill({ playerId: 'p', score: 1 }) }, /at most 12 rows/],
   ];
   for (const [v, pattern] of cases) assert.match(validateView(v), pattern, JSON.stringify(v));
+});
+
+test('every view kind has a matching client component (server and client stay in sync)', () => {
+  // The kinds are listed on the server (for checking) and drawn on the client. This catches
+  // adding a kind on one side but not the other: "countdown" → client/src/game/views/CountdownView.jsx
+  const viewsDir = new URL('../../../client/src/game/views/', import.meta.url);
+  for (const kind of VIEW_KINDS) {
+    const file = `${kind[0].toUpperCase()}${kind.slice(1)}View.jsx`;
+    assert.ok(existsSync(fileURLToPath(new URL(file, viewsDir))), `missing client component ${file}`);
+  }
 });

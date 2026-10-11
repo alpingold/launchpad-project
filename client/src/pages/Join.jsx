@@ -2,6 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { connectSocket } from '../net/socket.js';
 import { loadSession, saveSession, clearSession } from '../net/storage.js';
 import PlayerList from '../components/PlayerList.jsx';
+import GameScreen from '../game/GameScreen.jsx';
+import LastGameResults from '../game/LastGameResults.jsx';
+import { useGameMessages } from '../game/useGameMessages.js';
 
 const SESSION_KEY = 'player'; // sessionStorage: { code, token } of this tab's spot
 
@@ -30,6 +33,7 @@ export default function Join() {
   const [me, setMe] = useState(null); // { playerId, name, code } from room:joined
   const [room, setRoom] = useState(null); // latest room:state
   const [closedReason, setClosedReason] = useState(null);
+  const [game, handleGameMessage] = useGameMessages();
   const socketRef = useRef(null);
   const closedRef = useRef(false); // readable inside socket callbacks
 
@@ -47,6 +51,7 @@ export default function Join() {
         }
       },
       onMessage(msg) {
+        if (handleGameMessage(msg)) return; // game:started / game:message / game:ended
         switch (msg.type) {
           case 'room:joined':
             saveSession(SESSION_KEY, { code: msg.code, token: msg.token });
@@ -84,7 +89,7 @@ export default function Join() {
     });
     socketRef.current = socket;
     return () => socket.close();
-  }, []);
+  }, [handleGameMessage]);
 
   function handleSubmit(event) {
     event.preventDefault();
@@ -110,31 +115,55 @@ export default function Join() {
   }
 
   if (status === 'joined' && me) {
+    const banner = !connected && (
+      <p className="banner" role="status">
+        Connection lost. Reconnecting…
+      </p>
+    );
+    const hostAway = room && !room.hostConnected && (
+      <p className="muted">The host disconnected. Waiting for them to come back…</p>
+    );
+    const leaveButton = (
+      <p>
+        <button type="button" className="secondary-button" onClick={leave} disabled={!connected}>
+          Leave room
+        </button>
+      </p>
+    );
+
+    // During a game the phone screen is the game's latest view; taps go back as game:action.
+    if (room?.phase === 'in_game') {
+      return (
+        <main className="page join join-game">
+          {banner}
+          {hostAway}
+          <GameScreen
+            view={game.view}
+            viewKey={game.viewKey}
+            players={room.players}
+            youId={me.playerId}
+            clockOffset={game.clockOffset}
+            onAction={(action) => socketRef.current.send({ type: 'game:action', action })}
+          />
+          <p className="muted small">
+            {me.name} · room <span className="mono">{me.code}</span>
+          </p>
+          {leaveButton}
+        </main>
+      );
+    }
+
     return (
       <main className="page join">
-        {!connected && (
-          <p className="banner" role="status">
-            Connection lost. Reconnecting…
-          </p>
-        )}
+        {banner}
         <h1>You're in!</h1>
         <p>
           Room <strong className="mono">{me.code}</strong> as <strong>{me.name}</strong>
         </p>
-        {room && !room.hostConnected ? (
-          <p className="muted">The host disconnected. Waiting for them to come back…</p>
-        ) : room?.phase === 'in_game' ? (
-          // M5b replaces this with the game's views (buttons, choices, ...).
-          <p className="game-status">Game in progress…</p>
-        ) : (
-          <p className="muted">Waiting for the host to start a game…</p>
-        )}
+        {hostAway || <p className="muted">Waiting for the host to start a game…</p>}
+        {room && <LastGameResults results={game.lastResults} players={room.players} youId={me.playerId} />}
         {room && <PlayerList players={room.players} youId={me.playerId} />}
-        <p>
-          <button type="button" className="secondary-button" onClick={leave} disabled={!connected}>
-            Leave room
-          </button>
-        </p>
+        {leaveButton}
       </main>
     );
   }
