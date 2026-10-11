@@ -57,6 +57,15 @@ export const config = {
   ROOM_IDLE_MS: 2 * 60 * 60 * 1000,
   ROOM_SWEEP_INTERVAL_MS: 5 * 60 * 1000,
 
+  // --- Games ---
+
+  // Largest single message a game may send (JSON size). Views are small; this stops a
+  // buggy (or generated) game from flooding phones with huge payloads.
+  GAME_MAX_PAYLOAD_BYTES: 8 * 1024,
+
+  // Longest delay a game may ask for with ctx.setTimeout.
+  GAME_MAX_TIMER_MS: 10 * 60 * 1000,
+
   // Longest raw name string accepted before normalization. The real display-name
   // rules (1–16 characters, etc.) come in M3; this just stops absurd input early.
   NAME_RAW_MAX_LENGTH: 64,
