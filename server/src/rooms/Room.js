@@ -36,7 +36,8 @@ export class Room {
     /** @type {Map<string, Player>} keyed by player id; a Map keeps join order */
     this.players = new Map();
     this.maxPlayers = config.MAX_PLAYERS;
-    this.game = null; // GameRunner (M5)
+    this.game = null; // GameRunner while a game is running
+    this.gameId = null;
 
     this.createdAt = now;
     this.lastActivityAt = now;
@@ -64,7 +65,7 @@ export class Room {
       hostConnected: this.host.connId !== null,
       maxPlayers: this.maxPlayers,
       players: [...this.players.values()].map((p) => ({ id: p.id, name: p.name, connected: p.connected })),
-      gameId: null, // set while a game runs (M5)
+      gameId: this.gameId, // which game is running, or null in the lobby
     };
   }
 }

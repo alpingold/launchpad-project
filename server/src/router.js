@@ -27,7 +27,11 @@ export function createRouter(rooms) {
     [CLIENT.PLAYER_RESUME]: { sender: 'outsider', run: (conn, msg) => rooms.resumePlayer(conn.id, msg.code, msg.token) },
     [CLIENT.ROOM_LEAVE]: { sender: 'member', run: (conn) => rooms.leaveRoom(conn.id) },
     [CLIENT.HOST_KICK]: { sender: 'host', run: (conn, msg) => rooms.kickPlayer(conn.id, msg.playerId) },
-    // M5: host:start_game, game:action
+    [CLIENT.HOST_START_GAME]: {
+      sender: 'host',
+      run: (conn, msg) => rooms.startGame(conn.id, msg.gameId, msg.options ?? {}),
+    },
+    [CLIENT.GAME_ACTION]: { sender: 'player', run: (conn, msg) => rooms.handleGameAction(conn.id, msg.action) },
   };
 
   /** Returns an error code if this connection may not send this kind of message, else null. */

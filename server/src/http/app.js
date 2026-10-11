@@ -1,5 +1,6 @@
 import express from 'express';
 import { config } from '../config.js';
+import { GameRegistry } from '../games/registry.js';
 
 /**
  * Builds the Express app (HTTP routes only).
@@ -8,8 +9,10 @@ import { config } from '../config.js';
  * create a fresh app each time, and so index.js decides when to listen.
  * WebSockets are NOT handled here: Express only does normal HTTP requests.
  * The `ws` library attaches to the same http.Server in index.js (milestone M1).
+ *
+ * @param {{ games?: GameRegistry }} [deps]  the games to list for the host's picker
  */
-export function createApp() {
+export function createApp({ games = new GameRegistry() } = {}) {
   const app = express();
 
   // Parse JSON request bodies, rejecting anything over the size limit.
@@ -18,6 +21,11 @@ export function createApp() {
   // Health check: the client (and later the VPS) can call this to see if the server is up.
   app.get('/api/health', (_req, res) => {
     res.json({ ok: true });
+  });
+
+  // The games the host can start (id, name, description, player counts).
+  app.get('/api/games', (_req, res) => {
+    res.json({ games: games.list() });
   });
 
   // Any other /api path is a clean JSON 404 instead of Express's HTML page.

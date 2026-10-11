@@ -9,7 +9,7 @@ export const ERRORS = Object.freeze({
   INVALID_FIELDS: 'A field in the message is missing or invalid.',
   RATE_LIMITED: 'Too many messages. Slow down.',
   INTERNAL_ERROR: 'Something went wrong on the server.',
-  // A valid message type whose feature isn't built yet (shrinks to nothing by M5).
+  // Safety net: a protocol message type that was added without a route in router.js.
   NOT_SUPPORTED: 'That action is not available yet.',
 
   // Rooms (M2–M4)

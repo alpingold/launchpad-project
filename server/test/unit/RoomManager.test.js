@@ -2,6 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { RoomManager } from '../../src/rooms/RoomManager.js';
 import { RoomError } from '../../src/rooms/RoomError.js';
+import { GameRegistry } from '../../src/games/registry.js';
+import countGame from '../fixtures/countGame.js';
 
 /**
  * A RoomManager whose `send` just records messages, so tests can check
@@ -372,4 +374,198 @@ test('sweeper closes rooms idle for 2 hours; any activity resets the clock', (t)
   assert.equal(rooms.sweepIdleRooms(), 1);
   assert.deepEqual(inbox('c1').at(-1), { type: 'room:closed', reason: 'idle' });
   assert.equal(rooms.getRoom(code), undefined);
+});
+
+// --- Games in rooms (M5) ----------------------------------------------------------------
+
+/** A lobby (host + Alex + Blake) on a server that offers the test count game. */
+function gameLobby(t, extraGames = []) {
+  const games = new GameRegistry();
+  for (const g of [countGame, ...extraGames]) games.register(g);
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+  const ctx = setup({ games });
+  ctx.code = ctx.rooms.createRoom('host').code;
+  ctx.alex = ctx.rooms.joinRoom('c1', ctx.code, 'Alex');
+  ctx.blake = ctx.rooms.joinRoom('c2', ctx.code, 'Blake');
+  ctx.room = ctx.rooms.getRoom(ctx.code);
+  ctx.sent.length = 0;
+  ctx.tick = (ms) => t.mock.timers.tick(ms);
+  ctx.ofType = (connId, type) => ctx.inbox(connId).filter((m) => m.type === type);
+  return ctx;
+}
+
+test('startGame: game:started, then in_game state, then the first views', (t) => {
+  const { rooms, inbox, room, alex, blake } = gameLobby(t);
+  rooms.startGame('host', 'count-game', {});
+
+  assert.equal(room.phase, 'in_game');
+  const types = inbox('c1').map((m) => m.type);
+  assert.deepEqual(types, ['game:started', 'room:state', 'game:message']);
+  assert.deepEqual(inbox('c1')[0], {
+    type: 'game:started',
+    gameId: 'count-game',
+    players: [{ id: alex.id, name: 'Alex' }, { id: blake.id, name: 'Blake' }],
+  });
+  assert.equal(inbox('c1')[1].phase, 'in_game');
+  assert.equal(inbox('c1')[1].gameId, 'count-game');
+  const msg = inbox('c1')[2];
+  assert.deepEqual(msg.payload, { view: 'button', label: 'Tap!', action: { tap: true } });
+  assert.equal(typeof msg.serverNow, 'number');
+  // The host also got its own big-screen view.
+  assert.deepEqual(inbox('host').at(-1).payload, { view: 'message', title: 'First to 3 taps wins!' });
+  assert.equal(inbox('c1').filter((m) => m.payload?.view === 'message').length, 0, 'host-only view not sent to players');
+});
+
+test('startGame errors: unknown game, wrong player count, already running', (t) => {
+  const twoPlus = { ...countGame, id: 'needs-three', minPlayers: 3 };
+  const { rooms } = gameLobby(t, [twoPlus]);
+  assert.throws(() => rooms.startGame('host', 'nope', {}), isRoomError('GAME_NOT_FOUND'));
+  assert.throws(() => rooms.startGame('host', 'needs-three', {}), isRoomError('WRONG_PLAYER_COUNT'));
+  rooms.startGame('host', 'count-game', {});
+  assert.throws(() => rooms.startGame('host', 'count-game', {}), isRoomError('WRONG_PHASE'));
+  assert.throws(() => rooms.startGame('c1', 'count-game', {}), isRoomError('NOT_HOST'));
+});
+
+test('a full game: actions route through, the game ends, the room returns to the lobby', (t) => {
+  const { rooms, room, alex, blake, ofType } = gameLobby(t);
+  rooms.startGame('host', 'count-game', { target: 2 });
+  rooms.handleGameAction('c2', { tap: true });
+  rooms.handleGameAction('c1', { tap: true });
+  rooms.handleGameAction('c2', { tap: true });
+
+  assert.equal(room.phase, 'lobby');
+  assert.equal(room.game, null);
+  for (const id of ['host', 'c1', 'c2']) {
+    assert.deepEqual(ofType(id, 'game:ended'), [{ type: 'game:ended', results: { rankings: [blake.id, alex.id] } }], id);
+    const last = ofType(id, 'room:state').at(-1);
+    assert.equal(last.phase, 'lobby');
+    assert.equal(last.gameId, null);
+  }
+  // Can play again.
+  assert.doesNotThrow(() => rooms.startGame('host', 'count-game', {}));
+});
+
+test('game:action is refused outside a game and from the host', (t) => {
+  const { rooms } = gameLobby(t);
+  assert.throws(() => rooms.handleGameAction('c1', { tap: true }), isRoomError('WRONG_PHASE'));
+  rooms.startGame('host', 'count-game', {});
+  assert.throws(() => rooms.handleGameAction('host', { tap: true }), isRoomError('WRONG_PHASE'));
+});
+
+test('nobody can join during a game, but a dropped player can resume and gets their view back', (t) => {
+  const { rooms, inbox, code, alex } = gameLobby(t);
+  rooms.startGame('host', 'count-game', {});
+  assert.throws(() => rooms.joinRoom('c9', code, 'Late'), isRoomError('GAME_IN_PROGRESS'));
+
+  rooms.handleDisconnect('c1');
+  rooms.resumePlayer('c1b', code, alex.token);
+  const messages = inbox('c1b');
+  assert.deepEqual(messages.map((m) => m.type), ['room:joined', 'room:state', 'game:message']);
+  assert.deepEqual(messages[2].payload, { view: 'button', label: 'Tap!', action: { tap: true } });
+});
+
+test('host refresh during a game gets the big-screen view back', (t) => {
+  const { rooms, inbox, code, room } = gameLobby(t);
+  rooms.startGame('host', 'count-game', {});
+  rooms.handleDisconnect('host');
+  rooms.resumeHost('host2', code, room.host.token);
+  assert.deepEqual(inbox('host2').at(-1).payload, { view: 'message', title: 'First to 3 taps wins!' });
+});
+
+test('players who drop mid-game keep their spot, then get a grace period once the game ends', (t) => {
+  const { rooms, room, alex, tick } = gameLobby(t);
+  rooms.startGame('host', 'count-game', { target: 1 });
+  rooms.handleDisconnect('c1');
+  tick(10 * 60_000);
+  assert.ok(room.players.has(alex.id), 'kept during the game');
+
+  rooms.handleGameAction('c2', { tap: true }); // Blake wins, game over
+  assert.equal(room.phase, 'lobby');
+  tick(29_999);
+  assert.ok(room.players.has(alex.id));
+  tick(1);
+  assert.equal(room.players.has(alex.id), false, 'removed 30 s after the game ended');
+});
+
+test('a player in their lobby grace period when the game starts is included and kept', (t) => {
+  const { rooms, room, alex, tick } = gameLobby(t);
+  rooms.handleDisconnect('c1'); // lobby grace timer starts
+  rooms.startGame('host', 'count-game', {});
+  tick(60_000);
+  assert.ok(room.players.has(alex.id), 'grace timer cancelled by the game starting');
+});
+
+test('the game hears about disconnects, reconnects, leaves and kicks', (t) => {
+  const events = [];
+  const spy = {
+    ...countGame,
+    id: 'spy-game',
+    createGame: () => ({
+      onAction() {},
+      onPlayerDisconnect: (id) => events.push(['disconnect', id]),
+      onPlayerReconnect: (id) => events.push(['reconnect', id]),
+      onHostReconnect: () => events.push(['host']),
+    }),
+  };
+  const { rooms, code, room, alex, blake } = gameLobby(t, [spy]);
+  rooms.startGame('host', 'spy-game', {});
+  rooms.handleDisconnect('c1');
+  rooms.resumePlayer('c1b', code, alex.token);
+  rooms.handleDisconnect('host');
+  rooms.resumeHost('host2', code, room.host.token);
+  rooms.kickPlayer('host2', blake.id);
+  rooms.leaveRoom('c1b');
+  assert.deepEqual(events, [
+    ['disconnect', alex.id],
+    ['reconnect', alex.id],
+    ['host'],
+    ['disconnect', blake.id],
+    ['disconnect', alex.id],
+  ]);
+});
+
+test('a crashing game ends with { error: true } and the room is fine', (t) => {
+  t.mock.method(console, 'error', () => {});
+  const broken = { ...countGame, id: 'broken', createGame: () => ({ onAction() { throw new Error('boom'); } }) };
+  const { rooms, room, ofType } = gameLobby(t, [broken]);
+  rooms.startGame('host', 'broken', {});
+  assert.doesNotThrow(() => rooms.handleGameAction('c1', {}));
+  assert.equal(room.phase, 'lobby');
+  assert.deepEqual(ofType('c2', 'game:ended').at(-1), { type: 'game:ended', results: { error: true } });
+});
+
+test('a game that crashes while starting goes straight back to the lobby', (t) => {
+  t.mock.method(console, 'error', () => {});
+  const broken = { ...countGame, id: 'broken', createGame: () => { throw new Error('boom'); } };
+  const { rooms, room, ofType } = gameLobby(t, [broken]);
+  rooms.startGame('host', 'broken', {});
+  assert.equal(room.phase, 'lobby');
+  assert.deepEqual(ofType('c1', 'game:ended').at(-1).results, { error: true });
+});
+
+test('closing the room mid-game stops the game and its timers', (t) => {
+  const fired = [];
+  const timed = {
+    ...countGame,
+    id: 'timed',
+    createGame: (ctx) => {
+      ctx.setTimeout(() => fired.push('late'), 5000);
+      return { onAction() {} };
+    },
+  };
+  const { rooms, room, sent, tick } = gameLobby(t, [timed]);
+  rooms.startGame('host', 'timed', {});
+  rooms.leaveRoom('host'); // End room
+  const before = sent.length;
+  tick(60_000);
+  assert.deepEqual(fired, []);
+  assert.equal(sent.length, before);
+  assert.equal(room.game, null);
+});
+
+test('game messages to a disconnected player are dropped, not errors', (t) => {
+  const { rooms, inbox } = gameLobby(t);
+  rooms.handleDisconnect('c1');
+  rooms.startGame('host', 'count-game', {});
+  assert.equal(inbox('c1').length, 0);
 });

@@ -4,6 +4,7 @@ import { createRouter } from '../../src/router.js';
 import { RoomManager } from '../../src/rooms/RoomManager.js';
 import { RoomError } from '../../src/rooms/RoomError.js';
 import { makeError } from '../../src/protocol/errors.js';
+import { CLIENT } from '../../src/protocol/messageTypes.js';
 
 /** A stand-in for transport/connection.js that records what it was sent. */
 function fakeConn(id, outbox) {
@@ -36,10 +37,19 @@ test('host:create_room from someone already in a room is refused by the router',
   assert.deepEqual(outbox, [makeError('ALREADY_IN_ROOM', { requestType: 'host:create_room' })]);
 });
 
-test('valid but not-yet-built message types get NOT_SUPPORTED', () => {
+test('every client message type has a route', () => {
   const { router, outbox, conn } = setup();
-  router.handleMessage(conn, { type: 'game:action', action: {} });
-  assert.deepEqual(outbox, [makeError('NOT_SUPPORTED', { requestType: 'game:action' })]);
+  for (const type of Object.values(CLIENT)) {
+    outbox.length = 0;
+    router.handleMessage(conn, { type });
+    assert.ok(!outbox.some((m) => m.code === 'NOT_SUPPORTED'), `${type} has no route`);
+  }
+});
+
+test('a type missing from the route table gets NOT_SUPPORTED (safety net)', () => {
+  const { router, outbox, conn } = setup();
+  router.handleMessage(conn, { type: 'future:thing' });
+  assert.deepEqual(outbox, [makeError('NOT_SUPPORTED', { requestType: 'future:thing' })]);
 });
 
 test('RoomError from RoomManager becomes an error reply', () => {

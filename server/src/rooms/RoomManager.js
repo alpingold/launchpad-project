@@ -6,6 +6,8 @@ import { RoomError } from './RoomError.js';
 import { generateRoomCode } from './roomCode.js';
 import { newToken, newPlayerId, tokensEqual } from './tokens.js';
 import { validateName } from './names.js';
+import { GameRegistry } from '../games/registry.js';
+import { GameRunner } from '../games/GameRunner.js';
 
 /**
  * @typedef {Object} Membership   what a connection is doing right now
@@ -39,6 +41,7 @@ export class RoomManager {
    * @param {number} [deps.hostGraceMs]
    * @param {number} [deps.playerGraceMs]
    * @param {number} [deps.roomIdleMs]
+   * @param {GameRegistry} [deps.games]  games that can be started (empty by default)
    */
   constructor({
     send,
@@ -48,6 +51,7 @@ export class RoomManager {
     hostGraceMs = config.HOST_GRACE_MS,
     playerGraceMs = config.PLAYER_GRACE_MS,
     roomIdleMs = config.ROOM_IDLE_MS,
+    games = new GameRegistry(),
   }) {
     this.send = send;
     this.randomInt = randomInt;
@@ -56,6 +60,7 @@ export class RoomManager {
     this.hostGraceMs = hostGraceMs;
     this.playerGraceMs = playerGraceMs;
     this.roomIdleMs = roomIdleMs;
+    this.games = games;
 
     /** @type {Map<string, Room>} every live room, by code */
     this.rooms = new Map();
@@ -115,6 +120,7 @@ export class RoomManager {
 
     this.send(connId, { type: SERVER.ROOM_CREATED, code, hostToken: room.host.token });
     this.broadcastState(room); // everyone sees hostConnected: true again
+    room.game?.hostReconnected(); // the game re-sends the big screen's current view
     return room;
   }
 
@@ -186,6 +192,7 @@ export class RoomManager {
 
     this.send(connId, { type: SERVER.ROOM_JOINED, code, playerId: player.id, token: player.token, name: player.name });
     this.broadcastState(room);
+    room.game?.playerReconnected(player.id); // the game re-sends this phone's current view
     return player;
   }
 
@@ -223,6 +230,58 @@ export class RoomManager {
     this.broadcastState(room);
   }
 
+  /**
+   * host:start_game — starts a game with everyone currently in the room.
+   * Players who are disconnected but still within their grace period are included:
+   * from now on their spot is kept until the game ends (decision D6).
+   */
+  startGame(hostConnId, gameId, options = {}) {
+    const membership = this.members.get(hostConnId);
+    if (membership?.role !== 'host') throw new RoomError('NOT_HOST');
+    const room = this.rooms.get(membership.code);
+
+    if (room.phase !== 'lobby') throw new RoomError('WRONG_PHASE');
+    const game = this.games.get(gameId);
+    if (!game) throw new RoomError('GAME_NOT_FOUND');
+    const count = room.players.size;
+    if (count < game.minPlayers || count > game.maxPlayers) throw new RoomError('WRONG_PLAYER_COUNT');
+
+    const players = [...room.players.values()];
+    for (const player of players) this.cancelTimer(player); // in-game: no lobby grace timers
+
+    room.phase = 'in_game';
+    room.gameId = gameId;
+    room.lastActivityAt = this.now();
+    const runner = new GameRunner({
+      game,
+      players: players.map((p) => ({ id: p.id, name: p.name })),
+      options,
+      deliver: (target, view) => this.deliverGameMessage(room, target, view),
+      onEnd: (results) => this.handleGameEnd(room, runner, results),
+    });
+    room.game = runner;
+
+    // Tell everyone a game is starting BEFORE the game sends its first views.
+    this.broadcast(room, { type: SERVER.GAME_STARTED, gameId, players: runner.players });
+    this.broadcastState(room);
+    runner.start(); // may end immediately if the game is broken; handleGameEnd copes
+
+    // The game should know who isn't here right now.
+    for (const player of players) {
+      if (!player.connected) room.game?.playerDisconnected(player.id);
+    }
+  }
+
+  /** game:action — passes a player's action to the running game (which validates it). */
+  handleGameAction(connId, action) {
+    const membership = this.members.get(connId);
+    if (membership?.role !== 'player') throw new RoomError('WRONG_PHASE');
+    const room = this.rooms.get(membership.code);
+    if (room.phase !== 'in_game' || !room.game) throw new RoomError('WRONG_PHASE');
+    room.lastActivityAt = this.now();
+    room.game.handleAction(membership.playerId, action);
+  }
+
   // --- Connection events ------------------------------------------------------
 
   /**
@@ -248,14 +307,10 @@ export class RoomManager {
       player.connected = false;
       // In the lobby, an empty spot blocks the name and a slot, so it expires.
       // During a game, the spot is kept until the game ends (decision D6).
-      if (room.phase === 'lobby') {
-        player.graceTimer = setTimeout(() => {
-          this.removePlayer(room, player.id);
-          this.broadcastState(room);
-        }, this.playerGraceMs);
-      }
+      if (room.phase === 'lobby') this.startPlayerGraceTimer(room, player);
     }
     this.broadcastState(room); // others see "disconnected" right away
+    if (membership.role === 'player') room.game?.playerDisconnected(membership.playerId);
   }
 
   /**
@@ -275,17 +330,73 @@ export class RoomManager {
     return closed;
   }
 
-  /** Cancels every pending timer (server shutdown and tests), so nothing fires afterwards. */
+  /** Cancels every pending timer and running game (server shutdown and tests). */
   dispose() {
-    for (const room of this.rooms.values()) this.cancelRoomTimers(room);
+    for (const room of this.rooms.values()) {
+      this.cancelRoomTimers(room);
+      this.stopGame(room);
+    }
   }
 
   // --- Helpers ----------------------------------------------------------------
 
+  /** Sends one message to everyone connected to the room. */
+  broadcast(room, msg) {
+    for (const connId of room.connectedIds()) this.send(connId, msg);
+  }
+
   /** Sends the current public room state to everyone connected to the room. */
   broadcastState(room) {
-    const msg = { type: SERVER.ROOM_STATE, ...room.toPublicState() };
-    for (const connId of room.connectedIds()) this.send(connId, msg);
+    this.broadcast(room, { type: SERVER.ROOM_STATE, ...room.toPublicState() });
+  }
+
+  /**
+   * Delivers a view from the game (already checked by GameRunner).
+   * Messages to someone who is disconnected are simply dropped; the game re-sends
+   * their view in onPlayerReconnect / onHostReconnect.
+   * @param {import('../games/GameRunner.js').Target} target
+   */
+  deliverGameMessage(room, target, view) {
+    // serverNow lets clients correct for their clock being off when showing countdowns.
+    const msg = { type: SERVER.GAME_MESSAGE, payload: view, serverNow: this.now() };
+    if (target.to === 'all') this.broadcast(room, msg);
+    else if (target.to === 'host') {
+      if (room.host.connId) this.send(room.host.connId, msg);
+    } else {
+      const connId = room.players.get(target.playerId)?.connId;
+      if (connId) this.send(connId, msg);
+    }
+  }
+
+  /** The game finished (or crashed): report results and go back to the lobby. */
+  handleGameEnd(room, runner, results) {
+    if (room.game !== runner) return; // an old game; the room has moved on
+    room.game = null;
+    room.gameId = null;
+    room.phase = 'lobby';
+    room.lastActivityAt = this.now();
+    this.broadcast(room, { type: SERVER.GAME_ENDED, results });
+
+    // Back in the lobby: players who dropped during the game now get the normal grace period.
+    for (const player of room.players.values()) {
+      if (!player.connected) this.startPlayerGraceTimer(room, player);
+    }
+    this.broadcastState(room);
+  }
+
+  /** Stops a running game without results (the room is closing). */
+  stopGame(room) {
+    room.game?.dispose();
+    room.game = null;
+  }
+
+  /** In the lobby, a disconnected player's spot is freed if they don't return in time. */
+  startPlayerGraceTimer(room, player) {
+    this.cancelTimer(player);
+    player.graceTimer = setTimeout(() => {
+      this.removePlayer(room, player.id);
+      this.broadcastState(room);
+    }, this.playerGraceMs);
   }
 
   /**
@@ -297,6 +408,7 @@ export class RoomManager {
    */
   closeRoom(room, reason) {
     this.cancelRoomTimers(room);
+    this.stopGame(room);
     room.phase = 'closed';
     for (const connId of room.connectedIds()) this.detach(connId, reason);
     this.rooms.delete(room.code);
@@ -309,6 +421,8 @@ export class RoomManager {
     this.cancelTimer(player);
     room.players.delete(playerId);
     room.lastActivityAt = this.now();
+    // Left or kicked mid-game: the game hears the same as a disconnect (they won't come back).
+    room.game?.playerDisconnected(playerId);
   }
 
   /**
