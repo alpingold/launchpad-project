@@ -5,6 +5,7 @@ import PlayerList from '../components/PlayerList.jsx';
 import GameScreen from '../game/GameScreen.jsx';
 import LastGameResults from '../game/LastGameResults.jsx';
 import { useGameMessages } from '../game/useGameMessages.js';
+import { usePageTitle } from '../usePageTitle.js';
 
 const SESSION_KEY = 'player'; // sessionStorage: { code, token } of this tab's spot
 
@@ -34,6 +35,7 @@ export default function Join() {
   const [room, setRoom] = useState(null); // latest room:state
   const [closedReason, setClosedReason] = useState(null);
   const [game, handleGameMessage] = useGameMessages();
+  usePageTitle('Join');
   const socketRef = useRef(null);
   const closedRef = useRef(false); // readable inside socket callbacks
 

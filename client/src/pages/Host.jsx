@@ -6,6 +6,7 @@ import GamePicker from '../components/GamePicker.jsx';
 import GameScreen from '../game/GameScreen.jsx';
 import LastGameResults from '../game/LastGameResults.jsx';
 import { useGameMessages } from '../game/useGameMessages.js';
+import { usePageTitle } from '../usePageTitle.js';
 
 const SESSION_KEY = 'host'; // sessionStorage: { code, hostToken } of the room this tab hosts
 
@@ -26,6 +27,7 @@ export default function Host() {
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState(null); // short message, e.g. why a game couldn't start
   const [game, handleGameMessage] = useGameMessages();
+  usePageTitle('Host');
   const socketRef = useRef(null);
   const endedRef = useRef(false); // readable inside socket callbacks without re-subscribing
 
