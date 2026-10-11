@@ -64,5 +64,34 @@ test('handleDisconnect forwards to RoomManager', () => {
   router.handleMessage(conn, { type: 'host:create_room' });
   router.handleDisconnect(conn);
   assert.equal(rooms.getMembership('c1'), undefined);
-  assert.equal(rooms.rooms.size, 0);
+  assert.equal([...rooms.rooms.values()][0].host.connId, null, 'room kept, host marked disconnected');
+  rooms.dispose(); // cancel the host grace timer so the test process can exit
+});
+
+test('who-may-send checks for the M4 message types', () => {
+  const outbox = [];
+  const rooms = new RoomManager({ send: () => {} });
+  const router = createRouter(rooms);
+  const host = fakeConn('h', []);
+  const player = fakeConn('p', outbox);
+  const outsider = fakeConn('o', outbox);
+  router.handleMessage(host, { type: 'host:create_room' });
+  const { code } = [...rooms.rooms.values()][0];
+  router.handleMessage(player, { type: 'player:join', code, name: 'Alex' });
+  const { playerId } = rooms.getMembership('p');
+
+  router.handleMessage(player, { type: 'host:kick', playerId });
+  router.handleMessage(outsider, { type: 'room:leave' });
+  router.handleMessage(outsider, { type: 'host:kick', playerId });
+  router.handleMessage(player, { type: 'player:resume', code, token: 'abcdefghijklmnopqrstuv' });
+  assert.deepEqual(
+    outbox.map((m) => [m.code, m.requestType]),
+    [
+      ['NOT_HOST', 'host:kick'],
+      ['NOT_IN_ROOM', 'room:leave'],
+      ['NOT_IN_ROOM', 'host:kick'],
+      ['ALREADY_IN_ROOM', 'player:resume'],
+    ],
+  );
+  rooms.dispose();
 });

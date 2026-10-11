@@ -1,29 +1,55 @@
 import { useEffect, useRef, useState } from 'react';
 import { connectSocket } from '../net/socket.js';
+import { loadSession, saveSession, clearSession } from '../net/storage.js';
 import PlayerList from '../components/PlayerList.jsx';
 
+const SESSION_KEY = 'player'; // sessionStorage: { code, token } of this tab's spot
+
+const CLOSED_TEXT = {
+  left: 'You left the room.',
+  kicked: 'The host removed you from the room.',
+  host_left: 'The host ended the room.',
+  host_timeout: "The host didn't come back, so the room closed.",
+  replaced: 'You opened this game in another tab or window.',
+  idle: 'The room closed after a long time with no activity.',
+};
+
 // The phone page: enter the room code and a name, then wait in the lobby.
-// The server makes every real decision (code exists, name allowed and free, room not full);
-// the form just collects input and shows the server's answer.
+// After a refresh or a dropped connection, it reclaims the same spot with the saved
+// player token (player:resume). The server makes every real decision; this page just
+// collects input and shows the server's answers.
 export default function Join() {
   // A link like /join?code=BCDF fills in the code.
   const [code, setCode] = useState(() => new URLSearchParams(window.location.search).get('code') ?? '');
   const [name, setName] = useState('');
 
-  // 'connecting' → 'form' → 'joining' → 'joined', or 'closed' / 'disconnected'
+  // 'connecting' → 'form' → 'joining' → 'joined'; 'resuming' after a reconnect; 'closed' at the end
   const [status, setStatus] = useState('connecting');
+  const [connected, setConnected] = useState(false);
   const [error, setError] = useState(null);
   const [me, setMe] = useState(null); // { playerId, name, code } from room:joined
   const [room, setRoom] = useState(null); // latest room:state
   const [closedReason, setClosedReason] = useState(null);
   const socketRef = useRef(null);
+  const closedRef = useRef(false); // readable inside socket callbacks
 
   useEffect(() => {
     const socket = connectSocket({
-      onOpen: () => setStatus('form'),
+      onOpen() {
+        setConnected(true);
+        if (closedRef.current) return;
+        const saved = loadSession(SESSION_KEY);
+        if (saved) {
+          setStatus('resuming');
+          socket.send({ type: 'player:resume', code: saved.code, token: saved.token });
+        } else {
+          setStatus('form');
+        }
+      },
       onMessage(msg) {
         switch (msg.type) {
           case 'room:joined':
+            saveSession(SESSION_KEY, { code: msg.code, token: msg.token });
             setMe({ playerId: msg.playerId, name: msg.name, code: msg.code });
             setStatus('joined');
             break;
@@ -31,14 +57,22 @@ export default function Join() {
             setRoom(msg);
             break;
           case 'room:closed':
+            closedRef.current = true;
+            clearSession(SESSION_KEY);
             setClosedReason(msg.reason);
             setStatus('closed');
             break;
           case 'error':
-            // A refused join: show why and let them fix the form. Errors about other
-            // requests must not throw an already-joined player back to the form.
             if (msg.requestType === 'player:join') {
+              // A refused join: show why and let them fix the form.
               setError(msg.message);
+              setStatus('form');
+            } else if (msg.requestType === 'player:resume') {
+              // Spot expired or room gone: back to the form, code filled in.
+              const saved = loadSession(SESSION_KEY);
+              clearSession(SESSION_KEY);
+              if (saved) setCode(saved.code);
+              setError(msg.code === 'ROOM_NOT_FOUND' ? 'That room has closed.' : msg.message);
               setStatus('form');
             } else {
               console.warn('[join] server error:', msg.code);
@@ -46,7 +80,7 @@ export default function Join() {
             break;
         }
       },
-      onClose: () => setStatus((s) => (s === 'closed' ? s : 'disconnected')),
+      onDisconnect: () => setConnected(false),
     });
     socketRef.current = socket;
     return () => socket.close();
@@ -59,23 +93,53 @@ export default function Join() {
     socketRef.current.send({ type: 'player:join', code, name });
   }
 
-  if (status === 'disconnected') {
-    return <Message title="Lost connection" text="Refresh the page to try again." />;
+  function leave() {
+    if (window.confirm('Leave the room?')) socketRef.current.send({ type: 'room:leave' });
   }
+
   if (status === 'closed') {
-    const text = closedReason === 'host_left' ? 'The host ended the room.' : 'This room has closed.';
-    return <Message title="Room closed" text={text} />;
+    return (
+      <main className="page join">
+        <h1>Room closed</h1>
+        <p>{CLOSED_TEXT[closedReason] ?? 'This room has closed.'}</p>
+        <p>
+          <a href="/join">Join a room</a>
+        </p>
+      </main>
+    );
   }
 
   if (status === 'joined' && me) {
     return (
       <main className="page join">
+        {!connected && (
+          <p className="banner" role="status">
+            Connection lost. Reconnecting…
+          </p>
+        )}
         <h1>You're in!</h1>
         <p>
           Room <strong className="mono">{me.code}</strong> as <strong>{me.name}</strong>
         </p>
-        <p className="muted">Waiting for the host to start a game…</p>
+        {room && !room.hostConnected ? (
+          <p className="muted">The host disconnected. Waiting for them to come back…</p>
+        ) : (
+          <p className="muted">Waiting for the host to start a game…</p>
+        )}
         {room && <PlayerList players={room.players} youId={me.playerId} />}
+        <p>
+          <button type="button" className="secondary-button" onClick={leave} disabled={!connected}>
+            Leave room
+          </button>
+        </p>
+      </main>
+    );
+  }
+
+  if (status === 'connecting' || status === 'resuming') {
+    return (
+      <main className="page join">
+        <h1>{status === 'resuming' ? 'Rejoining…' : 'Connecting…'}</h1>
       </main>
     );
   }
@@ -112,22 +176,10 @@ export default function Join() {
             {error}
           </p>
         )}
-        <button type="submit" disabled={status !== 'form'}>
-          {status === 'connecting' ? 'Connecting…' : status === 'joining' ? 'Joining…' : 'Join'}
+        <button type="submit" disabled={status !== 'form' || !connected}>
+          {status === 'joining' ? 'Joining…' : 'Join'}
         </button>
       </form>
-    </main>
-  );
-}
-
-function Message({ title, text }) {
-  return (
-    <main className="page">
-      <h1>{title}</h1>
-      <p>{text}</p>
-      <p>
-        <a href="/join">Join another room</a>
-      </p>
     </main>
   );
 }

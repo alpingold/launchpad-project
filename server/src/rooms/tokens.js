@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto';
+import { randomBytes, timingSafeEqual } from 'node:crypto';
 
 /**
  * A new secret token: 16 random bytes (128 bits) as 22 URL-safe characters.
@@ -9,6 +9,20 @@ import { randomBytes } from 'node:crypto';
  */
 export function newToken() {
   return randomBytes(16).toString('base64url');
+}
+
+/**
+ * Compares a token from a client with the real one.
+ *
+ * A normal `===` stops at the first different character, so in theory an attacker could
+ * time many guesses to learn a token one character at a time. timingSafeEqual always
+ * takes the same time. Over a WebSocket this attack is impractical, but the safe version
+ * costs nothing, so we use it for every secret comparison.
+ */
+export function tokensEqual(a, b) {
+  const bufA = Buffer.from(String(a));
+  const bufB = Buffer.from(String(b));
+  return bufA.length === bufB.length && timingSafeEqual(bufA, bufB);
 }
 
 /**

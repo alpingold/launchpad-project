@@ -73,18 +73,6 @@ test('createRoom: SERVER_FULL at the room cap', () => {
   assert.throws(() => rooms.createRoom('c3'), (err) => err.code === 'SERVER_FULL');
 });
 
-test('host disconnect closes the room and frees the code (temporary M2 behavior)', () => {
-  const { rooms, inbox } = setup();
-  const room = rooms.createRoom('c1');
-  rooms.handleDisconnect('c1');
-
-  assert.equal(rooms.getRoom(room.code), undefined);
-  assert.equal(rooms.getMembership('c1'), undefined);
-  assert.equal(room.phase, 'closed');
-  // The host's socket is already gone, so nobody is sent room:closed.
-  assert.deepEqual(inbox('c1').map((m) => m.type), ['room:created', 'room:state']);
-});
-
 test('disconnect of a connection that never joined is a harmless no-op', () => {
   const { rooms, sent } = setup();
   rooms.handleDisconnect('c-unknown');
@@ -190,27 +178,198 @@ test('joinRoom: a host cannot also join as a player', () => {
   assert.throws(() => rooms.joinRoom('host', code, 'Sneaky'), isRoomError('ALREADY_IN_ROOM'));
 });
 
-test('player disconnect removes them and updates everyone (temporary M3 behavior)', () => {
-  const { rooms, inbox, code } = withRoom();
-  rooms.joinRoom('c1', code, 'Alex');
-  rooms.joinRoom('c2', code, 'Blake');
-  rooms.handleDisconnect('c1');
 
-  assert.equal(rooms.getMembership('c1'), undefined);
-  const hostLatest = inbox('host').at(-1);
-  assert.deepEqual(hostLatest.players.map((p) => p.name), ['Blake']);
-  assert.deepEqual(inbox('c2').at(-1), hostLatest);
-  // The name is free again.
-  assert.doesNotThrow(() => rooms.joinRoom('c3', code, 'Alex'));
+// --- Disconnect, grace periods, resume, leave, kick (M4) -------------------------
+// These use node:test's mock timers: t.mock.timers.tick(30_000) runs 30 seconds of
+// timers instantly, so the grace periods can be tested without waiting.
+
+/** Room with a host ('host') and players Alex ('c1') and Blake ('c2'), with mocked time. */
+function lobby(t) {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+  const ctx = withRoom();
+  ctx.alex = ctx.rooms.joinRoom('c1', ctx.code, 'Alex');
+  ctx.blake = ctx.rooms.joinRoom('c2', ctx.code, 'Blake');
+  ctx.room = ctx.rooms.getRoom(ctx.code);
+  ctx.hostToken = ctx.room.host.token;
+  ctx.sent.length = 0;
+  ctx.tick = (ms) => t.mock.timers.tick(ms);
+  return ctx;
+}
+
+test('host disconnect: players see hostConnected false; room closes after exactly 30 s', (t) => {
+  const { rooms, inbox, code, tick } = lobby(t);
+  rooms.handleDisconnect('host');
+  assert.equal(inbox('c1').at(-1).hostConnected, false);
+
+  tick(29_999);
+  assert.ok(rooms.getRoom(code), 'still open just before the deadline');
+  tick(1);
+  assert.equal(rooms.getRoom(code), undefined);
+  assert.deepEqual(inbox('c1').at(-1), { type: 'room:closed', reason: 'host_timeout' });
+  assert.deepEqual(inbox('c2').at(-1), { type: 'room:closed', reason: 'host_timeout' });
+  assert.equal(rooms.members.size, 0, 'every membership freed');
 });
 
-test('host disconnect sends room:closed to players and frees them to join elsewhere', () => {
-  const { rooms, inbox, code } = withRoom();
-  rooms.joinRoom('c1', code, 'Alex');
+test('host resume within the grace period keeps the room and code', (t) => {
+  const { rooms, inbox, code, hostToken, tick } = lobby(t);
   rooms.handleDisconnect('host');
+  tick(10_000);
+  rooms.resumeHost('host2', code, hostToken);
 
-  assert.deepEqual(inbox('c1').at(-1), { type: 'room:closed', reason: 'host_left' });
+  assert.deepEqual(inbox('host2')[0], { type: 'room:created', code, hostToken });
+  assert.equal(inbox('c1').at(-1).hostConnected, true);
+  assert.deepEqual(rooms.getMembership('host2'), { code, role: 'host', playerId: null });
+
+  tick(60_000); // the old timer must be cancelled
+  assert.ok(rooms.getRoom(code));
+});
+
+test('host resume: wrong token → INVALID_TOKEN, wrong code → ROOM_NOT_FOUND', (t) => {
+  const { rooms, code } = lobby(t);
+  rooms.handleDisconnect('host');
+  assert.throws(() => rooms.resumeHost('x', code, 'A'.repeat(22)), isRoomError('INVALID_TOKEN'));
+  assert.throws(() => rooms.resumeHost('x', 'ZZZZ', 'A'.repeat(22)), isRoomError('ROOM_NOT_FOUND'));
+  assert.equal(rooms.getMembership('x'), undefined);
+});
+
+test('host opening a second tab takes over; the old tab is told "replaced"', (t) => {
+  const { rooms, inbox, code, hostToken } = lobby(t);
+  rooms.resumeHost('host-tab2', code, hostToken); // original 'host' is still connected
+
+  assert.deepEqual(inbox('host').at(-1), { type: 'room:closed', reason: 'replaced' });
+  assert.equal(rooms.getMembership('host'), undefined);
+  assert.equal(rooms.getRoom(code).host.connId, 'host-tab2');
+  // When the old tab's socket finally closes, nothing happens to the room.
+  rooms.handleDisconnect('host');
+  assert.equal(rooms.getRoom(code).host.connId, 'host-tab2');
+});
+
+test('player disconnect: spot shown as disconnected, kept 30 s, then removed', (t) => {
+  const { rooms, inbox, code, alex, blake, tick } = lobby(t);
+  rooms.handleDisconnect('c1');
+  assert.deepEqual(inbox('host').at(-1).players, [
+    { id: alex.id, name: 'Alex', connected: false },
+    { id: blake.id, name: 'Blake', connected: true },
+  ]);
+
+  tick(29_999);
+  assert.ok(rooms.getRoom(code).players.has(alex.id));
+  tick(1);
+  assert.equal(rooms.getRoom(code).players.has(alex.id), false);
+  assert.deepEqual(inbox('host').at(-1).players.map((p) => p.name), ['Blake']);
+  assert.throws(() => rooms.resumePlayer('c1b', code, alex.token), isRoomError('SESSION_EXPIRED'));
+});
+
+test('player resume within the grace period: same id and name, connected again', (t) => {
+  const { rooms, inbox, code, alex, tick } = lobby(t);
+  rooms.handleDisconnect('c1');
+  tick(20_000);
+  rooms.resumePlayer('c1b', code, alex.token);
+
+  assert.deepEqual(inbox('c1b')[0], { type: 'room:joined', code, playerId: alex.id, token: alex.token, name: 'Alex' });
+  assert.deepEqual(rooms.getMembership('c1b'), { code, role: 'player', playerId: alex.id });
+  assert.equal(inbox('host').at(-1).players[0].connected, true);
+
+  tick(60_000); // old timer cancelled: still here
+  assert.ok(rooms.getRoom(code).players.has(alex.id));
+});
+
+test('a disconnected player still holds their name and slot during the grace period', (t) => {
+  const { rooms, code, tick } = lobby(t);
+  rooms.handleDisconnect('c1');
+  assert.throws(() => rooms.joinRoom('x', code, 'alex'), isRoomError('NAME_TAKEN'));
+
+  for (let i = 3; i <= 12; i++) rooms.joinRoom(`c${i}`, code, `P${i}`); // 2 + 10 = 12 spots
+  assert.throws(() => rooms.joinRoom('x', code, 'Late'), isRoomError('ROOM_FULL'));
+  tick(30_000); // Alex's spot expires
+  assert.doesNotThrow(() => rooms.joinRoom('x', code, 'Late'));
+});
+
+test('player resume with an unknown token → SESSION_EXPIRED', (t) => {
+  const { rooms, code } = lobby(t);
+  assert.throws(() => rooms.resumePlayer('x', code, 'A'.repeat(22)), isRoomError('SESSION_EXPIRED'));
+});
+
+test('player opening a second tab takes over; the old tab is told "replaced"', (t) => {
+  const { rooms, inbox, code, alex } = lobby(t);
+  rooms.resumePlayer('c1-tab2', code, alex.token);
+  assert.deepEqual(inbox('c1').at(-1), { type: 'room:closed', reason: 'replaced' });
+  assert.equal(rooms.getRoom(code).players.get(alex.id).connId, 'c1-tab2');
+  rooms.handleDisconnect('c1'); // old socket closing later changes nothing
+  assert.equal(rooms.getRoom(code).players.get(alex.id).connected, true);
+});
+
+test('during a game, a disconnected player keeps their spot with no timer', (t) => {
+  const { rooms, code, alex, tick } = lobby(t);
+  rooms.getRoom(code).phase = 'in_game'; // M5 sets this for real
+  rooms.handleDisconnect('c1');
+  tick(10 * 60_000);
+  assert.ok(rooms.getRoom(code).players.has(alex.id));
+  // ...and can resume even though new players can't join mid-game.
+  assert.doesNotThrow(() => rooms.resumePlayer('c1b', code, alex.token));
+});
+
+test('player leave: removed immediately, told "left", name free at once', (t) => {
+  const { rooms, inbox, code } = lobby(t);
+  rooms.leaveRoom('c1');
+  assert.deepEqual(inbox('c1').at(-1), { type: 'room:closed', reason: 'left' });
   assert.equal(rooms.getMembership('c1'), undefined);
-  const other = rooms.createRoom('host2').code;
-  assert.doesNotThrow(() => rooms.joinRoom('c1', other, 'Alex'));
+  assert.deepEqual(inbox('host').at(-1).players.map((p) => p.name), ['Blake']);
+  assert.doesNotThrow(() => rooms.joinRoom('x', code, 'Alex'));
+});
+
+test('host leave ("End room"): closes at once for everyone', (t) => {
+  const { rooms, inbox, code } = lobby(t);
+  rooms.leaveRoom('host');
+  assert.equal(rooms.getRoom(code), undefined);
+  for (const id of ['host', 'c1', 'c2']) {
+    assert.deepEqual(inbox(id).at(-1), { type: 'room:closed', reason: 'host_left' }, id);
+  }
+  assert.equal(rooms.members.size, 0);
+});
+
+test('kick: player is told, removed, and their token stops working', (t) => {
+  const { rooms, inbox, code, alex } = lobby(t);
+  rooms.kickPlayer('host', alex.id);
+  assert.deepEqual(inbox('c1').at(-1), { type: 'room:closed', reason: 'kicked' });
+  assert.deepEqual(inbox('host').at(-1).players.map((p) => p.name), ['Blake']);
+  assert.throws(() => rooms.resumePlayer('c1b', code, alex.token), isRoomError('SESSION_EXPIRED'));
+});
+
+test('kick: a disconnected player can be kicked (their grace timer is cancelled)', (t) => {
+  const { rooms, sent, alex, tick } = lobby(t);
+  rooms.handleDisconnect('c1');
+  rooms.kickPlayer('host', alex.id);
+  const before = sent.length;
+  tick(60_000);
+  assert.equal(sent.length, before, 'cancelled timer sent nothing later');
+});
+
+test('kick: unknown player → PLAYER_NOT_FOUND; non-host → NOT_HOST', (t) => {
+  const { rooms, blake } = lobby(t);
+  assert.throws(() => rooms.kickPlayer('host', 'p_00000000'), isRoomError('PLAYER_NOT_FOUND'));
+  assert.throws(() => rooms.kickPlayer('c1', blake.id), isRoomError('NOT_HOST'));
+});
+
+test('closing a room cancels every pending timer (no stray messages later)', (t) => {
+  const { rooms, sent, room, tick } = lobby(t);
+  rooms.handleDisconnect('c1'); // player timer running
+  rooms.handleDisconnect('host'); // host timer running
+  rooms.closeRoom(room, 'idle');
+  const before = sent.length;
+  tick(10 * 60_000);
+  assert.equal(sent.length, before);
+});
+
+test('sweeper closes rooms idle for 2 hours; any activity resets the clock', (t) => {
+  const { rooms, inbox, code, tick } = lobby(t);
+  tick(2 * 60 * 60_000 - 1000);
+  assert.equal(rooms.sweepIdleRooms(), 0);
+  rooms.joinRoom('c3', code, 'Casey'); // activity
+  tick(60 * 60_000);
+  assert.equal(rooms.sweepIdleRooms(), 0, 'only 1 h since the last join');
+  tick(60 * 60_000 + 1);
+  assert.equal(rooms.sweepIdleRooms(), 1);
+  assert.deepEqual(inbox('c1').at(-1), { type: 'room:closed', reason: 'idle' });
+  assert.equal(rooms.getRoom(code), undefined);
 });

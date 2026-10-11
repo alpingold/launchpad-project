@@ -1,56 +1,116 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { connectSocket } from '../net/socket.js';
+import { loadSession, saveSession, clearSession } from '../net/storage.js';
 import PlayerList from '../components/PlayerList.jsx';
 
-// The big-screen page: creates a room as soon as it loads and shows the code.
-// M4 adds surviving a refresh.
+const SESSION_KEY = 'host'; // sessionStorage: { code, hostToken } of the room this tab hosts
+
+const ENDED_TEXT = {
+  host_left: 'You ended the room.',
+  host_timeout: 'The room closed while this page was disconnected.',
+  expired: 'The room closed while this page was disconnected.',
+  replaced: 'This room is now open in another tab or window.',
+  idle: 'The room closed after a long time with no activity.',
+};
+
+// The big-screen page. Creates a room on first load; after a refresh or a dropped
+// connection it reclaims the same room with the saved host token (host:resume).
 export default function Host() {
-  // 'connecting' → 'creating' → 'ready', or 'closed' / 'disconnected' / 'error'
-  const [status, setStatus] = useState('connecting');
-  const [room, setRoom] = useState(null); // latest room:state from the server
+  const [connected, setConnected] = useState(false);
+  const [room, setRoom] = useState(null); // latest room:state
+  const [ended, setEnded] = useState(null); // why the room ended, or null while it's alive
   const [error, setError] = useState(null);
+  const socketRef = useRef(null);
+  const endedRef = useRef(false); // readable inside socket callbacks without re-subscribing
 
   useEffect(() => {
+    function end(reason) {
+      endedRef.current = true;
+      clearSession(SESSION_KEY);
+      setEnded(reason);
+    }
+
     const socket = connectSocket({
       onOpen() {
-        setStatus('creating');
-        socket.send({ type: 'host:create_room' });
+        setConnected(true);
+        if (endedRef.current) return; // room is over; don't silently start a new one
+        const saved = loadSession(SESSION_KEY);
+        if (saved) socket.send({ type: 'host:resume', code: saved.code, hostToken: saved.hostToken });
+        else socket.send({ type: 'host:create_room' });
       },
       onMessage(msg) {
         switch (msg.type) {
           case 'room:created':
-            setStatus('ready');
+            saveSession(SESSION_KEY, { code: msg.code, hostToken: msg.hostToken });
             break;
           case 'room:state':
             setRoom(msg);
             break;
           case 'room:closed':
-            setStatus('closed');
+            end(msg.reason);
             break;
           case 'error':
-            setStatus('error');
-            setError(msg.message);
+            if (msg.requestType === 'host:resume') end('expired');
+            else if (msg.requestType === 'host:create_room') setError(msg.message);
+            else console.warn('[host] server error:', msg.code);
             break;
         }
       },
-      onClose() {
-        setStatus((s) => (s === 'closed' ? s : 'disconnected'));
-      },
+      onDisconnect: () => setConnected(false),
     });
-    // Leaving the page (or React re-running this effect in dev) closes the socket,
-    // which makes the server close the room.
+    socketRef.current = socket;
     return () => socket.close();
   }, []);
 
-  if (status === 'error') return <Message title="Couldn't create a room" text={error} />;
-  if (status === 'disconnected') {
-    return <Message title="Lost connection to the server" text="Refresh the page to start a new room." />;
+  function startNewRoom() {
+    clearSession(SESSION_KEY);
+    window.location.reload();
   }
-  if (status === 'closed') return <Message title="Room closed" text="Refresh the page to start a new room." />;
-  if (!room) return <Message title="Creating a room…" />;
+
+  function endRoom() {
+    if (window.confirm('End the room for everyone?')) socketRef.current.send({ type: 'room:leave' });
+  }
+
+  function kick(player) {
+    if (window.confirm(`Remove ${player.name} from the room?`)) {
+      socketRef.current.send({ type: 'host:kick', playerId: player.id });
+    }
+  }
+
+  if (ended) {
+    return (
+      <main className="page">
+        <h1>Room closed</h1>
+        <p>{ENDED_TEXT[ended] ?? 'The room has closed.'}</p>
+        <button type="button" className="primary-button" onClick={startNewRoom}>
+          Start a new room
+        </button>
+      </main>
+    );
+  }
+  if (error) {
+    return (
+      <main className="page">
+        <h1>Couldn't create a room</h1>
+        <p>{error}</p>
+      </main>
+    );
+  }
+  if (!room) {
+    return (
+      <main className="page">
+        <h1>{connected ? 'Creating a room…' : 'Connecting…'}</h1>
+      </main>
+    );
+  }
 
   return (
     <main className="page host">
+      {!connected && (
+        <p className="banner" role="status">
+          Connection lost. Reconnecting… (players keep their spots)
+        </p>
+      )}
       <p className="host-label">Join at</p>
       <p className="host-url">{window.location.host}/join</p>
       <p className="host-label">Room code</p>
@@ -59,16 +119,12 @@ export default function Host() {
         Players ({room.players.length}/{room.maxPlayers})
       </p>
       {room.players.length === 0 && <p className="muted">Waiting for players to join…</p>}
-      <PlayerList players={room.players} large />
-    </main>
-  );
-}
-
-function Message({ title, text }) {
-  return (
-    <main className="page">
-      <h1>{title}</h1>
-      {text && <p>{text}</p>}
+      <PlayerList players={room.players} large onKick={kick} />
+      <p>
+        <button type="button" className="secondary-button" onClick={endRoom} disabled={!connected}>
+          End room
+        </button>
+      </p>
     </main>
   );
 }

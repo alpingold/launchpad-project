@@ -22,8 +22,12 @@ export function createRouter(rooms) {
   /** @type {Record<string, { sender: Sender, run: (conn: any, msg: any) => void }>} */
   const routes = {
     [CLIENT.HOST_CREATE_ROOM]: { sender: 'outsider', run: (conn) => rooms.createRoom(conn.id) },
+    [CLIENT.HOST_RESUME]: { sender: 'outsider', run: (conn, msg) => rooms.resumeHost(conn.id, msg.code, msg.hostToken) },
     [CLIENT.PLAYER_JOIN]: { sender: 'outsider', run: (conn, msg) => rooms.joinRoom(conn.id, msg.code, msg.name) },
-    // M4: host:resume, player:resume, room:leave, host:kick · M5: host:start_game, game:action
+    [CLIENT.PLAYER_RESUME]: { sender: 'outsider', run: (conn, msg) => rooms.resumePlayer(conn.id, msg.code, msg.token) },
+    [CLIENT.ROOM_LEAVE]: { sender: 'member', run: (conn) => rooms.leaveRoom(conn.id) },
+    [CLIENT.HOST_KICK]: { sender: 'host', run: (conn, msg) => rooms.kickPlayer(conn.id, msg.playerId) },
+    // M5: host:start_game, game:action
   };
 
   /** Returns an error code if this connection may not send this kind of message, else null. */

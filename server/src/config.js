@@ -43,6 +43,19 @@ export const config = {
   // valve against someone scripting thousands of create_room calls, not a real capacity limit.
   MAX_ROOMS: 1000,
 
+  // How long a disconnected host can take to come back (refresh, laptop sleep) before
+  // the room closes for everyone.
+  HOST_GRACE_MS: 30_000,
+
+  // How long a disconnected player's spot is kept in the lobby. During a game the spot
+  // is kept until the game ends instead (decision D6).
+  PLAYER_GRACE_MS: 30_000,
+
+  // Rooms with no joins/leaves/reconnects for this long are closed by the sweeper,
+  // which runs every ROOM_SWEEP_INTERVAL_MS. Catches rooms forgotten on an open laptop.
+  ROOM_IDLE_MS: 2 * 60 * 60 * 1000,
+  ROOM_SWEEP_INTERVAL_MS: 5 * 60 * 1000,
+
   // Longest raw name string accepted before normalization. The real display-name
   // rules (1–16 characters, etc.) come in M3; this just stops absurd input early.
   NAME_RAW_MAX_LENGTH: 64,

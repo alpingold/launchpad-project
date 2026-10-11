@@ -1,13 +1,15 @@
 import { config } from '../config.js';
 
 /**
- * @typedef {Object} Player   (filled in by M3)
+ * @typedef {Object} Player
  * @property {string} id         public id, safe to broadcast
  * @property {string} token      SECRET, only ever sent to this player
  * @property {string} name
  * @property {string} nameKey    lowercase name, for the uniqueness check
- * @property {string | null} connId
+ * @property {string | null} connId     null while disconnected
  * @property {boolean} connected
+ * @property {NodeJS.Timeout | null} graceTimer  running while disconnected in the lobby (M4)
+ * @property {number} joinedAt
  */
 
 /**
@@ -26,8 +28,9 @@ export class Room {
 
     this.host = {
       token: hostToken, // SECRET
-      connId: hostConnId, // null while the host is disconnected (M4)
+      connId: hostConnId, // null while the host is disconnected
       userId: null, // logged-in account (M7)
+      graceTimer: null, // running while the host is disconnected; closes the room when it fires
     };
 
     /** @type {Map<string, Player>} keyed by player id; a Map keeps join order */

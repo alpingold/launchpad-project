@@ -8,21 +8,13 @@ let server;
 let url;
 
 beforeEach(async () => {
-  server = createGameServer();
+  // Short grace periods so timeout tests finish quickly (real value: 30 s).
+  server = createGameServer({ HOST_GRACE_MS: 200, PLAYER_GRACE_MS: 200 });
   await new Promise((resolve) => server.httpServer.listen(0, resolve));
   url = `ws://localhost:${server.httpServer.address().port}/ws`;
 });
 
 afterEach(() => server.close());
-
-/** Waits until `check()` is true (server-side cleanup runs a moment after a client closes). */
-async function eventually(check, timeoutMs = 1000) {
-  const start = Date.now();
-  while (!check()) {
-    if (Date.now() - start > timeoutMs) throw new Error('condition never became true');
-    await new Promise((r) => setTimeout(r, 5));
-  }
-}
 
 test('host creates a room and receives its code and state', async () => {
   const host = await openClient(url);
@@ -61,17 +53,6 @@ test('two hosts get two different rooms', async () => {
   assert.notEqual(ca.code, cb.code);
   a.close();
   b.close();
-});
-
-test('closing the host socket removes the room', async () => {
-  const host = await openClient(url);
-  host.send({ type: 'host:create_room' });
-  const { code } = await host.next();
-  assert.ok(server.rooms.getRoom(code));
-
-  host.close();
-  await eventually(() => server.rooms.getRoom(code) === undefined);
-  assert.equal(server.rooms.members.size, 0);
 });
 
 // --- Joining (M3) ---------------------------------------------------------------
@@ -142,25 +123,109 @@ test('wrong code gets ROOM_NOT_FOUND', async () => {
   player.close();
 });
 
-test('a player closing their tab disappears from the host list', async () => {
-  const { host, code } = await hostRoom();
-  const alex = await openClient(url);
-  alex.send({ type: 'player:join', code, name: 'Alex' });
-  await nextOfType(alex, 'room:joined');
-  assert.equal((await nextOfType(host, 'room:state')).players.length, 1);
 
-  alex.close();
-  assert.deepEqual((await nextOfType(host, 'room:state')).players, []);
+// --- Disconnect, resume, leave, kick (M4) -------------------------------------------
+
+/** Joins `name` to `code` and returns { client, joined } with room:joined consumed. */
+async function joinAs(code, name) {
+  const client = await openClient(url);
+  client.send({ type: 'player:join', code, name });
+  return { client, joined: await nextOfType(client, 'room:joined') };
+}
+
+test('host socket closing: players see the host as disconnected, then room:closed after the grace period', async () => {
+  const { host, code } = await hostRoom();
+  const { client: alex } = await joinAs(code, 'Alex');
+
   host.close();
+  for (;;) {
+    const state = await nextOfType(alex, 'room:state');
+    if (state.hostConnected === false) break;
+  }
+  assert.deepEqual(await nextOfType(alex, 'room:closed'), { type: 'room:closed', reason: 'host_timeout' });
+  assert.equal(server.rooms.getRoom(code), undefined);
+  alex.close();
 });
 
-test('host leaving sends room:closed to players', async () => {
-  const { host, code } = await hostRoom();
-  const alex = await openClient(url);
-  alex.send({ type: 'player:join', code, name: 'Alex' });
-  await nextOfType(alex, 'room:joined');
+test('host refresh: a new socket resumes the same room with the host token', async () => {
+  const host = await openClient(url);
+  host.send({ type: 'host:create_room' });
+  const { code, hostToken } = await host.next();
+  const { client: alex } = await joinAs(code, 'Alex');
 
   host.close();
+  const host2 = await openClient(url);
+  host2.send({ type: 'host:resume', code, hostToken });
+  assert.deepEqual(await host2.next(), { type: 'room:created', code, hostToken });
+  const state = await nextOfType(host2, 'room:state');
+  assert.equal(state.hostConnected, true);
+  assert.deepEqual(state.players.map((p) => p.name), ['Alex']);
+
+  await new Promise((r) => setTimeout(r, 400)); // past the 200 ms grace period
+  assert.ok(server.rooms.getRoom(code), 'room survived because the host came back');
+  host2.close();
+  alex.close();
+});
+
+test('player refresh: resume keeps the same id and name', async () => {
+  const { host, code } = await hostRoom();
+  const { client: alex, joined } = await joinAs(code, 'Alex');
+
+  alex.close();
+  for (;;) {
+    const state = await nextOfType(host, 'room:state');
+    if (state.players[0]?.connected === false) break;
+  }
+
+  const alex2 = await openClient(url);
+  alex2.send({ type: 'player:resume', code, token: joined.token });
+  const rejoined = await alex2.next();
+  assert.equal(rejoined.type, 'room:joined');
+  assert.equal(rejoined.playerId, joined.playerId);
+  assert.equal(rejoined.name, 'Alex');
+  host.close();
+  alex2.close();
+});
+
+test('player gone longer than the grace period: removed, and resume says SESSION_EXPIRED', async () => {
+  const { host, code } = await hostRoom();
+  const { client: alex, joined } = await joinAs(code, 'Alex');
+  alex.close();
+  for (;;) {
+    const state = await nextOfType(host, 'room:state');
+    if (state.players.length === 0) break;
+  }
+  const alex2 = await openClient(url);
+  alex2.send({ type: 'player:resume', code, token: joined.token });
+  assert.equal((await alex2.next()).code, 'SESSION_EXPIRED');
+  host.close();
+  alex2.close();
+});
+
+test('room:leave from a player and host:kick both remove the player right away', async () => {
+  const { host, code } = await hostRoom();
+  const { client: alex } = await joinAs(code, 'Alex');
+  const { client: blake, joined: blakeJoined } = await joinAs(code, 'Blake');
+
+  alex.send({ type: 'room:leave' });
+  assert.deepEqual(await nextOfType(alex, 'room:closed'), { type: 'room:closed', reason: 'left' });
+
+  host.send({ type: 'host:kick', playerId: blakeJoined.playerId });
+  assert.deepEqual(await nextOfType(blake, 'room:closed'), { type: 'room:closed', reason: 'kicked' });
+
+  for (;;) {
+    const state = await nextOfType(host, 'room:state');
+    if (state.players.length === 0) break;
+  }
+  for (const c of [host, alex, blake]) c.close();
+});
+
+test('host "End room" closes it for everyone immediately', async () => {
+  const { host, code } = await hostRoom();
+  const { client: alex } = await joinAs(code, 'Alex');
+  host.send({ type: 'room:leave' });
   assert.deepEqual(await nextOfType(alex, 'room:closed'), { type: 'room:closed', reason: 'host_left' });
+  assert.equal(server.rooms.getRoom(code), undefined);
+  host.close();
   alex.close();
 });
