@@ -1,4 +1,5 @@
 import { GameRegistry } from './registry.js';
+import reactionRace from './reaction-race/index.js';
 
 /**
  * The one place that lists the games this server offers.
@@ -6,6 +7,6 @@ import { GameRegistry } from './registry.js';
  */
 export function createDefaultRegistry() {
   const registry = new GameRegistry();
-  // M5b: registry.register(reactionRace);
+  registry.register(reactionRace);
   return registry;
 }

@@ -62,6 +62,6 @@ test('get does not find built-in object properties', () => {
   assert.equal(new GameRegistry().get('constructor'), undefined);
 });
 
-test('the default registry is empty until M5b adds the demo game', () => {
-  assert.deepEqual(createDefaultRegistry().list(), []);
+test('the default registry offers the demo game', () => {
+  assert.deepEqual(createDefaultRegistry().list().map((g) => g.id), ['reaction-race']);
 });
