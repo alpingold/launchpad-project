@@ -28,6 +28,12 @@ export const test = base.extend({
       async host({ gameOptions } = {}) {
         const { context, page } = await newPage();
         if (gameOptions) await addGameOptions(page, gameOptions);
+        // Hosting needs an account. context.request shares this browser context's cookies,
+        // so signing up here logs the page in too.
+        const res = await context.request.post('/api/signup', {
+          data: { username: uniqueUsername(), password: 'test-password-123' },
+        });
+        expect(res.status()).toBe(201);
         await page.goto('/host');
         const codeEl = page.locator('.room-code');
         await expect(codeEl).toHaveText(/^[A-Z]{4}$/);
@@ -56,6 +62,13 @@ export const test = base.extend({
 });
 
 export { expect };
+
+let usernameCounter = 0;
+/** A username no other test (or parallel worker) has used. */
+export function uniqueUsername() {
+  usernameCounter++;
+  return `h${process.pid % 100000}_${usernameCounter}`;
+}
 
 /**
  * Puts the page's WebSocket connections through Playwright so a test can simulate the

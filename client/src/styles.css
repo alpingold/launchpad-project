@@ -524,3 +524,44 @@ select {
   width: 1.2rem;
   height: 1.2rem;
 }
+
+/* M7: login page */
+.auth {
+  max-width: 26rem;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin: 1.5rem 0;
+}
+
+.auth-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-weight: 600;
+}
+
+.auth-form input {
+  font-size: 1.1rem;
+  padding: 0.55rem 0.7rem;
+  border: 2px solid var(--input-border);
+  border-radius: 0.5rem;
+}
+
+.auth-form .small {
+  font-weight: 400;
+}
+
+/* A button that looks like a link (for actions, like "Log out", that aren't navigation). */
+.link-button {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: var(--link);
+  text-decoration: underline;
+  cursor: pointer;
+}

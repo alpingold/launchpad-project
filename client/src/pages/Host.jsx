@@ -7,6 +7,7 @@ import GameScreen from '../game/GameScreen.jsx';
 import LastGameResults from '../game/LastGameResults.jsx';
 import { useGameMessages } from '../game/useGameMessages.js';
 import { usePageTitle } from '../usePageTitle.js';
+import { useCurrentUser } from '../net/auth.js';
 
 const SESSION_KEY = 'host'; // sessionStorage: { code, hostToken } of the room this tab hosts
 
@@ -18,16 +19,40 @@ const ENDED_TEXT = {
   idle: 'The room closed after a long time with no activity.',
 };
 
-// The big-screen page. Creates a room on first load; after a refresh or a dropped
-// connection it reclaims the same room with the saved host token (host:resume).
+const LOGIN_URL = '/login?next=/host';
+
+/**
+ * The big-screen page. Hosting needs an account (M7): check the login first, and only then
+ * connect. Logged-out visitors are sent to the login page and come back here afterwards.
+ */
 export default function Host() {
+  usePageTitle('Host');
+  const user = useCurrentUser();
+
+  useEffect(() => {
+    if (user === null) window.location.replace(LOGIN_URL);
+  }, [user]);
+
+  if (!user) {
+    return (
+      <main className="page">
+        <h1>Checking your login…</h1>
+      </main>
+    );
+  }
+  return <HostRoom user={user} />;
+}
+
+// Creates a room on first load; after a refresh or a dropped connection it reclaims the
+// same room with the saved host token (host:resume). The server also gives a logged-in
+// host their existing room back if they open /host again in another tab.
+function HostRoom({ user }) {
   const [connected, setConnected] = useState(false);
   const [room, setRoom] = useState(null); // latest room:state
   const [ended, setEnded] = useState(null); // why the room ended, or null while it's alive
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState(null); // short message, e.g. why a game couldn't start
   const [game, handleGameMessage] = useGameMessages();
-  usePageTitle('Host');
   const socketRef = useRef(null);
   const endedRef = useRef(false); // readable inside socket callbacks without re-subscribing
 
@@ -66,6 +91,7 @@ export default function Host() {
             break;
           case 'error':
             if (msg.requestType === 'host:resume') end('expired');
+            else if (msg.code === 'NOT_AUTHENTICATED') window.location.replace(LOGIN_URL); // login expired
             else if (msg.requestType === 'host:create_room') setError(msg.message);
             else if (msg.requestType === 'host:start_game') setNotice(msg.message);
             else console.warn('[host] server error:', msg.code);
@@ -169,6 +195,7 @@ export default function Host() {
       <LastGameResults results={game.lastResults} players={room.players} />
       <GamePicker playerCount={room.players.length} onStart={startGame} disabled={!connected} />
       {endRoomButton}
+      <p className="muted small">Hosting as {user.username}</p>
     </main>
   );
 }

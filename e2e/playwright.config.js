@@ -29,7 +29,15 @@ export default defineConfig({
       command: 'node src/index.js',
       cwd: '../server',
       url: `http://localhost:${SERVER_PORT}/api/health`,
-      env: { PORT: String(SERVER_PORT), HOST_GRACE_MS: '2000', PLAYER_GRACE_MS: '2000' },
+      env: {
+        PORT: String(SERVER_PORT),
+        HOST_GRACE_MS: '2000',
+        PLAYER_GRACE_MS: '2000',
+        // A throwaway in-memory database: test accounts never touch your real database file.
+        DB_PATH: ':memory:',
+        // Every test host signs up from 127.0.0.1, so lift the per-address sign-up limit.
+        AUTH_ATTEMPTS_PER_WINDOW: '100000',
+      },
       reuseExistingServer: false,
     },
     {

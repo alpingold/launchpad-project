@@ -27,12 +27,10 @@ test('joining with an empty code box just opens the join page', async ({ page })
   await expect(page).toHaveURL('/join');
 });
 
-test('"Host a game" opens a room', async ({ page }) => {
+test('logged out, the host card asks you to log in', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('link', { name: 'Host a game' }).click();
-  await expect(page).toHaveURL('/host');
-  await expect(page.locator('.room-code')).toHaveText(/^[A-Z]{4}$/);
-  await expect(page).toHaveTitle('Host · BoilerGames');
+  await page.getByRole('link', { name: 'Log in to host' }).click();
+  await expect(page).toHaveURL('/login?next=/host');
 });
 
 test('unknown addresses show "Page not found" with a way home', async ({ page }) => {

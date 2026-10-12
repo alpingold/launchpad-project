@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import { useGames } from '../net/useGames.js';
 import { usePageTitle } from '../usePageTitle.js';
+import { useCurrentUser, logOut } from '../net/auth.js';
 
 // The public front page: what this is, how it works, and the two ways in.
-// (M7 will ask hosts to log in before /host; joining stays open to guests.)
+// Hosting needs an account; joining is open to everyone.
 export default function Home() {
   usePageTitle(null);
   const games = useGames();
+  const user = useCurrentUser(); // undefined while checking, then a user or null
   const [code, setCode] = useState('');
 
   function goJoin(event) {
@@ -52,9 +54,33 @@ export default function Home() {
         <div className="card">
           <h2>Host a game</h2>
           <p className="muted">Open a room on a laptop or TV everyone can see.</p>
-          <a className="primary-button" href="/host">
-            Host a game
-          </a>
+          {user ? (
+            <>
+              <a className="primary-button" href="/host">
+                Host a game
+              </a>
+              <p className="muted small">
+                Logged in as {user.username} ·{' '}
+                <button
+                  type="button"
+                  className="link-button"
+                  onClick={async () => {
+                    await logOut();
+                    window.location.reload();
+                  }}
+                >
+                  Log out
+                </button>
+              </p>
+            </>
+          ) : (
+            <>
+              <a className="primary-button" href="/login?next=/host">
+                Log in to host
+              </a>
+              <p className="muted small">Hosts need a free account. Players don't.</p>
+            </>
+          )}
         </div>
       </section>
 
