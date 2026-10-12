@@ -1,3 +1,5 @@
+import { fileURLToPath } from 'node:url';
+
 // Every tunable number for the server lives here, so limits and timeouts
 // can be reviewed (and changed) in one place instead of hunting through files.
 
@@ -56,6 +58,28 @@ export const config = {
   // which runs every ROOM_SWEEP_INTERVAL_MS. Catches rooms forgotten on an open laptop.
   ROOM_IDLE_MS: 2 * 60 * 60 * 1000,
   ROOM_SWEEP_INTERVAL_MS: 5 * 60 * 1000,
+
+  // --- Accounts (M7) ---
+
+  // Where the SQLite database file lives. Tests use ':memory:' (a throwaway in-memory DB).
+  DB_PATH: process.env.DB_PATH || fileURLToPath(new URL('../data/boilergames.db', import.meta.url)),
+
+  // How long a login lasts before the host has to log in again.
+  SESSION_DAYS: 30,
+
+  // Cookies get the Secure flag (HTTPS only) in production. Locally we use plain http,
+  // where a Secure cookie would never be sent, so it's off in development.
+  COOKIE_SECURE: process.env.NODE_ENV === 'production',
+
+  // Login/sign-up attempts allowed per IP address per window, to slow down password guessing.
+  AUTH_ATTEMPTS_PER_WINDOW: Number(process.env.AUTH_ATTEMPTS_PER_WINDOW) || 10,
+  AUTH_WINDOW_MS: 15 * 60 * 1000,
+
+  // Behind a reverse proxy (Caddy, M8) every request seems to come from the proxy itself.
+  // Setting this (e.g. TRUST_PROXY=loopback) tells Express to use the visitor's real IP from
+  // the X-Forwarded-For header, but only when the request came from that trusted proxy.
+  // Off by default: without a proxy, anyone could fake that header.
+  TRUST_PROXY: process.env.TRUST_PROXY || false,
 
   // --- Games ---
 

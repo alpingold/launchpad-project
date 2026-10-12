@@ -5,3 +5,4 @@ client/dist/
 .env
 e2e/test-results/
 e2e/playwright-report/
+server/data/
