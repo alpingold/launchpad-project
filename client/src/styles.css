@@ -1,7 +1,48 @@
+/* ---- Themes (M6b) ----------------------------------------------------------------
+   Every color on the site comes from these variables. A theme is just a different set of
+   values: the light theme below, and dark overrides under [data-theme="dark"].
+   The <html> element gets data-theme="light" or "dark" from settings/theme.js
+   (and from a tiny script in index.html before the page draws, to avoid a flash). */
+:root {
+  color-scheme: light; /* tells the browser to draw scrollbars and form controls to match */
+  --bg: #f5f5fa;
+  --surface: #ffffff;
+  --text: #1a1a2e;
+  --muted: #6b6b80;
+  --chip: #e2e2f0;
+  --border: #e2e2f0;
+  --input-border: #c8c8da;
+  --accent: #4a3aff;
+  --on-accent: #ffffff;
+  --accent-disabled: #a9a3e8;
+  --link: #3b2fd6;
+  --danger: #b00020;
+  --banner-bg: #fff3cd;
+  --banner-text: #664d03;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #14141f;
+  --surface: #1f1f2e;
+  --text: #ececf5;
+  --muted: #a3a3b8;
+  --chip: #2c2c40;
+  --border: #2c2c40;
+  --input-border: #4a4a63;
+  --accent: #5b4dff;
+  --on-accent: #ffffff;
+  --accent-disabled: #3a3566;
+  --link: #a99fff;
+  --danger: #ff6b81;
+  --banner-bg: #3d3214;
+  --banner-text: #ffe08a;
+}
+
 :root {
   font-family: system-ui, sans-serif;
-  color: #1a1a2e;
-  background: #f5f5fa;
+  color: var(--text);
+  background: var(--bg);
 }
 
 body {
@@ -15,7 +56,7 @@ body {
 }
 
 .muted {
-  color: #6b6b80;
+  color: var(--muted);
 }
 
 /* Host (big screen): readable from across a room */
@@ -26,7 +67,7 @@ body {
 
 .host-label {
   margin: 1.5rem 0 0;
-  color: #6b6b80;
+  color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.1em;
   font-size: 1rem;
@@ -63,7 +104,7 @@ body {
 .player-list li {
   padding: 0.4rem 0.9rem;
   border-radius: 999px;
-  background: #e2e2f0;
+  background: var(--chip);
   overflow-wrap: anywhere; /* long names wrap instead of stretching the page */
 }
 
@@ -77,7 +118,7 @@ body {
 }
 
 .you-tag {
-  color: #6b6b80;
+  color: var(--muted);
 }
 
 /* Join (phones): big touch targets */
@@ -104,7 +145,7 @@ body {
 .join-form input {
   font-size: 1.25rem; /* 16px+ also stops iPhones from zooming in on focus */
   padding: 0.6rem 0.75rem;
-  border: 2px solid #c8c8da;
+  border: 2px solid var(--input-border);
   border-radius: 0.5rem;
 }
 
@@ -120,24 +161,24 @@ body {
   padding: 0.8rem;
   border: none;
   border-radius: 0.5rem;
-  background: #4a3aff;
-  color: white;
+  background: var(--accent);
+  color: var(--on-accent);
   font-weight: 700;
 }
 
 .join-form button:disabled {
-  background: #a9a3e8;
+  background: var(--accent-disabled);
 }
 
 .error {
-  color: #b00020;
+  color: var(--danger);
   margin: 0;
 }
 
 /* M4: reconnect banner, kick + leave/end buttons */
 .banner {
-  background: #fff3cd;
-  color: #664d03;
+  background: var(--banner-bg);
+  color: var(--banner-text);
   border-radius: 0.5rem;
   padding: 0.6rem 1rem;
   font-size: 1rem;
@@ -147,13 +188,13 @@ body {
   margin-left: 0.5rem;
   border: none;
   background: transparent;
-  color: #6b6b80;
+  color: var(--muted);
   cursor: pointer;
   font-size: 0.9em;
 }
 
 .kick-button:hover {
-  color: #b00020;
+  color: var(--danger);
 }
 
 .primary-button,
@@ -166,15 +207,15 @@ body {
 
 .primary-button {
   border: none;
-  background: #4a3aff;
-  color: white;
+  background: var(--accent);
+  color: var(--on-accent);
   font-weight: 700;
 }
 
 .secondary-button {
-  border: 2px solid #c8c8da;
-  background: white;
-  color: #1a1a2e;
+  border: 2px solid var(--input-border);
+  background: var(--surface);
+  color: var(--text);
 }
 
 .secondary-button:disabled {
@@ -228,7 +269,7 @@ body {
 
 .asset-placeholder {
   border-radius: 1rem;
-  background: #e2e2f0;
+  background: var(--chip);
 }
 
 /* The big tap target on phones: most of the screen, easy to hit without looking. */
@@ -242,8 +283,8 @@ body {
   min-height: 12rem;
   border: none;
   border-radius: 1.5rem;
-  background: #4a3aff;
-  color: white;
+  background: var(--accent);
+  color: var(--on-accent);
   font-size: 2.5rem;
   font-weight: 800;
   cursor: pointer;
@@ -297,11 +338,11 @@ body {
 }
 
 .scoreboard li:nth-child(odd) {
-  background: #e2e2f0;
+  background: var(--chip);
 }
 
 .scoreboard li.you {
-  outline: 3px solid #4a3aff;
+  outline: 3px solid var(--accent);
 }
 
 .scoreboard-name {
@@ -355,8 +396,8 @@ body {
 }
 
 .card {
-  background: white;
-  border: 1px solid #e2e2f0;
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 1rem;
   padding: 1.25rem;
 }
@@ -376,7 +417,7 @@ body {
   min-width: 0;
   flex: 1;
   padding: 0.4rem;
-  border: 2px solid #c8c8da;
+  border: 2px solid var(--input-border);
   border-radius: 0.5rem;
 }
 
@@ -411,4 +452,17 @@ a.primary-button {
   overflow: hidden;
   clip: rect(0 0 0 0);
   white-space: nowrap;
+}
+
+/* Links and form controls use theme colors instead of browser defaults
+   (default link blue is hard to read on a dark background). */
+a {
+  color: var(--link);
+}
+
+input,
+select {
+  background: var(--surface);
+  color: var(--text);
+  accent-color: var(--accent); /* radio buttons and checkboxes in the site's color */
 }
