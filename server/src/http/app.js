@@ -1,6 +1,8 @@
 import express from 'express';
 import { config } from '../config.js';
 import { GameRegistry } from '../games/registry.js';
+import { openDatabase } from '../db/database.js';
+import { createAuthRouter } from './authRoutes.js';
 
 /**
  * Builds the Express app (HTTP routes only).
@@ -10,10 +12,14 @@ import { GameRegistry } from '../games/registry.js';
  * WebSockets are NOT handled here: Express only does normal HTTP requests.
  * The `ws` library attaches to the same http.Server in index.js (milestone M1).
  *
- * @param {{ games?: GameRegistry }} [deps]  the games to list for the host's picker
+ * @param {Object} [deps]
+ * @param {GameRegistry} [deps.games]  the games to list for the host's picker
+ * @param {import('better-sqlite3').Database} [deps.db]  accounts database (tests: in-memory)
+ * @param {typeof config} [deps.cfg]
  */
-export function createApp({ games = new GameRegistry() } = {}) {
+export function createApp({ games = new GameRegistry(), db = openDatabase(':memory:'), cfg = config } = {}) {
   const app = express();
+  app.set('trust proxy', cfg.TRUST_PROXY);
 
   // Parse JSON request bodies, rejecting anything over the size limit.
   app.use(express.json({ limit: config.HTTP_JSON_LIMIT }));
@@ -27,6 +33,9 @@ export function createApp({ games = new GameRegistry() } = {}) {
   app.get('/api/games', (_req, res) => {
     res.json({ games: games.list() });
   });
+
+  // Sign up, log in, log out, who am I.
+  app.use('/api', createAuthRouter({ db, cfg }));
 
   // Any other /api path is a clean JSON 404 instead of Express's HTML page.
   app.use('/api', (_req, res) => {

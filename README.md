@@ -45,3 +45,15 @@ Games show pictures by **asset id** (e.g. `go-sign`), never by URL. The library 
   and games pick it up without code changes.
 - To add new art: add the file and a new manifest entry. `npm test` checks that every entry's
   file exists and that games only use ids that are in the manifest.
+
+## Accounts
+
+Hosting needs an account; players join as guests with just a room code.
+
+- Accounts and login sessions are stored in SQLite at `server/data/boilergames.db` (created on
+  first start, ignored by git). Set `DB_PATH` to use another file. Tests always use an
+  in-memory database, so they never touch this file.
+- Passwords are hashed with scrypt (never stored as typed); the login cookie is HttpOnly and
+  SameSite=Lax, and only a hash of its token is stored.
+- To wipe all accounts while developing: stop the server and delete `server/data/`.
+- There is no email or password reset yet (open question Q8).
