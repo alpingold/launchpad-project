@@ -4,6 +4,22 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>BoilerGames</title>
+    <script>
+      // Set the theme BEFORE the page draws, so people using dark mode don't see a white
+      // flash on every page load. Same rules as src/settings/theme.js, which takes over
+      // once React has loaded. Kept tiny and dependency-free on purpose.
+      (function () {
+        var theme = 'system';
+        try {
+          var saved = JSON.parse(localStorage.getItem('boilergames.settings'));
+          if (saved && (saved.theme === 'light' || saved.theme === 'dark')) theme = saved.theme;
+        } catch (e) {}
+        if (theme === 'system') {
+          theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+        document.documentElement.dataset.theme = theme;
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

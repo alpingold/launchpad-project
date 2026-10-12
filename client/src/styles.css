@@ -466,3 +466,61 @@ select {
   color: var(--text);
   accent-color: var(--accent); /* radio buttons and checkboxes in the site's color */
 }
+
+/* M6b: settings button and panel */
+.settings-button {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  width: 2.5rem;
+  height: 2.5rem;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 1.3rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.settings-button:hover {
+  color: var(--text);
+}
+
+.settings-dialog {
+  width: min(90vw, 22rem);
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  background: var(--surface);
+  color: var(--text);
+  padding: 1.25rem;
+}
+
+.settings-dialog::backdrop {
+  background: rgb(0 0 0 / 0.45);
+}
+
+.settings-dialog h2 {
+  margin-top: 0;
+}
+
+.settings-group {
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.settings-option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1.1rem;
+  cursor: pointer;
+}
+
+.settings-option input {
+  width: 1.2rem;
+  height: 1.2rem;
+}
