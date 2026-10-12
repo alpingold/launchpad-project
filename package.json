@@ -1,5 +1,5 @@
 {
-  "name": "launchpad-party",
+  "name": "boilergames",
   "private": true,
   "description": "Root scripts only. The server and client are separate programs with their own package.json.",
   "scripts": {

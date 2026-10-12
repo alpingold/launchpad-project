@@ -2,8 +2,8 @@ import { test, expect, devices } from '@playwright/test';
 
 test('home page explains the site and lists the games', async ({ page }) => {
   await page.goto('/');
-  await expect(page).toHaveTitle('LaunchPad Party');
-  await expect(page.getByRole('heading', { name: 'LaunchPad Party', level: 1 })).toBeVisible();
+  await expect(page).toHaveTitle('BoilerGames');
+  await expect(page.getByRole('heading', { name: 'BoilerGames', level: 1 })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'How it works' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Reaction Race' })).toBeVisible();
   await expect(page.getByText('1–12 players')).toBeVisible();
@@ -17,7 +17,7 @@ test('the join box sends you to the join page with the code filled in', async ({
   await page.getByRole('button', { name: 'Join' }).click();
 
   await expect(page).toHaveURL('/join?code=BCDF');
-  await expect(page).toHaveTitle('Join · LaunchPad Party');
+  await expect(page).toHaveTitle('Join · BoilerGames');
   await expect(page.getByLabel('Room code')).toHaveValue('BCDF');
 });
 
@@ -32,13 +32,13 @@ test('"Host a game" opens a room', async ({ page }) => {
   await page.getByRole('link', { name: 'Host a game' }).click();
   await expect(page).toHaveURL('/host');
   await expect(page.locator('.room-code')).toHaveText(/^[A-Z]{4}$/);
-  await expect(page).toHaveTitle('Host · LaunchPad Party');
+  await expect(page).toHaveTitle('Host · BoilerGames');
 });
 
 test('unknown addresses show "Page not found" with a way home', async ({ page }) => {
   await page.goto('/no-such-page');
   await expect(page.getByRole('heading', { name: 'Page not found' })).toBeVisible();
-  await expect(page).toHaveTitle('Page not found · LaunchPad Party');
+  await expect(page).toHaveTitle('Page not found · BoilerGames');
   await page.getByRole('link', { name: 'Go to the home page' }).click();
   await expect(page).toHaveURL('/');
 });

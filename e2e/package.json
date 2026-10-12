@@ -1,5 +1,5 @@
 {
-  "name": "launchpad-party-e2e",
+  "name": "boilergames-e2e",
   "private": true,
   "type": "module",
   "description": "Browser tests: real Chromium pages driving the real server and client.",

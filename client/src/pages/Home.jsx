@@ -18,7 +18,7 @@ export default function Home() {
   return (
     <main className="page home">
       <section className="hero">
-        <h1>LaunchPad Party</h1>
+        <h1>BoilerGames</h1>
         <p className="tagline">Party games on one big screen, played from everyone's phones.</p>
         <p className="muted">Made for Purdue LaunchPad. No app to install: just a browser.</p>
       </section>

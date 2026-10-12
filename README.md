@@ -1,4 +1,4 @@
-# LaunchPad Party
+# BoilerGames
 
 A Jackbox-style party game platform: a host shows a room code on a big screen, players join from their phones.
 
