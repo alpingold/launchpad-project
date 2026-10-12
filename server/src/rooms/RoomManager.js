@@ -67,6 +67,9 @@ export class RoomManager {
 
     /** @type {Map<string, Membership>} which room each connection is in, by connection id */
     this.members = new Map();
+
+    /** @type {Map<number, string>} the room each logged-in host account owns (one per account, Q4) */
+    this.roomByHostUser = new Map();
   }
 
   /** @returns {Membership | undefined} */
@@ -81,16 +84,29 @@ export class RoomManager {
 
   // --- Requests from clients --------------------------------------------------
 
-  /** host:create_room — makes a new room with this connection as its host. */
-  createRoom(connId) {
+  /**
+   * host:create_room — makes a new room with this connection as its host.
+   *
+   * One room per host account (Q4): if this account already has a live room, the host is
+   * put back into THAT room instead (new tab, other laptop, lost the page). The old tab is
+   * told "replaced". To get a fresh room, the host ends the old one first.
+   *
+   * @param {{ userId?: number | null }} [owner]  the logged-in account (the router requires one)
+   */
+  createRoom(connId, { userId = null } = {}) {
     // The router already checks this; repeating it here keeps RoomManager safe on its own.
     if (this.members.has(connId)) throw new RoomError('ALREADY_IN_ROOM');
-    if (this.rooms.size >= this.maxRooms) throw new RoomError('SERVER_FULL');
 
+    const existing = userId !== null ? this.rooms.get(this.roomByHostUser.get(userId)) : undefined;
+    if (existing) return this.attachHost(existing, connId);
+
+    if (this.rooms.size >= this.maxRooms) throw new RoomError('SERVER_FULL');
     const code = generateRoomCode((c) => this.rooms.has(c), this.randomInt);
     const room = new Room(code, { hostToken: newToken(), hostConnId: connId, now: this.now() });
+    room.host.userId = userId;
 
     this.rooms.set(code, room);
+    if (userId !== null) this.roomByHostUser.set(userId, code);
     this.members.set(connId, { code, role: 'host', playerId: null });
 
     // The host token goes ONLY to the host. It's what lets the host reclaim the room
@@ -109,19 +125,7 @@ export class RoomManager {
     const room = this.rooms.get(code);
     if (!room) throw new RoomError('ROOM_NOT_FOUND');
     if (!tokensEqual(room.host.token, hostToken)) throw new RoomError('INVALID_TOKEN');
-
-    // The same host is still connected somewhere else (a second tab): newest tab wins.
-    if (room.host.connId) this.detach(room.host.connId, 'replaced');
-
-    this.cancelTimer(room.host);
-    room.host.connId = connId;
-    room.lastActivityAt = this.now();
-    this.members.set(connId, { code, role: 'host', playerId: null });
-
-    this.send(connId, { type: SERVER.ROOM_CREATED, code, hostToken: room.host.token });
-    this.broadcastState(room); // everyone sees hostConnected: true again
-    room.game?.hostReconnected(); // the game re-sends the big screen's current view
-    return room;
+    return this.attachHost(room, connId);
   }
 
   /**
@@ -340,6 +344,25 @@ export class RoomManager {
 
   // --- Helpers ----------------------------------------------------------------
 
+  /**
+   * Makes `connId` the host connection of an existing room (resume, or the same account
+   * opening /host again). Shared by resumeHost and createRoom.
+   */
+  attachHost(room, connId) {
+    // The host is still connected somewhere else (a second tab): newest tab wins.
+    if (room.host.connId) this.detach(room.host.connId, 'replaced');
+
+    this.cancelTimer(room.host);
+    room.host.connId = connId;
+    room.lastActivityAt = this.now();
+    this.members.set(connId, { code: room.code, role: 'host', playerId: null });
+
+    this.send(connId, { type: SERVER.ROOM_CREATED, code: room.code, hostToken: room.host.token });
+    this.broadcastState(room); // everyone sees hostConnected: true again
+    room.game?.hostReconnected(); // the game re-sends the big screen's current view
+    return room;
+  }
+
   /** Sends one message to everyone connected to the room. */
   broadcast(room, msg) {
     for (const connId of room.connectedIds()) this.send(connId, msg);
@@ -412,6 +435,7 @@ export class RoomManager {
     room.phase = 'closed';
     for (const connId of room.connectedIds()) this.detach(connId, reason);
     this.rooms.delete(room.code);
+    if (room.host.userId !== null) this.roomByHostUser.delete(room.host.userId);
   }
 
   /** Removes a player's spot entirely (their name and slot become free). */

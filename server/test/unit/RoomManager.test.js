@@ -569,3 +569,42 @@ test('game messages to a disconnected player are dropped, not errors', (t) => {
   rooms.startGame('host', 'count-game', {});
   assert.equal(inbox('c1').length, 0);
 });
+
+// --- One room per host account (M7, Q4) ---------------------------------------------------
+
+test('the same account creating a room again gets its existing room back', () => {
+  const { rooms, inbox } = setup();
+  const first = rooms.createRoom('tab1', { userId: 7 });
+  rooms.joinRoom('c1', first.code, 'Alex');
+  const again = rooms.createRoom('tab2', { userId: 7 });
+
+  assert.equal(again, first, 'same room, same code');
+  assert.equal(rooms.rooms.size, 1);
+  assert.deepEqual(inbox('tab1').at(-1), { type: 'room:closed', reason: 'replaced' });
+  assert.deepEqual(inbox('tab2')[0], { type: 'room:created', code: first.code, hostToken: first.host.token });
+  assert.deepEqual(inbox('tab2')[1].players.map((p) => p.name), ['Alex'], 'players are still there');
+});
+
+test('a host who disconnected gets their room back by creating again (grace timer cancelled)', (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+  const { rooms } = setup();
+  const room = rooms.createRoom('tab1', { userId: 7 });
+  rooms.handleDisconnect('tab1');
+  assert.equal(rooms.createRoom('tab2', { userId: 7 }), room);
+  t.mock.timers.tick(60_000);
+  assert.ok(rooms.getRoom(room.code), 'not closed by the old host timer');
+});
+
+test('different accounts get different rooms', () => {
+  const { rooms } = setup();
+  assert.notEqual(rooms.createRoom('a', { userId: 1 }).code, rooms.createRoom('b', { userId: 2 }).code);
+});
+
+test('after the room closes, the same account gets a brand-new room', () => {
+  const { rooms } = setup();
+  const first = rooms.createRoom('tab1', { userId: 7 });
+  rooms.leaveRoom('tab1'); // End room
+  const second = rooms.createRoom('tab1', { userId: 7 });
+  assert.notEqual(second, first);
+  assert.equal(rooms.roomByHostUser.get(7), second.code);
+});

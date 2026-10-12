@@ -7,6 +7,7 @@ import { createRouter } from './router.js';
 import { createDefaultRegistry } from './games/index.js';
 import { openDatabase } from './db/database.js';
 import { deleteExpiredSessions } from './db/sessions.js';
+import { currentUser } from './auth/currentUser.js';
 
 /**
  * Builds the whole server (HTTP + WebSocket + rooms) without starting to listen.
@@ -53,6 +54,8 @@ export function createGameServer(overrides = {}, { games = createDefaultRegistry
     {
       onMessage: (conn, msg) => router.handleMessage(conn, msg),
       onDisconnect: (conn) => router.handleDisconnect(conn),
+      // Who's logged in, from the login cookie sent with the WebSocket upgrade.
+      identify: (req) => currentUser(db, req.headers.cookie).user,
     },
     overrides,
   );

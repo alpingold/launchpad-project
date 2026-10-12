@@ -2,22 +2,31 @@ import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { createGameServer } from '../../src/server.js';
 import { openClient } from '../helpers/wsClient.js';
+import { signUp } from '../helpers/accounts.js';
 
 // The full server (transport + router + rooms) over real sockets.
 let server;
 let url;
+let baseUrl;
 
 beforeEach(async () => {
   // Short grace periods so timeout tests finish quickly (real value: 30 s).
   server = createGameServer({ HOST_GRACE_MS: 200, PLAYER_GRACE_MS: 200 });
   await new Promise((resolve) => server.httpServer.listen(0, resolve));
-  url = `ws://localhost:${server.httpServer.address().port}/ws`;
+  const { port } = server.httpServer.address();
+  url = `ws://localhost:${port}/ws`;
+  baseUrl = `http://localhost:${port}`;
 });
+
+/** Hosting needs an account (M7): signs up a fresh one and opens a socket with its cookie. */
+async function openHost() {
+  return openClient(url, { headers: { Cookie: await signUp(baseUrl) } });
+}
 
 afterEach(() => server.close());
 
 test('host creates a room and receives its code and state', async () => {
-  const host = await openClient(url);
+  const host = await openHost();
   host.send({ type: 'host:create_room' });
 
   const created = await host.next();
@@ -32,7 +41,7 @@ test('host creates a room and receives its code and state', async () => {
 });
 
 test('creating a second room on the same socket is refused', async () => {
-  const host = await openClient(url);
+  const host = await openHost();
   host.send({ type: 'host:create_room' });
   await host.next();
   await host.next();
@@ -45,8 +54,8 @@ test('creating a second room on the same socket is refused', async () => {
 });
 
 test('two hosts get two different rooms', async () => {
-  const a = await openClient(url);
-  const b = await openClient(url);
+  const a = await openHost();
+  const b = await openHost();
   a.send({ type: 'host:create_room' });
   b.send({ type: 'host:create_room' });
   const [ca, cb] = [await a.next(), await b.next()];
@@ -59,7 +68,7 @@ test('two hosts get two different rooms', async () => {
 
 /** Opens a host, creates a room, and returns { host, code } with the create messages consumed. */
 async function hostRoom() {
-  const host = await openClient(url);
+  const host = await openHost();
   host.send({ type: 'host:create_room' });
   const { code } = await host.next();
   await host.next(); // initial room:state
@@ -148,7 +157,7 @@ test('host socket closing: players see the host as disconnected, then room:close
 });
 
 test('host refresh: a new socket resumes the same room with the host token', async () => {
-  const host = await openClient(url);
+  const host = await openHost();
   host.send({ type: 'host:create_room' });
   const { code, hostToken } = await host.next();
   const { client: alex } = await joinAs(code, 'Alex');

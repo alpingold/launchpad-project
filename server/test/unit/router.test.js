@@ -7,9 +7,13 @@ import { makeError } from '../../src/protocol/errors.js';
 import { CLIENT } from '../../src/protocol/messageTypes.js';
 
 /** A stand-in for transport/connection.js that records what it was sent. */
-function fakeConn(id, outbox) {
+let nextUserId = 1;
+
+/** A logged-in connection (each gets its own account id), like the transport would make. */
+function fakeConn(id, outbox, { userId = nextUserId++ } = {}) {
   return {
     id,
+    userId,
     send: (msg) => outbox.push(msg),
     sendError: (code, details) => outbox.push(makeError(code, details)),
   };
@@ -27,6 +31,14 @@ test('host:create_room from an outsider creates a room', () => {
   router.handleMessage(conn, { type: 'host:create_room' });
   assert.equal(outbox[0].type, 'room:created');
   assert.equal(rooms.getMembership('c1').role, 'host');
+});
+
+test('host:create_room without a login is refused with NOT_AUTHENTICATED', () => {
+  const { rooms, router, outbox } = setup();
+  const guest = fakeConn('guest', outbox, { userId: null });
+  router.handleMessage(guest, { type: 'host:create_room' });
+  assert.deepEqual(outbox, [makeError('NOT_AUTHENTICATED', { requestType: 'host:create_room' })]);
+  assert.equal(rooms.rooms.size, 0);
 });
 
 test('host:create_room from someone already in a room is refused by the router', () => {

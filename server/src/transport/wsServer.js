@@ -2,6 +2,7 @@ import { WebSocketServer } from 'ws';
 import { config } from '../config.js';
 import { Connection } from './connection.js';
 import { parseClientMessage } from '../protocol/validate.js';
+import { isAllowedOrigin } from './origin.js';
 
 // WebSocket close codes we use (defined by the WebSocket standard, RFC 6455).
 const CLOSE_POLICY_VIOLATION = 1008; // client broke the rules (spam, garbage)
@@ -13,6 +14,8 @@ const CLOSE_GOING_AWAY = 1001; // server shutting down
  *   Called with every message that passed validation and the rate limit.
  * @property {(conn: Connection) => void} [onDisconnect]
  *   Called once when a connection closes for any reason (left, crashed, heartbeat timeout).
+ * @property {(req: import('node:http').IncomingMessage) => ({ id: number, username: string } | null)} [identify]
+ *   Who is logged in, from the upgrade request's cookies (M7). Stored on the Connection.
  */
 
 /**
@@ -49,15 +52,25 @@ export function attachWebSocketServer(httpServer, handlers, overrides = {}) {
       socket.end('HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n');
       return;
     }
+    // Only pages from our own site may connect (see origin.js: cross-site WebSocket hijacking).
+    if (!isAllowedOrigin(req)) {
+      socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
+      return;
+    }
     wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req));
   }
   httpServer.on('upgrade', onUpgrade);
 
-  wss.on('connection', (ws) => {
+  wss.on('connection', (ws, req) => {
     const conn = new Connection(`c${nextId++}`, ws, {
       ratePerSec: cfg.RATE_LIMIT_PER_SEC,
       burst: cfg.RATE_LIMIT_BURST,
     });
+    // The login is read once, when the socket opens. Logging out elsewhere doesn't affect an
+    // already-open socket; it ends when the page closes or reloads.
+    const user = handlers.identify?.(req) ?? null;
+    conn.userId = user?.id ?? null;
+    conn.username = user?.username ?? null;
     connections.set(conn.id, conn);
 
     // REQUIRED: in Node, an 'error' event with no listener crashes the whole process.

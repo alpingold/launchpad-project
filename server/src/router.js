@@ -21,7 +21,14 @@ import { RoomError } from './rooms/RoomError.js';
 export function createRouter(rooms) {
   /** @type {Record<string, { sender: Sender, run: (conn: any, msg: any) => void }>} */
   const routes = {
-    [CLIENT.HOST_CREATE_ROOM]: { sender: 'outsider', run: (conn) => rooms.createRoom(conn.id) },
+    [CLIENT.HOST_CREATE_ROOM]: {
+      sender: 'outsider',
+      run: (conn) => {
+        // Hosting needs an account (M7); the login comes from the cookie when the socket opened.
+        if (conn.userId === null || conn.userId === undefined) throw new RoomError('NOT_AUTHENTICATED');
+        rooms.createRoom(conn.id, { userId: conn.userId });
+      },
+    },
     [CLIENT.HOST_RESUME]: { sender: 'outsider', run: (conn, msg) => rooms.resumeHost(conn.id, msg.code, msg.hostToken) },
     [CLIENT.PLAYER_JOIN]: { sender: 'outsider', run: (conn, msg) => rooms.joinRoom(conn.id, msg.code, msg.name) },
     [CLIENT.PLAYER_RESUME]: { sender: 'outsider', run: (conn, msg) => rooms.resumePlayer(conn.id, msg.code, msg.token) },

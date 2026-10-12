@@ -26,6 +26,7 @@ export class Connection {
 
     // Filled in from the login cookie at connect time (M7).
     this.userId = null;
+    this.username = null;
 
     // Abuse tracking.
     this.badMessageCount = 0;

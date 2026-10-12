@@ -79,3 +79,16 @@ test('the login cookie is HttpOnly: page JavaScript cannot read it', async ({ pa
   expect(sid.httpOnly).toBe(true);
   expect(sid.sameSite).toBe('Lax');
 });
+
+test('opening /host in a second tab gives the same room back', async ({ context }) => {
+  await context.request.post('/api/signup', { data: { username: uniqueUsername(), password: 'a good password' } });
+  const tab1 = await context.newPage();
+  await tab1.goto('/host');
+  await expect(tab1.locator('.room-code')).toHaveText(/^[A-Z]{4}$/); // wait for the room first
+  const code = await tab1.locator('.room-code').textContent();
+
+  const tab2 = await context.newPage();
+  await tab2.goto('/host');
+  await expect(tab2.locator('.room-code')).toHaveText(code);
+  await expect(tab1.getByText('This room is now open in another tab or window.')).toBeVisible();
+});

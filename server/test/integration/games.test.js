@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createGameServer } from '../../src/server.js';
 import { GameRegistry } from '../../src/games/registry.js';
 import { openClient } from '../helpers/wsClient.js';
+import { signUp } from '../helpers/accounts.js';
 import countGame from '../fixtures/countGame.js';
 
 // A full server that offers only the test count game, over real sockets.
@@ -21,6 +22,11 @@ beforeEach(async () => {
 });
 
 afterEach(() => server.close());
+
+/** Hosting needs an account (M7): signs up a fresh one and opens a socket with its cookie. */
+async function openHost() {
+  return openClient(wsUrl, { headers: { Cookie: await signUp(baseUrl) } });
+}
 
 async function nextOfType(client, type) {
   for (;;) {
@@ -45,7 +51,7 @@ test('GET /api/games lists the games for the host picker', async () => {
 });
 
 test('a whole game over real sockets: start, tap, results, back to the lobby', async () => {
-  const host = await openClient(wsUrl);
+  const host = await openHost();
   host.send({ type: 'host:create_room' });
   const { code } = await host.next();
 
@@ -74,7 +80,7 @@ test('a whole game over real sockets: start, tap, results, back to the lobby', a
 });
 
 test('only the host may start a game; players get NOT_HOST', async () => {
-  const host = await openClient(wsUrl);
+  const host = await openHost();
   host.send({ type: 'host:create_room' });
   const { code } = await host.next();
   const alex = await openClient(wsUrl);
