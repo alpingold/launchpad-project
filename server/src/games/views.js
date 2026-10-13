@@ -118,3 +118,31 @@ export function validateView(payload) {
   const problem = checkFields(fields, VIEW_CHECKS[view]);
   return problem ? `${view} view: ${problem}` : null;
 }
+
+/**
+ * The actions a (valid) view lets a player send back: the button's action, or each
+ * choice option's action. Other views offer nothing. GameRunner uses this to drop any
+ * action that isn't on the player's screen right now (plan §11b, "offered actions").
+ * @param {object | undefined} view
+ * @returns {object[]}
+ */
+export function offeredActions(view) {
+  if (view?.view === 'button') return [view.action];
+  if (view?.view === 'choice') return view.options.map((option) => option.action);
+  return [];
+}
+
+/**
+ * Whether two JSON values are the same (same keys and values; key order doesn't matter).
+ * Actions arrive as parsed JSON, so plain objects, arrays, strings, numbers, booleans and
+ * null are all there is to compare.
+ */
+export function sameJson(a, b) {
+  if (a === b) return true;
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  const keysA = Object.keys(a);
+  const keysB = Object.keys(b);
+  if (keysA.length !== keysB.length) return false;
+  return keysA.every((key) => Object.hasOwn(b, key) && sameJson(a[key], b[key]));
+}

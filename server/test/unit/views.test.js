@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { validateView, VIEW_KINDS } from '../../src/games/views.js';
+import { validateView, VIEW_KINDS, offeredActions, sameJson } from '../../src/games/views.js';
 
 test('lists the five starting view kinds', () => {
   assert.deepEqual([...VIEW_KINDS].sort(), ['button', 'choice', 'countdown', 'message', 'scoreboard']);
@@ -61,4 +61,30 @@ test('every view kind has a matching client component (server and client stay in
     const file = `${kind[0].toUpperCase()}${kind.slice(1)}View.jsx`;
     assert.ok(existsSync(fileURLToPath(new URL(file, viewsDir))), `missing client component ${file}`);
   }
+});
+
+test('offeredActions: a button offers its action, a choice each option, other views nothing', () => {
+  assert.deepEqual(offeredActions({ view: 'button', label: 'Go', action: { go: 1 } }), [{ go: 1 }]);
+  const choice = { view: 'choice', prompt: '?', options: [{ label: 'A', action: { a: 1 } }, { label: 'B', action: { b: 1 } }] };
+  assert.deepEqual(offeredActions(choice), [{ a: 1 }, { b: 1 }]);
+  assert.deepEqual(offeredActions({ view: 'message', title: 'Hi' }), []);
+  assert.deepEqual(offeredActions(undefined), []);
+});
+
+test('sameJson compares JSON values regardless of key order', () => {
+  const same = [
+    [{ a: 1, b: [1, { c: null }] }, { b: [1, { c: null }], a: 1 }],
+    [{}, {}],
+    ['x', 'x'],
+  ];
+  const different = [
+    [{ a: 1 }, { a: '1' }],
+    [{ a: 1 }, { a: 1, b: 2 }],
+    [{ a: [1, 2] }, { a: [2, 1] }],
+    [[1], { 0: 1 }],
+    [{ a: null }, { a: {} }],
+    [{ a: undefined }, { b: undefined }],
+  ];
+  for (const [a, b] of same) assert.ok(sameJson(a, b), `${JSON.stringify(a)} vs ${JSON.stringify(b)}`);
+  for (const [a, b] of different) assert.ok(!sameJson(a, b), `${JSON.stringify(a)} vs ${JSON.stringify(b)}`);
 });
