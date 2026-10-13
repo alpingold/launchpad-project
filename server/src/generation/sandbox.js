@@ -70,6 +70,7 @@ export async function runGeneratorInSandbox(job, { onStep = () => {}, cfg = conf
         'sandbox', 'create',
         '--name', name,
         '--detach',
+        '--no-keep', // safety net: if we never get to `delete`, it goes away when `sleep` ends
         '--from', cfg.GENERATOR_IMAGE,
         '--provider', cfg.GENERATOR_PROVIDER,
         '--policy', cfg.GENERATOR_POLICY_PATH,

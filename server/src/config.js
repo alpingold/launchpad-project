@@ -99,6 +99,10 @@ export const config = {
 
   // --- AI game generation (plan §11) ---
 
+  // Off unless GENERATION_ENABLED=1: it needs Docker + OpenShell + a GenAI Studio provider
+  // on this machine (generator/README.md). Managing already-made games works either way.
+  GENERATION_ENABLED: process.env.GENERATION_ENABLED === '1',
+
   // The generator runs in an OpenShell sandbox: this image, with this provider (which holds
   // the GenAI Studio key) and this policy (generator/README.md has the one-time setup).
   OPENSHELL_BIN: process.env.OPENSHELL_BIN || 'openshell',

@@ -6,6 +6,7 @@ import { RoomManager } from './rooms/RoomManager.js';
 import { createRouter } from './router.js';
 import { createDefaultRegistry } from './games/index.js';
 import { openDatabase } from './db/database.js';
+import { GenerationService } from './generation/service.js';
 import { deleteExpiredSessions } from './db/sessions.js';
 import { currentUser } from './auth/currentUser.js';
 
@@ -23,12 +24,18 @@ import { currentUser } from './auth/currentUser.js';
  * @param {import('./games/registry.js').GameRegistry} [deps.games]  tests pass their own games
  * @param {import('better-sqlite3').Database} [deps.db]  index.js passes the real database file;
  *   tests leave it out and get a fresh in-memory database
+ * @param {Function} [deps.runGenerator]  tests pass a fake instead of the real OpenShell sandbox
  */
-export function createGameServer(overrides = {}, { games = createDefaultRegistry(), db } = {}) {
+export function createGameServer(overrides = {}, { games = createDefaultRegistry(), db, runGenerator } = {}) {
   const cfg = { ...config, ...overrides };
   const ownsDb = !db;
   db ??= openDatabase(':memory:');
-  const httpServer = http.createServer(createApp({ games, db, cfg }));
+
+  // AI-generated games (plan §11): a queue that runs the generator in OpenShell sandboxes.
+  const generation = new GenerationService({ db, games, enabled: cfg.GENERATION_ENABLED, runGenerator });
+  generation.recoverInterrupted(); // anything "generating" was cut off by the last restart
+
+  const httpServer = http.createServer(createApp({ games, db, cfg, generation }));
 
   // RoomManager needs a way to send messages, but the transport (which owns the sockets)
   // is created after it. This function only runs later, once `transport` exists,
@@ -71,5 +78,5 @@ export function createGameServer(overrides = {}, { games = createDefaultRegistry
     });
   }
 
-  return { httpServer, rooms, transport, db, close };
+  return { httpServer, rooms, transport, db, generation, close };
 }

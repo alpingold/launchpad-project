@@ -4,6 +4,7 @@ import { GameRegistry } from '../games/registry.js';
 import { openDatabase } from '../db/database.js';
 import { createAuthRouter } from './authRoutes.js';
 import { currentUser } from '../auth/currentUser.js';
+import { createAdminRouter } from './adminRoutes.js';
 
 /**
  * Builds the Express app (HTTP routes only).
@@ -17,8 +18,9 @@ import { currentUser } from '../auth/currentUser.js';
  * @param {GameRegistry} [deps.games]  the games to list for the host's picker
  * @param {import('better-sqlite3').Database} [deps.db]  accounts database (tests: in-memory)
  * @param {typeof config} [deps.cfg]
+ * @param {import('../generation/service.js').GenerationService} [deps.generation]  AI games (admin routes)
  */
-export function createApp({ games = new GameRegistry(), db = openDatabase(':memory:'), cfg = config } = {}) {
+export function createApp({ games = new GameRegistry(), db = openDatabase(':memory:'), cfg = config, generation } = {}) {
   const app = express();
   app.set('trust proxy', cfg.TRUST_PROXY);
 
@@ -39,6 +41,9 @@ export function createApp({ games = new GameRegistry(), db = openDatabase(':memo
 
   // Sign up, log in, log out, who am I.
   app.use('/api', createAuthRouter({ db, cfg }));
+
+  // Admin only: generating and approving AI-made games.
+  if (generation) app.use('/api/admin', createAdminRouter({ db, generation }));
 
   // Any other /api path is a clean JSON 404 instead of Express's HTML page.
   app.use('/api', (_req, res) => {
