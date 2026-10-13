@@ -78,6 +78,8 @@ The admin account will be able to generate new games with AI (plan §11); later,
 with their own GenAI Studio key. The generator runs inside an
 OpenShell sandbox using Purdue GenAI Studio; setup steps and model choices are in
 [`generator/README.md`](generator/README.md). The game server itself doesn't need any of this.
+With that set up, `npm run generate -- "<game idea>"` writes a game in the sandbox and saves
+it under `generator/out/` for you to read.
 
 Every game, hand-made or generated, can be checked with the **game test harness**:
 

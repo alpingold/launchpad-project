@@ -97,6 +97,19 @@ export const config = {
     process.env.ASSET_MANIFEST_PATH ||
     fileURLToPath(new URL('../../client/public/game-assets/manifest.json', import.meta.url)),
 
+  // --- AI game generation (plan §11) ---
+
+  // The generator runs in an OpenShell sandbox: this image, with this provider (which holds
+  // the GenAI Studio key) and this policy (generator/README.md has the one-time setup).
+  OPENSHELL_BIN: process.env.OPENSHELL_BIN || 'openshell',
+  GENERATOR_IMAGE: process.env.GENERATOR_IMAGE || 'boilergames-generator:local',
+  GENERATOR_PROVIDER: process.env.GENERATOR_PROVIDER || 'genai-studio',
+  GENERATOR_POLICY_PATH:
+    process.env.GENERATOR_POLICY_PATH ||
+    fileURLToPath(new URL('../../generator/openshell/policy.yaml', import.meta.url)),
+  // Longest one generation may take (several model calls plus tests), before it's stopped.
+  GENERATION_TIMEOUT_MS: 20 * 60 * 1000,
+
   // Longest raw name string accepted before normalization. The real display-name
   // rules (1–16 characters, etc.) come in M3; this just stops absurd input early.
   NAME_RAW_MAX_LENGTH: 64,

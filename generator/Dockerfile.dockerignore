@@ -1,0 +1,9 @@
+# Allow-list: ignore everything, then let in only what generator/Dockerfile copies.
+# (Docker uses this file instead of a root .dockerignore when building generator/Dockerfile.)
+*
+!server/package.json
+!server/src
+!generator/package.json
+!generator/src
+!generator/spec
+!client/public/game-assets/manifest.json

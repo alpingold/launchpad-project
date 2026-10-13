@@ -2,15 +2,48 @@
 
 The code here runs **inside an OpenShell sandbox**, never on the game server. It asks a
 model on Purdue GenAI Studio to write a game, then tests the new code with simulated
-players, all inside the sandbox (plan §11). The generator loop itself arrives in milestone
-A4; for now this folder holds the sandbox setup and the A0 spike test.
+players, all inside the sandbox (plan §11). If the tests fail, the model gets the list of
+problems and tries again (up to 4 attempts).
 
 ```
 generator/
+  src/run.js                    the loop: ask the model → run the test harness → fix → ...
+  src/prompt.js                 what the model reads: spec + 2 example games + art list + the idea
+  src/llm.js                    GenAI Studio chat API (plain fetch, retries on rate limits)
+  src/extract.js                pulls the code out of the model's reply
+  src/models.js                 the allowed models
+  spec/GAME_SPEC.md             the game contract, written for the model
+  Dockerfile                    the sandbox image (+ Dockerfile.dockerignore, an allow-list)
   openshell/genai-studio.yaml   provider profile: how the sandbox uses the API key without seeing it
   openshell/policy.yaml         sandbox policy: which files it may read/write (network comes from the provider)
   spike/                        A0 test image: proves the sandbox setup works (5 checks)
+  out/                          results of `npm run generate` (not in git)
 ```
+
+## Generating a game
+
+After the one-time setup below, from the repo root:
+
+```bash
+docker build -f generator/Dockerfile -t boilergames-generator:local .   # again after changing the
+                                                                        # generator, spec, or game code
+npm run generate -- "Rock paper scissors party: everyone picks at once, 3 rounds"
+npm run generate -- "..." --model qwen3.8:27b                           # slower, often nicer games
+```
+
+It prints its progress, then saves `game.js` and `result.json` (the test report and every
+attempt) in `generator/out/<time>/`. Nothing is stored or run on the server. **Read the
+code**: the tests catch broken games, not unfair or confusing ones. If you like it:
+
+```bash
+npm run admin -- import-game generator/out/<time>/game.js --owner <your username>
+```
+
+How it runs (`server/src/generation/sandbox.js`): `openshell sandbox create` (a fresh
+sandbox from the image, with the provider and policy) → `openshell sandbox exec` with the
+job piped in on stdin → `openshell sandbox delete`, always. `sandbox create` doesn't
+forward stdin and `sandbox exec` doesn't pass the image's `ENV`, which is why it's done this way
+and why the image keeps files at their repo paths. Sandbox names may be at most 19 characters.
 
 ## Models
 
