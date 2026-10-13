@@ -61,6 +61,15 @@ test('if everyone taps too early, the round ends right away', async ({ people })
   await expect(alex.page.getByRole('heading', { name: 'Everyone tapped too early!' })).toBeVisible();
 });
 
+test('equal top scores are announced as a tie in the lobby', async ({ people }) => {
+  const { host, alex, blake } = await startShortGame(people);
+  // Both false-start, so the only round ends 0–0.
+  await alex.page.getByRole('button', { name: 'Wait for it…' }).click();
+  await blake.page.getByRole('button', { name: 'Wait for it…' }).click();
+  await expect(host.page.getByText("🏆 It's a tie: Alex & Blake!")).toBeVisible({ timeout: 15_000 });
+  await expect(alex.page.getByText("🏆 It's a tie: You & Blake!")).toBeVisible();
+});
+
 test('a phone refreshed mid-game gets its game screen back', async ({ people }) => {
   const { alex } = await startShortGame(people);
   await expect(alex.page.getByRole('button', { name: 'Wait for it…' })).toBeVisible();
