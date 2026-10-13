@@ -57,3 +57,10 @@ Hosting needs an account; players join as guests with just a room code.
   SameSite=Lax, and only a hash of its token is stored.
 - To wipe all accounts while developing: stop the server and delete `server/data/`.
 - There is no email or password reset yet (open question Q8).
+
+## AI-made games (in progress)
+
+The admin account will be able to generate new games with AI (plan §11); later, any host
+with their own GenAI Studio key. The generator runs inside an
+OpenShell sandbox using Purdue GenAI Studio; setup steps and model choices are in
+[`generator/README.md`](generator/README.md). The game server itself doesn't need any of this.

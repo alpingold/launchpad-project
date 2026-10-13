@@ -1,0 +1,27 @@
+# OpenShell sandbox policy for the game generator (plan §11).
+#
+# A sandbox can only touch what's listed here. Everything else is denied.
+#  - Files: the system folders Node needs (read-only), our code in /app (read-only),
+#    and /tmp as scratch space (read-write). Nothing else on the machine is visible.
+#  - Network: no rules here, so nothing is allowed. The genai-studio provider adds
+#    exactly one rule at runtime (node → genai.rcac.purdue.edu:443).
+#
+# Use with:  openshell sandbox create --policy generator/openshell/policy.yaml ...
+version: 1
+filesystem_policy:
+  include_workdir: true
+  read_only:
+    - /bin
+    - /usr
+    - /lib
+    - /proc
+    - /dev/urandom
+    - /etc
+    - /var/log
+    - /app # our scripts (built into the image); read-only so code can't change itself
+  read_write:
+    - /tmp
+    - /dev/null
+landlock:
+  compatibility: best_effort
+network_policies: {}

@@ -1,0 +1,41 @@
+# OpenShell provider profile for Purdue GenAI Studio (plan §11, milestone A0).
+#
+# A provider is how a sandbox gets to use an API key WITHOUT ever seeing it:
+#  - OpenShell keeps the real key in its own credential store.
+#  - Inside the sandbox, GENAI_API_KEY holds only a placeholder.
+#  - When `node` sends a request to genai.rcac.purdue.edu with that placeholder in the
+#    Authorization header, OpenShell's proxy swaps in the real key on the way out.
+#  - Any other host gets nothing: the key is bound to the endpoint listed below.
+#
+# Import once:   openshell profile lint -f generator/openshell/genai-studio.yaml
+#                openshell profile import -f generator/openshell/genai-studio.yaml
+id: genai-studio
+display_name: Purdue GenAI Studio
+description: Purdue RCAC GenAI Studio, OpenAI-compatible chat API
+category: inference
+inference_capable: true
+
+credentials:
+  - name: api_key
+    description: GenAI Studio API key (Settings > Account > API Keys)
+    env_vars:
+      - GENAI_API_KEY
+    required: true
+    auth_style: bearer
+    header_name: authorization
+
+discovery:
+  credentials:
+    - api_key
+
+# The ONLY place this sandbox may connect to.
+endpoints:
+  - host: genai.rcac.purdue.edu
+    port: 443
+    protocol: rest
+    access: read-write
+    enforcement: enforce
+
+# The ONLY program allowed to use that access. Our generator is a Node script.
+binaries:
+  - /usr/local/bin/node
