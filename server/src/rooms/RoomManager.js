@@ -245,7 +245,8 @@ export class RoomManager {
     const room = this.rooms.get(membership.code);
 
     if (room.phase !== 'lobby') throw new RoomError('WRONG_PHASE');
-    const game = this.games.get(gameId);
+    // Playtest games (plan §11) only exist for the account that generated them.
+    const game = this.games.get(gameId, { userId: room.host.userId });
     if (!game) throw new RoomError('GAME_NOT_FOUND');
     const count = room.players.size;
     if (count < game.minPlayers || count > game.maxPlayers) throw new RoomError('WRONG_PLAYER_COUNT');

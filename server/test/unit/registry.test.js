@@ -44,6 +44,7 @@ test('register + get + list', () => {
       description: 'First to tap the button enough times wins.',
       minPlayers: 1,
       maxPlayers: 12,
+      source: 'official',
     },
   ]);
 });

@@ -45,6 +45,7 @@ test('GET /api/games lists the games for the host picker', async () => {
         description: 'First to tap the button enough times wins.',
         minPlayers: 1,
         maxPlayers: 12,
+        source: 'official',
       },
     ],
   });

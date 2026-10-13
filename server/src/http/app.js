@@ -3,6 +3,7 @@ import { config } from '../config.js';
 import { GameRegistry } from '../games/registry.js';
 import { openDatabase } from '../db/database.js';
 import { createAuthRouter } from './authRoutes.js';
+import { currentUser } from '../auth/currentUser.js';
 
 /**
  * Builds the Express app (HTTP routes only).
@@ -29,9 +30,11 @@ export function createApp({ games = new GameRegistry(), db = openDatabase(':memo
     res.json({ ok: true });
   });
 
-  // The games the host can start (id, name, description, player counts).
-  app.get('/api/games', (_req, res) => {
-    res.json({ games: games.list() });
+  // The games this host can start (id, name, description, player counts, where it came
+  // from). Logged in, that includes their own AI-generated games still in playtest.
+  app.get('/api/games', (req, res) => {
+    const user = currentUser(db, req.headers.cookie).user;
+    res.json({ games: games.list({ userId: user?.id ?? null }) });
   });
 
   // Sign up, log in, log out, who am I.

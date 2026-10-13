@@ -12,6 +12,7 @@ import { readFileSync } from 'node:fs';
 import { config } from '../../config.js';
 import { validateGameModule } from '../contract.js';
 import { lintGameSource } from './lint.js';
+import { loadGameSource } from '../loadSource.js';
 import { simulateGame, describeError, SCENARIOS } from './simulate.js';
 
 const SEEDS = [1, 2];
@@ -26,24 +27,13 @@ const SEEDS = [1, 2];
  * @property {boolean} ok
  * @property {CheckProblem[]} problems
  * @property {object[]} runs    one summary per simulated game
+ * @property {{ name: string, description: string, minPlayers: number, maxPlayers: number }} [game]
+ *   what the game says about itself (only when it loaded and is a valid GameModule)
  */
 
 /** The ids in the art library. */
 export function loadAssetIds(manifestPath = config.ASSET_MANIFEST_PATH) {
   return new Set(JSON.parse(readFileSync(manifestPath, 'utf8')).assets.map((a) => a.id));
-}
-
-/**
- * Loads game source as a module, WITHOUT writing it to disk: a `data:` URL is code that
- * comes from a string. A data: module can't import files next to it, which matches
- * contract rule 1. The `sourceURL` comment makes error messages say "game.js line 42"
- * instead of a long base64 string.
- * @returns {Promise<unknown>} the default export
- */
-export async function loadGameSource(source, sourceName = 'game.js') {
-  const withName = `${source}\n//# sourceURL=${sourceName}\n`;
-  const url = `data:text/javascript;base64,${Buffer.from(withName).toString('base64')}`;
-  return (await import(url)).default;
 }
 
 /** Which player counts to try: the smallest and largest allowed, plus 3 (a typical party) if in range. */
@@ -95,7 +85,8 @@ export async function checkGameSource(source, { assetIds = loadAssetIds(), sourc
     if (run.problems.some((m) => m.startsWith('Too slow'))) break;
   }
   problems.push(...fromRuns.values());
-  return { ok: problems.length === 0, problems, runs };
+  const { name, description, minPlayers, maxPlayers } = game;
+  return { ok: problems.length === 0, problems, runs, game: { name, description, minPlayers, maxPlayers } };
 }
 
 /** A report as readable text (for the terminal, and for feeding back to a model in A4). */
