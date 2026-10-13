@@ -26,7 +26,9 @@ npm run test:e2e        # browser tests: real Chromium pages against the real cl
 ```
 
 The browser tests (`e2e/`) start their own server on :3100 and client on :5174 with 2-second
-grace periods, so they don't touch your dev servers. First-time setup:
+grace periods, so they don't touch your dev servers. That server (`e2e/server/testServer.js`)
+is the real one plus a test admin account and a **fake AI generator**, so the admin-page tests
+need no Docker, API key or network. First-time setup:
 
 ```sh
 npm --prefix e2e install
@@ -72,25 +74,28 @@ Hosting needs an account; players join as guests with just a room code.
   Game changes take effect when the server restarts. A `playtest` game shows up only in its
   owner's game picker; `published` games show up for every host.
 
-## AI-made games (in progress)
+## AI-made games
 
-The admin account will be able to generate new games with AI (plan §11); later, any host
-with their own GenAI Studio key. The generator runs inside an
+Admins can generate new games with AI (plan §11); later, any host with their own GenAI
+Studio key may too. The generator runs inside an
 OpenShell sandbox using Purdue GenAI Studio; setup steps and model choices are in
 [`generator/README.md`](generator/README.md). The game server itself doesn't need any of this.
 With that set up, `npm run generate -- "<game idea>"` writes a game in the sandbox and saves
 it under `generator/out/` for you to read.
 
-The server can run generations too, for admins, through `/api/admin/generations` (the admin
-page comes in A6). It's off unless you start the server with `GENERATION_ENABLED=1`:
+Admins do it from the **admin page at `/admin`** (linked from the home page when you're
+logged in as an admin). It uses the server's `/api/admin/generations` API. Generating is off
+unless you start the server with `GENERATION_ENABLED=1`:
 
 ```sh
 GENERATION_ENABLED=1 npm run dev:server
 ```
 
-Jobs run one at a time. A finished game waits for review. **Playtest** makes it startable
-by you alone, **Publish** makes it available to every host, and **Reject** takes it away. All
-of these apply immediately, without a restart.
+On the admin page you type an idea, pick a model, and watch its progress. Jobs run one at a
+time. A finished game waits for review with its test report and code (shown as text; the
+browser never runs it). **Playtest** makes it startable by you alone, **Publish** makes it
+available to every host, and **Reject** takes it away. All of these apply immediately, without
+a restart. Hosts see an **AI-made** badge on these games.
 
 Every game, hand-made or generated, can be checked with the **game test harness**:
 
