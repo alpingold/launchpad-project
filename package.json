@@ -10,6 +10,7 @@
     "build": "npm --prefix client run build",
     "start": "npm --prefix server start",
     "test:e2e": "npm --prefix e2e test",
-    "check-game": "node server/src/games/harness/cli.js"
+    "check-game": "node server/src/games/harness/cli.js",
+    "admin": "node server/scripts/admin.js"
   }
 }

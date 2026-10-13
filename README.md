@@ -59,6 +59,18 @@ Hosting needs an account; players join as guests with just a room code.
   SameSite=Lax, and only a hash of its token is stored.
 - To wipe all accounts while developing: stop the server and delete `server/data/`.
 - There is no email or password reset yet (open question Q8).
+- The database upgrades itself on startup (`server/src/db/migrations.js`). Before changing an
+  existing file it saves a copy next to it, named `boilergames.db.backup-<time>`.
+- **Admin tasks** run on the server machine, not on the website:
+  ```sh
+  npm run admin -- users                 # list accounts
+  npm run admin -- grant <username>      # make an account an admin (can generate games)
+  npm run admin -- games                 # list AI-generated games and their status
+  npm run admin -- import-game <file> --owner <username>   # store a game (must pass check-game)
+  npm run admin -- set-status <game id> playtest|published|rejected
+  ```
+  Game changes take effect when the server restarts. A `playtest` game shows up only in its
+  owner's game picker; `published` games show up for every host.
 
 ## AI-made games (in progress)
 

@@ -1,5 +1,10 @@
 import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { createGameServer } from '../../src/server.js';
 import { GameRegistry } from '../../src/games/registry.js';
 import { setAdmin } from '../../src/db/users.js';
@@ -84,4 +89,47 @@ test('a published generated game is for everyone', async () => {
   assert.deepEqual(await gameIds(cookie), ['count-game', 'g-public1']);
   const games = (await (await fetch(`${baseUrl}/api/games`)).json()).games;
   assert.deepEqual([games[1].source, games[1].status], ['generated', 'published']);
+});
+
+// --- The admin script, run as a real command against a throwaway database -----------
+
+test('npm run admin: grant, import a game (only if it passes the harness), list, set status', (t) => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'boilergames-admin-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const script = fileURLToPath(new URL('../../scripts/admin.js', import.meta.url));
+  const env = { ...process.env, DB_PATH: path.join(dir, 'test.db') };
+  const admin = (...args) => spawnSync(process.execPath, [script, ...args], { encoding: 'utf8', env });
+
+  // An account to work with (normally made by signing up on the site).
+  const setupDb = spawnSync(
+    process.execPath,
+    [
+      '--input-type=module',
+      '-e',
+      `import { openDatabase } from '${new URL('../../src/db/database.js', import.meta.url)}';
+       import { createUser } from '${new URL('../../src/db/users.js', import.meta.url)}';
+       createUser(openDatabase(process.env.DB_PATH), 'alpingold', 'scrypt$x');`,
+    ],
+    { encoding: 'utf8', env },
+  );
+  assert.equal(setupDb.status, 0, setupDb.stderr);
+
+  assert.match(admin('grant', 'alpingold').stdout, /alpingold is now an admin/);
+  assert.match(admin('users').stdout, /alpingold\t\(admin\)/);
+  assert.equal(admin('grant', 'nobody').status, 1);
+
+  const broken = admin('import-game', fileURLToPath(new URL('../fixtures/harness/bad-view.js', import.meta.url)), '--owner', 'alpingold');
+  assert.equal(broken.status, 1);
+  assert.match(broken.stdout, /Not imported/);
+
+  const good = admin('import-game', fileURLToPath(new URL('../../src/games/reaction-race/index.js', import.meta.url)), '--owner', 'alpingold');
+  assert.equal(good.status, 0, good.stdout + good.stderr);
+  const id = /Imported as (g-[a-z2-9]+) \(playtest/.exec(good.stdout)?.[1];
+  assert.ok(id, good.stdout);
+
+  assert.match(admin('games').stdout, new RegExp(`${id}\\tplaytest\\s+\\tReaction Race\\tby alpingold`));
+  assert.match(admin('set-status', id, 'published').stdout, /is now published/);
+  assert.equal(admin('set-status', id, 'banana').status, 1);
+  assert.match(admin('delete-game', id).stdout, /Deleted/);
+  assert.match(admin('games').stdout, /No generated games yet/);
 });
