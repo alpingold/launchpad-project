@@ -21,12 +21,12 @@ const me = (cookie) =>
 test('sign up → logged in → log out → logged out', async () => {
   const res = await postJson(baseUrl, '/api/signup', { username: 'Alex', password: 'correct horse' });
   assert.equal(res.status, 201);
-  assert.deepEqual(await res.json(), { user: { id: 1, username: 'Alex' } });
+  assert.deepEqual(await res.json(), { user: { id: 1, username: 'Alex', isAdmin: false } });
 
   const setCookie = res.headers.get('set-cookie');
   assert.match(setCookie, /^sid=[A-Za-z0-9_-]{43}; Path=\/; HttpOnly; SameSite=Lax; Max-Age=2592000$/);
   const cookie = cookieFrom(res);
-  assert.deepEqual(await me(cookie), { user: { id: 1, username: 'Alex' } });
+  assert.deepEqual(await me(cookie), { user: { id: 1, username: 'Alex', isAdmin: false } });
 
   const out = await postJson(baseUrl, '/api/logout', {}, { Cookie: cookie });
   assert.equal(out.status, 204);
@@ -43,8 +43,8 @@ test('log in with the right password; capitalization of the username does not ma
   await postJson(baseUrl, '/api/signup', { username: 'Alex', password: 'correct horse' });
   const res = await postJson(baseUrl, '/api/login', { username: 'alex', password: 'correct horse' });
   assert.equal(res.status, 200);
-  assert.deepEqual(await res.json(), { user: { id: 1, username: 'Alex' } });
-  assert.deepEqual(await me(cookieFrom(res)), { user: { id: 1, username: 'Alex' } });
+  assert.deepEqual(await res.json(), { user: { id: 1, username: 'Alex', isAdmin: false } });
+  assert.deepEqual(await me(cookieFrom(res)), { user: { id: 1, username: 'Alex', isAdmin: false } });
 });
 
 test('wrong password and unknown user get the exact same answer', async () => {

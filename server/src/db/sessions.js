@@ -37,12 +37,12 @@ export function getSessionUser(db, token, now = Date.now()) {
   if (typeof token !== 'string' || token.length === 0 || token.length > 200) return null;
   const row = db
     .prepare(
-      `SELECT users.id, users.username FROM sessions
+      `SELECT users.id, users.username, users.is_admin FROM sessions
        JOIN users ON users.id = sessions.user_id
        WHERE sessions.token_hash = ? AND sessions.expires_at > ?`,
     )
     .get(hashToken(token), now);
-  return row ? { id: row.id, username: row.username } : null;
+  return row ? { id: row.id, username: row.username, isAdmin: row.is_admin === 1 } : null;
 }
 
 /** Logs a session out. Unknown tokens are ignored. */

@@ -73,7 +73,7 @@ export function createAuthRouter({ db, cfg }) {
       return fail(res, 401, 'INVALID_CREDENTIALS', 'Wrong username or password.');
     }
 
-    const user = { id: found.id, username: found.username };
+    const user = { id: found.id, username: found.username, isAdmin: found.isAdmin };
     logIn(res, user);
     res.json({ user });
   });

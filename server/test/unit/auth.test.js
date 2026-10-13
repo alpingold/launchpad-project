@@ -62,9 +62,9 @@ test('passwords: 8–128 characters, counted like a person would', () => {
 test('createUser + findUserForLogin; usernames are unique regardless of case', () => {
   const db = openDatabase(':memory:');
   const alex = createUser(db, 'Alex', 'scrypt$hash');
-  assert.deepEqual(alex, { id: 1, username: 'Alex' });
+  assert.deepEqual(alex, { id: 1, username: 'Alex', isAdmin: false });
   assert.equal(createUser(db, 'alex', 'scrypt$other'), null, 'taken, different case');
-  assert.deepEqual(findUserForLogin(db, 'ALEX'), { id: 1, username: 'Alex', passwordHash: 'scrypt$hash' });
+  assert.deepEqual(findUserForLogin(db, 'ALEX'), { id: 1, username: 'Alex', isAdmin: false, passwordHash: 'scrypt$hash' });
   assert.equal(findUserForLogin(db, 'nobody'), null);
 });
 
