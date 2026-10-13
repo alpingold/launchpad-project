@@ -81,6 +81,17 @@ OpenShell sandbox using Purdue GenAI Studio; setup steps and model choices are i
 With that set up, `npm run generate -- "<game idea>"` writes a game in the sandbox and saves
 it under `generator/out/` for you to read.
 
+The server can run generations too, for admins, through `/api/admin/generations` (the admin
+page comes in A6). It's off unless you start the server with `GENERATION_ENABLED=1`:
+
+```sh
+GENERATION_ENABLED=1 npm run dev:server
+```
+
+Jobs run one at a time. A finished game waits for review. **Playtest** makes it startable
+by you alone, **Publish** makes it available to every host, and **Reject** takes it away. All
+of these apply immediately, without a restart.
+
 Every game, hand-made or generated, can be checked with the **game test harness**:
 
 ```sh
