@@ -1,6 +1,6 @@
 # BoilerGames: Implementation Plan (MVP lobby + extension structure)
 
-> **Status (2026-10-13):** M0–M7 done. AI game generation is in progress: A0 (OpenShell spike), A1 (contract v2), A2 (test harness) and A3 (admin role + stored games) are done; A4 (the generator) is next. Deploying (M8) comes after A6. This file is the living plan: decisions and changes are recorded here as they happen, so `git log docs/PLAN.md` shows how it evolved.
+> **Status (2026-10-13):** M0–M7 done. AI game generation is in progress: A0–A4 are done (OpenShell spike, contract v2, test harness, admin role + stored games, the generator); A5 (server job runner) is next. Deploying (M8) comes after A6. This file is the living plan: decisions and changes are recorded here as they happen, so `git log docs/PLAN.md` shows how it evolved.
 
 _Site renamed from "LaunchPad Party" to **BoilerGames** on 2026-10-11 (built for the Purdue LaunchPad club; the club name stays where it refers to the club)._
 
@@ -602,7 +602,7 @@ Changes from today's contract (§4), all made in A1:
 | **A1 Contract v2** ✅ _done 2026-10-13 (platform resends the latest view instead of required hostView/playerView; lobby shows ties from `scores`)_ | §11b: `contractVersion`, `hostView`/`playerView` + platform resend, `ctx.now()`, `scores`, offered-actions check. Migrate Reaction Race and `countGame`; update `contract.js` docs, tests and e2e | All tests green; Reaction Race plays the same; refreshing a phone mid-game still restores its view |
 | **A2 Harness** ✅ _done 2026-10-13: `server/src/games/harness/` (lint, bot simulator on a VirtualClock with eager/sloppy/quiet scenarios, isolated worker with time + memory limits and Node's `--permission`), `npm run check-game`, 14 broken fixtures. Reaction Race passes all 18 runs. Also fixed: `server.close()` left 30 s grace timers running_ | Bots, checks, lint, child-process timeout, `npm run check-game`. Broken fixture games (infinite loop, never ends, bad view, unknown asset, forgets `playerView`) prove each check fires | `npm run check-game server/src/games/reaction-race/index.js` passes; each broken fixture fails with a clear message |
 | **A3 Admin role + stored games** ✅ _done 2026-10-13: migrations with `PRAGMA user_version` + automatic `VACUUM INTO` backup of existing files; `is_admin`; `generated_games`; registry `source`/`status`/owner visibility; startup loader (re-checks fingerprint + contract, skips bad games); `npm run admin` (users, grant/revoke, games, import-game (harness-gated), set-status, delete-game). A startup loader, not hot reload: status changes via the script apply on restart (A6's API will update the registry live)_ | Migrations, `is_admin`, admin script, `generated_games` table, registry sources/statuses, `data:` URL loading, filtered `/api/games` | Grant yourself admin; insert a hand-written game into the DB; it appears in *your* picker only while in `playtest` |
-| **A4 Generator** | `GAME_SPEC.md`, 1–2 new official example games, prompt builder, LLM client, write→check→fix loop, Dockerfile. Run it by hand in OpenShell | `openshell` CLI run by hand → a `game.js` that passes the harness, plus its report |
+| **A4 Generator** ✅ _done 2026-10-13: Majority Rules (2nd official/example game), `generator/` (spec, prompt, GenAI Studio client with retries, write→check→fix loop, allow-list Docker image), `server/src/generation/sandbox.js` (create → exec with job on stdin → delete), `npm run generate`. Model comparison below (§11g)_ | `GAME_SPEC.md`, 1–2 new official example games, prompt builder, LLM client, write→check→fix loop, Dockerfile. Run it by hand in OpenShell | `openshell` CLI run by hand → a `game.js` that passes the harness, plus its report |
 | **A5 Job runner** | Server ↔ OpenShell wiring, job queue, DB statuses, fake sandbox for tests, `GENERATION_ENABLED` | A job started via the API ends in `review` with code + report saved; tests pass without Docker |
 | **A6 Admin page** | `/admin` UI, playtest/publish/reject, "AI-made" badge, e2e tests (using the fake sandbox) | Type an idea → watch it generate → read it → playtest with phones → publish |
 | **A7 (later) Bring your own key** | Any host with a GenAI Studio key can generate. **Prerequisite:** confirm with RCAC (rcac-help@purdue.edu) that users may give their key to a third-party site; the docs say keys "act with your identity" and shouldn't be shared. Proposed: key entered per job, used for a per-job OpenShell provider that's deleted afterwards, never stored. Their games stay private to them; publishing to everyone still needs admin approval; per-user job limits | Decided when we get there |
@@ -631,6 +631,25 @@ Changes from today's contract (§4), all made in A1:
   Decide at M8.
 - **Q11: new view kinds for generated games**, especially **text input** (needed for Quiplash-style games). Each one is a hand-written component plus validator (E6) and needs its own offered-actions rule.
 - **Q12: A7 details** (RCAC rules, quotas, whether users' games can be shared).
+
+### 11g. Model comparison (A4, 2026-10-13)
+
+Three ideas, each generated once per model in the sandbox with `npm run generate` (six runs in parallel):
+
+| Idea | gpt-oss:120b | qwen3.8:27b |
+|---|---|---|
+| Purdue trivia (5 questions, first correct = 2 points) | ✅ 1st try, 31 s | ✅ 1st try, 40 s |
+| Hot Potato (pass a potato, it explodes, 2 lives) | ✅ 2nd try, 49 s | ✅ 4th try, 354 s |
+| Rock paper scissors party (a point per player beaten) | ✅ 1st try, 31 s | ✅ 1st try, 68 s |
+
+Plus "Hot or Not: Food" on gpt-oss: ✅ 1st try, 27 s.
+
+**Takeaways:**
+- Every run ended with a passing game; the check → fix loop rescued both Hot Potato runs.
+- gpt-oss is much faster and needed fewer fixes here, so it stays the default.
+- Both copy the example games' structure closely, so the examples are the main lever on quality.
+- **The tests can't check facts or game logic.** Both trivia games contained wrong or made-up "facts": qwen marked "Blue and Gold" as Purdue's colors and *The Daily Titan* as its newspaper. "Hot or Not" awarded a "minority" point when everyone voted the same way. Human review stays essential. For fact games, put the facts in the idea yourself.
+- Sample size is tiny (one run per cell); revisit with more runs if the defaults ever matter more.
 
 ---
 
