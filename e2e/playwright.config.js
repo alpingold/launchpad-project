@@ -26,8 +26,8 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: 'node src/index.js',
-      cwd: '../server',
+      // The real server with a fake AI generator and a test admin account (server/testServer.js).
+      command: 'node server/testServer.js',
       url: `http://localhost:${SERVER_PORT}/api/health`,
       env: {
         PORT: String(SERVER_PORT),
@@ -37,6 +37,8 @@ export default defineConfig({
         DB_PATH: ':memory:',
         // Every test host signs up from 127.0.0.1, so lift the per-address sign-up limit.
         AUTH_ATTEMPTS_PER_WINDOW: '100000',
+        // AI games on, using the fake generator (no Docker or API key needed).
+        GENERATION_ENABLED: '1',
       },
       reuseExistingServer: false,
     },
