@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 
 /**
  * The games this server offers, from GET /api/games.
- * @returns {{id: string, name: string, description: string, minPlayers: number, maxPlayers: number}[] | null}
+ * @returns {{id: string, name: string, description: string, minPlayers: number, maxPlayers: number,
+ *   source: 'official' | 'generated', status?: 'playtest' | 'published'}[] | null}
  *   null while loading; an empty list if the request failed
  */
 export function useGames() {

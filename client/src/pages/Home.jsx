@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useGames } from '../net/useGames.js';
 import { usePageTitle } from '../usePageTitle.js';
 import { useCurrentUser, logOut } from '../net/auth.js';
+import AiBadge from '../components/AiBadge.jsx';
 
 // The public front page: what this is, how it works, and the two ways in.
 // Hosting needs an account; joining is open to everyone.
@@ -112,7 +113,10 @@ export default function Home() {
         <ul className="game-cards">
           {games?.map((game) => (
             <li key={game.id} className="card">
-              <h3>{game.name}</h3>
+              <h3>
+                {game.name}
+                <AiBadge game={game} />
+              </h3>
               <p>{game.description}</p>
               <p className="muted small">
                 {game.minPlayers === game.maxPlayers

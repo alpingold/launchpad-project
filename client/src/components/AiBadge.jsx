@@ -1,0 +1,10 @@
+/**
+ * Marks a game the AI made (plan §11), so hosts know it isn't one of the hand-made games.
+ * A game still in playtest is visible only to its owner, so say so.
+ *
+ * @param {{ game: { source?: 'official' | 'generated', status?: string } }} props
+ */
+export default function AiBadge({ game }) {
+  if (game.source !== 'generated') return null;
+  return <span className="ai-badge">{game.status === 'playtest' ? 'AI-made · playtest, only you' : 'AI-made'}</span>;
+}

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useGames } from '../net/useGames.js';
+import AiBadge from './AiBadge.jsx';
 
 /**
  * Lets the host choose a game and start it. The list comes from GET /api/games.
@@ -27,12 +28,17 @@ export default function GamePicker({ playerCount, onStart, disabled = false }) {
         <select value={selectedId} onChange={(e) => setChosenId(e.target.value)}>
           {games.map((g) => (
             <option key={g.id} value={g.id}>
-              {g.name}
+              {g.source === 'generated' ? `${g.name} (AI-made)` : g.name}
             </option>
           ))}
         </select>
       </label>
-      {selected && <p className="muted">{selected.description}</p>}
+      {selected && (
+        <p className="muted">
+          {selected.description}
+          <AiBadge game={selected} />
+        </p>
+      )}
       {selected && !fits && (
         <p className="muted">
           Needs {selected.minPlayers}–{selected.maxPlayers} players.
