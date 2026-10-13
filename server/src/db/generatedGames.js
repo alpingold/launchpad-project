@@ -87,13 +87,21 @@ export function saveGeneratedSource(db, id, { source, report, name, description,
   ).run(source, sha256(source), JSON.stringify(report ?? null), name ?? null, description ?? null, status, now, id);
 }
 
-/** Generation failed: remember why. */
-export function markGenerationFailed(db, id, error, now = Date.now()) {
-  db.prepare(`UPDATE generated_games SET status = 'failed', error = ?, updated_at = ? WHERE id = ?`).run(
-    String(error).slice(0, 2000),
-    now,
-    id,
-  );
+/**
+ * Generation failed: remember why. If the generator got as far as writing code, keep the
+ * last attempt and its test report too, so the admin can see what went wrong.
+ */
+export function markGenerationFailed(db, id, error, { source = null, report = null, now = Date.now() } = {}) {
+  db.prepare(
+    `UPDATE generated_games
+     SET status = 'failed', error = ?, source = ?, source_sha256 = ?, report_json = ?, updated_at = ?
+     WHERE id = ?`,
+  ).run(String(error).slice(0, 2000), source, source === null ? null : sha256(source), report === null ? null : JSON.stringify(report), now, id);
+}
+
+/** Every game still marked "generating" (after a restart, these were interrupted). */
+export function listGeneratingGames(db) {
+  return db.prepare("SELECT * FROM generated_games WHERE status = 'generating' ORDER BY created_at").all().map(fromRow);
 }
 
 /**

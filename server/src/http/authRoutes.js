@@ -6,6 +6,7 @@ import { currentUser } from '../auth/currentUser.js';
 import { AttemptLimiter } from '../auth/attemptLimiter.js';
 import { createUser, findUserForLogin } from '../db/users.js';
 import { createSession, deleteSession } from '../db/sessions.js';
+import { requireJsonPosts } from './requireJson.js';
 
 /**
  * Account routes, mounted under /api:
@@ -33,16 +34,7 @@ export function createAuthRouter({ db, cfg }) {
     res.setHeader('Set-Cookie', sessionCookie(token, cookieOptions));
   }
 
-  // CSRF protection, part 2 (part 1 is the SameSite=Lax cookie). A plain HTML form on
-  // another website can submit a POST here, but it can't send Content-Type: application/json
-  // without the browser first asking our permission (CORS), which we never give.
-  // So: POSTs must be JSON, or they're refused.
-  router.use((req, res, next) => {
-    if (req.method === 'POST' && !req.is('application/json')) {
-      return fail(res, 415, 'JSON_REQUIRED', 'Requests must be sent as JSON.');
-    }
-    next();
-  });
+  router.use(requireJsonPosts); // CSRF protection (see requireJson.js)
 
   router.post('/signup', async (req, res) => {
     if (limiter.isBlocked(req.ip)) return fail(res, 429, 'TOO_MANY_ATTEMPTS', 'Too many attempts. Try again in a few minutes.');
