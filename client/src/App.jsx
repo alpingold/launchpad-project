@@ -3,6 +3,7 @@ import Host from './pages/Host.jsx';
 import Join from './pages/Join.jsx';
 import NotFound from './pages/NotFound.jsx';
 import Login from './pages/Login.jsx';
+import Admin from './pages/Admin.jsx';
 import { SettingsProvider } from './settings/SettingsContext.jsx';
 import SettingsMenu from './settings/SettingsMenu.jsx';
 
@@ -13,6 +14,7 @@ const PAGES = {
   '/host': Host,
   '/join': Join,
   '/login': Login,
+  '/admin': Admin,
 };
 
 /** "/join/" and "/join" are the same page. */

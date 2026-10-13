@@ -61,6 +61,11 @@ export default function Home() {
               </a>
               <p className="muted small">
                 Logged in as {user.username} ·{' '}
+                {user.isAdmin && (
+                  <>
+                    <a href="/admin">AI games</a> ·{' '}
+                  </>
+                )}
                 <button
                   type="button"
                   className="link-button"

@@ -565,3 +565,172 @@ select {
   text-decoration: underline;
   cursor: pointer;
 }
+
+/* A6: admin page (AI games) */
+.admin {
+  max-width: 48rem;
+}
+
+.admin-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.admin-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-weight: 600;
+}
+
+.admin-form textarea {
+  font: inherit;
+  font-weight: 400;
+  padding: 0.55rem 0.7rem;
+  border: 2px solid var(--input-border);
+  border-radius: 0.5rem;
+  background: var(--surface);
+  color: var(--text);
+  resize: vertical;
+}
+
+.admin-form .small {
+  font-weight: 400;
+}
+
+.admin-form .primary-button {
+  align-self: flex-start;
+}
+
+.admin-form .primary-button:disabled {
+  background: var(--accent-disabled);
+  cursor: default;
+}
+
+.model-options {
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+/* The model choices: radio button on the left, text beside it (not the form's stacked labels). */
+.admin-form .model-options label {
+  flex-direction: row;
+  align-items: baseline;
+  font-weight: 400;
+}
+
+.gen-list {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.gen-item {
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.75rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.gen-item.selected {
+  outline: 3px solid var(--accent);
+}
+
+.gen-title {
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.gen-meta {
+  flex-basis: 100%;
+}
+
+.status-chip {
+  display: inline-block;
+  padding: 0.1rem 0.6rem;
+  border-radius: 999px;
+  background: var(--chip);
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.status-review,
+.status-generating {
+  background: var(--banner-bg);
+  color: var(--banner-text);
+}
+
+.status-published {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.status-failed,
+.status-rejected {
+  color: var(--danger);
+}
+
+.gen-detail {
+  margin-top: 1.5rem;
+}
+
+.gen-detail q {
+  overflow-wrap: anywhere;
+}
+
+.gen-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+
+.danger-button {
+  color: var(--danger);
+}
+
+.gen-steps {
+  padding-left: 1.5rem;
+  line-height: 1.6;
+}
+
+.gen-report-ok {
+  font-weight: 600;
+}
+
+.gen-report li {
+  margin-bottom: 0.4rem;
+  overflow-wrap: anywhere;
+}
+
+.gen-source summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.gen-source pre {
+  max-height: 32rem;
+  overflow: auto;
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
