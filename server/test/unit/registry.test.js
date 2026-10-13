@@ -65,6 +65,6 @@ test('get does not find built-in object properties', () => {
   assert.equal(new GameRegistry().get('constructor'), undefined);
 });
 
-test('the default registry offers the demo game', () => {
-  assert.deepEqual(createDefaultRegistry().list().map((g) => g.id), ['reaction-race']);
+test('the default registry offers the official games', () => {
+  assert.deepEqual(createDefaultRegistry().list().map((g) => g.id), ['reaction-race', 'majority-rules']);
 });
