@@ -43,8 +43,24 @@ export class GameRunner {
    * @param {(results: {rankings: string[]} | {error: true}) => void} opts.onEnd  called exactly once
    * @param {number} [opts.seed]                          fixed seed for repeatable tests
    * @param {() => number} [opts.now]                     server clock (tests can pass a fake)
+   * @param {{ setTimeout: Function, clearTimeout: Function }} [opts.timers]
+   *   where the game's timers really run; the test harness passes a simulated clock
+   * @param {(where: string, err: unknown) => void} [opts.onGameError]
+   *   told about every error a game causes (default: log it); the harness collects them
+   * @param {(message: string) => void} [opts.onLog]      where ctx.log goes (default: console)
    */
-  constructor({ game, players, options = {}, deliver, onEnd, seed = newSeed(), now = Date.now }) {
+  constructor({
+    game,
+    players,
+    options = {},
+    deliver,
+    onEnd,
+    seed = newSeed(),
+    now = Date.now,
+    timers = { setTimeout, clearTimeout },
+    onGameError = (where, err) => console.error(`[game ${game.id}] ${where} threw, ending the game:`, err),
+    onLog = (message) => console.log(`[game ${game.id}]`, message),
+  }) {
     this.game = game;
     this.players = Object.freeze(players.map((p) => Object.freeze({ id: p.id, name: p.name })));
     this.playerIds = new Set(this.players.map((p) => p.id));
@@ -53,6 +69,9 @@ export class GameRunner {
     this.onEnd = onEnd;
     this.random = seededRandom(seed);
     this.now = now;
+    this.timerApi = timers;
+    this.onGameError = onGameError;
+    this.onLog = onLog;
 
     this.instance = null; // what createGame returned
     this.ended = false;
@@ -121,7 +140,7 @@ export class GameRunner {
   dispose() {
     if (this.ended) return;
     this.ended = true;
-    for (const handle of this.timers.values()) clearTimeout(handle);
+    for (const handle of this.timers.values()) this.timerApi.clearTimeout(handle);
     this.timers.clear();
     if (typeof this.instance?.dispose === 'function') {
       try {
@@ -150,7 +169,7 @@ export class GameRunner {
     try {
       fn();
     } catch (err) {
-      console.error(`[game ${this.game.id}] ${label} threw, ending the game:`, err);
+      this.onGameError(label, err);
       this.finish({ error: true });
     }
   }
@@ -234,7 +253,7 @@ export class GameRunner {
         }
         if (this.ended) return 0;
         const id = this.nextTimerId++;
-        const handle = setTimeout(() => {
+        const handle = this.timerApi.setTimeout(() => {
           this.timers.delete(id);
           this.safely('timer', fn);
         }, ms);
@@ -245,7 +264,7 @@ export class GameRunner {
       clearTimeout: (id) => {
         const handle = this.timers.get(id);
         if (handle) {
-          clearTimeout(handle);
+          this.timerApi.clearTimeout(handle);
           this.timers.delete(id);
         }
       },
@@ -259,7 +278,7 @@ export class GameRunner {
         this.finish(this.checkResults(results));
       },
 
-      log: (message) => console.log(`[game ${this.game.id}]`, String(message).slice(0, 500)),
+      log: (message) => this.onLog(String(message).slice(0, 500)),
     };
     return Object.freeze(ctx);
   }
