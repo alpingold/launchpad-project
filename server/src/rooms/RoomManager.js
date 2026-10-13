@@ -335,12 +335,18 @@ export class RoomManager {
     return closed;
   }
 
-  /** Cancels every pending timer and running game (server shutdown and tests). */
+  /** Cancels every pending timer and running game, and forgets every room (server shutdown and tests). */
   dispose() {
     for (const room of this.rooms.values()) {
       this.cancelRoomTimers(room);
       this.stopGame(room);
     }
+    // Forget everything too. Sockets close a moment AFTER this (their 'close' events are
+    // asynchronous); with no rooms or members left, those late disconnects find nothing
+    // and can't start new grace timers that would keep the process alive.
+    this.rooms.clear();
+    this.members.clear();
+    this.roomByHostUser.clear();
   }
 
   // --- Helpers ----------------------------------------------------------------

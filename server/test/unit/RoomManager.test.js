@@ -615,3 +615,18 @@ test('after the room closes, the same account gets a brand-new room', () => {
   assert.notEqual(second, first);
   assert.equal(rooms.roomByHostUser.get(7), second.code);
 });
+
+test('dispose: sockets that close afterwards start no new grace timers', (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const { rooms, sent } = setup();
+  const room = rooms.createRoom('host');
+  rooms.joinRoom('c1', room.code, 'Alex');
+  rooms.dispose();
+  assert.equal(rooms.rooms.size, 0, 'every room is forgotten');
+  // On shutdown the transport closes sockets AFTER dispose; their disconnects arrive late.
+  const before = sent.length;
+  rooms.handleDisconnect('host');
+  rooms.handleDisconnect('c1');
+  t.mock.timers.tick(60_000);
+  assert.equal(sent.length, before, 'nothing happens: no room, no timers');
+});
