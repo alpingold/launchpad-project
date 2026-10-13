@@ -66,3 +66,15 @@ The admin account will be able to generate new games with AI (plan §11); later,
 with their own GenAI Studio key. The generator runs inside an
 OpenShell sandbox using Purdue GenAI Studio; setup steps and model choices are in
 [`generator/README.md`](generator/README.md). The game server itself doesn't need any of this.
+
+Every game, hand-made or generated, can be checked with the **game test harness**:
+
+```sh
+npm run check-game -- server/src/games/reaction-race/index.js
+```
+
+It lints the code for rule-breaking (`Math.random`, `Date`, `async`, imports, …), checks the
+GameModule, then plays 18 quick games with bot players on a simulated clock (different player
+counts; eager, sloppy, and quiet players) and reports anything that went wrong, with a hint on
+how to fix it. It runs the game's code in a separate, time- and memory-limited process. Only run
+it on code you trust, or inside the generator's sandbox for code nobody has read yet.

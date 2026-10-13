@@ -90,6 +90,13 @@ export const config = {
   // Longest delay a game may ask for with ctx.setTimeout.
   GAME_MAX_TIMER_MS: 10 * 60 * 1000,
 
+  // The art library's list of assets (lives with the client, which serves the files).
+  // The game test harness checks that games only use ids from it. The generator's
+  // sandbox image has it somewhere else, hence the override.
+  ASSET_MANIFEST_PATH:
+    process.env.ASSET_MANIFEST_PATH ||
+    fileURLToPath(new URL('../../client/public/game-assets/manifest.json', import.meta.url)),
+
   // Longest raw name string accepted before normalization. The real display-name
   // rules (1–16 characters, etc.) come in M3; this just stops absurd input early.
   NAME_RAW_MAX_LENGTH: 64,
