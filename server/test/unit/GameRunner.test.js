@@ -14,7 +14,7 @@ const [ALEX, BLAKE] = PLAYERS.map((p) => p.id);
  * A runner for `game` whose deliver/onEnd just record what happened.
  * `game` can be a full module, or just a createGame function for one-off test games.
  */
-function run(game, { options, seed = 42 } = {}) {
+function run(game, { options, seed = 42, now } = {}) {
   const module = typeof game === 'function' ? { ...countGame, id: 'test-game', createGame: game } : game;
   const delivered = []; // [{ target, view }]
   const ended = []; // results passed to onEnd
@@ -23,11 +23,24 @@ function run(game, { options, seed = 42 } = {}) {
     players: PLAYERS,
     options,
     seed,
+    now,
     deliver: (target, view) => delivered.push({ target, view }),
     onEnd: (results) => ended.push(results),
   });
   runner.start();
   return { runner, delivered, ended };
+}
+
+/**
+ * Wraps a one-off test game so it starts by showing everyone a button whose action is {}.
+ * Needed because the runner only passes on actions that are on the player's screen.
+ */
+const TAP = { view: 'button', label: 'Tap', action: {} };
+function tappable(createGame) {
+  return (ctx, options) => {
+    ctx.broadcast(TAP);
+    return createGame(ctx, options);
+  };
 }
 
 /** Silences console.error while a test deliberately breaks a game (keeps output readable). */
@@ -54,7 +67,7 @@ test('count game: actions route to the game, and the first to 3 wins', () => {
   assert.deepEqual(ended, []);
   runner.handleAction(ALEX, { tap: true });
 
-  assert.deepEqual(ended, [{ rankings: [ALEX, BLAKE] }]);
+  assert.deepEqual(ended, [{ rankings: [ALEX, BLAKE], scores: { [ALEX]: 3, [BLAKE]: 1 } }]);
   assert.deepEqual(delivered.at(-1).view, {
     view: 'scoreboard',
     title: 'Results',
@@ -68,7 +81,7 @@ test('count game: actions route to the game, and the first to 3 wins', () => {
 test('count game: options are passed in (target 1)', () => {
   const { runner, ended } = run(countGame, { options: { target: 1 } });
   runner.handleAction(BLAKE, { tap: true });
-  assert.deepEqual(ended, [{ rankings: [BLAKE, ALEX] }]);
+  assert.deepEqual(ended, [{ rankings: [BLAKE, ALEX], scores: { [ALEX]: 0, [BLAKE]: 1 } }]);
 });
 
 test('count game: bad actions and unknown players are ignored', () => {
@@ -105,11 +118,13 @@ test('after the game ends, nothing more reaches it or comes out of it', () => {
 
 test('a game that throws in onAction ends with { error: true }', (t) => {
   quietErrors(t);
-  const { runner, ended } = run(() => ({
-    onAction() {
-      throw new Error('bug in game');
-    },
-  }));
+  const { runner, ended } = run(
+    tappable(() => ({
+      onAction() {
+        throw new Error('bug in game');
+      },
+    })),
+  );
   assert.doesNotThrow(() => runner.handleAction(ALEX, {}));
   assert.deepEqual(ended, [{ error: true }]);
 });
@@ -186,16 +201,18 @@ test('sendToPlayer to an unknown id ends the game', (t) => {
 
 test('endGame with invalid results ends the game with an error instead', (t) => {
   quietErrors(t);
-  const bad = [undefined, {}, { rankings: 'Alex' }, { rankings: ['p_unknown0'] }, { rankings: [ALEX, ALEX] }, { rankings: [], winner: ALEX }];
+  const bad = [undefined, {}, { rankings: 'Alex' }, { rankings: ['p_unknown0'] }, { rankings: [ALEX, ALEX] }, { rankings: [], winner: ALEX },
+    { rankings: [], scores: [1, 2] }, { rankings: [], scores: { p_unknown0: 1 } }, { rankings: [], scores: { [ALEX]: '3' } },
+    { rankings: [], scores: { [ALEX]: Infinity } }];
   for (const results of bad) {
-    const { runner, ended } = run((ctx) => ({ onAction: () => ctx.endGame(results) }));
+    const { runner, ended } = run(tappable((ctx) => ({ onAction: () => ctx.endGame(results) })));
     runner.handleAction(ALEX, {});
     assert.deepEqual(ended, [{ error: true }], JSON.stringify(results));
   }
 });
 
 test('endGame may rank only some players', () => {
-  const { runner, ended } = run((ctx) => ({ onAction: () => ctx.endGame({ rankings: [BLAKE] }) }));
+  const { runner, ended } = run(tappable((ctx) => ({ onAction: () => ctx.endGame({ rankings: [BLAKE] }) })));
   runner.handleAction(ALEX, {});
   assert.deepEqual(ended, [{ rankings: [BLAKE] }]);
 });
@@ -251,10 +268,12 @@ test('a throwing timer callback ends the game', (t) => {
 test('ending the game cancels its pending timers', (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const fired = [];
-  const { runner } = run((ctx) => {
-    ctx.setTimeout(() => fired.push('late'), 5000);
-    return { onAction: () => ctx.endGame({ rankings: [] }) };
-  });
+  const { runner } = run(
+    tappable((ctx) => {
+      ctx.setTimeout(() => fired.push('late'), 5000);
+      return { onAction: () => ctx.endGame({ rankings: [] }) };
+    }),
+  );
   runner.handleAction(ALEX, {});
   t.mock.timers.tick(10_000);
   assert.deepEqual(fired, []);
@@ -304,4 +323,112 @@ test('seededRandom spreads values across [0, 1)', () => {
   const buckets = Array(10).fill(0);
   for (let i = 0; i < 10_000; i++) buckets[Math.floor(random() * 10)]++;
   for (const count of buckets) assert.ok(count > 800 && count < 1200, `bucket ${count}`);
+});
+
+// --- Contract v2 (plan §11b) ---------------------------------------------------------------
+
+test('only actions on the player\'s screen right now reach the game', () => {
+  const received = [];
+  const { runner } = run((ctx) => {
+    ctx.sendToPlayer(ALEX, {
+      view: 'choice',
+      prompt: 'Pick one',
+      options: [
+        { label: 'Red', action: { pick: 'red', round: 1 } },
+        { label: 'Blue', action: { pick: 'blue', round: 1 } },
+      ],
+    });
+    return { onAction: (playerId, action) => received.push([playerId, action]) };
+  });
+
+  runner.handleAction(ALEX, { round: 1, pick: 'blue' }); // key order doesn't matter
+  runner.handleAction(ALEX, { pick: 'green', round: 1 }); // not an option
+  runner.handleAction(ALEX, { pick: 'red', round: 1, extra: true }); // extra field
+  runner.handleAction(ALEX, { pick: 'red' }); // missing field
+  runner.handleAction(BLAKE, { pick: 'red', round: 1 }); // Blake was never shown this choice
+  assert.deepEqual(received, [[ALEX, { round: 1, pick: 'blue' }]]);
+});
+
+test('once a screen changes, actions from the old screen are dropped', () => {
+  const received = [];
+  const { runner } = run((ctx) => {
+    ctx.broadcast({ view: 'button', label: 'Go', action: { go: 1 } });
+    return {
+      onAction(playerId, action) {
+        received.push(action);
+        ctx.sendToPlayer(playerId, { view: 'message', title: 'Thanks!' });
+      },
+    };
+  });
+  runner.handleAction(ALEX, { go: 1 });
+  runner.handleAction(ALEX, { go: 1 }); // a double tap: Alex's screen now says "Thanks!"
+  runner.handleAction(BLAKE, { go: 1 }); // Blake still has the button
+  assert.deepEqual(received, [{ go: 1 }, { go: 1 }]);
+});
+
+test('reconnecting: the platform resends each screen\'s latest view, with no game code needed', () => {
+  const { runner, delivered } = run((ctx) => {
+    ctx.broadcast({ view: 'message', title: 'Round 1' });
+    ctx.sendToPlayer(ALEX, { view: 'button', label: 'Go', action: {} });
+    ctx.sendToHost({ view: 'message', title: 'Host only' });
+    return { onAction() {} };
+  });
+  delivered.length = 0;
+  runner.playerReconnected(ALEX);
+  runner.playerReconnected(BLAKE);
+  runner.hostReconnected();
+  assert.deepEqual(delivered, [
+    { target: { to: 'player', playerId: ALEX }, view: { view: 'button', label: 'Go', action: {} } },
+    { target: { to: 'player', playerId: BLAKE }, view: { view: 'message', title: 'Round 1' } },
+    { target: { to: 'host' }, view: { view: 'message', title: 'Host only' } },
+  ]);
+});
+
+test('reconnecting before any view was sent sends nothing', () => {
+  const { runner, delivered } = run(() => ({ onAction() {} }));
+  runner.playerReconnected(ALEX);
+  runner.hostReconnected();
+  assert.deepEqual(delivered, []);
+});
+
+test('reconnect hooks run first; if a hook sends a new view, it is not sent twice', () => {
+  const calls = [];
+  const { runner, delivered } = run((ctx) => {
+    ctx.broadcast({ view: 'message', title: 'Old' });
+    return {
+      onAction() {},
+      onPlayerReconnect(playerId) {
+        calls.push(playerId);
+        ctx.sendToPlayer(playerId, { view: 'message', title: 'Welcome back' });
+      },
+      onHostReconnect() {
+        calls.push('host'); // updates nothing: the platform resends the host view
+      },
+    };
+  });
+  delivered.length = 0;
+  runner.playerReconnected(ALEX);
+  runner.hostReconnected();
+  assert.deepEqual(calls, [ALEX, 'host']);
+  assert.deepEqual(delivered.map((d) => d.view.title), ['Welcome back', 'Old']);
+});
+
+test('ctx.now gives the server clock', () => {
+  let seen;
+  run(
+    (ctx) => {
+      seen = ctx.now();
+      return { onAction() {} };
+    },
+    { now: () => 1_700_000_000_000 },
+  );
+  assert.equal(seen, 1_700_000_000_000);
+});
+
+test('endGame accepts scores, and passes on a copy', () => {
+  const scores = { [ALEX]: 2, [BLAKE]: 2 };
+  const { runner, ended } = run(tappable((ctx) => ({ onAction: () => ctx.endGame({ rankings: [ALEX, BLAKE], scores }) })));
+  runner.handleAction(ALEX, {});
+  scores[ALEX] = 99;
+  assert.deepEqual(ended, [{ rankings: [ALEX, BLAKE], scores: { [ALEX]: 2, [BLAKE]: 2 } }]);
 });

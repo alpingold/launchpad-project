@@ -196,7 +196,7 @@ export class RoomManager {
 
     this.send(connId, { type: SERVER.ROOM_JOINED, code, playerId: player.id, token: player.token, name: player.name });
     this.broadcastState(room);
-    room.game?.playerReconnected(player.id); // the game re-sends this phone's current view
+    room.game?.playerReconnected(player.id); // the runner re-sends this phone's latest view
     return player;
   }
 
@@ -262,6 +262,7 @@ export class RoomManager {
       options,
       deliver: (target, view) => this.deliverGameMessage(room, target, view),
       onEnd: (results) => this.handleGameEnd(room, runner, results),
+      now: () => this.now(), // same clock as serverNow, so ctx.now() countdowns line up
     });
     room.game = runner;
 
@@ -359,7 +360,7 @@ export class RoomManager {
 
     this.send(connId, { type: SERVER.ROOM_CREATED, code: room.code, hostToken: room.host.token });
     this.broadcastState(room); // everyone sees hostConnected: true again
-    room.game?.hostReconnected(); // the game re-sends the big screen's current view
+    room.game?.hostReconnected(); // the runner re-sends the big screen's latest view
     return room;
   }
 
@@ -375,8 +376,8 @@ export class RoomManager {
 
   /**
    * Delivers a view from the game (already checked by GameRunner).
-   * Messages to someone who is disconnected are simply dropped; the game re-sends
-   * their view in onPlayerReconnect / onHostReconnect.
+   * Messages to someone who is disconnected are simply dropped; the runner remembers
+   * the latest view per screen and re-sends it when they reconnect.
    * @param {import('../games/GameRunner.js').Target} target
    */
   deliverGameMessage(room, target, view) {

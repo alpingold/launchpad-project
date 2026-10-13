@@ -191,7 +191,7 @@ test('a full 5-round game: final scoreboard, then endGame with rankings', (t) =>
   });
   assert.deepEqual(ended, [], 'scoreboard stays up for a moment');
   tick(6000);
-  assert.deepEqual(ended, [{ rankings: [ALEX, BLAKE, CASEY] }]);
+  assert.deepEqual(ended, [{ rankings: [ALEX, BLAKE, CASEY], scores: { [ALEX]: 3, [BLAKE]: 2, [CASEY]: 0 } }]);
 });
 
 test('options.rounds sets the number of rounds; bad values fall back to 5', (t) => {
@@ -229,7 +229,7 @@ test('works with a single player', (t) => {
   tap(ALEX, 1);
   tickUntil(() => latest('host')?.view === 'scoreboard');
   tick(6000);
-  assert.deepEqual(ended, [{ rankings: [ALEX] }]);
+  assert.deepEqual(ended, [{ rankings: [ALEX], scores: { [ALEX]: 1 } }]);
 });
 
 // A small "simulated players" check (plan §5, E4): many games with random tapping must

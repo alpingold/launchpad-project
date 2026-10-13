@@ -14,6 +14,8 @@ test('the count game fixture follows the contract', () => {
 test('validateGameModule reports each broken rule', () => {
   const cases = [
     [null, /must be an object/],
+    [{ ...valid(), contractVersion: undefined }, /contractVersion must be 2/],
+    [{ ...valid(), contractVersion: 1 }, /contractVersion must be 2/],
     [{ ...valid(), id: 'Count Game' }, /id must be/],
     [{ ...valid(), id: '' }, /id must be/],
     [{ ...valid(), name: '' }, /name must be/],

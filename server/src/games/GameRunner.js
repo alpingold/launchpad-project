@@ -1,5 +1,5 @@
 import { config } from '../config.js';
-import { validateView } from './views.js';
+import { validateView, offeredActions, sameJson } from './views.js';
 import { isPlainObject } from '../protocol/validate.js';
 import { seededRandom, newSeed } from './random.js';
 
@@ -25,6 +25,8 @@ export class GameContractError extends Error {
  *  - catch every exception the game throws, so a broken game ends cleanly
  *    instead of crashing the server or leaving the room stuck
  *  - own the game's timers, so ending the game always cleans them up
+ *  - remember the latest view on every screen, to resend it after a reconnect and to
+ *    drop actions that aren't on that player's screen (plan §11b)
  *
  * Extension point (§5, E2): a SandboxedGameRunner with the same public methods
  * (start, handleAction, playerDisconnected, playerReconnected, hostReconnected, dispose)
@@ -40,8 +42,9 @@ export class GameRunner {
    * @param {(target: Target, view: object) => void} opts.deliver   sends a checked view
    * @param {(results: {rankings: string[]} | {error: true}) => void} opts.onEnd  called exactly once
    * @param {number} [opts.seed]                          fixed seed for repeatable tests
+   * @param {() => number} [opts.now]                     server clock (tests can pass a fake)
    */
-  constructor({ game, players, options = {}, deliver, onEnd, seed = newSeed() }) {
+  constructor({ game, players, options = {}, deliver, onEnd, seed = newSeed(), now = Date.now }) {
     this.game = game;
     this.players = Object.freeze(players.map((p) => Object.freeze({ id: p.id, name: p.name })));
     this.playerIds = new Set(this.players.map((p) => p.id));
@@ -49,12 +52,18 @@ export class GameRunner {
     this.deliver = deliver;
     this.onEnd = onEnd;
     this.random = seededRandom(seed);
+    this.now = now;
 
     this.instance = null; // what createGame returned
     this.ended = false;
     /** @type {Map<number, NodeJS.Timeout>} the game's timers, by the id we gave the game */
     this.timers = new Map();
     this.nextTimerId = 1;
+
+    /** @type {Map<string, object>} the latest view sent to each player, by player id */
+    this.lastPlayerViews = new Map();
+    /** @type {object | null} the latest view sent to the host screen */
+    this.lastHostView = null;
   }
 
   // --- Called by RoomManager ------------------------------------------------------
@@ -70,8 +79,15 @@ export class GameRunner {
     });
   }
 
+  /**
+   * A player tapped something. Only actions that are on that player's screen right now
+   * (their latest button, or one of their latest choice options) reach the game; anything
+   * else is a stale tap from an old screen or a made-up message, and is dropped quietly.
+   */
   handleAction(playerId, action) {
     if (!this.instance || !this.playerIds.has(playerId)) return;
+    const offered = offeredActions(this.lastPlayerViews.get(playerId));
+    if (!offered.some((a) => sameJson(a, action))) return;
     this.safely('onAction', () => this.instance.onAction(playerId, action));
   }
 
@@ -79,12 +95,23 @@ export class GameRunner {
     this.callOptionalHook('onPlayerDisconnect', playerId);
   }
 
+  /**
+   * The player is back: let the game know, then put their latest view back on their screen.
+   * If the game's own hook already sent them a new view, that one is current; no repeat.
+   */
   playerReconnected(playerId) {
+    const before = this.lastPlayerViews.get(playerId);
     this.callOptionalHook('onPlayerReconnect', playerId);
+    const latest = this.lastPlayerViews.get(playerId);
+    if (!this.ended && latest && latest === before) this.deliver({ to: 'player', playerId }, latest);
   }
 
+  /** Same as playerReconnected, for the big screen. */
   hostReconnected() {
+    const before = this.lastHostView;
     this.callOptionalHook('onHostReconnect');
+    const latest = this.lastHostView;
+    if (!this.ended && latest && latest === before) this.deliver({ to: 'host' }, latest);
   }
 
   /**
@@ -146,17 +173,37 @@ export class GameRunner {
   }
 
   checkResults(results) {
-    const rankings = results?.rankings;
-    if (!isPlainObject(results) || !Array.isArray(rankings) || Object.keys(results).length !== 1) {
-      throw new GameContractError('endGame needs exactly { rankings: [playerId, ...] }');
+    const shape = 'endGame needs { rankings: [playerId, ...], scores?: { playerId: number } }';
+    if (!isPlainObject(results) || !Array.isArray(results.rankings)) throw new GameContractError(shape);
+    for (const key of Object.keys(results)) {
+      if (key !== 'rankings' && key !== 'scores') throw new GameContractError(`${shape}; unknown field "${key}"`);
     }
+
+    const { rankings, scores } = results;
     for (const id of rankings) {
       if (!this.playerIds.has(id)) throw new GameContractError(`rankings contains unknown player id ${JSON.stringify(id)}`);
     }
     if (new Set(rankings).size !== rankings.length) {
       throw new GameContractError('rankings lists a player more than once');
     }
-    return { rankings: [...rankings] };
+    if (scores === undefined) return { rankings: [...rankings] };
+
+    if (!isPlainObject(scores)) throw new GameContractError(`${shape}; scores must be an object`);
+    for (const [id, score] of Object.entries(scores)) {
+      if (!this.playerIds.has(id)) throw new GameContractError(`scores contains unknown player id ${JSON.stringify(id)}`);
+      if (typeof score !== 'number' || !Number.isFinite(score)) {
+        throw new GameContractError(`scores[${JSON.stringify(id)}] must be a number`);
+      }
+    }
+    return { rankings: [...rankings], scores: { ...scores } };
+  }
+
+  /** Sends a checked view, remembering it as the latest view on each screen it goes to. */
+  send(target, view) {
+    if (target.to === 'all' || target.to === 'host') this.lastHostView = view;
+    if (target.to === 'all') for (const id of this.playerIds) this.lastPlayerViews.set(id, view);
+    if (target.to === 'player') this.lastPlayerViews.set(target.playerId, view);
+    this.deliver(target, view);
   }
 
   /** The ctx object: the game's whole world. Every function is a no-op once the game has ended. */
@@ -166,18 +213,18 @@ export class GameRunner {
 
       broadcast: (view) => {
         if (this.ended) return;
-        this.deliver({ to: 'all' }, this.checkView(view));
+        this.send({ to: 'all' }, this.checkView(view));
       },
 
       sendToPlayer: (playerId, view) => {
         if (this.ended) return;
         if (!this.playerIds.has(playerId)) throw new GameContractError(`sendToPlayer: unknown player id ${JSON.stringify(playerId)}`);
-        this.deliver({ to: 'player', playerId }, this.checkView(view));
+        this.send({ to: 'player', playerId }, this.checkView(view));
       },
 
       sendToHost: (view) => {
         if (this.ended) return;
-        this.deliver({ to: 'host' }, this.checkView(view));
+        this.send({ to: 'host' }, this.checkView(view));
       },
 
       setTimeout: (fn, ms) => {
@@ -204,6 +251,8 @@ export class GameRunner {
       },
 
       random: () => this.random(),
+
+      now: () => this.now(),
 
       endGame: (results) => {
         if (this.ended) return;

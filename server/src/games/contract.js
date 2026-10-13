@@ -12,10 +12,15 @@ import { config } from '../config.js';
 //   2. Everything sent or received is plain JSON: no functions, classes, or Dates.
 //      (This is what lets the same game run later in a sandbox, in another process.)
 //   3. Every message is a VIEW (see views.js): { view: 'message' | 'button' | ... }.
-//   4. Randomness only from ctx.random(), timing only from ctx.setTimeout().
+//      Each view REPLACES what that screen showed, so always send a screen its whole
+//      current view. The platform remembers the latest view for every screen and sends
+//      it again by itself when a phone or the host screen reconnects.
+//   4. Randomness only from ctx.random(); time only from ctx.now() and ctx.setTimeout().
 //   5. Treat every action as untrusted: check it against the current game state
 //      (right player? right moment? sensible values?) and ignore anything else.
-//   6. Call ctx.endGame({ rankings }) exactly once when the game is over.
+//      The platform already drops any action that isn't a button or choice option on
+//      that player's screen right now, but only the game knows if it makes sense.
+//   6. Call ctx.endGame({ rankings, scores? }) exactly once when the game is over.
 //   7. Synchronous code only: no async functions, Promises, or the global setTimeout.
 //      The platform can only catch errors that happen while it is calling the game
 //      (createGame, onAction, a ctx.setTimeout callback, ...). An error in a Promise
@@ -29,6 +34,7 @@ import { config } from '../config.js';
 /**
  * What a game folder exports (as its default export).
  * @typedef {Object} GameModule
+ * @property {2} contractVersion    which version of this contract the game follows (currently 2)
  * @property {string} id            matches /^[a-z0-9-]{1,40}$/, e.g. "reaction-race"
  * @property {string} name          display name, 1–40 characters
  * @property {string} description   one or two sentences, at most 200 characters
@@ -52,9 +58,20 @@ import { config } from '../config.js';
  *   automatically when the game ends.
  * @property {(timerId: number) => void} clearTimeout
  * @property {() => number} random                          a number in [0, 1); seeded, so tests are repeatable
- * @property {(results: {rankings: string[]}) => void} endGame
- *   Ends the game. rankings = player ids, best first (each at most once; may leave some out).
+ * @property {() => number} now
+ *   Server time in ms (like Date.now()). Use it for countdown views: endsAt = ctx.now() + ms.
+ * @property {(results: GameResults) => void} endGame
+ *   Ends the game with its results.
  * @property {(message: string) => void} log               server-side debug log
+ */
+
+/**
+ * How a game ended.
+ * @typedef {Object} GameResults
+ * @property {string[]} rankings  player ids, best first (each at most once; may leave some out)
+ * @property {Record<string, number>} [scores]
+ *   Optional points per player id. Players with the same score count as tied
+ *   (e.g. the lobby shows "It's a tie!" when the top scores are equal).
  */
 
 /**
@@ -66,12 +83,16 @@ import { config } from '../config.js';
  * @property {(playerId: string) => void} [onPlayerDisconnect]
  *   The player dropped, left, or was removed. They may or may not come back.
  * @property {(playerId: string) => void} [onPlayerReconnect]
- *   The player is back (e.g. refreshed). Their screen is empty: send them their current view.
+ *   The player is back (e.g. refreshed). Afterwards the platform sends them their latest
+ *   view again by itself, so this is only for updating game state (e.g. "not away anymore").
  * @property {() => void} [onHostReconnect]
- *   The host screen reconnected. Send it its current view with ctx.sendToHost.
+ *   The host screen reconnected. The platform resends its latest view afterwards.
  * @property {() => void} [dispose]
  *   Called once when the game ends or the room closes. Rarely needed, since timers are cleaned up for you.
  */
+
+/** The contract version this platform runs. Games declare it as `contractVersion`. */
+export const CONTRACT_VERSION = 2;
 
 const GAME_ID_RE = /^[a-z0-9-]{1,40}$/;
 
@@ -85,6 +106,9 @@ export function validateGameModule(mod) {
   if (mod === null || typeof mod !== 'object') return ['a game must be an object (the default export)'];
   const problems = [];
 
+  if (mod.contractVersion !== CONTRACT_VERSION) {
+    problems.push(`contractVersion must be ${CONTRACT_VERSION} (this platform's game contract version)`);
+  }
   if (typeof mod.id !== 'string' || !GAME_ID_RE.test(mod.id)) {
     problems.push('id must be 1–40 lowercase letters, digits, or dashes');
   }

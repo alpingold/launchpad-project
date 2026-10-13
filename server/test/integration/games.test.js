@@ -72,7 +72,7 @@ test('a whole game over real sockets: start, tap, results, back to the lobby', a
   alex.send({ type: 'game:action', action: { tap: true } });
 
   const ended = await nextOfType(host, 'game:ended');
-  assert.deepEqual(ended.results, { rankings: [playerId] });
+  assert.deepEqual(ended.results, { rankings: [playerId], scores: { [playerId]: 2 } });
   // game:ended is followed by the lobby room:state.
   assert.equal((await nextOfType(host, 'room:state')).phase, 'lobby');
   host.close();

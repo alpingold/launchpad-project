@@ -6,6 +6,7 @@
  * @type {import('../../src/games/contract.js').GameModule}
  */
 export default {
+  contractVersion: 2,
   id: 'count-game',
   name: 'Count to Three',
   description: 'First to tap the button enough times wins.',
@@ -35,16 +36,9 @@ export default {
           title: 'Results',
           rows: rankings.map((id) => ({ playerId: id, score: taps[id] })),
         });
-        ctx.endGame({ rankings });
+        ctx.endGame({ rankings, scores: taps });
       },
-
-      onPlayerReconnect(playerId) {
-        ctx.sendToPlayer(playerId, tapView);
-      },
-
-      onHostReconnect() {
-        ctx.sendToHost({ view: 'message', title: `First to ${target} taps wins!` });
-      },
+      // No reconnect hooks needed: the platform resends each screen's latest view.
     };
   },
 };

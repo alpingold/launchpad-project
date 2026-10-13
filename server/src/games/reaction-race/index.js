@@ -10,7 +10,8 @@
 //  - hostView() and playerView(id) describe what each screen should show RIGHT NOW,
 //    based only on that state.
 //  - Whenever the state changes, showEveryone() sends those views out.
-//  - A refreshed phone or host screen just gets its current view again.
+//  - A refreshed phone or host screen needs nothing from us: the platform remembers
+//    each screen's latest view and sends it again.
 //
 // Fairness note: "first" means first to arrive at the server. A phone on slower Wi-Fi
 // is slightly disadvantaged. Fine for a demo; a real reaction minigame might measure
@@ -25,6 +26,7 @@ const FINAL_PAUSE_MS = 6000; // how long the final scoreboard stays up before th
 
 /** @type {import('../contract.js').GameModule} */
 export default {
+  contractVersion: 2,
   id: 'reaction-race',
   name: 'Reaction Race',
   description: 'Wait for GO, then tap as fast as you can. Tap too early and you sit out the round.',
@@ -151,7 +153,7 @@ export default {
         } else {
           phase = 'final';
           showEveryone();
-          after(FINAL_PAUSE_MS, () => ctx.endGame({ rankings: standings() }));
+          after(FINAL_PAUSE_MS, () => ctx.endGame({ rankings: standings(), scores }));
         }
       });
     }
@@ -178,12 +180,7 @@ export default {
       },
 
       onPlayerReconnect(playerId) {
-        away.delete(playerId);
-        ctx.sendToPlayer(playerId, playerView(playerId));
-      },
-
-      onHostReconnect() {
-        ctx.sendToHost(hostView());
+        away.delete(playerId); // the platform puts their latest view back on their screen
       },
     };
   },

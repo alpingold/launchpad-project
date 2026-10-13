@@ -436,7 +436,7 @@ test('a full game: actions route through, the game ends, the room returns to the
   assert.equal(room.phase, 'lobby');
   assert.equal(room.game, null);
   for (const id of ['host', 'c1', 'c2']) {
-    assert.deepEqual(ofType(id, 'game:ended'), [{ type: 'game:ended', results: { rankings: [blake.id, alex.id] } }], id);
+    assert.deepEqual(ofType(id, 'game:ended'), [{ type: 'game:ended', results: { rankings: [blake.id, alex.id], scores: { [alex.id]: 1, [blake.id]: 2 } } }], id);
     const last = ofType(id, 'room:state').at(-1);
     assert.equal(last.phase, 'lobby');
     assert.equal(last.gameId, null);
@@ -526,7 +526,14 @@ test('the game hears about disconnects, reconnects, leaves and kicks', (t) => {
 
 test('a crashing game ends with { error: true } and the room is fine', (t) => {
   t.mock.method(console, 'error', () => {});
-  const broken = { ...countGame, id: 'broken', createGame: () => ({ onAction() { throw new Error('boom'); } }) };
+  const broken = {
+    ...countGame,
+    id: 'broken',
+    createGame: (ctx) => {
+      ctx.broadcast({ view: 'button', label: 'Tap', action: {} });
+      return { onAction() { throw new Error('boom'); } };
+    },
+  };
   const { rooms, room, ofType } = gameLobby(t, [broken]);
   rooms.startGame('host', 'broken', {});
   assert.doesNotThrow(() => rooms.handleGameAction('c1', {}));
