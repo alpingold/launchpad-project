@@ -50,7 +50,7 @@ test('problems say exactly where they are, so the AI can fix them', () => {
     [screen({ type: 'image', asset: 'https://evil.example/x.png' }), /"asset" must be an asset id/],
     [screen({ type: 'grid', columns: 7, children: [text()] }), /"columns" must be ≥ 2, ≤ 6/],
     [screen({ type: 'row', children: [text(), { type: 'text', txt: 'x' }] }), /^blocks\[0\]\.children\[1\] \(text\): unknown field "txt"/],
-    [screen({ type: 'choice', options: [] }), /"options" must have 1–8 items/],
+    [screen({ type: 'choice', options: [] }), /"options" must have 1–12 items/],
     [screen({ type: 'choice', options: [{ label: 'A', action: 5 }] }), /"options" item 0: "action" must be an object/],
     [screen({ type: 'timer', endsAt: 5000, style: 'bar' }), /a "bar" timer needs "startedAt"/],
     [screen({ type: 'timer', endsAt: 5000, startedAt: 6000 }), /"startedAt" must be before "endsAt"/],

@@ -214,7 +214,8 @@ export const BLOCKS = {
     group: 'input',
     purpose: "Several buttons; the player taps one and that option's `action` is sent to onAction. Put the question in a text block above it.",
     fields: {
-      options: list(object({ label: text({ max: 60 }), action: action(), asset: asset({ optional: true }) }), { min: 1, max: 8 }),
+      // Up to 12: one option per player (other than you) is a common pattern, with 12 players max.
+      options: list(object({ label: text({ max: 60 }), action: action(), asset: asset({ optional: true }) }), { min: 1, max: 12 }),
       columns: number({ min: 1, max: 2, integer: true, optional: true }),
     },
     actions: (block) => block.options.map((option) => option.action),

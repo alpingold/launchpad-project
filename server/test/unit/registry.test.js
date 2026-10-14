@@ -66,5 +66,5 @@ test('get does not find built-in object properties', () => {
 });
 
 test('the default registry offers the official games', () => {
-  assert.deepEqual(createDefaultRegistry().list().map((g) => g.id), ['reaction-race', 'majority-rules', 'sketch-guess']);
+  assert.deepEqual(createDefaultRegistry().list().map((g) => g.id), ['reaction-race', 'majority-rules', 'sketch-guess', 'fill-the-blank']);
 });
