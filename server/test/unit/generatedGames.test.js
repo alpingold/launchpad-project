@@ -28,7 +28,7 @@ function setup() {
   const other = createUser(db, 'other', 'scrypt$x');
   /** Stores a game with code, in `status`. */
   const store = (status, source = COUNT_GAME_SOURCE, ownerUserId = admin.id) => {
-    const game = createGeneratedGame(db, { ownerUserId, prompt: 'a tapping game', model: 'gpt-oss:120b' });
+    const game = createGeneratedGame(db, { ownerUserId, prompt: 'a tapping game', model: 'qwen3.8:27b' });
     saveGeneratedSource(db, game.id, { source, report: { ok: true }, name: 'Count to Three', description: 'Tap!', status });
     return game.id;
   };
@@ -37,7 +37,7 @@ function setup() {
 
 test('a game goes generating → review (with code, fingerprint and report) → playtest', () => {
   const { db, admin } = setup();
-  const game = createGeneratedGame(db, { ownerUserId: admin.id, prompt: 'a tapping game', model: 'gpt-oss:120b', now: 5 });
+  const game = createGeneratedGame(db, { ownerUserId: admin.id, prompt: 'a tapping game', model: 'qwen3.8:27b', now: 5 });
   assert.match(game.id, /^g-[a-z2-9]{8}$/);
   assert.equal(game.status, 'generating');
   assert.equal(game.source, null);

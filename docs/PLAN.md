@@ -822,7 +822,7 @@ Four ideas, run in the sandbox with `npm run generate` (six runs in parallel). T
 
 **Takeaways:**
 - **The kit does its job.** Every run used the block made for the idea (drawPad, all four widgets, slider, rank), and all 6 passed, 3 on the first try. Before K1, the drawing and reflex games couldn't be made at all.
-- **qwen designs better games again** (fewer logic bugs, and it followed the widget rules), but it's 2–3× slower. gpt-oss stays the default for speed; pick qwen for a game you care about.
+- **qwen designs better games again** (fewer logic bugs, and it followed the widget rules), but it's 2–3× slower. **Decided 2026-10-14: qwen3.8:27b is the only model; gpt-oss:120b is dropped.** Better games are worth a few minutes' wait, especially with a good spec. The admin page shows the model instead of a picker; adding one back is a line in `generator/src/models.js`.
 - **Passing the tests ≠ a good game.** Every gpt-oss game had a logic or design bug that only reading or playtesting finds. That's what K6's "ask for changes" is for: describe the bug, get a new version.
 - The bots matter as much as the checks: a test is only as good as the inputs it tries.
 

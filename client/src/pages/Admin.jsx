@@ -213,23 +213,30 @@ function NewGameForm({ info, onStarted }) {
             {length}/{info.maxIdeaLength} characters (at least {info.minIdeaLength})
           </span>
         </label>
-        <fieldset className="model-options" disabled={!info.enabled}>
-          <legend>Model</legend>
-          {info.models.map((m) => (
-            <label key={m.id} className="settings-option">
-              <input
-                type="radio"
-                name="model"
-                value={m.id}
-                checked={model === m.id}
-                onChange={() => setModel(m.id)}
-              />
-              <span>
-                <span className="mono">{m.id}</span> <span className="muted small">{m.note}</span>
-              </span>
-            </label>
-          ))}
-        </fieldset>
+        {info.models.length > 1 ? (
+          <fieldset className="model-options" disabled={!info.enabled}>
+            <legend>Model</legend>
+            {info.models.map((m) => (
+              <label key={m.id} className="settings-option">
+                <input
+                  type="radio"
+                  name="model"
+                  value={m.id}
+                  checked={model === m.id}
+                  onChange={() => setModel(m.id)}
+                />
+                <span>
+                  <span className="mono">{m.id}</span> <span className="muted small">{m.note}</span>
+                </span>
+              </label>
+            ))}
+          </fieldset>
+        ) : (
+          // One model: nothing to choose, just say which one (and how long it takes).
+          <p className="muted small">
+            Model: <span className="mono">{info.models[0].id}</span> ({info.models[0].note})
+          </p>
+        )}
         {error && (
           <p className="error" role="alert">
             {error}

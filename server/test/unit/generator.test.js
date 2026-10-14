@@ -50,12 +50,12 @@ const noSleep = async () => {};
 
 test('chat: sends the conversation and returns the reply', async () => {
   const { fetchImpl, calls } = fakeFetch([reply('hello')]);
-  const result = await chat([{ role: 'user', content: 'hi' }], { model: 'gpt-oss:120b', baseUrl: 'https://x/api', apiKey: 'k', fetchImpl, sleep: noSleep });
+  const result = await chat([{ role: 'user', content: 'hi' }], { model: 'qwen3.8:27b', baseUrl: 'https://x/api', apiKey: 'k', fetchImpl, sleep: noSleep });
   assert.equal(result.content, 'hello');
   assert.deepEqual(result.usage, { total_tokens: 5 });
   assert.equal(calls[0].url, 'https://x/api/chat/completions');
   assert.equal(calls[0].auth, 'Bearer k');
-  assert.deepEqual(calls[0].body, { model: 'gpt-oss:120b', messages: [{ role: 'user', content: 'hi' }], stream: false });
+  assert.deepEqual(calls[0].body, { model: 'qwen3.8:27b', messages: [{ role: 'user', content: 'hi' }], stream: false });
 });
 
 test('chat: retries rate limits, server errors, empty replies and network errors', async () => {
@@ -119,9 +119,9 @@ test('the prompt stays in sync with the platform: every block, ctx member and th
   assert.match(SPEC, /contractVersion: 3/);
 });
 
-test('model list: gpt-oss:120b is the default, qwen3.8:27b the one alternative', () => {
-  assert.equal(DEFAULT_MODEL, 'gpt-oss:120b');
-  assert.deepEqual(MODELS.map((m) => m.id), ['gpt-oss:120b', 'qwen3.8:27b']);
+test('model list: qwen3.8:27b only (gpt-oss:120b was dropped)', () => {
+  assert.equal(DEFAULT_MODEL, 'qwen3.8:27b');
+  assert.deepEqual(MODELS.map((m) => m.id), ['qwen3.8:27b']);
 });
 
 // --- The write → check → fix loop (with the real test harness) ---------------------------
@@ -142,7 +142,7 @@ test('a game that fails the tests is sent back with the problems, and the fix pa
   const result = await generateGame({ idea: 'A game where everyone votes' }, { chatFn, onStep: (s) => steps.push(s) });
 
   assert.equal(result.ok, true);
-  assert.equal(result.model, 'gpt-oss:120b');
+  assert.equal(result.model, 'qwen3.8:27b');
   assert.equal(result.source.trim(), GOOD_GAME.trim());
   assert.equal(result.report.ok, true);
   assert.deepEqual(result.attempts.map((a) => [a.attempt, a.ok]), [[1, false], [2, true]]);

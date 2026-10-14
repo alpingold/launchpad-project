@@ -18,10 +18,9 @@ async function adminPage(browser) {
 }
 
 /** Types an idea (unique, so parallel tests don't mix up their games) and presses Generate. */
-async function generate(page, idea, model) {
+async function generate(page, idea) {
   await page.goto('/admin');
   await page.getByLabel('Game idea').fill(`${idea} (${test.info().testId}-${Date.now()})`);
-  if (model) await page.getByLabel(model).check();
   await page.getByRole('button', { name: 'Generate' }).click();
 }
 
@@ -41,7 +40,8 @@ test('generate → watch it → read it → playtest with phones → publish →
   const { page } = admin;
   await page.goto('/admin');
   await expect(page.getByRole('button', { name: 'Generate' })).toBeDisabled(); // no idea yet
-  await generate(page, 'Everyone votes, the most popular answer scores', 'qwen3.8:27b');
+  await expect(page.getByText('Model: qwen3.8:27b')).toBeVisible(); // one model, so no picker
+  await generate(page, 'Everyone votes, the most popular answer scores');
 
   // Live progress, then ready for review.
   await expect(detail(page).getByText('asking qwen3.8:27b')).toBeVisible(GENERATED);

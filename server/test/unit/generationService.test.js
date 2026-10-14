@@ -11,7 +11,7 @@ import { GenerationService, MAX_QUEUED } from '../../src/generation/service.js';
 // OpenShell sandbox; each call waits until the test lets it finish.
 
 const GOOD_SOURCE = readFileSync(new URL('../../src/games/majority-rules/index.js', import.meta.url), 'utf8');
-const PASSED = { ok: true, model: 'gpt-oss:120b', source: GOOD_SOURCE, report: { ok: true, problems: [], game: { name: 'Majority Rules', description: 'Vote!' } }, attempts: [] };
+const PASSED = { ok: true, model: 'qwen3.8:27b', source: GOOD_SOURCE, report: { ok: true, problems: [], game: { name: 'Majority Rules', description: 'Vote!' } }, attempts: [] };
 const IDEA = 'Everyone votes; the most popular answer wins';
 
 /** A fake generator: each call stays "running" until finish(result) is called for it. */
@@ -49,7 +49,8 @@ test('starting checks the input and the switch', () => {
   assert.equal(codeOf(start('x'.repeat(1001))), 'INVALID_IDEA');
   assert.equal(codeOf(start({ evil: true })), 'INVALID_IDEA');
   assert.equal(codeOf(start(IDEA, 'gpt-5')), 'INVALID_MODEL');
-  assert.equal(codeOf(start(IDEA, ['gpt-oss:120b'])), 'INVALID_MODEL');
+  assert.equal(codeOf(start(IDEA, ['qwen3.8:27b'])), 'INVALID_MODEL');
+  assert.equal(codeOf(start(IDEA, 'gpt-oss:120b')), 'INVALID_MODEL', 'dropped on 2026-10-14');
 
   const off = setup({ enabled: false });
   assert.equal(codeOf(() => off.service.start({ ownerUserId: off.admin.id, idea: IDEA })), 'GENERATION_DISABLED');
@@ -61,11 +62,11 @@ test('a job runs in the background, shows progress, and ends up ready for review
   const game = service.start({ ownerUserId: admin.id, idea: `  ${IDEA}  ` });
   assert.equal(game.status, 'generating');
   assert.equal(game.prompt, IDEA, 'trimmed');
-  assert.equal(game.model, 'gpt-oss:120b', 'default model');
-  assert.deepEqual(calls[0].job, { idea: IDEA, model: 'gpt-oss:120b' });
+  assert.equal(game.model, 'qwen3.8:27b', 'default model');
+  assert.deepEqual(calls[0].job, { idea: IDEA, model: 'qwen3.8:27b' });
 
-  calls[0].onStep('attempt 1/4: asking gpt-oss:120b');
-  assert.deepEqual(service.progress(game.id).steps.map((s) => s.text), ['attempt 1/4: asking gpt-oss:120b']);
+  calls[0].onStep('attempt 1/4: asking qwen3.8:27b');
+  assert.deepEqual(service.progress(game.id).steps.map((s) => s.text), ['attempt 1/4: asking qwen3.8:27b']);
   assert.equal(service.progress(game.id).queuePosition, 0);
 
   calls[0].finish(PASSED);

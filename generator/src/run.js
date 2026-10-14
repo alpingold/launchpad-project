@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // THE GENERATOR (plan §11, A4). Runs inside the OpenShell sandbox, never on the server.
 //
-//   echo '{"idea": "...", "model": "gpt-oss:120b"}' | node generator/src/run.js
+//   echo '{"idea": "...", "model": "qwen3.8:27b"}' | node generator/src/run.js
 //
 // The loop: ask the model for a game → run the test harness on it → if it fails, show the
 // model the problems and ask again (up to `maxAttempts` times). The freshly written code

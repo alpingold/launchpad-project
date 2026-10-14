@@ -53,7 +53,7 @@ test('only admins get in: 401 logged out, 403 for other accounts', async () => {
   assert.equal(ok.status, 200);
   const body = await ok.json();
   assert.equal(body.info.enabled, true);
-  assert.deepEqual(body.info.models.map((m) => m.id), ['gpt-oss:120b', 'qwen3.8:27b']);
+  assert.deepEqual(body.info.models.map((m) => m.id), ['qwen3.8:27b']);
   assert.deepEqual(body.games, []);
 });
 

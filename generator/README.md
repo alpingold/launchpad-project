@@ -28,7 +28,6 @@ After the one-time setup below, from the repo root:
 docker build -f generator/Dockerfile -t boilergames-generator:local .   # again after changing the
                                                                         # generator, spec, or game code
 npm run generate -- "Rock paper scissors party: everyone picks at once, 3 rounds"
-npm run generate -- "..." --model qwen3.8:27b                           # slower, often nicer games
 ```
 
 It prints its progress, then saves `game.js` and `result.json` (the test report and every
@@ -47,13 +46,10 @@ and why the image keeps files at their repo paths. Sandbox names may be at most 
 
 ## Models
 
-| Model | When to use |
-|---|---|
-| `gpt-oss:120b` (**default**) | Fast: about 25 s per attempt in our test |
-| `qwen3.8:27b` | Generally makes somewhat better games (e.g. more personal player screens), but takes much longer: about 150 s per attempt, since it "thinks" first |
-
-Picked from an informal test on 2026-10-13: both wrote a passing "Majority Rules" game on the
-first try. The A4 comparison over several game ideas will confirm it.
+`qwen3.8:27b`, the only one. It "thinks" before it writes, so an attempt takes about 1–3
+minutes. `gpt-oss:120b` was the fast default until 2026-10-14 (about 30 s per attempt), but
+qwen made the better games in both comparisons (docs/PLAN.md §11g, §12j), so it was dropped.
+Adding a model back is one line in `src/models.js`.
 
 ## One-time setup (milestone A0)
 

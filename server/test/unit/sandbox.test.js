@@ -6,7 +6,7 @@ import { config } from '../../src/config.js';
 // The server's side of running the generator in OpenShell (plan §11, A4). A fake `run`
 // stands in for the openshell command, so these tests need no Docker or OpenShell.
 
-const RESULT = { ok: true, model: 'gpt-oss:120b', source: 'export default {};\n', report: { ok: true }, attempts: [] };
+const RESULT = { ok: true, model: 'qwen3.8:27b', source: 'export default {};\n', report: { ok: true }, attempts: [] };
 
 /** A fake openshell: answers each subcommand with what `answers[subcommand]` returns. */
 function fakeOpenshell(answers = {}) {
@@ -22,16 +22,16 @@ function fakeOpenshell(answers = {}) {
   return { run, calls };
 }
 
-const job = { idea: 'Everyone votes; the minority wins', model: 'gpt-oss:120b' };
+const job = { idea: 'Everyone votes; the minority wins', model: 'qwen3.8:27b' };
 
 test('create → exec (job on stdin) → delete, and the result comes back', async () => {
   const steps = [];
   const { run, calls } = fakeOpenshell({
-    exec: { code: 0, stdout: `${JSON.stringify(RESULT)}\n`, stderr: 'STEP attempt 1/4: asking gpt-oss:120b\nnoise\nSTEP attempt 1/4: passed\n' },
+    exec: { code: 0, stdout: `${JSON.stringify(RESULT)}\n`, stderr: 'STEP attempt 1/4: asking qwen3.8:27b\nnoise\nSTEP attempt 1/4: passed\n' },
   });
   const result = await runGeneratorInSandbox(job, { run, onStep: (s) => steps.push(s) });
   assert.deepEqual(result, RESULT);
-  assert.deepEqual(steps, ['starting the sandbox', 'attempt 1/4: asking gpt-oss:120b', 'attempt 1/4: passed']);
+  assert.deepEqual(steps, ['starting the sandbox', 'attempt 1/4: asking qwen3.8:27b', 'attempt 1/4: passed']);
 
   assert.deepEqual(calls.map((c) => c.args.slice(0, 2)), [['sandbox', 'create'], ['sandbox', 'exec'], ['sandbox', 'delete']]);
   const [create, exec, del] = calls;
@@ -45,7 +45,7 @@ test('create → exec (job on stdin) → delete, and the result comes back', asy
 });
 
 test('the game idea is passed on stdin, never as a command argument', async () => {
-  const sneaky = { idea: '"; rm -rf / # a game about $(whoami)', model: 'gpt-oss:120b' };
+  const sneaky = { idea: '"; rm -rf / # a game about $(whoami)', model: 'qwen3.8:27b' };
   const { run, calls } = fakeOpenshell({ exec: { code: 0, stdout: JSON.stringify(RESULT) } });
   await runGeneratorInSandbox(sneaky, { run });
   for (const call of calls) assert.ok(!call.args.some((a) => a.includes('whoami')), call.args.join(' '));

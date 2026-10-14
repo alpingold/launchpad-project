@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// `npm run generate -- "<game idea>" [--model qwen3.8:27b]`: generates a game in the
+// `npm run generate -- "<game idea>" [--model <model>]`: generates a game in the
 // OpenShell sandbox and saves it to generator/out/<time>/ for you to read.
 //
 // Nothing is stored in the database and nothing runs on the server. If you like the game:

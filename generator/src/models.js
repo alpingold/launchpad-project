@@ -1,8 +1,9 @@
-// The models the generator may use (Purdue GenAI Studio ids). Chosen 2026-10-13 from an
-// informal test (generator/README.md); the list is short on purpose.
+// The models the generator may use (Purdue GenAI Studio ids). One for now: qwen made the
+// better games in both comparisons (plan §11g, §12j), and on 2026-10-14 we decided that's
+// worth its slower runs (about 2–5 minutes per game). gpt-oss:120b was dropped.
+// The list stays a list, so trying another model later is one line here.
 export const MODELS = Object.freeze([
-  { id: 'gpt-oss:120b', note: 'default: fast (about 25 s per attempt)' },
-  { id: 'qwen3.8:27b', note: 'generally makes better games, but much slower (about 150 s per attempt)' },
+  { id: 'qwen3.8:27b', note: 'thinks before it writes: about 1–3 minutes per attempt' },
 ]);
 
 export const DEFAULT_MODEL = MODELS[0].id;
