@@ -41,6 +41,15 @@ test('unknown addresses show "Page not found" with a way home', async ({ page })
   await expect(page).toHaveURL('/');
 });
 
+test('every page but the home page has a link back home', async ({ page }) => {
+  for (const path of ['/join', '/login', '/kit', '/no-such-page']) {
+    await page.goto(path);
+    await page.getByRole('link', { name: 'BoilerGames', exact: true }).click();
+    await expect(page).toHaveURL('/');
+  }
+  await expect(page.getByRole('link', { name: 'BoilerGames', exact: true })).toHaveCount(0);
+});
+
 test('a trailing slash still finds the page', async ({ page }) => {
   await page.goto('/join/');
   await expect(page.getByRole('heading', { name: 'Join a game' })).toBeVisible();

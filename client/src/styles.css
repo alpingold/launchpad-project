@@ -988,6 +988,30 @@ select {
   color: var(--text);
 }
 
+/* "← BoilerGames" in the top-left corner (every page but the home page), level with the ⚙ button.
+   In the page flow, not absolute like ⚙: page titles start at the left edge and would sit under it. */
+.home-nav {
+  padding: 0.75rem 0.75rem 0;
+}
+
+.home-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  height: 2.5rem;
+  padding: 0 1rem;
+  border: 1px solid var(--border);
+  border-radius: 1.25rem;
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.home-link:hover {
+  border-color: var(--accent);
+}
+
 .settings-dialog {
   width: min(90vw, 22rem);
   border: 1px solid var(--border);

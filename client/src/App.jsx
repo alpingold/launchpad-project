@@ -7,6 +7,7 @@ import Admin from './pages/Admin.jsx';
 import Kit from './pages/Kit.jsx';
 import { SettingsProvider } from './settings/SettingsContext.jsx';
 import SettingsMenu from './settings/SettingsMenu.jsx';
+import HomeLink from './components/HomeLink.jsx';
 
 // The site's pages, by URL path. Plain links (<a href>) do a full page load, which is all a
 // handful of pages needs (decision D12: no router library). Adding a page = one line here.
@@ -31,6 +32,7 @@ export default function App() {
   return (
     <SettingsProvider>
       <SettingsMenu />
+      {path !== '/' && <HomeLink />}
       <Page />
     </SettingsProvider>
   );
