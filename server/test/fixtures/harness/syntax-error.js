@@ -1,7 +1,7 @@
 export default {
-  contractVersion: 2,
+  contractVersion: 3,
   id: 'syntax-error',
   createGame(ctx) {
-    ctx.broadcast({ view: 'message', title: 'Oops' }
+    ctx.broadcast({ blocks: [{ type: 'text', text: 'Oops' }] }
   },
 };

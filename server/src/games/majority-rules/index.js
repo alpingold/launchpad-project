@@ -11,7 +11,8 @@
 //    describe what each screen shows RIGHT NOW; showEveryone() sends them out.
 //  - Every wait for players has a ctx.setTimeout fallback, because people walk away.
 //  - Actions carry the round number, and are checked against the current state.
-//  - A countdown uses ctx.now(), never Date.
+//  - Screens combine blocks: a timer bar, answer counts as progress bars, a card.
+//  - The timer uses ctx.now(), never Date.
 //  - endGame reports scores, so ties are shown as ties.
 
 const DEFAULT_ROUNDS = 3;
@@ -30,7 +31,7 @@ const QUESTIONS = [
 
 /** @type {import('../contract.js').GameModule} */
 export default {
-  contractVersion: 2,
+  contractVersion: 3,
   id: 'majority-rules',
   name: 'Majority Rules',
   description: 'Pick the answer you think most people will pick. Agree with the crowd to score!',
@@ -71,50 +72,101 @@ export default {
       return ctx.players.map((p) => p.id).sort((a, b) => scores[b] - scores[a]);
     }
 
-    function scoreboard(title) {
-      return { view: 'scoreboard', title, rows: standings().map((id) => ({ playerId: id, score: scores[id] })) };
+    function finalScores() {
+      return {
+        blocks: [
+          { type: 'text', text: 'Final scores', size: 'big', bold: true },
+          { type: 'scoreboard', rows: standings().map((id) => ({ playerId: id, score: scores[id] })) },
+        ],
+      };
     }
 
     function winningText() {
       return winners.map((i) => question().answers[i]).join(' & ');
     }
 
+    /** The top of every answering screen: round, question, and a timer bar. */
+    function questionBlocks() {
+      return [
+        { type: 'text', text: `Round ${round} of ${rounds}`, tone: 'muted' },
+        { type: 'text', text: question().prompt, size: 'big', bold: true },
+        { type: 'timer', startedAt: endsAt - ANSWER_TIME_MS, endsAt, style: 'bar' },
+      ];
+    }
+
+    /** How many picked each answer, as bars; the winners are highlighted. */
+    function breakdown() {
+      const counts = question().answers.map((_, i) => [...picks.values()].filter((a) => a === i).length);
+      return question().answers.map((answer, i) => ({
+        type: 'progress',
+        value: counts[i],
+        max: Math.max(1, picks.size),
+        label: `${answer}: ${counts[i]}`,
+        tone: winners.includes(i) ? 'good' : 'muted',
+      }));
+    }
+
     function hostView() {
-      if (phase === 'final') return scoreboard('Final scores');
+      if (phase === 'final') return finalScores();
       if (phase === 'result') {
-        if (winners.length === 0) return { view: 'message', title: 'Nobody answered!', text: 'On to the next one.' };
+        if (winners.length === 0) return { blocks: [{ type: 'text', text: 'Nobody answered!', size: 'huge', bold: true }, { type: 'text', text: 'On to the next one.' }] };
         const scorers = ctx.players.filter((p) => winners.includes(picks.get(p.id))).length;
         return {
-          view: 'message',
-          title: `The crowd picked: ${winningText()}`,
-          text: `${scorers} player${scorers === 1 ? '' : 's'} scored a point.`,
-          asset: 'trophy',
+          blocks: [
+            { type: 'image', asset: 'trophy', size: 'small' },
+            { type: 'text', text: 'The crowd picked', size: 'big' },
+            { type: 'text', text: winningText(), size: 'huge', bold: true },
+            { type: 'text', text: `${scorers} player${scorers === 1 ? '' : 's'} scored a point.` },
+            { type: 'card', children: breakdown() },
+          ],
         };
       }
       const answered = present().filter((p) => picks.has(p.id)).length;
       return {
-        view: 'countdown',
-        title: `Round ${round}/${rounds}: ${question().prompt} (${answered}/${present().length} answered)`,
-        endsAt,
+        blocks: [
+          ...questionBlocks(),
+          { type: 'progress', value: answered, max: Math.max(1, present().length), label: `${answered} of ${present().length} answered` },
+        ],
       };
     }
 
     function playerView(playerId) {
-      if (phase === 'final') return scoreboard('Final scores');
+      if (phase === 'final') return finalScores();
       if (phase === 'result') {
-        if (winners.length === 0) return { view: 'message', title: 'Nobody answered!' };
+        if (winners.length === 0) return { blocks: [{ type: 'text', text: 'Nobody answered!', size: 'big', bold: true }] };
         return winners.includes(picks.get(playerId))
-          ? { view: 'message', title: 'You agreed with the crowd!', text: `+1 point for ${winningText()}`, asset: 'trophy' }
-          : { view: 'message', title: `The crowd picked ${winningText()}`, text: 'No point this time.' };
+          ? {
+              blocks: [
+                { type: 'image', asset: 'trophy' },
+                { type: 'text', text: 'You agreed with the crowd!', size: 'big', tone: 'good', bold: true },
+                { type: 'text', text: `+1 point for ${winningText()}` },
+              ],
+            }
+          : {
+              blocks: [
+                { type: 'text', text: `The crowd picked ${winningText()}`, size: 'big', bold: true },
+                { type: 'text', text: 'No point this time.', tone: 'muted' },
+              ],
+            };
       }
       if (picks.has(playerId)) {
-        return { view: 'message', title: 'Answer locked in!', text: 'Waiting for everyone else…' };
+        return {
+          blocks: [
+            ...questionBlocks(),
+            { type: 'card', tone: 'accent', children: [{ type: 'text', text: `You picked: ${question().answers[picks.get(playerId)]}`, bold: true }] },
+            { type: 'text', text: 'Answer locked in! Waiting for everyone else…', tone: 'muted' },
+          ],
+        };
       }
       return {
-        view: 'choice',
-        prompt: question().prompt,
-        // The action carries the round, so a late tap from an old round is ignored.
-        options: question().answers.map((label, answer) => ({ label, action: { answer, round } })),
+        blocks: [
+          ...questionBlocks(),
+          {
+            type: 'choice',
+            // The action carries the round, so a late tap from an old round is ignored.
+            options: question().answers.map((label, answer) => ({ label, action: { answer, round } })),
+          },
+        ],
       };
     }
 
@@ -188,7 +240,7 @@ export default {
       },
 
       onPlayerReconnect(playerId) {
-        away.delete(playerId); // the platform puts their latest view back on their screen
+        away.delete(playerId); // the platform puts their latest screen back on their phone
         if (phase === 'answering') ctx.sendToHost(hostView());
       },
     };

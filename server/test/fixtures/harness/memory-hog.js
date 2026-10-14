@@ -1,5 +1,5 @@
 export default {
-  contractVersion: 2,
+  contractVersion: 3,
   id: "memory-hog",
   name: "Memory hog",
   description: "Test-only broken game.",

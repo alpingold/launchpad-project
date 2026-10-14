@@ -114,7 +114,7 @@ test('the same seed plays the same game', () => {
   const a = play();
   const b = play();
   assert.deepEqual(a.ended, b.ended);
-  assert.equal(a.views, b.views);
+  assert.equal(a.screens, b.screens);
 });
 
 test('player counts tried: smallest, a typical 3, and largest', () => {
@@ -134,19 +134,19 @@ test('checkGameSource: Reaction Race passes every check (18 simulated games)', a
 // --- Broken games, checked in a separate locked-down process (as generated games will be) ---
 
 const BROKEN = [
-  ['bad-view', /^Broke the game contract in createGame: .*unknown field "lable" \(bad-view\.js line \d+\)/],
+  ['bad-screen', /^Broke the game contract in createGame: GameContractError: invalid screen: blocks\[0\] \(button\): unknown field "lable" .*\(bad-screen\.js line \d+\)/],
   ['throws', /^Crashed in onAction: TypeError: .*'<playerId>'.* \(throws\.js line 13\)/],
   ['stuck', /^Got stuck: .*ctx\.setTimeout fallback/],
   ['never-ends', /^Didn't finish within 30 simulated minutes/],
   ['unknown-asset', /^Uses art "dragon", which isn't in the art library\. Use only these asset ids: go-sign, trophy/],
-  ['silent', /^The host screen never got a view/],
-  ['silent', /^No player ever got a view/],
-  ['flood', /^Sends too many views at once: 101/],
+  ['silent', /^The big screen never got anything to show/],
+  ['silent', /^No player ever got a screen/],
+  ['flood', /^Sends too many screens at once: 101/],
   ['slow', /^Too slow: one action or timer took \d+ ms/],
   ['lint-errors', /^Lint, line 11: use ctx\.random\(\)/],
   ['lint-errors', /^Lint, line 12: use ctx\.now\(\)/],
   ['lint-errors', /^Lint, line 14: no async code/],
-  ['no-version', /^The GameModule is invalid: contractVersion must be 2/],
+  ['no-version', /^The GameModule is invalid: contractVersion must be 3/],
   ['syntax-error', /^Could not load the game: SyntaxError/],
   ['memory-hog', /^Ran out of memory while playing/],
 ];
@@ -163,7 +163,7 @@ for (const [name, pattern] of BROKEN) {
 }
 
 test('the same bug in many runs is reported once, with how many runs hit it', async () => {
-  const report = await checkGameFile(fixture('bad-view'));
+  const report = await checkGameFile(fixture('bad-screen'));
   assert.equal(report.problems.length, 1);
   assert.equal(report.problems[0].runs, 18);
   assert.match(report.problems[0].where, /1 player, scenario "eager"/);
@@ -189,7 +189,7 @@ test('npm run check-game: exit code 0 for a passing game, 1 for a failing one, -
   assert.equal(pass.status, 0, pass.stderr);
   assert.match(pass.stdout, /^PASS/);
 
-  const fail = spawnSync(process.execPath, [cli, fixture('bad-view'), '--json'], { encoding: 'utf8' });
+  const fail = spawnSync(process.execPath, [cli, fixture('bad-screen'), '--json'], { encoding: 'utf8' });
   assert.equal(fail.status, 1);
   assert.equal(JSON.parse(fail.stdout).ok, false);
 });

@@ -1,6 +1,7 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { assetIdsIn as kitAssetIdsIn } from '../../src/games/kit/screen.js';
 
 // The art library lives with the client (it's served as static files), but games on the
 // server refer to it by id. These helpers let server tests check that every asset id a
@@ -22,12 +23,7 @@ export function assetFileExists(file) {
   return existsSync(path.join(ASSETS_DIR, file));
 }
 
-/** Every asset id mentioned anywhere in a list of views (including choice options). */
-export function assetIdsIn(views) {
-  const ids = new Set();
-  for (const view of views) {
-    if (view.asset) ids.add(view.asset);
-    for (const option of view.options ?? []) if (option.asset) ids.add(option.asset);
-  }
-  return ids;
+/** Every asset id used anywhere in a list of screens. */
+export function assetIdsIn(screens) {
+  return new Set(screens.flatMap((screen) => kitAssetIdsIn(screen)));
 }

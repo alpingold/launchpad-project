@@ -6,7 +6,7 @@
  * @type {import('../../src/games/contract.js').GameModule}
  */
 export default {
-  contractVersion: 2,
+  contractVersion: 3,
   id: 'count-game',
   name: 'Count to Three',
   description: 'First to tap the button enough times wins.',
@@ -17,10 +17,10 @@ export default {
     const target = Number.isInteger(options.target) && options.target > 0 ? options.target : 3;
     /** @type {Record<string, number>} taps per player id */
     const taps = Object.fromEntries(ctx.players.map((p) => [p.id, 0]));
-    const tapView = { view: 'button', label: 'Tap!', action: { tap: true } };
+    const tapScreen = { blocks: [{ type: 'button', label: 'Tap!', action: { tap: true } }] };
 
-    ctx.broadcast(tapView);
-    ctx.sendToHost({ view: 'message', title: `First to ${target} taps wins!` });
+    ctx.broadcast(tapScreen);
+    ctx.sendToHost({ blocks: [{ type: 'text', text: `First to ${target} taps wins!` }] });
 
     return {
       onAction(playerId, action) {
@@ -32,13 +32,14 @@ export default {
 
         const rankings = Object.keys(taps).sort((a, b) => taps[b] - taps[a]);
         ctx.broadcast({
-          view: 'scoreboard',
-          title: 'Results',
-          rows: rankings.map((id) => ({ playerId: id, score: taps[id] })),
+          blocks: [
+            { type: 'text', text: 'Results', size: 'big' },
+            { type: 'scoreboard', rows: rankings.map((id) => ({ playerId: id, score: taps[id] })) },
+          ],
         });
         ctx.endGame({ rankings, scores: taps });
       },
-      // No reconnect hooks needed: the platform resends each screen's latest view.
+      // No reconnect hooks needed: the platform resends latest screen on each phone and the big screen.
     };
   },
 };

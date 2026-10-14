@@ -2,7 +2,7 @@
 //
 // The game runs inside the real GameRunner, exactly as on the server, but its timers run
 // on a VirtualClock: "wait 20 seconds" takes no real time, so a whole game is played in
-// milliseconds. Bots look at the latest view on their phone and tap one of the offered
+// milliseconds. Bots look at the latest screen on their phone and tap one of the offered
 // buttons, the way a person would. Each scenario adds the kinds of trouble real parties
 // have: slow players, junk messages, phones dropping, someone walking away.
 //
@@ -11,15 +11,15 @@
 
 import { performance } from 'node:perf_hooks';
 import { GameRunner } from '../GameRunner.js';
-import { offeredActions } from '../views.js';
+import { offeredActions, assetIdsIn } from '../kit/screen.js';
 import { seededRandom } from '../random.js';
 
 /** A game must finish within this much simulated time. */
 export const SIM_LIMIT_MS = 30 * 60 * 1000;
 /** One call into the game (an action, a timer) taking longer than this is too slow. */
 export const SLOW_CALL_MS = 100;
-/** More views than this from ONE action or timer means the game is flooding the phones. */
-export const FLOOD_VIEWS_PER_EVENT = 60;
+/** More screens than this from ONE action or timer means the game is flooding the phones. */
+export const FLOOD_SCREENS_PER_EVENT = 60;
 /** Safety stop for games that keep scheduling timers forever. */
 const MAX_EVENTS = 50_000;
 
@@ -81,7 +81,7 @@ export class VirtualClock {
  * @param {Set<string>} opts.assetIds         ids in the art library
  * @param {string} [opts.sourceName]          what to call the game file in error messages
  * @returns {{ playerCount: number, scenario: string, seed: number, where: string, ended: object | null,
- *             simulatedSeconds: number, views: number, problems: string[] }}
+ *             simulatedSeconds: number, screens: number, problems: string[] }}
  */
 export function simulateGame(game, { playerCount, scenario, seed, assetIds, sourceName = 'game.js' }) {
   const where = `${playerCount} player${playerCount === 1 ? '' : 's'}, scenario "${scenario}" (${SCENARIOS[scenario]}), seed ${seed}`;
@@ -105,12 +105,12 @@ export function simulateGame(game, { playerCount, scenario, seed, assetIds, sour
   const [minDelay, maxDelay] = scenario === 'sloppy' ? [300, 8000] : [200, 2500];
 
   const away = new Set();
-  const gotView = new Set();
-  /** @type {Map<string, object>} the view on each bot's phone right now */
-  const screens = new Map();
-  let hostGotView = false;
-  let views = 0;
-  let viewsThisEvent = 0;
+  const gotScreen = new Set();
+  /** @type {Map<string, object>} the screen on each bot's phone right now */
+  const phones = new Map();
+  let hostGotScreen = false;
+  let screens = 0;
+  let screensThisEvent = 0;
   let ended = null;
   const errors = [];
 
@@ -119,20 +119,20 @@ export function simulateGame(game, { playerCount, scenario, seed, assetIds, sour
    * A bot looks at its phone and (maybe) taps one of the offered buttons after a moment.
    * Like a person, it keeps tapping if the same screen is still showing afterwards.
    */
-  function botSees(playerId, view) {
-    const actions = offeredActions(view);
+  function botSees(playerId, screen) {
+    const actions = offeredActions(screen);
     if (!actions.length || playerId === quietId || away.has(playerId) || rand() > answerChance) return;
     const action = actions[Math.floor(rand() * actions.length)];
     clock.setTimeout(() => {
       if (away.has(playerId)) return;
       runner.handleAction(playerId, structuredClone(action));
-      if (screens.get(playerId) === view) botSees(playerId, view);
+      if (phones.get(playerId) === screen) botSees(playerId, screen);
     }, between(minDelay, maxDelay));
   }
 
-  function noteAssets(view) {
-    for (const id of [view.asset, ...(view.options ?? []).map((o) => o.asset)]) {
-      if (id !== undefined && !assetIds.has(id)) {
+  function noteAssets(screen) {
+    for (const id of assetIdsIn(screen)) {
+      if (!assetIds.has(id)) {
         problem(`Uses art "${id}", which isn't in the art library. Use only these asset ids: ${[...assetIds].join(', ') || '(none)'}, or leave "asset" out.`);
       }
     }
@@ -147,16 +147,16 @@ export function simulateGame(game, { playerCount, scenario, seed, assetIds, sour
     timers: clock,
     onLog: () => {},
     onGameError: (label, err) => errors.push({ label, err }),
-    deliver: (target, view) => {
-      views++;
-      viewsThisEvent++;
-      noteAssets(view);
-      if (target.to === 'all' || target.to === 'host') hostGotView = true;
+    deliver: (target, screen) => {
+      screens++;
+      screensThisEvent++;
+      noteAssets(screen);
+      if (target.to === 'all' || target.to === 'host') hostGotScreen = true;
       const ids = target.to === 'all' ? players.map((p) => p.id) : target.to === 'player' ? [target.playerId] : [];
       for (const id of ids) {
-        gotView.add(id);
-        screens.set(id, view);
-        botSees(id, view);
+        gotScreen.add(id);
+        phones.set(id, screen);
+        botSees(id, screen);
       }
     },
     onEnd: (results) => {
@@ -176,7 +176,7 @@ export function simulateGame(game, { playerCount, scenario, seed, assetIds, sour
     }, 4000);
     clock.setTimeout(() => {
       away.delete(victim);
-      runner.playerReconnected(victim); // the platform resends their view, and the bot reacts to it
+      runner.playerReconnected(victim); // the platform resends their screen, and the bot reacts to it
     }, 12_000);
     clock.setTimeout(() => runner.hostReconnected(), 7000);
   }
@@ -189,7 +189,7 @@ export function simulateGame(game, { playerCount, scenario, seed, assetIds, sour
 
   /** Runs one step (start, an action, a timer) and checks it wasn't slow or flooding. */
   function step(label, fn) {
-    viewsThisEvent = 0;
+    screensThisEvent = 0;
     const started = performance.now();
     fn();
     const took = performance.now() - started;
@@ -197,8 +197,8 @@ export function simulateGame(game, { playerCount, scenario, seed, assetIds, sour
       tooSlow = true; // stop here: more slow calls would only make the check itself slow
       problem(`Too slow: one ${label} took ${Math.round(took)} ms (limit ${SLOW_CALL_MS} ms). Avoid big loops; games should do very little work per action.`);
     }
-    if (viewsThisEvent > FLOOD_VIEWS_PER_EVENT) {
-      problem(`Sends too many views at once: ${viewsThisEvent} from one ${label} (limit ${FLOOD_VIEWS_PER_EVENT}). Send each screen one view when its state changes.`);
+    if (screensThisEvent > FLOOD_SCREENS_PER_EVENT) {
+      problem(`Sends too many screens at once: ${screensThisEvent} from one ${label} (limit ${FLOOD_SCREENS_PER_EVENT}). Send each phone (and the big screen) one new screen when its state changes.`);
     }
   }
 
@@ -227,12 +227,12 @@ export function simulateGame(game, { playerCount, scenario, seed, assetIds, sour
     problem(`Got stuck: it stopped doing anything but never called ctx.endGame. Players can walk away or stop tapping, so every wait for players needs a ctx.setTimeout fallback that moves the game on.`);
   }
 
-  if (!hostGotView && !ended?.error) {
-    problem('The host screen never got a view. Send it one with ctx.sendToHost (or ctx.broadcast) when the game starts.');
+  if (!hostGotScreen && !ended?.error) {
+    problem('The big screen never got anything to show. Send it a screen with ctx.sendToHost (or ctx.broadcast) when the game starts.');
   }
-  const viewless = players.filter((p) => !gotView.has(p.id));
-  if (viewless.length && !ended?.error) {
-    problem(`${viewless.length === playerCount ? 'No player' : 'Some players'} ever got a view. Send every phone a view with ctx.sendToPlayer (or ctx.broadcast) when the game starts.`);
+  const screenless = players.filter((p) => !gotScreen.has(p.id));
+  if (screenless.length && !ended?.error) {
+    problem(`${screenless.length === playerCount ? 'No player' : 'Some players'} ever got a screen. Send every phone a screen with ctx.sendToPlayer (or ctx.broadcast) when the game starts.`);
   }
 
   return {
@@ -242,7 +242,7 @@ export function simulateGame(game, { playerCount, scenario, seed, assetIds, sour
     where,
     ended,
     simulatedSeconds: Math.round(clock.now / 1000),
-    views,
+    screens,
     problems,
   };
 }

@@ -6,7 +6,8 @@ import { chat } from '../../../generator/src/llm.js';
 import { systemPrompt, firstMessages, fixMessage, MAX_IDEA_LENGTH } from '../../../generator/src/prompt.js';
 import { generateGame } from '../../../generator/src/run.js';
 import { MODELS, DEFAULT_MODEL } from '../../../generator/src/models.js';
-import { VIEW_KINDS } from '../../src/games/views.js';
+import { BLOCK_TYPES } from '../../src/games/kit/blocks.js';
+import { kitReference } from '../../src/games/kit/reference.js';
 import { GameRunner } from '../../src/games/GameRunner.js';
 import countGame from '../fixtures/countGame.js';
 
@@ -15,7 +16,7 @@ import countGame from '../fixtures/countGame.js';
 
 const read = (relative) => readFileSync(new URL(relative, import.meta.url), 'utf8');
 const GOOD_GAME = read('../../src/games/majority-rules/index.js');
-const BAD_GAME = read('../fixtures/harness/bad-view.js');
+const BAD_GAME = read('../fixtures/harness/bad-screen.js');
 const SPEC = read('../../../generator/spec/GAME_SPEC.md');
 const fenced = (code) => `Here you go!\n\n\`\`\`js\n${code}\`\`\`\n\nHave fun.`;
 
@@ -96,8 +97,10 @@ test('the idea goes in its own marked section, trimmed to the length limit', () 
   assert.match(fixMessage('FAIL ...'), /FAIL \.\.\.[\s\S]*complete corrected module/);
 });
 
-test('GAME_SPEC.md stays in sync with the platform: every view kind and ctx member is documented', () => {
-  for (const kind of VIEW_KINDS) assert.ok(SPEC.includes(`| \`${kind}\` |`), `view ${kind}`);
+test('the prompt stays in sync with the platform: every block, ctx member and the contract version', () => {
+  const reference = kitReference();
+  for (const type of BLOCK_TYPES) assert.ok(reference.includes(`#### \`${type}\``), `block ${type}`);
+  assert.ok(systemPrompt().includes(reference), 'the block reference is in the prompt');
   let ctx;
   new GameRunner({
     game: { ...countGame, createGame: (c) => ((ctx = c), { onAction() {} }) },
@@ -106,7 +109,7 @@ test('GAME_SPEC.md stays in sync with the platform: every view kind and ctx memb
     onEnd() {},
   }).start();
   for (const member of Object.keys(ctx)) assert.ok(SPEC.includes(`ctx.${member}`), `ctx.${member}`);
-  assert.match(SPEC, /contractVersion: 2/);
+  assert.match(SPEC, /contractVersion: 3/);
 });
 
 test('model list: gpt-oss:120b is the default, qwen3.8:27b the one alternative', () => {

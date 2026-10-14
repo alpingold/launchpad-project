@@ -8,10 +8,10 @@
 // How it's built (a pattern worth copying for other games):
 //  - All game state lives in a few variables inside createGame.
 //  - hostView() and playerView(id) describe what each screen should show RIGHT NOW,
-//    based only on that state.
-//  - Whenever the state changes, showEveryone() sends those views out.
+//    based only on that state, as a list of blocks (text, image, button, scoreboard…).
+//  - Whenever the state changes, showEveryone() sends those screens out.
 //  - A refreshed phone or host screen needs nothing from us: the platform remembers
-//    each screen's latest view and sends it again.
+//    the latest screen on each and sends it again.
 //
 // Fairness note: "first" means first to arrive at the server. A phone on slower Wi-Fi
 // is slightly disadvantaged. Fine for a demo; a real reaction minigame might measure
@@ -26,7 +26,7 @@ const FINAL_PAUSE_MS = 6000; // how long the final scoreboard stays up before th
 
 /** @type {import('../contract.js').GameModule} */
 export default {
-  contractVersion: 2,
+  contractVersion: 3,
   id: 'reaction-race',
   name: 'Reaction Race',
   description: 'Wait for GO, then tap as fast as you can. Tap too early and you sit out the round.',
@@ -61,46 +61,63 @@ export default {
       return ctx.players.map((p) => p.id).sort((a, b) => scores[b] - scores[a]);
     }
 
-    function scoreboard(title) {
-      return { view: 'scoreboard', title, rows: standings().map((id) => ({ playerId: id, score: scores[id] })) };
+    function finalScores() {
+      return {
+        blocks: [
+          { type: 'text', text: 'Final scores', size: 'big', bold: true },
+          { type: 'scoreboard', rows: standings().map((id) => ({ playerId: id, score: scores[id] })) },
+        ],
+      };
     }
+
+    /** A small "Round 2 of 5" line at the top of every in-round screen. */
+    const roundLine = () => ({ type: 'text', text: `Round ${round} of ${rounds}`, tone: 'muted' });
 
     function hostView() {
       switch (phase) {
         case 'ready':
-          return { view: 'message', title: `Round ${round} of ${rounds}`, text: 'Get ready… wait for GO!' };
+          return { blocks: [roundLine(), { type: 'text', text: 'Get ready…', size: 'huge', bold: true }, { type: 'text', text: 'Wait for GO!', size: 'big' }] };
         case 'go':
-          return { view: 'message', title: 'GO!', asset: 'go-sign' };
+          return { blocks: [roundLine(), { type: 'image', asset: 'go-sign', size: 'big' }, { type: 'text', text: 'GO!', size: 'huge', tone: 'good', bold: true }] };
         case 'result':
           return roundWinner
-            ? { view: 'message', title: `${nameOf[roundWinner]} wins round ${round}!`, asset: 'trophy' }
+            ? { blocks: [{ type: 'image', asset: 'trophy' }, { type: 'text', text: `${nameOf[roundWinner]} wins round ${round}!`, size: 'huge', bold: true }] }
             : noWinnerView();
         case 'final':
-          return scoreboard('Final scores');
+          return finalScores();
       }
     }
 
     function playerView(playerId) {
-      if (phase === 'final') return scoreboard('Final scores');
+      if (phase === 'final') return finalScores();
       if (phase === 'result') {
         if (!roundWinner) return noWinnerView();
-        if (roundWinner === playerId) return { view: 'message', title: 'You won this round!', asset: 'trophy' };
-        return { view: 'message', title: `${nameOf[roundWinner]} was fastest!` };
+        if (roundWinner === playerId) return { blocks: [{ type: 'image', asset: 'trophy' }, { type: 'text', text: 'You won this round!', size: 'big', tone: 'good', bold: true }] };
+        return { blocks: [{ type: 'text', text: `${nameOf[roundWinner]} was fastest!`, size: 'big', bold: true }] };
       }
+      const yourWins = { type: 'text', text: `Your wins: ${scores[playerId]}`, tone: 'muted' };
       if (falseStarts.has(playerId)) {
-        return { view: 'message', title: 'Too soon!', text: 'You tapped before GO. Wait for the next round.' };
+        return {
+          blocks: [
+            roundLine(),
+            { type: 'text', text: 'Too soon!', size: 'big', tone: 'bad', bold: true },
+            { type: 'text', text: 'You tapped before GO. Wait for the next round.' },
+            yourWins,
+          ],
+        };
       }
       // The action carries the round number, so a late tap from a previous round is ignored.
       const action = { tap: true, round };
-      return phase === 'go'
-        ? { view: 'button', label: 'TAP!', action, asset: 'go-sign' }
-        : { view: 'button', label: 'Wait for it…', action };
+      const button =
+        phase === 'go'
+          ? { type: 'button', label: 'TAP!', action, asset: 'go-sign', size: 'big', tone: 'good' }
+          : { type: 'button', label: 'Wait for it…', action, size: 'big', tone: 'muted' };
+      return { blocks: [roundLine(), button, yourWins] };
     }
 
     function noWinnerView() {
-      return noWinnerReason === 'false-starts'
-        ? { view: 'message', title: 'Everyone tapped too early!' }
-        : { view: 'message', title: 'Nobody tapped in time!' };
+      const text = noWinnerReason === 'false-starts' ? 'Everyone tapped too early!' : 'Nobody tapped in time!';
+      return { blocks: [{ type: 'text', text, size: 'big', bold: true }] };
     }
 
     function showEveryone() {
@@ -180,7 +197,7 @@ export default {
       },
 
       onPlayerReconnect(playerId) {
-        away.delete(playerId); // the platform puts their latest view back on their screen
+        away.delete(playerId); // the platform puts their latest screen back on their phone
       },
     };
   },

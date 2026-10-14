@@ -1,5 +1,5 @@
 export default {
-  contractVersion: 2,
+  contractVersion: 3,
   id: "never-ends",
   name: "Never ends",
   description: "Test-only broken game.",
@@ -9,7 +9,7 @@ export default {
     let round = 0;
     function nextRound() {
       round++;
-      ctx.broadcast({ view: 'message', title: `Round ${round}` });
+      ctx.broadcast({ blocks: [{ type: 'text', text: `Round ${round}` }] });
       ctx.setTimeout(nextRound, 10_000); // forgets to stop after the last round
     }
     nextRound();

@@ -1,9 +1,9 @@
 import { config } from '../config.js';
-import { validateView, offeredActions, sameJson } from './views.js';
+import { validateScreen, offeredActions, sameJson } from './kit/screen.js';
 import { isPlainObject } from '../protocol/validate.js';
 import { seededRandom, newSeed } from './random.js';
 
-/** Thrown into a game's own code when it breaks the contract (bad view, bad timer, ...). */
+/** Thrown into a game's own code when it breaks the contract (bad screen, bad timer, ...). */
 export class GameContractError extends Error {
   constructor(message) {
     super(message);
@@ -21,11 +21,11 @@ export class GameContractError extends Error {
  *
  * Its jobs:
  *  - build the `ctx` object the game talks through
- *  - check everything the game sends (views, timers, results)
+ *  - check everything the game sends (screens, timers, results)
  *  - catch every exception the game throws, so a broken game ends cleanly
  *    instead of crashing the server or leaving the room stuck
  *  - own the game's timers, so ending the game always cleans them up
- *  - remember the latest view on every screen, to resend it after a reconnect and to
+ *  - remember the latest screen sent to each phone and the big screen, to resend it after a reconnect and to
  *    drop actions that aren't on that player's screen (plan §11b)
  *
  * Extension point (§5, E2): a SandboxedGameRunner with the same public methods
@@ -39,7 +39,7 @@ export class GameRunner {
    * @param {import('./contract.js').GameModule} opts.game
    * @param {{id: string, name: string}[]} opts.players   everyone in the game
    * @param {object} [opts.options]                       from host:start_game
-   * @param {(target: Target, view: object) => void} opts.deliver   sends a checked view
+   * @param {(target: Target, screen: object) => void} opts.deliver   sends a checked screen
    * @param {(results: {rankings: string[]} | {error: true}) => void} opts.onEnd  called exactly once
    * @param {number} [opts.seed]                          fixed seed for repeatable tests
    * @param {() => number} [opts.now]                     server clock (tests can pass a fake)
@@ -79,10 +79,10 @@ export class GameRunner {
     this.timers = new Map();
     this.nextTimerId = 1;
 
-    /** @type {Map<string, object>} the latest view sent to each player, by player id */
-    this.lastPlayerViews = new Map();
-    /** @type {object | null} the latest view sent to the host screen */
-    this.lastHostView = null;
+    /** @type {Map<string, object>} the latest screen sent to each player, by player id */
+    this.lastPlayerScreens = new Map();
+    /** @type {object | null} the latest screen sent to the big screen */
+    this.lastHostScreen = null;
   }
 
   // --- Called by RoomManager ------------------------------------------------------
@@ -105,7 +105,7 @@ export class GameRunner {
    */
   handleAction(playerId, action) {
     if (!this.instance || !this.playerIds.has(playerId)) return;
-    const offered = offeredActions(this.lastPlayerViews.get(playerId));
+    const offered = offeredActions(this.lastPlayerScreens.get(playerId));
     if (!offered.some((a) => sameJson(a, action))) return;
     this.safely('onAction', () => this.instance.onAction(playerId, action));
   }
@@ -115,21 +115,21 @@ export class GameRunner {
   }
 
   /**
-   * The player is back: let the game know, then put their latest view back on their screen.
-   * If the game's own hook already sent them a new view, that one is current; no repeat.
+   * The player is back: let the game know, then put their latest screen back on their phone.
+   * If the game's own hook already sent them a new screen, that one is current; no repeat.
    */
   playerReconnected(playerId) {
-    const before = this.lastPlayerViews.get(playerId);
+    const before = this.lastPlayerScreens.get(playerId);
     this.callOptionalHook('onPlayerReconnect', playerId);
-    const latest = this.lastPlayerViews.get(playerId);
+    const latest = this.lastPlayerScreens.get(playerId);
     if (!this.ended && latest && latest === before) this.deliver({ to: 'player', playerId }, latest);
   }
 
   /** Same as playerReconnected, for the big screen. */
   hostReconnected() {
-    const before = this.lastHostView;
+    const before = this.lastHostScreen;
     this.callOptionalHook('onHostReconnect');
-    const latest = this.lastHostView;
+    const latest = this.lastHostScreen;
     if (!this.ended && latest && latest === before) this.deliver({ to: 'host' }, latest);
   }
 
@@ -179,16 +179,16 @@ export class GameRunner {
     this.safely(name, () => this.instance[name](...args));
   }
 
-  /** Checks a view the game wants to send; throws GameContractError into the game if it's bad. */
-  checkView(view) {
-    const problem = validateView(view);
-    if (problem) throw new GameContractError(`invalid view: ${problem}`);
-    const size = Buffer.byteLength(JSON.stringify(view));
+  /** Checks a screen the game wants to send; throws GameContractError into the game if it's bad. */
+  checkScreen(screen) {
+    const problem = validateScreen(screen, { playerIds: this.playerIds });
+    if (problem) throw new GameContractError(`invalid screen: ${problem}`);
+    const size = Buffer.byteLength(JSON.stringify(screen));
     if (size > config.GAME_MAX_PAYLOAD_BYTES) {
-      throw new GameContractError(`view is ${size} bytes; the limit is ${config.GAME_MAX_PAYLOAD_BYTES}`);
+      throw new GameContractError(`screen is ${size} bytes; the limit is ${config.GAME_MAX_PAYLOAD_BYTES}`);
     }
     // Send a copy, so the game changing its object later can't change what was sent.
-    return structuredClone(view);
+    return structuredClone(screen);
   }
 
   checkResults(results) {
@@ -217,12 +217,12 @@ export class GameRunner {
     return { rankings: [...rankings], scores: { ...scores } };
   }
 
-  /** Sends a checked view, remembering it as the latest view on each screen it goes to. */
-  send(target, view) {
-    if (target.to === 'all' || target.to === 'host') this.lastHostView = view;
-    if (target.to === 'all') for (const id of this.playerIds) this.lastPlayerViews.set(id, view);
-    if (target.to === 'player') this.lastPlayerViews.set(target.playerId, view);
-    this.deliver(target, view);
+  /** Sends a checked screen, remembering it as the latest screen for everyone it goes to. */
+  send(target, screen) {
+    if (target.to === 'all' || target.to === 'host') this.lastHostScreen = screen;
+    if (target.to === 'all') for (const id of this.playerIds) this.lastPlayerScreens.set(id, screen);
+    if (target.to === 'player') this.lastPlayerScreens.set(target.playerId, screen);
+    this.deliver(target, screen);
   }
 
   /** The ctx object: the game's whole world. Every function is a no-op once the game has ended. */
@@ -230,20 +230,20 @@ export class GameRunner {
     const ctx = {
       players: this.players,
 
-      broadcast: (view) => {
+      broadcast: (screen) => {
         if (this.ended) return;
-        this.send({ to: 'all' }, this.checkView(view));
+        this.send({ to: 'all' }, this.checkScreen(screen));
       },
 
-      sendToPlayer: (playerId, view) => {
+      sendToPlayer: (playerId, screen) => {
         if (this.ended) return;
         if (!this.playerIds.has(playerId)) throw new GameContractError(`sendToPlayer: unknown player id ${JSON.stringify(playerId)}`);
-        this.send({ to: 'player', playerId }, this.checkView(view));
+        this.send({ to: 'player', playerId }, this.checkScreen(screen));
       },
 
-      sendToHost: (view) => {
+      sendToHost: (screen) => {
         if (this.ended) return;
-        this.send({ to: 'host' }, this.checkView(view));
+        this.send({ to: 'host' }, this.checkScreen(screen));
       },
 
       setTimeout: (fn, ms) => {

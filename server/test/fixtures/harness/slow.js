@@ -1,12 +1,12 @@
 export default {
-  contractVersion: 2,
+  contractVersion: 3,
   id: "slow",
   name: "Slow",
   description: "Test-only broken game.",
   minPlayers: 1,
   maxPlayers: 4,
   createGame(ctx) {
-    ctx.broadcast({ view: 'button', label: 'Tap', action: { tap: true } });
+    ctx.broadcast({ blocks: [{ type: 'button', label: 'Tap', action: { tap: true } }] });
     ctx.setTimeout(() => ctx.endGame({ rankings: [] }), 20_000);
     return {
       onAction() {

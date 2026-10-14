@@ -1,5 +1,5 @@
 export default {
-  contractVersion: 2,
+  contractVersion: 3,
   id: "silent",
   name: "Silent",
   description: "Test-only broken game.",

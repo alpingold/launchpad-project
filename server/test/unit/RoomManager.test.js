@@ -394,7 +394,7 @@ function gameLobby(t, extraGames = []) {
   return ctx;
 }
 
-test('startGame: game:started, then in_game state, then the first views', (t) => {
+test('startGame: game:started, then in_game state, then the first screens', (t) => {
   const { rooms, inbox, room, alex, blake } = gameLobby(t);
   rooms.startGame('host', 'count-game', {});
 
@@ -409,11 +409,11 @@ test('startGame: game:started, then in_game state, then the first views', (t) =>
   assert.equal(inbox('c1')[1].phase, 'in_game');
   assert.equal(inbox('c1')[1].gameId, 'count-game');
   const msg = inbox('c1')[2];
-  assert.deepEqual(msg.payload, { view: 'button', label: 'Tap!', action: { tap: true } });
+  assert.deepEqual(msg.payload, { blocks: [{ type: 'button', label: 'Tap!', action: { tap: true } }] });
   assert.equal(typeof msg.serverNow, 'number');
-  // The host also got its own big-screen view.
-  assert.deepEqual(inbox('host').at(-1).payload, { view: 'message', title: 'First to 3 taps wins!' });
-  assert.equal(inbox('c1').filter((m) => m.payload?.view === 'message').length, 0, 'host-only view not sent to players');
+  // The big screen got its own screen too.
+  assert.deepEqual(inbox('host').at(-1).payload, { blocks: [{ type: 'text', text: 'First to 3 taps wins!' }] });
+  assert.equal(inbox('c1').filter((m) => m.payload?.blocks?.[0].type === 'text').length, 0, 'host-only screen not sent to players');
 });
 
 test('startGame errors: unknown game, wrong player count, already running', (t) => {
@@ -452,7 +452,7 @@ test('game:action is refused outside a game and from the host', (t) => {
   assert.throws(() => rooms.handleGameAction('host', { tap: true }), isRoomError('WRONG_PHASE'));
 });
 
-test('nobody can join during a game, but a dropped player can resume and gets their view back', (t) => {
+test('nobody can join during a game, but a dropped player can resume and gets their screen back', (t) => {
   const { rooms, inbox, code, alex } = gameLobby(t);
   rooms.startGame('host', 'count-game', {});
   assert.throws(() => rooms.joinRoom('c9', code, 'Late'), isRoomError('GAME_IN_PROGRESS'));
@@ -461,15 +461,15 @@ test('nobody can join during a game, but a dropped player can resume and gets th
   rooms.resumePlayer('c1b', code, alex.token);
   const messages = inbox('c1b');
   assert.deepEqual(messages.map((m) => m.type), ['room:joined', 'room:state', 'game:message']);
-  assert.deepEqual(messages[2].payload, { view: 'button', label: 'Tap!', action: { tap: true } });
+  assert.deepEqual(messages[2].payload, { blocks: [{ type: 'button', label: 'Tap!', action: { tap: true } }] });
 });
 
-test('host refresh during a game gets the big-screen view back', (t) => {
+test('host refresh during a game gets the big screen back', (t) => {
   const { rooms, inbox, code, room } = gameLobby(t);
   rooms.startGame('host', 'count-game', {});
   rooms.handleDisconnect('host');
   rooms.resumeHost('host2', code, room.host.token);
-  assert.deepEqual(inbox('host2').at(-1).payload, { view: 'message', title: 'First to 3 taps wins!' });
+  assert.deepEqual(inbox('host2').at(-1).payload, { blocks: [{ type: 'text', text: 'First to 3 taps wins!' }] });
 });
 
 test('players who drop mid-game keep their spot, then get a grace period once the game ends', (t) => {
@@ -530,7 +530,7 @@ test('a crashing game ends with { error: true } and the room is fine', (t) => {
     ...countGame,
     id: 'broken',
     createGame: (ctx) => {
-      ctx.broadcast({ view: 'button', label: 'Tap', action: {} });
+      ctx.broadcast({ blocks: [{ type: 'button', label: 'Tap', action: {} }] });
       return { onAction() { throw new Error('boom'); } };
     },
   };

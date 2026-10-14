@@ -11,9 +11,10 @@ import { config } from '../config.js';
 //   1. Use only `ctx`. No imports of platform code, sockets, files, network, or database.
 //   2. Everything sent or received is plain JSON: no functions, classes, or Dates.
 //      (This is what lets the same game run later in a sandbox, in another process.)
-//   3. Every message is a VIEW (see views.js): { view: 'message' | 'button' | ... }.
-//      Each view REPLACES what that screen showed, so always send a screen its whole
-//      current view. The platform remembers the latest view for every screen and sends
+//   3. Every message is a SCREEN made of blocks (see kit/blocks.js and kit/screen.js):
+//      { blocks: [{ type: 'text', text: 'Round 1' }, { type: 'button', ... }] }.
+//      Each screen REPLACES what that phone or the big screen showed, so always send the
+//      whole current screen. The platform remembers the latest screen for each and sends
 //      it again by itself when a phone or the host screen reconnects.
 //   4. Randomness only from ctx.random(); time only from ctx.now() and ctx.setTimeout().
 //   5. Treat every action as untrusted: check it against the current game state
@@ -26,7 +27,7 @@ import { config } from '../config.js';
 //      (createGame, onAction, a ctx.setTimeout callback, ...). An error in a Promise
 //      would escape it. ctx.setTimeout covers everything a game needs to wait for.
 //
-//  If a game throws, sends an invalid view, or ends with invalid results, the platform
+//  If a game throws, sends an invalid screen, or ends with invalid results, the platform
 //  stops it, tells everyone the game ended with an error, and returns the room to the
 //  lobby. A broken game can never crash the server or the room.
 // ======================================================================================
@@ -34,14 +35,14 @@ import { config } from '../config.js';
 /**
  * What a game folder exports (as its default export).
  * @typedef {Object} GameModule
- * @property {2} contractVersion    which version of this contract the game follows (currently 2)
+ * @property {3} contractVersion    which version of this contract the game follows (currently 3)
  * @property {string} id            matches /^[a-z0-9-]{1,40}$/, e.g. "reaction-race"
  * @property {string} name          display name, 1–40 characters
  * @property {string} description   one or two sentences, at most 200 characters
  * @property {number} minPlayers    integer >= 1
  * @property {number} maxPlayers    integer, minPlayers..12
  * @property {(ctx: GameContext, options: object) => GameInstance} createGame
- *   Called once when the host starts the game. Set up state, send the first views,
+ *   Called once when the host starts the game. Set up state, send the first screens,
  *   and return the GameInstance. `options` is a plain object from the host (may be {}).
  */
 
@@ -50,16 +51,16 @@ import { config } from '../config.js';
  * @typedef {Object} GameContext
  * @property {ReadonlyArray<{id: string, name: string}>} players
  *   Everyone in the game, fixed at start. Players who disconnect stay in this list.
- * @property {(view: object) => void} broadcast             to the host screen and every player
- * @property {(playerId: string, view: object) => void} sendToPlayer
- * @property {(view: object) => void} sendToHost            big-screen-only view
+ * @property {(screen: object) => void} broadcast             to the host screen and every player
+ * @property {(playerId: string, screen: object) => void} sendToPlayer
+ * @property {(screen: object) => void} sendToHost            big-screen-only screen
  * @property {(fn: () => void, ms: number) => number} setTimeout
  *   Runs fn after ms (0 to 10 minutes). Returns a timer id. All timers are cancelled
  *   automatically when the game ends.
  * @property {(timerId: number) => void} clearTimeout
  * @property {() => number} random                          a number in [0, 1); seeded, so tests are repeatable
  * @property {() => number} now
- *   Server time in ms (like Date.now()). Use it for countdown views: endsAt = ctx.now() + ms.
+ *   Server time in ms (like Date.now()). Use it for timer blocks: endsAt = ctx.now() + ms.
  * @property {(results: GameResults) => void} endGame
  *   Ends the game with its results.
  * @property {(message: string) => void} log               server-side debug log
@@ -84,15 +85,15 @@ import { config } from '../config.js';
  *   The player dropped, left, or was removed. They may or may not come back.
  * @property {(playerId: string) => void} [onPlayerReconnect]
  *   The player is back (e.g. refreshed). Afterwards the platform sends them their latest
- *   view again by itself, so this is only for updating game state (e.g. "not away anymore").
+ *   screen again by itself, so this is only for updating game state (e.g. "not away anymore").
  * @property {() => void} [onHostReconnect]
- *   The host screen reconnected. The platform resends its latest view afterwards.
+ *   The host screen reconnected. The platform resends its latest screen afterwards.
  * @property {() => void} [dispose]
  *   Called once when the game ends or the room closes. Rarely needed, since timers are cleaned up for you.
  */
 
 /** The contract version this platform runs. Games declare it as `contractVersion`. */
-export const CONTRACT_VERSION = 2;
+export const CONTRACT_VERSION = 3;
 
 const GAME_ID_RE = /^[a-z0-9-]{1,40}$/;
 

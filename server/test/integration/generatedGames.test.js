@@ -118,7 +118,7 @@ test('npm run admin: grant, import a game (only if it passes the harness), list,
   assert.match(admin('users').stdout, /alpingold\t\(admin\)/);
   assert.equal(admin('grant', 'nobody').status, 1);
 
-  const broken = admin('import-game', fileURLToPath(new URL('../fixtures/harness/bad-view.js', import.meta.url)), '--owner', 'alpingold');
+  const broken = admin('import-game', fileURLToPath(new URL('../fixtures/harness/bad-screen.js', import.meta.url)), '--owner', 'alpingold');
   assert.equal(broken.status, 1);
   assert.match(broken.stdout, /Not imported/);
 

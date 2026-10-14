@@ -1,5 +1,5 @@
 export default {
-  contractVersion: 2,
+  contractVersion: 3,
   id: "lint-errors",
   name: "Lint errors",
   description: "Test-only broken game.",
@@ -10,7 +10,7 @@ export default {
     // don't count; only real code does.)
     const delay = 1000 + Math.random() * 1000;
     const startedAt = Date.now();
-    ctx.broadcast({ view: 'message', title: `Started at ${startedAt}` });
+    ctx.broadcast({ blocks: [{ type: 'text', text: `Started at ${startedAt}` }] });
     async function unused() {}
     ctx.setTimeout(() => ctx.endGame({ rankings: [] }), delay);
     return { onAction() {} };

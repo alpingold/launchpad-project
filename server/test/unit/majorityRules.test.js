@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { GameRunner } from '../../src/games/GameRunner.js';
 import { validateGameModule } from '../../src/games/contract.js';
 import majorityRules from '../../src/games/majority-rules/index.js';
+import { find, texts, headline } from '../helpers/screens.js';
 
 const PLAYERS = [
   { id: 'p_aaaa1111', name: 'Alex' },
@@ -23,17 +24,17 @@ function play(t, { rounds, seed = 1 } = {}) {
     options: rounds === undefined ? {} : { rounds },
     seed,
     now: () => clock,
-    deliver: (target, view) => delivered.push({ target, view }),
+    deliver: (target, screen) => delivered.push({ target, screen }),
     onEnd: (results) => ended.push(results),
   });
   runner.start();
 
   function latest(who) {
     for (let i = delivered.length - 1; i >= 0; i--) {
-      const { target, view } = delivered[i];
-      if (target.to === 'all') return view;
-      if (who === 'host' && target.to === 'host') return view;
-      if (target.to === 'player' && target.playerId === who) return view;
+      const { target, screen } = delivered[i];
+      if (target.to === 'all') return screen;
+      if (who === 'host' && target.to === 'host') return screen;
+      if (target.to === 'player' && target.playerId === who) return screen;
     }
     return undefined;
   }
@@ -43,36 +44,44 @@ function play(t, { rounds, seed = 1 } = {}) {
   };
   /** Picks answer number `answer` (0-based) for this round, as the phone would. */
   const pick = (playerId, answer) => {
-    const option = latest(playerId).options[answer];
+    const option = find(latest(playerId), 'choice').options[answer];
     runner.handleAction(playerId, option.action);
   };
-  return { runner, latest, tick, pick, ended };
+  /** "Round 2 of 3": the first line of every answering screen. */
+  const roundLine = () => texts(latest('host'))[0];
+  /** The host's "1 of 3 answered" bar. */
+  const answered = () => find(latest('host'), 'progress')?.label;
+  return { runner, latest, tick, pick, ended, roundLine, answered };
 }
 
 test('follows the game contract', () => {
   assert.deepEqual(validateGameModule(majorityRules), []);
 });
 
-test('a round starts with a choice on every phone and a countdown on the host', (t) => {
-  const { latest } = play(t);
+test('a round starts with a question and a choice on every phone, and a timer bar on the host', (t) => {
+  const { latest, roundLine, answered } = play(t);
   const phone = latest(ALEX);
-  assert.equal(phone.view, 'choice');
-  assert.equal(phone.options.length, 4);
-  assert.deepEqual(phone.options[2].action, { answer: 2, round: 1 });
+  assert.deepEqual(texts(phone).slice(0, 1), ['Round 1 of 3']);
+  assert.match(texts(phone)[1], /\?$/, 'the question');
+  const choice = find(phone, 'choice');
+  assert.equal(choice.options.length, 4);
+  assert.deepEqual(choice.options[2].action, { answer: 2, round: 1 });
   assert.deepEqual(latest(BLAKE), phone, 'everyone gets the same question');
 
-  const host = latest('host');
-  assert.equal(host.view, 'countdown');
-  assert.equal(host.endsAt, 1_000_000 + 20_000, 'uses ctx.now(), not the real clock');
-  assert.match(host.title, /^Round 1\/3: .+\? \(0\/3 answered\)$/);
+  const timer = find(latest('host'), 'timer');
+  assert.deepEqual(timer, { type: 'timer', startedAt: 1_000_000, endsAt: 1_000_000 + 20_000, style: 'bar' }, 'uses ctx.now(), not the real clock');
+  assert.equal(roundLine(), 'Round 1 of 3');
+  assert.equal(answered(), '0 of 3 answered');
 });
 
 test('answering locks you in and updates the host count', (t) => {
-  const { latest, pick } = play(t);
+  const { latest, pick, answered } = play(t);
   pick(ALEX, 0);
-  assert.equal(latest(ALEX).title, 'Answer locked in!');
-  assert.match(latest('host').title, /\(1\/3 answered\)$/);
-  assert.equal(latest(BLAKE).view, 'choice');
+  assert.ok(texts(latest(ALEX)).includes('Answer locked in! Waiting for everyone else…'));
+  assert.match(find(latest(ALEX), 'card').children[0].text, /^You picked: /);
+  assert.equal(find(latest(ALEX), 'choice'), undefined, 'no more answering');
+  assert.equal(answered(), '1 of 3 answered');
+  assert.ok(find(latest(BLAKE), 'choice'));
 });
 
 test('when everyone has answered, the most popular answer scores', (t) => {
@@ -80,12 +89,24 @@ test('when everyone has answered, the most popular answer scores', (t) => {
   pick(ALEX, 1);
   pick(BLAKE, 1);
   pick(CASEY, 3);
-  const answers = latest('host'); // result
-  assert.match(answers.title, /^The crowd picked: /);
-  assert.equal(answers.text, '2 players scored a point.');
-  assert.equal(latest(ALEX).title, 'You agreed with the crowd!');
-  assert.match(latest(CASEY).title, /^The crowd picked /);
-  assert.equal(latest(CASEY).text, 'No point this time.');
+  const host = latest('host'); // result
+  assert.equal(headline(host), 'The crowd picked');
+  assert.equal(texts(host)[1], texts(latest(ALEX))[1].replace('+1 point for ', ''), 'then the winning answer, huge');
+  assert.ok(texts(host).includes('2 players scored a point.'));
+  const bars = find(host, 'card').children;
+  assert.deepEqual(
+    bars.map((b) => [b.value, b.max, b.tone]),
+    [
+      [0, 3, 'muted'],
+      [2, 3, 'good'],
+      [0, 3, 'muted'],
+      [1, 3, 'muted'],
+    ],
+    'how many picked each answer; the winner highlighted',
+  );
+  assert.equal(headline(latest(ALEX)), 'You agreed with the crowd!');
+  assert.match(headline(latest(CASEY)), /^The crowd picked /);
+  assert.ok(texts(latest(CASEY)).includes('No point this time.'));
 });
 
 test('a tie for most popular: everyone in the tie scores', (t) => {
@@ -93,56 +114,55 @@ test('a tie for most popular: everyone in the tie scores', (t) => {
   pick(ALEX, 0);
   pick(BLAKE, 2);
   tick(20_000); // Casey never answers
-  assert.match(latest('host').title, / & /, 'both answers named');
-  assert.equal(latest(ALEX).title, 'You agreed with the crowd!');
-  assert.equal(latest(BLAKE).title, 'You agreed with the crowd!');
+  assert.match(texts(latest('host'))[1], / & /, 'both answers named');
+  assert.equal(headline(latest(ALEX)), 'You agreed with the crowd!');
+  assert.equal(headline(latest(BLAKE)), 'You agreed with the crowd!');
   tick(5_000);
   tick(6_000);
   assert.deepEqual(ended, [{ rankings: [ALEX, BLAKE, CASEY], scores: { [ALEX]: 1, [BLAKE]: 1, [CASEY]: 0 } }]);
 });
 
 test('if nobody answers, the round ends after 20 s anyway', (t) => {
-  const { latest, tick } = play(t);
+  const { latest, tick, roundLine } = play(t);
   tick(19_999);
-  assert.equal(latest('host').view, 'countdown');
+  assert.ok(find(latest('host'), 'timer'));
   tick(1);
-  assert.deepEqual(latest('host'), { view: 'message', title: 'Nobody answered!', text: 'On to the next one.' });
+  assert.deepEqual(texts(latest('host')), ['Nobody answered!', 'On to the next one.']);
   tick(5_000);
-  assert.match(latest('host').title, /^Round 2\/3/);
+  assert.equal(roundLine(), 'Round 2 of 3');
 });
 
 test('answers for another round, out of range, or a second time are ignored', (t) => {
-  const { runner, latest, pick } = play(t);
-  const before = latest('host').title;
+  const { runner, pick, answered } = play(t);
   for (const action of [{ answer: 0, round: 2 }, { answer: 9, round: 1 }, { answer: -1, round: 1 }, { answer: '0', round: 1 }, {}]) {
     runner.handleAction(ALEX, action);
   }
-  assert.equal(latest('host').title, before, 'nothing counted');
+  assert.equal(answered(), '0 of 3 answered', 'nothing counted');
   pick(ALEX, 0);
   runner.handleAction(ALEX, { answer: 1, round: 1 }); // changing your mind isn't allowed
-  assert.match(latest('host').title, /\(1\/3 answered\)$/);
+  assert.equal(answered(), '1 of 3 answered');
 });
 
 test('a disconnected player is not waited for', (t) => {
-  const { runner, latest, pick } = play(t);
+  const { runner, latest, pick, answered } = play(t);
   runner.playerDisconnected(CASEY);
-  assert.match(latest('host').title, /\(0\/2 answered\)$/);
+  assert.equal(answered(), '0 of 2 answered');
   pick(ALEX, 0);
   pick(BLAKE, 0);
-  assert.match(latest('host').title, /^The crowd picked/, 'round ended without Casey');
+  assert.equal(headline(latest('host')), 'The crowd picked', 'round ended without Casey');
 });
 
 test('a full game: three rounds, final scoreboard, then endGame with scores', (t) => {
-  const { latest, pick, tick, ended } = play(t);
+  const { latest, pick, tick, ended, roundLine } = play(t);
   for (let round = 1; round <= 3; round++) {
-    assert.match(latest('host').title, new RegExp(`^Round ${round}/3`));
+    assert.equal(roundLine(), `Round ${round} of 3`);
     pick(ALEX, 0);
     pick(BLAKE, 0);
     pick(CASEY, round === 2 ? 0 : 1); // Casey agrees once
     tick(5_000);
   }
-  assert.equal(latest('host').view, 'scoreboard');
-  assert.deepEqual(latest(CASEY).rows, [
+  assert.equal(headline(latest('host')), 'Final scores');
+  assert.deepEqual(find(latest(CASEY), 'scoreboard').rows, [
     { playerId: ALEX, score: 3 },
     { playerId: BLAKE, score: 3 },
     { playerId: CASEY, score: 1 },
@@ -152,17 +172,17 @@ test('a full game: three rounds, final scoreboard, then endGame with scores', (t
 });
 
 test('options.rounds sets the number of rounds; bad values fall back to 3', (t) => {
-  assert.match(play(t, { rounds: 5 }).latest('host').title, /^Round 1\/5/);
+  assert.equal(play(t, { rounds: 5 }).roundLine(), 'Round 1 of 5');
   t.mock.timers.reset();
-  assert.match(play(t, { rounds: 99 }).latest('host').title, /^Round 1\/3/);
+  assert.equal(play(t, { rounds: 99 }).roundLine(), 'Round 1 of 3');
 });
 
 test('different seeds ask the questions in a different order', (t) => {
   const first = (seed) => {
-    const prompt = play(t, { seed }).latest(ALEX).prompt;
+    const question = texts(play(t, { seed }).latest(ALEX))[1];
     t.mock.timers.reset();
-    return prompt;
+    return question;
   };
-  const prompts = new Set([1, 2, 3, 4, 5].map(first));
-  assert.ok(prompts.size > 1);
+  const questions = new Set([1, 2, 3, 4, 5].map(first));
+  assert.ok(questions.size > 1);
 });

@@ -63,9 +63,7 @@ test('a whole game over real sockets: start, tap, results, back to the lobby', a
   host.send({ type: 'host:start_game', gameId: 'count-game', options: { target: 2 } });
   assert.equal((await nextOfType(alex, 'game:started')).gameId, 'count-game');
   assert.deepEqual((await nextOfType(alex, 'game:message')).payload, {
-    view: 'button',
-    label: 'Tap!',
-    action: { tap: true },
+    blocks: [{ type: 'button', label: 'Tap!', action: { tap: true } }],
   });
 
   // The phone sends back the action that came with the button.
