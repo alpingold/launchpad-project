@@ -11,7 +11,7 @@ async function startShortGame(people) {
   const alex = await people.player(host.code, 'Alex');
   const blake = await people.player(host.code, 'Blake');
   await host.page.getByRole('button', { name: 'Start game' }).click();
-  await expect(host.page.getByRole('heading', { name: 'Round 1 of 1' })).toBeVisible();
+  await expect(host.page.getByText('Round 1 of 1')).toBeVisible();
   return { host, alex, blake };
 }
 
@@ -79,11 +79,11 @@ test('a phone refreshed mid-game gets its game screen back', async ({ people }) 
   await expect(alex.page.getByText('Alex · room')).toBeVisible();
 });
 
-test('the host screen refreshed mid-game gets the big-screen view back', async ({ people }) => {
+test('the host screen refreshed mid-game gets its screen back', async ({ people }) => {
   const { host } = await startShortGame(people);
   await host.page.reload();
   await expect(host.page.getByText(`Room ${host.code}`)).toBeVisible();
-  await expect(host.page.getByRole('heading', { name: /Round 1 of 1|GO!/ })).toBeVisible();
+  await expect(host.page.getByRole('heading', { name: /^(Get ready…|GO!)$/ })).toBeVisible();
 });
 
 test('Majority Rules: pick an answer, agree with the crowd, tie in the lobby', async ({ people }) => {
@@ -93,19 +93,23 @@ test('Majority Rules: pick an answer, agree with the crowd, tie in the lobby', a
   await host.page.getByRole('combobox', { name: 'Game' }).selectOption('majority-rules');
   await host.page.getByRole('button', { name: 'Start game' }).click();
 
-  // The host shows the question with a countdown; phones show the answers as buttons.
-  await expect(host.page.getByRole('heading', { name: /^Round 1\/1: .+\(0\/2 answered\)$/ })).toBeVisible();
-  await expect(host.page.locator('.countdown-number')).toHaveText(/^(20|19|18)$/);
+  // The host shows the question, a timer bar and how many have answered; phones show the
+  // question, the same timer bar, and the answers as buttons.
+  await expect(host.page.getByText('Round 1 of 1')).toBeVisible();
+  await expect(host.page.getByText('0 of 2 answered')).toBeVisible();
+  await expect(host.page.getByRole('timer')).toHaveAccessibleName(/^Time left: (20|19|18) seconds$/);
+  await expect(alex.page.getByRole('timer')).toBeVisible();
   const firstAnswer = alex.page.locator('.choice-options button').first();
   const label = await firstAnswer.textContent();
 
   await firstAnswer.click();
-  await expect(alex.page.getByRole('heading', { name: 'Answer locked in!' })).toBeVisible();
-  await expect(host.page.getByRole('heading', { name: /\(1\/2 answered\)$/ })).toBeVisible();
+  await expect(alex.page.getByText(/^Answer locked in!/)).toBeVisible();
+  await expect(host.page.getByText('1 of 2 answered')).toBeVisible();
   await blake.page.getByRole('button', { name: label }).click();
 
   // Everyone answered: no need to wait for the timer.
-  await expect(host.page.getByRole('heading', { name: `The crowd picked: ${label}` })).toBeVisible();
+  await expect(host.page.getByRole('heading', { name: 'The crowd picked' })).toBeVisible();
+  await expect(host.page.getByRole('heading', { name: label, exact: true })).toBeVisible();
   await expect(alex.page.getByRole('heading', { name: 'You agreed with the crowd!' })).toBeVisible();
   await expect(host.page.getByText("🏆 It's a tie: Alex & Blake!")).toBeVisible({ timeout: 15_000 });
 });

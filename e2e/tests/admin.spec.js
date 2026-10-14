@@ -48,7 +48,7 @@ test('generate → watch it → read it → playtest with phones → publish →
   await expect(detail(page).getByText('Ready for review')).toBeVisible(GENERATED);
   await expect(detail(page).getByRole('heading', { name: 'Robot Majority' })).toBeVisible();
   await expect(detail(page).getByText(/Passed every check: .* 18 games played by bots/)).toBeVisible();
-  await expect(detail(page).locator('pre')).toContainText('contractVersion: 2'); // the code, as text
+  await expect(detail(page).locator('pre')).toContainText('contractVersion: 3'); // the code, as text
   const gameId = (await detail(page).getByText(/^g-[a-z0-9]{8}$/).textContent()).trim();
 
   // Playtest: in the admin's own game picker, and nobody else's.

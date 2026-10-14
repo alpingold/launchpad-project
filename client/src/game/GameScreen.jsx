@@ -1,40 +1,30 @@
 import { Component } from 'react';
-import MessageView from './views/MessageView.jsx';
-import ButtonView from './views/ButtonView.jsx';
-import ChoiceView from './views/ChoiceView.jsx';
-import CountdownView from './views/CountdownView.jsx';
-import ScoreboardView from './views/ScoreboardView.jsx';
-
-// One trusted component per view kind. Must match server/src/games/views.js
-// (a server test checks that every kind there has a file here).
-const VIEW_COMPONENTS = {
-  message: MessageView,
-  button: ButtonView,
-  choice: ChoiceView,
-  countdown: CountdownView,
-  scoreboard: ScoreboardView,
-};
+import { Blocks } from './blocks/index.jsx';
+import { ScreenContext } from './blocks/context.js';
 
 /**
- * Draws the latest view a game sent. This is how games show anything at all: they send
- * data, and these trusted components decide how it looks (plan §4a). No game code ever
- * runs in the browser.
+ * Draws the latest screen a game sent: a list of blocks (plan §12b). This is how games show
+ * anything at all: they send data, and trusted components decide how it looks. No game
+ * code ever runs in the browser.
  *
  * @param {Object} props
- * @param {object | null} props.view          latest game:message payload for this screen
- * @param {number} props.viewKey              increases with every new view (resets the error boundary)
+ * @param {{ blocks: object[] } | null} props.screen latest game:message payload (a list of blocks)
+ * @param {number} props.screenKey            increases with every new screen (resets the error boundary)
  * @param {{id: string, name: string}[]} props.players  for looking up names
  * @param {string} [props.youId]
  * @param {(action: object) => void} [props.onAction]   phones only; sends game:action
- * @param {number} [props.clockOffset]        server time minus device time, for countdowns
+ * @param {number} [props.clockOffset]        server time minus device time, for timers
  */
-export default function GameScreen({ view, viewKey, players, youId, onAction, clockOffset }) {
-  const ViewComponent = view && Object.hasOwn(VIEW_COMPONENTS, view.view) ? VIEW_COMPONENTS[view.view] : null;
-  if (!ViewComponent) return <Waiting />;
+export default function GameScreen({ screen, screenKey, players, youId = null, onAction = null, clockOffset = 0 }) {
+  if (!Array.isArray(screen?.blocks)) return <Waiting />;
   return (
-    <ViewErrorBoundary key={viewKey}>
-      <ViewComponent view={view} players={players} youId={youId} onAction={onAction} clockOffset={clockOffset} />
-    </ViewErrorBoundary>
+    <ScreenContext.Provider value={{ players, youId, onAction, clockOffset }}>
+      <ScreenErrorBoundary key={screenKey}>
+        <div className="view">
+          <Blocks blocks={screen.blocks} />
+        </div>
+      </ScreenErrorBoundary>
+    </ScreenContext.Provider>
   );
 }
 
@@ -47,11 +37,11 @@ function Waiting() {
 }
 
 /**
- * If a view has fields the component can't draw (the server should have caught this, but
- * the client double-checks by not crashing), show "Waiting…" instead of a blank page.
+ * If a screen has something the components can't draw (the server should have caught this,
+ * but the client double-checks by not crashing), show "Waiting…" instead of a blank page.
  * React only supports this "catch errors while drawing" feature in class components.
  */
-class ViewErrorBoundary extends Component {
+class ScreenErrorBoundary extends Component {
   constructor(props) {
     super(props);
     this.state = { failed: false };
@@ -62,7 +52,7 @@ class ViewErrorBoundary extends Component {
   }
 
   componentDidCatch(error) {
-    console.warn('[game] could not draw view:', error);
+    console.warn('[game] could not draw screen:', error);
   }
 
   render() {

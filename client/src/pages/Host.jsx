@@ -169,7 +169,7 @@ function HostRoom({ user }) {
       <main className="page host host-game">
         {banner}
         <p className="host-label">Room {room.code}</p>
-        <GameScreen view={game.view} viewKey={game.viewKey} players={room.players} clockOffset={game.clockOffset} />
+        <GameScreen screen={game.screen} screenKey={game.screenKey} players={room.players} clockOffset={game.clockOffset} />
         {endRoomButton}
       </main>
     );

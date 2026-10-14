@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { BLOCKS, BLOCK_TYPES } from '../../src/games/kit/blocks.js';
 import { validateScreen, offeredActions, assetIdsIn, sameJson, MAX_BLOCKS, MAX_DEPTH } from '../../src/games/kit/screen.js';
 
@@ -12,6 +13,18 @@ test('every block example is a valid screen', () => {
   for (const type of BLOCK_TYPES) {
     assert.equal(BLOCKS[type].example.type, type, `${type}'s example has the right type`);
     assert.equal(validateScreen(screen(BLOCKS[type].example)), null, type);
+  }
+});
+
+test('every block has a purpose, a group, and a component on the client (server and client stay in sync)', () => {
+  // Blocks are defined on the server (for checking) and drawn on the client. This catches
+  // adding a block on one side but not the other.
+  const index = readFileSync(new URL('../../../client/src/game/blocks/index.jsx', import.meta.url), 'utf8');
+  const map = index.slice(index.indexOf('BLOCK_COMPONENTS'));
+  for (const type of BLOCK_TYPES) {
+    assert.ok(BLOCKS[type].purpose.length > 10, `${type} purpose`);
+    assert.ok(['layout', 'display', 'input'].includes(BLOCKS[type].group), `${type} group`);
+    assert.match(map, new RegExp(`\\b${type}:`), `client/src/game/blocks/index.jsx has no component for "${type}"`);
   }
 });
 

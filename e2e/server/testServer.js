@@ -24,7 +24,7 @@ const GOOD_SOURCE = readFileSync(new URL('../../server/src/games/majority-rules/
   "name: 'Robot Majority'",
 );
 /** What it writes when the idea contains "broken": a game with no createGame. */
-const BROKEN_SOURCE = "export default { contractVersion: 2, id: 'oops', name: 'Oops' };\n";
+const BROKEN_SOURCE = "export default { contractVersion: 3, id: 'oops', name: 'Oops' };\n";
 
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 

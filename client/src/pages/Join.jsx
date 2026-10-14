@@ -133,15 +133,15 @@ export default function Join() {
       </p>
     );
 
-    // During a game the phone screen is the game's latest view; taps go back as game:action.
+    // During a game the phone screen is the game's latest screen; taps go back as game:action.
     if (room?.phase === 'in_game') {
       return (
         <main className="page join join-game">
           {banner}
           {hostAway}
           <GameScreen
-            view={game.view}
-            viewKey={game.viewKey}
+            screen={game.screen}
+            screenKey={game.screenKey}
             players={room.players}
             youId={me.playerId}
             clockOffset={game.clockOffset}
