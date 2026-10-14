@@ -1,19 +1,24 @@
 import express from 'express';
 import { currentUser } from '../auth/currentUser.js';
 import { requireJsonPosts } from './requireJson.js';
-import { GenerationError, ACTION_NAMES } from '../generation/service.js';
+import { GenerationError } from '../generation/service.js';
+import { gameStatus, mainVersion } from '../db/generatedGames.js';
+import { changedLines } from '../generation/lineDiff.js';
 
 /**
- * Admin routes (plan §11, A5), mounted under /api/admin. Every route needs a logged-in
- * admin: 401 if not logged in, 403 if logged in but not an admin.
+ * Admin routes (plan §11 A5, versions §12e K6), mounted under /api/admin. Every route needs
+ * a logged-in admin: 401 if not logged in, 403 if logged in but not an admin.
  *
- *   GET    /api/admin/generations              → { info, games: [summary] }   (newest first)
- *   POST   /api/admin/generations  { idea, model? } → 202 { game }   starts generating
- *   GET    /api/admin/generations/:id          → { game }   with code, test report, progress
- *   POST   /api/admin/generations/:id/playtest → { game }   only you can start it
- *   POST   /api/admin/generations/:id/publish  → { game }   every host can start it
- *   POST   /api/admin/generations/:id/reject   → { game }   taken off the game list
- *   DELETE /api/admin/generations/:id          → 204
+ *   GET    /api/admin/generations                    → { info, games: [summary] }   (newest first)
+ *   POST   /api/admin/generations  { idea, model? }  → 202 { game }   starts generating a new game
+ *   GET    /api/admin/generations/:id                → { game }   every version: code, report, changes
+ *   POST   /api/admin/generations/:id/versions  { request, basedOn? }
+ *                                                    → 202 { game }   asks for changes: a new version
+ *   POST   /api/admin/generations/:id/versions/:v/playtest → { game }   only you can start that version
+ *   POST   /api/admin/generations/:id/publish        → { game }   the playtest version goes to everyone
+ *   POST   /api/admin/generations/:id/stop-playtest  → { game }
+ *   POST   /api/admin/generations/:id/unpublish      → { game }   no version for other hosts any more
+ *   DELETE /api/admin/generations/:id                → 204        the game and all its versions
  *
  * Errors: { error: 'CODE', message }.
  *
@@ -33,23 +38,52 @@ export function createAdminRouter({ db, generation }) {
   });
 
   /** The list view: no code (it can be long), just what the admin page's table shows. */
-  const summary = (game) => ({
-    id: game.id,
-    status: game.status,
-    prompt: game.prompt,
-    model: game.model,
-    name: game.name,
-    description: game.description,
-    error: game.error,
-    ownerUserId: game.ownerUserId,
-    testsPassed: game.report ? game.report.ok === true : null, // null: not tested (yet)
-    createdAt: game.createdAt,
-    updatedAt: game.updatedAt,
-    progress: generation.progress(game.id),
-  });
+  const summary = (game) => {
+    const main = mainVersion(game);
+    const latest = game.versions.at(-1);
+    return {
+      id: game.id,
+      status: gameStatus(game),
+      prompt: game.prompt,
+      name: main?.name ?? null,
+      description: main?.description ?? null,
+      model: latest.model,
+      error: latest.status === 'failed' ? latest.error : null,
+      ownerUserId: game.ownerUserId,
+      publishedVersion: game.publishedVersion,
+      playtestVersion: game.playtestVersion,
+      latestVersion: latest.version,
+      testsPassed: latest.report ? latest.report.ok === true : null, // null: not tested (yet)
+      createdAt: game.createdAt,
+      updatedAt: game.updatedAt,
+      progress: generation.progress(game.id),
+    };
+  };
 
-  /** The detail view: everything, including the code and the test report, as plain text/data. */
-  const detail = (game) => ({ ...summary(game), source: game.source, report: game.report });
+  /** The detail view: every version, with its code and test report as plain text/data, and what changed. */
+  const detail = (game) => ({
+    ...summary(game),
+    versions: game.versions.map((v) => {
+      const base = v.basedOn === null ? null : game.versions.find((b) => b.version === v.basedOn);
+      return {
+        version: v.version,
+        status: v.status,
+        request: v.request,
+        basedOn: v.basedOn,
+        changelog: v.changelog,
+        model: v.model,
+        name: v.name,
+        description: v.description,
+        error: v.error,
+        source: v.source,
+        report: v.report,
+        testsPassed: v.report ? v.report.ok === true : null,
+        // Changed lines compared with the version it was made from (null: v1, no code yet, or too big).
+        changes: base?.source && v.source ? changedLines(base.source, v.source) : null,
+        createdAt: v.createdAt,
+      };
+    }),
+  });
 
   /** Runs a handler; a GenerationError becomes its HTTP status and code. */
   const handle = (fn) => async (req, res, next) => {
@@ -85,11 +119,40 @@ export function createAdminRouter({ db, generation }) {
   );
 
   router.post(
-    '/generations/:id/:action',
+    '/generations/:id/versions',
+    handle((req, res) => {
+      const { request, basedOn, model } = req.body ?? {};
+      const game = generation.requestChanges({ id: req.params.id, request, basedOn, model });
+      res.status(202).json({ game: detail(game) });
+    }),
+  );
+
+  router.post(
+    '/generations/:id/versions/:version/playtest',
     handle(async (req, res) => {
-      if (!ACTION_NAMES.includes(req.params.action)) return res.status(404).json({ error: 'NOT_FOUND' });
-      const game = await generation.act(req.params.id, req.params.action);
+      const game = await generation.playtest(req.params.id, Number(req.params.version));
       res.json({ game: detail(game) });
+    }),
+  );
+
+  router.post(
+    '/generations/:id/publish',
+    handle(async (req, res) => {
+      res.json({ game: detail(await generation.publish(req.params.id)) });
+    }),
+  );
+
+  router.post(
+    '/generations/:id/stop-playtest',
+    handle((req, res) => {
+      res.json({ game: detail(generation.takeDown(req.params.id, 'playtest')) });
+    }),
+  );
+
+  router.post(
+    '/generations/:id/unpublish',
+    handle((req, res) => {
+      res.json({ game: detail(generation.takeDown(req.params.id, 'published')) });
     }),
   );
 

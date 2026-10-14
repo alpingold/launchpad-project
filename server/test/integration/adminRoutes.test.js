@@ -6,7 +6,8 @@ import { setAdmin } from '../../src/db/users.js';
 import { GameRegistry } from '../../src/games/registry.js';
 import { signUp, postJson } from '../helpers/accounts.js';
 
-// The admin API for AI-generated games (plan §11, A5), through the real HTTP server.
+// The admin API for AI-generated games and their versions (plan §11 A5, §12e K6), through
+// the real HTTP server.
 // A fake generator stands in for the OpenShell sandbox.
 
 const GOOD_SOURCE = readFileSync(new URL('../../src/games/majority-rules/index.js', import.meta.url), 'utf8');
@@ -57,7 +58,7 @@ test('only admins get in: 401 logged out, 403 for other accounts', async () => {
   assert.deepEqual(body.games, []);
 });
 
-test('the whole flow: generate → review → playtest (only for me) → publish (for everyone) → delete', async () => {
+test('the whole flow: generate → playtest (only for me) → publish → ask for changes → playtest v2 next to v1 → publish → delete', async () => {
   const admin = await adminCookie();
   const created = await post('/api/admin/generations', { idea: IDEA, model: 'qwen3.8:27b' }, admin);
   assert.equal(created.status, 202);
@@ -68,29 +69,58 @@ test('the whole flow: generate → review → playtest (only for me) → publish
   finishGeneration({ ok: true, source: GOOD_SOURCE, report: { ok: true, problems: [], game: { name: 'Majority Rules', description: 'Vote' } } });
   await server.generation.current;
 
-  const detail = (await (await get(`/api/admin/generations/${game.id}`, admin)).json()).game;
+  const detailOf = async () => (await (await get(`/api/admin/generations/${game.id}`, admin)).json()).game;
+  let detail = await detailOf();
   assert.equal(detail.status, 'review');
+  assert.equal(detail.name, 'Majority Rules');
   assert.equal(detail.testsPassed, true);
-  assert.equal(detail.source, GOOD_SOURCE, 'the code is there to read');
+  assert.equal(detail.versions.length, 1);
+  assert.equal(detail.versions[0].source, GOOD_SOURCE, 'the code is there to read');
+  assert.equal(detail.versions[0].changes, null, 'version 1 has nothing to compare with');
   assert.equal(detail.model, 'qwen3.8:27b');
   const list = (await (await get('/api/admin/generations', admin)).json()).games;
-  assert.equal(list[0].source, undefined, 'the list leaves the code out');
+  assert.equal(list[0].versions, undefined, 'the list leaves the versions and code out');
 
   const gameIds = async (cookie) => (await (await get('/api/games', cookie)).json()).games.map((g) => g.id);
   assert.deepEqual(await gameIds(admin), []);
 
-  const playtest = await post(`/api/admin/generations/${game.id}/playtest`, {}, admin);
+  const playtest = await post(`/api/admin/generations/${game.id}/versions/1/playtest`, {}, admin);
   assert.equal(playtest.status, 200);
   assert.equal((await playtest.json()).game.status, 'playtest');
-  assert.deepEqual(await gameIds(admin), [game.id], 'in my game picker right away, no restart');
+  assert.deepEqual(await gameIds(admin), [`${game.id}-v1`], 'in my game picker right away, no restart');
   assert.deepEqual(await gameIds(null), []);
 
   await post(`/api/admin/generations/${game.id}/publish`, {}, admin);
   assert.deepEqual(await gameIds(null), [game.id], 'published: everyone sees it');
 
+  // Ask for changes: version 2, made from version 1's code.
+  const asked = await post(`/api/admin/generations/${game.id}/versions`, { request: 'Call it Majority Rules 2' }, admin);
+  assert.equal(asked.status, 202);
+  assert.equal((await asked.json()).game.versions[1].status, 'generating');
+  const v2Source = GOOD_SOURCE.replace("name: 'Majority Rules'", "name: 'Majority Rules 2'");
+  finishGeneration({ ok: true, source: v2Source, changelog: '- Renamed it', report: { ok: true, problems: [], game: { name: 'Majority Rules 2', description: 'Vote' } } });
+  await server.generation.current;
+  detail = await detailOf();
+  const v2 = detail.versions[1];
+  assert.deepEqual([v2.version, v2.basedOn, v2.request, v2.changelog, v2.status], [2, 1, 'Call it Majority Rules 2', '- Renamed it', 'ready']);
+  assert.deepEqual([v2.changes.added, v2.changes.removed], [1, 1], 'one line changed');
+  assert.deepEqual(v2.changes.hunks[0].filter((l) => l.type !== 'same').map((l) => l.type), ['del', 'add']);
+
+  await post(`/api/admin/generations/${game.id}/versions/2/playtest`, {}, admin);
+  assert.deepEqual(await gameIds(null), [game.id], 'everyone else keeps v1');
+  assert.deepEqual(await gameIds(admin), [game.id, `${game.id}-v2`], 'I get both');
+  const mine = (await (await get('/api/games', admin)).json()).games;
+  assert.deepEqual(mine.map((g) => [g.status, g.version]), [['published', 1], ['playtest', 2]], 'the picker can say which is which');
+
+  await post(`/api/admin/generations/${game.id}/publish`, {}, admin);
+  detail = await detailOf();
+  assert.deepEqual([detail.publishedVersion, detail.playtestVersion, detail.name], [2, null, 'Majority Rules 2']);
+
+  await post(`/api/admin/generations/${game.id}/unpublish`, {}, admin);
+  assert.deepEqual(await gameIds(admin), []);
+
   const del = await fetch(`${baseUrl}/api/admin/generations/${game.id}`, { method: 'DELETE', headers: { Cookie: admin } });
   assert.equal(del.status, 204);
-  assert.deepEqual(await gameIds(null), []);
   assert.equal((await get(`/api/admin/generations/${game.id}`, admin)).status, 404);
 });
 
@@ -101,11 +131,15 @@ test('bad requests get clear errors', async () => {
   assert.deepEqual(await errorOf(await post('/api/admin/generations', { idea: 'short' }, admin)), [400, 'INVALID_IDEA']);
   assert.deepEqual(await errorOf(await post('/api/admin/generations', { idea: IDEA, model: 'gpt-5' }, admin)), [400, 'INVALID_MODEL']);
   assert.deepEqual(await errorOf(await get('/api/admin/generations/g-nothere', admin)), [404, 'NOT_FOUND']);
-  assert.deepEqual(await errorOf(await post('/api/admin/generations/g-nothere/playtest', {}, admin)), [404, 'NOT_FOUND']);
-  assert.deepEqual(await errorOf(await post('/api/admin/generations/g-nothere/explode', {}, admin)), [404, 'NOT_FOUND']);
+  assert.deepEqual(await errorOf(await post('/api/admin/generations/g-nothere/versions/1/playtest', {}, admin)), [404, 'NOT_FOUND']);
+  assert.deepEqual(await errorOf(await post('/api/admin/generations/g-nothere/versions', { request: 'A fine request' }, admin)), [404, 'NOT_FOUND']);
 
   const { game } = await (await post('/api/admin/generations', { idea: IDEA }, admin)).json();
   assert.deepEqual(await errorOf(await post(`/api/admin/generations/${game.id}/publish`, {}, admin)), [409, 'WRONG_STATUS']);
+  assert.deepEqual(await errorOf(await post(`/api/admin/generations/${game.id}/versions/1/playtest`, {}, admin)), [409, 'WRONG_STATUS']);
+  assert.deepEqual(await errorOf(await post(`/api/admin/generations/${game.id}/versions/x/playtest`, {}, admin)), [404, 'NOT_FOUND']);
+  assert.deepEqual(await errorOf(await post(`/api/admin/generations/${game.id}/versions`, { request: 'tiny' }, admin)), [400, 'INVALID_REQUEST']);
+  assert.deepEqual(await errorOf(await post(`/api/admin/generations/${game.id}/versions`, { request: 'A fine request' }, admin)), [409, 'BUSY']);
 
   // CSRF protection: a POST that isn't JSON is refused, even from an admin.
   const form = await fetch(`${baseUrl}/api/admin/generations`, {

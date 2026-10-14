@@ -13,12 +13,14 @@ import { config } from '../src/config.js';
 import { openDatabase } from '../src/db/database.js';
 import { setAdmin, listUsers, findUserForLogin } from '../src/db/users.js';
 import {
-  STATUSES,
   createGeneratedGame,
-  saveGeneratedSource,
-  setGeneratedGameStatus,
+  saveVersionSource,
+  setLiveVersions,
+  getGeneratedGame,
   listGeneratedGames,
   deleteGeneratedGame,
+  gameStatus,
+  mainVersion,
 } from '../src/db/generatedGames.js';
 import { checkGameFile, formatReport } from '../src/games/harness/index.js';
 
@@ -27,12 +29,14 @@ const HELP = `Usage: npm run admin -- <command>
   users                                 list accounts (and who is an admin)
   grant <username>                      make an account an admin
   revoke <username>                     take admin away
-  games                                 list AI-generated games
+  games                                 list AI-generated games and their versions
   import-game <file> --owner <username> [--status playtest|review]
-                                        store a game file as a generated game (default: playtest).
-                                        It must pass the test harness first.
-  set-status <game id> <status>         ${STATUSES.join(' | ')}
-  delete-game <game id>
+                                        store a game file as a new generated game (its version 1;
+                                        default: playtest). It must pass the test harness first.
+  set-live <game id> published|playtest <version|none>
+                                        choose which version everyone gets (published), or only
+                                        its owner (playtest); "none" takes it down
+  delete-game <game id>                 the game and all its versions
 
 Database: ${config.DB_PATH}`;
 
@@ -68,9 +72,14 @@ switch (command) {
   case 'games': {
     const games = listGeneratedGames(db);
     const owners = new Map(listUsers(db).map((u) => [u.id, u.username]));
+    const live = (g) => [g.publishedVersion && `published v${g.publishedVersion}`, g.playtestVersion && `playtest v${g.playtestVersion}`];
     done(
       games
-        .map((g) => `${g.id}\t${g.status.padEnd(10)}\t${g.name ?? '(no name yet)'}\tby ${owners.get(g.ownerUserId)}\t"${g.prompt.slice(0, 60)}"`)
+        .map((g) => {
+          const versions = g.versions.map((v) => `v${v.version} ${v.status}`).join(', ');
+          const where = live(g).filter(Boolean).join(', ') || gameStatus(g);
+          return `${g.id}\t${mainVersion(g)?.name ?? '(no name yet)'}\tby ${owners.get(g.ownerUserId)}\t${where}\t[${versions}]\t"${g.prompt.slice(0, 60)}"`;
+        })
         .join('\n') || 'No generated games yet.',
     );
     break;
@@ -89,15 +98,28 @@ switch (command) {
 
     const source = await readFile(fullPath, 'utf8');
     const game = createGeneratedGame(db, { ownerUserId: owner.id, prompt: `imported by hand from ${path.basename(file)}` });
-    saveGeneratedSource(db, game.id, { source, report, ...report.game, status });
+    saveVersionSource(db, game.id, 1, { source, report, ...report.game });
+    if (status === 'playtest') setLiveVersions(db, game.id, { playtestVersion: 1 });
     done(`Imported as ${game.id} (${status}, owner ${owner.username}) ${restartNote}`);
     break;
   }
-  case 'set-status': {
-    const [id, status] = positional;
-    if (!STATUSES.includes(status)) done(`Status must be one of: ${STATUSES.join(', ')}`, false);
-    if (!setGeneratedGameStatus(db, id, status)) done(`No generated game ${id}.`, false);
-    done(`${id} is now ${status} ${restartNote}`);
+  case 'set-live': {
+    const [id, as, which] = positional;
+    const game = getGeneratedGame(db, id ?? '');
+    if (!game) done(`No generated game ${id}.`, false);
+    if (as !== 'published' && as !== 'playtest') done('Say published or playtest.', false);
+    const number = which === 'none' ? null : Number(which);
+    if (number !== null && game.versions.find((v) => v.version === number)?.status !== 'ready') {
+      done(`${id} has no version ${which} that passed the tests.`, false);
+    }
+    if (as === 'published') {
+      // Publishing the playtest version ends its playtest, like the admin page does.
+      setLiveVersions(db, id, { publishedVersion: number, ...(number !== null && number === game.playtestVersion && { playtestVersion: null }) });
+    } else {
+      if (number !== null && number === game.publishedVersion) done(`v${number} is already published.`, false);
+      setLiveVersions(db, id, { playtestVersion: number });
+    }
+    done(`${id}: ${as} version is now ${number === null ? 'none' : `v${number}`} ${restartNote}`);
     break;
   }
   case 'delete-game': {

@@ -8,6 +8,7 @@ import { validateGameModule } from './contract.js';
  * @property {'playtest' | 'published' | null} status
  *   generated games only. playtest: only its owner can see and start it. published: everyone.
  * @property {number | null} ownerUserId   generated games only: who generated it
+ * @property {number | null} version       generated games only: which version of it this is
  */
 
 /**
@@ -27,25 +28,21 @@ export class GameRegistry {
    * stops the server at startup instead of failing halfway through a party.
    * @param {import('./contract.js').GameModule} mod
    * @param {Partial<GameMeta>} [meta]  defaults to an official game
+   * @param {{ replace?: boolean }} [opts]  replace: swap out a game already using this id
+   *   (a newly published version); the old one stays if the new one is invalid
    */
-  register(mod, { source = 'official', status = null, ownerUserId = null } = {}) {
+  register(mod, { source = 'official', status = null, ownerUserId = null, version = null } = {}, { replace = false } = {}) {
     const problems = validateGameModule(mod);
     if (problems.length > 0) {
       throw new Error(`Game "${mod?.id}" does not follow the game contract:\n - ${problems.join('\n - ')}`);
     }
-    if (this.entries.has(mod.id)) throw new Error(`A game with id "${mod.id}" is already registered`);
-    this.entries.set(mod.id, { game: mod, meta: { source, status, ownerUserId } });
+    if (this.entries.has(mod.id) && !replace) throw new Error(`A game with id "${mod.id}" is already registered`);
+    this.entries.set(mod.id, { game: mod, meta: { source, status, ownerUserId, version } });
   }
 
   /** Removes a game (e.g. a generated game that was rejected). @returns {boolean} */
   unregister(id) {
     return this.entries.delete(id);
-  }
-
-  /** Moves a generated game between playtest and published without reloading its code. */
-  setStatus(id, status) {
-    const entry = this.entries.get(id);
-    if (entry?.meta.source === 'generated') entry.meta.status = status;
   }
 
   /**
@@ -73,7 +70,7 @@ export class GameRegistry {
         minPlayers,
         maxPlayers,
         source: meta.source,
-        ...(meta.source === 'generated' && { status: meta.status }),
+        ...(meta.source === 'generated' && { status: meta.status, version: meta.version }),
       }));
   }
 }

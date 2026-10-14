@@ -93,7 +93,7 @@ test('a published generated game is for everyone', async () => {
 
 // --- The admin script, run as a real command against a throwaway database -----------
 
-test('npm run admin: grant, import a game (only if it passes the harness), list, set status', (t) => {
+test('npm run admin: grant, import a game (only if it passes the harness), list, choose live versions', (t) => {
   const dir = mkdtempSync(path.join(tmpdir(), 'boilergames-admin-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const script = fileURLToPath(new URL('../../scripts/admin.js', import.meta.url));
@@ -127,9 +127,13 @@ test('npm run admin: grant, import a game (only if it passes the harness), list,
   const id = /Imported as (g-[a-z2-9]+) \(playtest/.exec(good.stdout)?.[1];
   assert.ok(id, good.stdout);
 
-  assert.match(admin('games').stdout, new RegExp(`${id}\\tplaytest\\s+\\tReaction Race\\tby alpingold`));
-  assert.match(admin('set-status', id, 'published').stdout, /is now published/);
-  assert.equal(admin('set-status', id, 'banana').status, 1);
+  assert.match(admin('games').stdout, new RegExp(`${id}\\tReaction Race\\tby alpingold\\tplaytest v1\\t\\[v1 ready\\]`));
+  assert.match(admin('set-live', id, 'published', '1').stdout, /published version is now v1/);
+  assert.match(admin('games').stdout, /\tpublished v1\t/, 'publishing the playtest version ends its playtest');
+  assert.equal(admin('set-live', id, 'playtest', '1').status, 1, 'already published');
+  assert.equal(admin('set-live', id, 'published', '7').status, 1, 'no such version');
+  assert.equal(admin('set-live', id, 'banana', '1').status, 1);
+  assert.match(admin('set-live', id, 'published', 'none').stdout, /published version is now none/);
   assert.match(admin('delete-game', id).stdout, /Deleted/);
   assert.match(admin('games').stdout, /No generated games yet/);
 });

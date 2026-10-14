@@ -41,6 +41,58 @@ export const MIGRATIONS = [
       CREATE INDEX generated_games_by_status ON generated_games (status);
     `,
   },
+  {
+    version: 4,
+    description: 'game versions: change requests make new versions (plan §12e, K6)',
+    sql: `
+      -- One row per version of a generated game. Version 1 comes from the idea; every
+      -- later one from a change request on an earlier version (based_on).
+      CREATE TABLE game_versions (
+        game_id       TEXT    NOT NULL REFERENCES generated_games(id) ON DELETE CASCADE,
+        version       INTEGER NOT NULL,      -- 1, 2, 3, ... per game
+        request       TEXT    NOT NULL,      -- v1: the idea; later: the change request
+        based_on      INTEGER,               -- the version that was changed (NULL for v1)
+        changelog     TEXT,                  -- the model's list of what it changed
+        model         TEXT,
+        status        TEXT    NOT NULL CHECK (status IN ('generating', 'failed', 'ready')),
+        name          TEXT,
+        description   TEXT,
+        source        TEXT,
+        source_sha256 TEXT,
+        report_json   TEXT,
+        error         TEXT,
+        created_at    INTEGER NOT NULL,
+        updated_at    INTEGER NOT NULL,
+        PRIMARY KEY (game_id, version)
+      );
+
+      -- Every existing game becomes its own version 1.
+      INSERT INTO game_versions
+        (game_id, version, request, model, status, name, description, source, source_sha256, report_json, error, created_at, updated_at)
+      SELECT id, 1, prompt, model,
+             CASE status WHEN 'generating' THEN 'generating' WHEN 'failed' THEN 'failed' ELSE 'ready' END,
+             name, description, source, source_sha256, report_json, error, created_at, updated_at
+      FROM generated_games;
+
+      -- Which versions are live: one for everyone (published), one for the owner to try
+      -- (playtest). NULL = none. A "rejected" game is simply one with neither.
+      ALTER TABLE generated_games ADD COLUMN published_version INTEGER;
+      ALTER TABLE generated_games ADD COLUMN playtest_version INTEGER;
+      UPDATE generated_games SET published_version = 1 WHERE status = 'published';
+      UPDATE generated_games SET playtest_version = 1 WHERE status = 'playtest';
+
+      -- These now live on each version.
+      DROP INDEX generated_games_by_status;
+      ALTER TABLE generated_games DROP COLUMN status;
+      ALTER TABLE generated_games DROP COLUMN model;
+      ALTER TABLE generated_games DROP COLUMN name;
+      ALTER TABLE generated_games DROP COLUMN description;
+      ALTER TABLE generated_games DROP COLUMN source;
+      ALTER TABLE generated_games DROP COLUMN source_sha256;
+      ALTER TABLE generated_games DROP COLUMN report_json;
+      ALTER TABLE generated_games DROP COLUMN error;
+    `,
+  },
 ];
 
 /** The version a fully up-to-date database has. */

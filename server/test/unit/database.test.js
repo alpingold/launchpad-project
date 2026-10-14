@@ -5,7 +5,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import Database from 'better-sqlite3';
 import { openDatabase } from '../../src/db/database.js';
-import { migrate, LATEST_VERSION } from '../../src/db/migrations.js';
+import { migrate, LATEST_VERSION, MIGRATIONS } from '../../src/db/migrations.js';
+import { getGeneratedGame } from '../../src/db/generatedGames.js';
 import { createUser, setAdmin, listUsers, findUserForLogin } from '../../src/db/users.js';
 import { createSession, getSessionUser } from '../../src/db/sessions.js';
 
@@ -23,7 +24,7 @@ function tempDir(t) {
 test('a new database gets every table and the latest version', () => {
   const db = openDatabase(':memory:');
   assert.equal(db.pragma('user_version', { simple: true }), LATEST_VERSION);
-  assert.deepEqual(tables(db), ['generated_games', 'sessions', 'users']);
+  assert.deepEqual(tables(db), ['game_versions', 'generated_games', 'sessions', 'users']);
 });
 
 test('an existing pre-migration database (like the one from M7) is upgraded, keeping its data, with a backup', (t) => {
@@ -39,7 +40,7 @@ test('an existing pre-migration database (like the one from M7) is upgraded, kee
   const db = openDatabase(file);
   assert.equal(db.pragma('user_version', { simple: true }), LATEST_VERSION);
   assert.deepEqual(listUsers(db), [{ id: 1, username: 'alpingold', isAdmin: false, createdAt: 1 }]);
-  assert.deepEqual(tables(db), ['generated_games', 'sessions', 'users']);
+  assert.deepEqual(tables(db), ['game_versions', 'generated_games', 'sessions', 'users']);
   db.close();
 
   // The copy made before migrating is the old database, untouched.
@@ -53,6 +54,44 @@ test('an existing pre-migration database (like the one from M7) is upgraded, kee
   // Opening it again changes nothing and makes no new backup.
   openDatabase(file).close();
   assert.equal(readdirSync(dir).filter((f) => f.includes('.backup-')).length, 1);
+});
+
+test('migration 4 (K6): every existing generated game becomes its own version 1, and stays live as it was', () => {
+  const db = new Database(':memory:');
+  db.pragma('foreign_keys = ON');
+  db.exec(SCHEMA);
+  migrate(db, { migrations: MIGRATIONS.filter((m) => m.version <= 3) });
+  db.prepare("INSERT INTO users (id, username, password_hash, created_at) VALUES (1, 'admin', 'scrypt$x', 1)").run();
+  const insert = db.prepare(
+    `INSERT INTO generated_games (id, owner_user_id, prompt, model, status, name, source, source_sha256, report_json, error, created_at, updated_at)
+     VALUES (?, 1, 'an idea', 'qwen3.8:27b', ?, ?, ?, ?, ?, ?, 10, 20)`,
+  );
+  insert.run('g-generating', 'generating', null, null, null, null, null);
+  insert.run('g-failed', 'failed', null, 'bad code', 'sha-bad', '{"ok":false}', 'no passing game');
+  insert.run('g-review', 'review', 'Review Me', 'code', 'sha', '{"ok":true}', null);
+  insert.run('g-playtest', 'playtest', 'Try Me', 'code', 'sha', '{"ok":true}', null);
+  insert.run('g-published', 'published', 'Play Me', 'code', 'sha', '{"ok":true}', null);
+  insert.run('g-rejected', 'rejected', 'Nope', 'code', 'sha', '{"ok":true}', null);
+
+  assert.deepEqual(migrate(db), [4]);
+  const live = (id) => {
+    const g = getGeneratedGame(db, id);
+    return [g.versions[0].status, g.publishedVersion, g.playtestVersion];
+  };
+  assert.deepEqual(live('g-generating'), ['generating', null, null]);
+  assert.deepEqual(live('g-failed'), ['failed', null, null]);
+  assert.deepEqual(live('g-review'), ['ready', null, null]);
+  assert.deepEqual(live('g-playtest'), ['ready', null, 1]);
+  assert.deepEqual(live('g-published'), ['ready', 1, null]);
+  assert.deepEqual(live('g-rejected'), ['ready', null, null], 'rejected = nothing live');
+
+  const v1 = getGeneratedGame(db, 'g-failed').versions[0];
+  assert.deepEqual(
+    [v1.version, v1.request, v1.model, v1.source, v1.sourceSha256, v1.report, v1.error, v1.createdAt, v1.basedOn],
+    [1, 'an idea', 'qwen3.8:27b', 'bad code', 'sha-bad', { ok: false }, 'no passing game', 10, null],
+  );
+  const columns = db.prepare('PRAGMA table_info(generated_games)').all().map((c) => c.name);
+  assert.deepEqual(columns, ['id', 'owner_user_id', 'prompt', 'created_at', 'updated_at', 'published_version', 'playtest_version']);
 });
 
 test('a brand-new database file gets no (pointless) backup', (t) => {
