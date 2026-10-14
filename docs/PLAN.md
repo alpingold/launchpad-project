@@ -1,6 +1,6 @@
 # BoilerGames: Implementation Plan (MVP lobby + extension structure)
 
-> **Status (2026-10-14):** M0–M7 done. AI game generation A0–A6 done. **Now: the game dev kit, contract v3 (§12, milestones K1–K6)**, because AI-made games were too simple with 5 fixed screens. K1–K4 are done; K5 (the generator on v3, with the new examples) is next. Then deploying (M8). A7 (bring your own key) waits on RCAC's answer. This file is the living plan: decisions and changes are recorded here as they happen, so `git log docs/PLAN.md` shows how it evolved.
+> **Status (2026-10-14):** M0–M7 done. AI game generation A0–A6 done. **Now: the game dev kit, contract v3 (§12, milestones K1–K6)**, because AI-made games were too simple with 5 fixed screens. K1–K5 are done; K6 (versions and change requests) is next. Then deploying (M8). A7 (bring your own key) waits on RCAC's answer. This file is the living plan: decisions and changes are recorded here as they happen, so `git log docs/PLAN.md` shows how it evolved.
 
 _Site renamed from "LaunchPad Party" to **BoilerGames** on 2026-10-11 (built for the Purdue LaunchPad club; the club name stays where it refers to the club)._
 
@@ -704,7 +704,7 @@ ctx.sendToPlayer(id, {
   - nesting at most 5 deep
   - at most 60 blocks per screen
   - text limits per block
-  - a screen can be up to 96 KB, raised from 8 KB because drawings are shown on the big screen (built in K3)
+  - a screen can be up to 256 KB, raised from 8 KB because drawings are shown on the big screen (96 KB in K3; 256 KB in K5, so a gallery of 12 full drawings fits)
 - Styling uses fixed words only, never CSS: `size: small|normal|big|huge`, `tone: normal|muted|good|bad|accent`, `align`. Every screen stays readable and works in dark mode.
 
 **The first set of blocks** (each one is a hand-written component plus its checks):
@@ -783,7 +783,7 @@ The client components stay hand-written. The existing sync test is extended so t
 | **K2 Input blocks + contract v3** ✅ _done 2026-10-14: `textInput`, `multiChoice` (a separate block, not a `multi` flag on `choice`: clearer for the AI, since a multi-pick sends one action plus the ticked indexes), `slider`, `rank`; `game:action { action, input }`; each block's `input.read` checks and cleans the value (trim + NFC, no control characters, snapped slider steps, sorted picks) before `onAction(id, action, input)`; buttons and choices must send no input; bots fill every input block with valid values, and the sloppy scenario also sends real actions with junk values, which must never reach the game. The 32 KB frame limit moves to K3, where drawings need it: the K2 inputs fit in 4 KB_ | `{ action, input }` protocol; platform input checks; `onAction(id, action, input)`; offered-actions check over block trees; `textInput`, multi `choice`, `slider`, `rank`; bots make inputs; frame limit to 32 KB | Type, slide and rank on a phone; the game gets checked input; bad input is dropped |
 | **K3 Widgets** ✅ _done 2026-10-14: `reaction` (goAt; phone measures ms; `{ early: true }` for false starts; rejected if it arrives before GO on the server clock), `mash`, `timingBar`, `tapTargets` (seeded spots, same on every phone), `drawPad` + `drawing` (strokes on a 1000 × 750 canvas, palette names, ≤ 1500 points ≈ 10–15 KB, white paper in dark mode too). Widgets have their own `widget` group in the reference. Limits: client frames 32 KB, screens 96 KB (galleries of drawings; the plan said 64). Input checks now get the arrival time (`context.now`)_ | `reaction`, `mash`, `timingBar`, `tapTargets`, `drawPad` + `drawing`; local timing with the clock offset; bounds checks; bot inputs | Each widget playable on a phone; drawings show on the big screen |
 | **K4 Kit reference + `/kit` page + examples** ✅ _done 2026-10-14: `GET /api/kit` (the catalog, built from the block definitions; the AI's markdown reference is built from the same catalog, so no separate KIT.md file) and a public `/kit` page with live previews; Reaction Race on the `reaction` widget (fastest time wins, all times listed); new official games **Sketch & Guess** (drawPad + guesses) and **Fill the Blank** (write, then vote). The harness caught two real limits while writing them: `choice` now allows 12 options (one per other player), and big reveals must stay under 60 blocks_ | `KIT.md` generated from the definitions; public `/kit` playground; Reaction Race on `reaction`; Sketch & Guess; the text-answers game; e2e tests | Open `/kit` and try every block; play the new examples with phones |
-| **K5 Generator on v3** | Prompt built from `KIT.md` + new examples; spec rewritten for v3; re-run the comparison with the drawing and reflex ideas | `npm run generate` makes a drawing game and a reflex game that pass and are fun |
+| **K5 Generator on v3** ✅ _done 2026-10-14: examples are Reaction Race, Sketch & Guess and Fill the Blank (Majority Rules left out to keep the prompt ~15k tokens); the spec gains "Make it a real party game", players' input, widget timing and 12-player limits; the reference warns that widgets restart on a new screen. The comparison (§12j) found a platform bug (12-drawing galleries were over the 96 KB screen limit; now 256 KB, and bots draw full-ink drawings) and two spec gaps (late widget results, answers leaked by a slider)_ | Prompt built from `KIT.md` + new examples; spec rewritten for v3; re-run the comparison with the drawing and reflex ideas | `npm run generate` makes a drawing game and a reflex game that pass and are fun |
 | **K6 Versions + change requests** | `game_versions` migration; revision jobs (current code + request); version history, changelog, changed-lines view; playtest/publish a version; rollback | Ask a game for a change → new version in review → playtest it → publish it; old version restorable |
 
 ### 12i. Risks and open questions
@@ -793,6 +793,38 @@ The client components stay hand-written. The existing sync test is extended so t
 - **Phone performance.** Drawing pads and fast widgets on cheap phones. Keep widgets simple (canvas, no libraries) and test on a real low-end phone.
 - **Q13:** should `/kit` be public? Recommendation: yes. It's documentation and shows off the platform, and it contains nothing secret.
 - **Q14:** when a game has a version in playtest and a different one published, do other hosts keep the published version while you test the new one? Recommendation: yes. "Live version" becomes "published version + your playtest version"; decide in K6.
+
+### 12j. Model comparison on v3 (K5, 2026-10-14)
+
+Four ideas, run in the sandbox with `npm run generate` (six runs in parallel). The original drawing and reflex prompts weren't saved, so these are rewritten versions of them.
+
+| Idea | gpt-oss:120b | qwen3.8:27b |
+|---|---|---|
+| Drawing: everyone draws a different silly prompt, then votes on the gallery | ✅ 1st try, 52 s | ✅ 1st try, 131 s |
+| Reflex: reaction, mashing, timing bar and tap-target rounds | ✅ 2nd try, 95 s | ✅ 2nd try, 317 s |
+| Guess the Number (slider) | ✅ 2nd try, 76 s | not run |
+| Rank It (rank) | ✅ 1st try, 51 s | not run |
+
+**What reading the code found** (the tests can't judge game logic):
+
+| Game | Good | Wrong |
+|---|---|---|
+| Drawing, gpt-oss | drawPad, gallery, timer and progress bars | The gallery has no names or numbers, but the vote buttons say "Vote for Alex's drawing": you can't tell which drawing is whose, and votes aren't anonymous |
+| Drawing, qwen | The best of the batch: numbered gallery, your own drawing left out of your vote, names revealed afterwards | Crashed when fewer than 2 players drew (an empty grid). Found by the stronger bots below |
+| Reflex, gpt-oss | All 4 widgets | Mashing and tap-target rounds end at the exact moment phones send their results, so most results would be lost. The reaction widget only appears at GO, so false starts are impossible |
+| Reflex, qwen | All 4 widgets used correctly: sent once, never re-sent, 1.5 s grace for late results | False starts and players with no result can still win placement points |
+| Guess the Number, gpt-oss | slider, reveal grid | The slider gives the answer away: max = 2 × answer + 20, and the start value *is* the answer when it's under 50 |
+| Rank It, gpt-oss | rank, average-ranking reveal | Never says what the order means (best? favorite?); the reveal's "points earned here" is always 0 (player scores read by item index) |
+
+**Fixed because of this run:**
+- **Platform:** a full drawing is up to 18 KB, so a gallery of 12 is ~220 KB, over the 96 KB screen limit. Both drawing games would have crashed at a full party. The bots only drew ~0.4 KB scribbles, so the harness never saw it. Now one bot drawing in four uses all the ink, and screens may be 256 KB.
+- **Spec:** wait ~2 s after a `mash`/`tapTargets` ends before ending the round; never let a slider's range or start value depend on the answer.
+
+**Takeaways:**
+- **The kit does its job.** Every run used the block made for the idea (drawPad, all four widgets, slider, rank), and all 6 passed, 3 on the first try. Before K1, the drawing and reflex games couldn't be made at all.
+- **qwen designs better games again** (fewer logic bugs, and it followed the widget rules), but it's 2–3× slower. gpt-oss stays the default for speed; pick qwen for a game you care about.
+- **Passing the tests ≠ a good game.** Every gpt-oss game had a logic or design bug that only reading or playtesting finds. That's what K6's "ask for changes" is for: describe the bug, get a new version.
+- The bots matter as much as the checks: a test is only as good as the inputs it tries.
 
 ---
 
