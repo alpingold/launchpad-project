@@ -1,9 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { extractCode } from '../../../generator/src/extract.js';
+import { extractCode, extractChangelog } from '../../../generator/src/extract.js';
 import { chat } from '../../../generator/src/llm.js';
-import { systemPrompt, firstMessages, fixMessage, MAX_IDEA_LENGTH, EXAMPLES } from '../../../generator/src/prompt.js';
+import { systemPrompt, firstMessages, changeMessages, fixMessage, MAX_IDEA_LENGTH, EXAMPLES } from '../../../generator/src/prompt.js';
 import { generateGame } from '../../../generator/src/run.js';
 import { MODELS, DEFAULT_MODEL } from '../../../generator/src/models.js';
 import { BLOCK_TYPES } from '../../src/games/kit/blocks.js';
@@ -30,6 +30,14 @@ test('extractCode: takes the longest js block, ignoring thinking and chatter', (
   assert.equal(extractCode('export default { noFence: true };'), 'export default { noFence: true };\n');
   assert.equal(extractCode('Sorry, I cannot help with that.'), null);
   assert.equal(extractCode(undefined), null);
+});
+
+test('extractChangelog: the "- " lines after CHANGES:, ignoring thinking, code and later lists', () => {
+  const reply = `<think>CHANGES:\n- not this</think>Sure!\n\n**CHANGES:**\n\n- Rounds are 30 s now\n* A scoreboard after each round\nHere you go:\n\`\`\`js\n- not code\n\`\`\`\nNotes:\n- not this either`;
+  assert.equal(extractChangelog(reply), '- Rounds are 30 s now\n- A scoreboard after each round');
+  assert.equal(extractChangelog('No list, just code.'), null);
+  assert.equal(extractChangelog(`CHANGES:\n${'- x\n'.repeat(20)}`).split('\n').length, 8, 'at most 8 lines');
+  assert.equal(extractChangelog(`CHANGES:\n- ${'y'.repeat(500)}`).length, 2 + 200, 'each at most 200 characters');
 });
 
 // --- Calling the model ------------------------------------------------------------------
@@ -104,6 +112,21 @@ test('the idea goes in its own marked section, trimmed to the length limit', () 
   assert.match(fixMessage('FAIL ...'), /FAIL \.\.\.[\s\S]*complete corrected module/);
 });
 
+test('a change request shows the idea, earlier changes, the current code and the request, each marked as data', () => {
+  const [system, user] = changeMessages('A voting game about snacks', {
+    request: 'Make the rounds shorter',
+    source: 'export default { id: "snacks" };\n',
+    earlierRequests: ['Add a scoreboard'],
+  });
+  assert.equal(system.content, systemPrompt(), 'the same instructions, kit and examples as a new game');
+  assert.match(user.content, /<game-idea>\nA voting game about snacks\n<\/game-idea>/);
+  assert.match(user.content, /<earlier-changes>\n- Add a scoreboard\n<\/earlier-changes>/);
+  assert.match(user.content, /```js\nexport default \{ id: "snacks" \};\n\n```/);
+  assert.match(user.content, /<change-request>\nMake the rounds shorter\n<\/change-request>/);
+  assert.match(user.content, /`CHANGES:`/);
+  assert.doesNotMatch(changeMessages('An idea here', { request: 'Change it please', source: 'x' })[1].content, /earlier-changes/);
+});
+
 test('the prompt stays in sync with the platform: every block, ctx member and the contract version', () => {
   const reference = kitReference();
   for (const type of BLOCK_TYPES) assert.ok(reference.includes(`#### \`${type}\``), `block ${type}`);
@@ -151,6 +174,23 @@ test('a game that fails the tests is sent back with the problems, and the fix pa
   assert.equal(secondCall.at(-2).role, 'assistant', 'the model sees its own first answer');
   assert.match(secondCall.at(-1).content, /unknown field "lable"/, '...and exactly what was wrong with it');
   assert.ok(steps.includes('attempt 2/4: passed'));
+});
+
+test('changing a game: the model gets the current code, and the result has its list of changes', async () => {
+  const { chatFn, seen } = fakeModel([`CHANGES:\n- Shorter rounds\n\n${fenced(BAD_GAME)}`, fenced(GOOD_GAME)]);
+  const change = { request: 'Make the rounds shorter', source: GOOD_GAME };
+  const result = await generateGame({ idea: 'A game where everyone votes', change }, { chatFn });
+  assert.equal(result.ok, true);
+  assert.equal(result.changelog, '- Shorter rounds', 'from the first answer; the fix answer has none');
+  assert.ok(seen[0].messages[1].content.includes(GOOD_GAME), 'the current code is in the request');
+
+  const { chatFn: never } = fakeModel([]);
+  const bad = (c) => generateGame({ idea: 'A game where everyone votes', change: c }, { chatFn: never });
+  assert.match((await bad({ request: 'short', source: GOOD_GAME })).error, /change request must be 10–1000/);
+  assert.match((await bad({ request: 'Make the rounds shorter' })).error, /needs the current code/);
+  assert.match((await bad(null)).error, /change request/);
+  const fresh = await generateGame({ idea: 'A game where everyone votes' }, { chatFn: fakeModel([fenced(GOOD_GAME)]).chatFn });
+  assert.equal(fresh.changelog, null, 'a new game has no list of changes');
 });
 
 test('a reply with no code gets a reminder instead of a test run', async () => {

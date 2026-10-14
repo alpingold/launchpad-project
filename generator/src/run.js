@@ -3,17 +3,21 @@
 //
 //   echo '{"idea": "...", "model": "qwen3.8:27b"}' | node generator/src/run.js
 //
+// To change an existing game (plan §12e, K6), the job also has
+//   "change": { "request": "...", "source": "<the current code>", "earlierRequests": [...] }
+// and the result has a `changelog`: the model's own short list of what it changed.
+//
 // The loop: ask the model for a game → run the test harness on it → if it fails, show the
 // model the problems and ask again (up to `maxAttempts` times). The freshly written code
 // only ever runs here, in the sandbox, inside the harness's own locked-down process.
 //
 // Progress lines ("STEP ...") go to stderr. The result is one JSON line on stdout:
-//   { ok, model, source, report, attempts: [...], error? }
+//   { ok, model, source, report, changelog, attempts: [...], error? }
 
 import { pathToFileURL } from 'node:url';
 import { chat } from './llm.js';
-import { extractCode } from './extract.js';
-import { firstMessages, fixMessage, NO_CODE_MESSAGE, MAX_IDEA_LENGTH } from './prompt.js';
+import { extractCode, extractChangelog } from './extract.js';
+import { firstMessages, changeMessages, fixMessage, NO_CODE_MESSAGE, MAX_IDEA_LENGTH, MAX_SOURCE_LENGTH } from './prompt.js';
 import { DEFAULT_MODEL, isAllowedModel } from './models.js';
 import { checkGameSourceIsolated, formatReport } from '../../server/src/games/harness/index.js';
 
@@ -25,27 +29,37 @@ export const DEFAULT_MAX_ATTEMPTS = 4;
  * @property {string} model
  * @property {string | null} source    the last code the model wrote (passing or not)
  * @property {object | null} report    the harness report for that code
+ * @property {string | null} changelog  change requests only: "- …" lines from the model
  * @property {{ attempt: number, seconds: number, ok: boolean, problems: number, usage: object | null }[]} attempts
  * @property {string} [error]          why it stopped, if not ok
  */
 
 /**
  * Generates a game. Everything outside is passed in, so tests can use a fake model.
- * @param {{ idea: string, model?: string, maxAttempts?: number }} job
+ * @param {{ idea: string, model?: string, maxAttempts?: number, change?: { request: string, source: string, earlierRequests?: string[] } }} job
  * @param {{ chatFn?: typeof chat, check?: typeof checkGameSourceIsolated, onStep?: (text: string) => void }} [deps]
  * @returns {Promise<GenerateResult>}
  */
 export async function generateGame(job, { chatFn = chat, check = checkGameSourceIsolated, onStep = () => {} } = {}) {
   const model = job.model ?? DEFAULT_MODEL;
   const maxAttempts = job.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
-  const result = { ok: false, model, source: null, report: null, attempts: [] };
+  const result = { ok: false, model, source: null, report: null, changelog: null, attempts: [] };
 
   if (typeof job.idea !== 'string' || job.idea.trim().length < 10 || job.idea.length > MAX_IDEA_LENGTH) {
     return { ...result, error: `the game idea must be 10–${MAX_IDEA_LENGTH} characters` };
   }
   if (!isAllowedModel(model)) return { ...result, error: `unknown model ${JSON.stringify(model)}` };
+  const { change } = job;
+  if (change !== undefined) {
+    if (typeof change?.request !== 'string' || change.request.trim().length < 10 || change.request.length > MAX_IDEA_LENGTH) {
+      return { ...result, error: `the change request must be 10–${MAX_IDEA_LENGTH} characters` };
+    }
+    if (typeof change.source !== 'string' || change.source.length === 0 || change.source.length > MAX_SOURCE_LENGTH) {
+      return { ...result, error: 'a change needs the current code' };
+    }
+  }
 
-  const messages = firstMessages(job.idea);
+  const messages = change ? changeMessages(job.idea, change) : firstMessages(job.idea);
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     onStep(`attempt ${attempt}/${maxAttempts}: asking ${model}`);
     let reply;
@@ -57,6 +71,8 @@ export async function generateGame(job, { chatFn = chat, check = checkGameSource
     messages.push({ role: 'assistant', content: reply.content });
 
     const source = extractCode(reply.content);
+    // The list of changes comes with the first answer that has code (fixes don't repeat it).
+    if (change && source && result.changelog === null) result.changelog = extractChangelog(reply.content);
     if (!source) {
       result.attempts.push({ attempt, seconds: reply.seconds, ok: false, problems: 1, usage: reply.usage });
       messages.push({ role: 'user', content: NO_CODE_MESSAGE });
