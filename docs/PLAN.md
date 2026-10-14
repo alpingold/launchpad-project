@@ -1,6 +1,6 @@
 # BoilerGames: Implementation Plan (MVP lobby + extension structure)
 
-> **Status (2026-10-13):** M0–M7 done. AI game generation is in progress: A0–A6 are done (OpenShell spike, contract v2, test harness, admin role + stored games, the generator, the server job runner + admin API, the admin page). Next: a real end-to-end playtest with phones, then deploying (M8). A7 (bring your own key) waits on RCAC's answer. This file is the living plan: decisions and changes are recorded here as they happen, so `git log docs/PLAN.md` shows how it evolved.
+> **Status (2026-10-14):** M0–M7 done. AI game generation A0–A6 done. **Next: the game dev kit, contract v3 (§12, milestones K1–K6)**, because AI-made games were too simple with 5 fixed screens. Then deploying (M8). A7 (bring your own key) waits on RCAC's answer. This file is the living plan: decisions and changes are recorded here as they happen, so `git log docs/PLAN.md` shows how it evolved.
 
 _Site renamed from "LaunchPad Party" to **BoilerGames** on 2026-10-11 (built for the Purdue LaunchPad club; the club name stays where it refers to the club)._
 
@@ -52,6 +52,12 @@ _When this plan was first written (2026-10-11) the project folder was empty; eve
 - **Model provider:** Purdue GenAI Studio (free for students, OpenAI-compatible API).
 - **Where games live:** approved generated games are stored by the server (database), **not** in the repo. Only official, hand-made games live in the repo.
 - **Contract:** option **C**, ctx + callbacks plus required `hostView()`/`playerView(id)`. No saving or resuming game progress in this version (it may come in a later iteration).
+
+**Decisions locked in round 4 (2026-10-14), the game dev kit (full design in §12):**
+- **Contract v3: composable block screens, input blocks and on-phone widgets**, all hand-written and trusted. Games still never run code in browsers; free HTML/JS is not built.
+- **An AI dev kit first:** one kit reference ("the tools") feeds the AI prompt and a public `/kit` page. Games can be changed with follow-up prompts, and each change is a stored version.
+- **No split between standalone games and minigames for now.** The Mario Party board with picked minigames is a later alternate mode, filterable in the catalogue.
+- **Built before M8**, after A6.
 
 **Dependencies:** react, react-dom, vite, @vitejs/plugin-react, express, ws, and better-sqlite3 (milestone 7). Nothing else unless you approve it. The tests use the built-in `node:test`.
 
@@ -477,6 +483,7 @@ Plan for E2 to be one of these. Pick when you get there.
 | **M6b Settings + dark mode** | A settings page/panel (`/settings` or a gear menu on every page). _(Built as a ⚙ panel on every page, not a separate page, so phones mid-game don't navigate away and drop their connection. Code in `client/src/settings/`.)_ The full list of settings is TBD; **dark mode is the one confirmed setting.** Theme options: Light / Dark / Match device (`prefers-color-scheme`). Refactor `styles.css` colors into CSS custom properties (`--bg`, `--text`, `--accent`, ...) with a `[data-theme="dark"]` override, so a theme is just a different set of variables. Preferences saved in `localStorage` (per device, survives closing the tab, unlike the room tokens in sessionStorage). Must cover the host big screen, phones, and game views. | Toggle dark mode; it applies instantly on every page and is remembered after a reload. A browser test for the toggle and persistence |
 | **M7 Accounts + SQLite** | better-sqlite3, schema, scrypt, sessions, cookie, `/api/*` auth routes, `Login.jsx`; WS upgrade reads the cookie and checks Origin; `/host` requires login | Sign up, log in, host; logged out → redirected to login. Auth tests |
 | **A0–A7 AI game generation** | Added 2026-10-13; built **before M8**. See §11d for the milestone list | See §11d |
+| **K1–K6 Game dev kit (contract v3)** | Added 2026-10-14; built **before M8**. See §12h | See §12h |
 | **M8 Deploy** | `npm run build`, Express serves `client/dist`, one node process under systemd (or pm2), Caddy reverse proxy for automatic HTTPS → `wss://` | The site works over HTTPS on a VPS, with phones on mobile data. _Note: where generation runs once deployed is Q10 (§11f)_ |
 
 ---
@@ -650,6 +657,142 @@ Plus "Hot or Not: Food" on gpt-oss: ✅ 1st try, 27 s.
 - Both copy the example games' structure closely, so the examples are the main lever on quality.
 - **The tests can't check facts or game logic.** Both trivia games contained wrong or made-up "facts": qwen marked "Blue and Gold" as Purdue's colors and *The Daily Titan* as its newspaper. "Hot or Not" awarded a "minority" point when everyone voted the same way. Human review stays essential. For fact games, put the facts in the idea yourself.
 - Sample size is tiny (one run per cell); revisit with more runs if the defaults ever matter more.
+
+---
+
+## 12. Game dev kit: contract v3 (decided 2026-10-14)
+
+### 12a. Why, and the goal
+
+**The problem.** After A6, AI-made games came out too simple. A drawing game and a reflex game couldn't be made at all. The cause is mostly the contract, not the model:
+- **5 fixed screens:** message, button, choice, countdown and scoreboard.
+- **No real player input:** no typing, drawing, sliders, multi-select or ranking.
+- **No combining:** one screen kind at a time.
+- **Every tap is a server round trip:** too slow for anything with timing.
+
+**The goal: an AI dev kit first and foremost.** Games, whether hand-made or AI-made, standalone or small, get a toolbox:
+- composable building blocks
+- input blocks
+- interactive widgets that react instantly on the phone
+
+The kit has one written reference ("the tools"), which is used both in the AI prompt and on a public page. A game can be changed with follow-up prompts, and every change is kept as a version.
+
+**Decided (2026-10-14):**
+- Option 1 from the discussion: richer hand-written UI. Generated games still never run code in browsers.
+- **Free HTML/JS from games is not built.** It would need a sandboxed iframe on a separate origin. Review would double, and the bots couldn't test the UI. Revisit only if the kit hits a wall.
+- **No split** between standalone games and minigames for now. The Mario Party board with picked minigames (option 3) is a **future alternate game mode**, filterable in the catalogue (§12g).
+
+### 12b. Screens are block trees
+
+A game sends a **screen**: a small tree of blocks, still plain JSON, checked by the server and drawn by trusted React components.
+
+```js
+ctx.sendToPlayer(id, {
+  view: 'screen',
+  blocks: [
+    { block: 'text', text: 'Round 2 of 5', size: 'small' },
+    { block: 'timer', endsAt: ctx.now() + 20_000, style: 'bar' },
+    { block: 'text', text: 'Draw: a cat on a skateboard', size: 'big' },
+    { block: 'drawPad', action: { submit: 'drawing', round: 2 }, colors: ['black', 'red', 'blue'] },
+  ],
+});
+```
+
+**Rules:**
+- **The 5 v2 view kinds are removed** (decided 2026-10-14: we're in development, so breaking games is fine). Their jobs move into blocks: `message` → `text` + `image`, `countdown` → `timer`, `button`/`choice`/`scoreboard` become blocks. Official games, test fixtures and the AI spec move to screens in K1. AI games already stored with v2 will fail their load check and be skipped at startup; delete or regenerate them.
+- Limits keep screens sane and testable:
+  - nesting at most 5 deep
+  - at most 60 blocks per screen
+  - text limits per block
+  - a screen can be up to 64 KB, raised from 8 KB because drawings are shown on the big screen
+- Styling uses fixed words only, never CSS: `size: small|normal|big|huge`, `tone: normal|muted|good|bad|accent`, `align`. Every screen stays readable and works in dark mode.
+
+**The first set of blocks** (each one is a hand-written component plus its checks):
+
+| Group | Blocks | Notes |
+|---|---|---|
+| Layout | `column`, `row`, `grid` (cols 2–6), `card` | Children are blocks |
+| Display | `text`, `image` (asset id), `timer` (number or bar), `progress`, `scoreboard`, `playerName`, `drawing` (shows a submitted drawing), `divider` | `playerName` looks names up, so games never handle display names |
+| Input (one round trip) | `button`, `choice` (single or `multi`, with min/max picks), `textInput` (maxLength ≤ 200), `slider` (min/max/step), `rank` (order 2–8 items) | Sends `{ action, input }` |
+| Widgets (instant on the phone) | `reaction` (wait → GO at a server time → measures ms locally), `mash` (counts taps for N s), `timingBar` (stop the moving marker; sends 0–1000), `tapTargets` (targets appear at seeded spots; sends hits and ms), `drawPad` (strokes, sent on submit) | The phone does the fast part locally and sends one result |
+
+A widget measures time on the phone. That's fair to people on slow Wi-Fi, but a modified phone could fake a result. That's fine for a party game; the platform still rejects impossible values, like a reaction under 80 ms.
+
+### 12c. Input and actions (protocol + contract v3)
+
+- **Action messages.** `game:action` becomes `{ action, input? }`.
+  - `action` must still match an action offered on that player's current screen (the offered-actions check now walks the block tree).
+  - `input` is checked **by the platform** against that block's rules: text length, slider range, choice count, rank permutation, drawing size, widget result shape and bounds.
+  - Games receive `onAction(playerId, action, input)` and can trust the input's shape. They still check it against game state.
+- **Drawing format.** Strokes are `[[color, [x,y, x,y, …]], …]`, with integer coordinates 0–1000 and a hard cap of about 24 KB. The WebSocket frame limit rises from 4 KB to 32 KB, still rate-limited.
+- **`contractVersion: 3`** is required from K1 on (screens). v2 games are no longer accepted. K2–K3 add to v3 without another bump while we're in development.
+- **Bots.** Each block definition includes a way for bots to produce random valid input (words for text, scribbles for drawings, random reaction times, …). The harness plays every block automatically, and new blocks are tested for free.
+
+### 12d. One definition per block → checks, bots, docs
+
+Each block is defined once in `server/src/games/kit/`:
+- its fields, described with a tiny hand-written schema (about 100 lines, no new dependency)
+- a one-line purpose and an example
+- an input checker
+- a bot input maker
+
+The following are **generated from those definitions**, so they can't drift apart:
+1. The server's screen and input checks.
+2. **`KIT.md`, the tools reference.** It goes into the AI prompt, replacing the hand-written view list in `GAME_SPEC.md`.
+3. A public **`/kit` page.** Every block is shown live with its example, so you can tap, type and draw on it, together with its fields and a copyable JSON example. It's the dev kit's documentation and the place to see what's possible.
+
+The client components stay hand-written. The existing sync test is extended so that every block needs a component and a `/kit` example.
+
+### 12e. Changing a game with more prompts (versions)
+
+- **Data.** A new `game_versions` table, added by a migration: `game_id, version, request (the idea or change request), model, source, source_sha256, report_json, status (generating/failed/ready), error, created_at`.
+  - `generated_games` keeps the stable game id, its name, its status (review/playtest/published/rejected), and which version is live (`live_version`).
+  - Existing games become version 1.
+- **Asking for changes.** The admin page gets an "Ask for changes" box on any game, for example: "rounds are too long; add a drawing round; show the scoreboard after each round". The job runs in the same sandbox and loop. Its prompt includes:
+  - the kit
+  - the examples
+  - the original idea
+  - **the current code**
+  - the change request
+
+  The model returns the whole new file plus a short changelog, and the usual check → fix loop runs.
+- **Nothing changes for players until you choose.** A new version waits in review. "Playtest v3" or "Publish v3" swaps it in live, after the fingerprint and load re-check. Rolling back means playtesting an older version.
+- **Admin page.** A version history (request, changelog, test result, which version is live). Code is still shown as text. A simple "changed lines" view (a small hand-written line diff, no dependency) makes reviewing a change faster than rereading the whole file.
+
+### 12f. Better examples (the biggest lever, again)
+
+**Official example games, rewritten or added on v3:**
+- **Reaction Race** moves to the `reaction` widget, so reaction times are fair.
+- A new **drawing game**, "Sketch & Guess": one player draws, others type guesses.
+- A new **text game**: write answers, vote for the funniest.
+
+**Acceptance ideas for generation:** your **drawing game** and **reflex game** ideas, plus a few others. They're re-run on both models, and the results go in a table like §11g.
+
+### 12g. Later (not in K1–K6)
+
+- **Party mode / minigames (option 3).** A hand-written board game that runs picked games as minigames (`ctx.runMinigame`, Q6). Games declare an optional `tags` field (e.g. `minigame`, `drawing`, `reflex`) so the catalogue can filter by mode.
+- **Editing code by hand** on the admin page (a new version, re-tested in the sandbox before review).
+- **More widgets:** tilt/shake (iOS asks permission for motion sensors), sounds, a "hold" button, a word picker.
+- **Free-form client code** in a cross-origin sandboxed iframe, only if the kit proves too limiting (see 12a).
+
+### 12h. Milestones (before M8)
+
+| M | Goal | You can run / review |
+|---|---|---|
+| **K1 Screens + layout/display blocks** | Kit folder and schema helper; screens replace the 5 views (`contractVersion: 3`); layout and display blocks, plus `button` and single `choice` as blocks; recursive client renderer with fixed styling words; size and depth limits; official games, fixtures, harness and AI spec moved to screens; sync test | A hand-written test game shows a combined screen (title + timer bar + scoreboard) on phones and the big screen |
+| **K2 Input blocks + contract v3** | `{ action, input }` protocol; platform input checks; `onAction(id, action, input)`; offered-actions check over block trees; `textInput`, multi `choice`, `slider`, `rank`; bots make inputs; frame limit to 32 KB | Type, slide and rank on a phone; the game gets checked input; bad input is dropped |
+| **K3 Widgets** | `reaction`, `mash`, `timingBar`, `tapTargets`, `drawPad` + `drawing`; local timing with the clock offset; bounds checks; bot inputs | Each widget playable on a phone; drawings show on the big screen |
+| **K4 Kit reference + `/kit` page + examples** | `KIT.md` generated from the definitions; public `/kit` playground; Reaction Race on `reaction`; Sketch & Guess; the text-answers game; e2e tests | Open `/kit` and try every block; play the new examples with phones |
+| **K5 Generator on v3** | Prompt built from `KIT.md` + new examples; spec rewritten for v3; re-run the comparison with the drawing and reflex ideas | `npm run generate` makes a drawing game and a reflex game that pass and are fun |
+| **K6 Versions + change requests** | `game_versions` migration; revision jobs (current code + request); version history, changelog, changed-lines view; playtest/publish a version; rollback | Ask a game for a change → new version in review → playtest it → publish it; old version restorable |
+
+### 12i. Risks and open questions
+
+- **Prompt size.** The kit reference plus 3–4 example games is a much longer prompt. That's fine for both models' context windows, but slower. Keep `KIT.md` tight and pick examples carefully.
+- **More surface to review.** Inputs are where cheating and junk come from, which is why the platform validates them, not each game.
+- **Phone performance.** Drawing pads and fast widgets on cheap phones. Keep widgets simple (canvas, no libraries) and test on a real low-end phone.
+- **Q13:** should `/kit` be public? Recommendation: yes. It's documentation and shows off the platform, and it contains nothing secret.
+- **Q14:** when a game has a version in playtest and a different one published, do other hosts keep the published version while you test the new one? Recommendation: yes. "Live version" becomes "published version + your playtest version"; decide in K6.
 
 ---
 
