@@ -19,6 +19,8 @@
   --danger: #b00020;
   --good: #1a7f37;
   --good-bg: #1a7f37;
+  --good-tint: #dcf5e3; /* light backgrounds behind normal text (K6: added lines, status chips) */
+  --danger-tint: #fbe0e4; /* (K6: removed lines) */
   --banner-bg: #fff3cd;
   --banner-text: #664d03;
 }
@@ -39,6 +41,8 @@
   --danger: #ff6b81;
   --good: #4ade80;
   --good-bg: #238636;
+  --good-tint: #133d22;
+  --danger-tint: #4a1a24;
   --banner-bg: #3d3214;
   --banner-text: #ffe08a;
 }
@@ -1230,6 +1234,98 @@ select {
   border: 1px solid var(--border);
   font-size: 0.85rem;
   line-height: 1.4;
+}
+
+/* K6: versions on the admin page */
+.status-ready,
+.status-playtest {
+  background: var(--good-tint);
+  color: var(--text);
+}
+
+.gen-live {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.gen-change {
+  margin: 1rem 0 1.5rem;
+}
+
+.gen-change-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.gen-version {
+  border-top: 1px solid var(--border);
+  padding: 0.75rem 0;
+}
+
+.gen-version > details > summary {
+  cursor: pointer;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.6rem;
+}
+
+.gen-version q {
+  overflow-wrap: anywhere;
+}
+
+.gen-changelog ul {
+  margin-top: 0.25rem;
+  padding-left: 1.5rem;
+}
+
+.gen-diff pre {
+  padding: 0.25rem 0;
+}
+
+.diff-line {
+  display: flex;
+  min-width: max-content;
+}
+
+.diff-num {
+  flex: 0 0 3.2em;
+  padding-right: 0.5em;
+  text-align: right;
+  color: var(--muted);
+  user-select: none;
+}
+
+.diff-mark {
+  flex: 0 0 1.5em;
+  text-align: center;
+  font-weight: 700;
+}
+
+.diff-line code {
+  white-space: pre;
+  padding-right: 0.75rem;
+}
+
+.diff-add {
+  background: var(--good-tint);
+}
+
+.diff-del {
+  background: var(--danger-tint);
+}
+
+.diff-add-count {
+  color: var(--good);
+}
+
+.diff-del-count {
+  color: var(--danger);
 }
 
 /* A6: marks AI-made games in the game picker and on the home page */

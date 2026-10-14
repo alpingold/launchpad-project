@@ -1,11 +1,19 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useCurrentUser } from '../net/auth.js';
-import { listGenerations, getGeneration, startGeneration, actOnGeneration, deleteGeneration } from '../net/admin.js';
+import {
+  listGenerations,
+  getGeneration,
+  startGeneration,
+  requestChanges,
+  playtestVersion,
+  actOnGeneration,
+  deleteGeneration,
+} from '../net/admin.js';
 import { usePageTitle } from '../usePageTitle.js';
 
-// The admin page (plan §11, A6): make games with AI, read them, and decide what happens to
-// them. The server does all the checking (admin only, valid input, allowed status changes);
-// this page only shows what the server says.
+// The admin page (plan §11 A6, versions §12e K6): make games with AI, read them, ask for
+// changes (each makes a new version), and choose which version is live. The server does all
+// the checking (admin only, valid input, allowed moves); this page only shows what it says.
 //
 // Progress: while a game is being made, the page asks the server for the list every 2 s.
 // That's simpler than new WebSocket messages, and only one admin is ever watching.
@@ -13,34 +21,20 @@ import { usePageTitle } from '../usePageTitle.js';
 const POLL_MS = 2000;
 const LOGIN_URL = '/login?next=/admin';
 
+/** A game's status, in words (the server works it out from its versions). */
 const STATUS_TEXT = {
   generating: 'Generating',
   failed: 'Failed',
   review: 'Ready for review',
   playtest: 'Playtest (only you)',
   published: 'Published',
-  rejected: 'Rejected',
 };
 
-/** The buttons each status gets: [action, label]. The server allows exactly these moves. */
-const ACTIONS = {
-  review: [
-    ['playtest', 'Playtest'],
-    ['reject', 'Reject'],
-  ],
-  playtest: [
-    ['publish', 'Publish'],
-    ['reject', 'Reject'],
-  ],
-  published: [
-    ['playtest', 'Back to playtest'],
-    ['reject', 'Reject'],
-  ],
-  rejected: [['playtest', 'Playtest again']],
-};
-
-const CONFIRM = {
-  publish: 'Publish this game? Every host will be able to start it.',
+/** A version's status, in words. */
+const VERSION_STATUS_TEXT = {
+  generating: 'Generating',
+  failed: 'Failed',
+  ready: 'Passed the tests',
 };
 
 export default function Admin() {
@@ -141,7 +135,7 @@ function AdminPanel() {
                 <span className="gen-title">{game.name ?? shorten(game.prompt)}</span>
                 <StatusChip status={game.status} />
                 <span className="muted small gen-meta">
-                  {game.model} · {formatTime(game.createdAt)}
+                  {liveText(game) ?? `v${game.latestVersion}`} · {formatTime(game.createdAt)}
                   {game.progress && ` · ${progressText(game.progress)}`}
                 </span>
               </button>
@@ -154,6 +148,7 @@ function AdminPanel() {
         <GameDetail
           key={selected.id}
           summary={selected}
+          info={info}
           onChanged={refresh}
           onDeleted={async () => {
             setSelectedId(null);
@@ -251,10 +246,11 @@ function NewGameForm({ info, onStarted }) {
 }
 
 /**
- * One game: its progress or result, the test report, the code, and the buttons.
- * The code and report come from the detail endpoint, fetched again whenever the game changes.
+ * One game: what's live, its progress, "ask for changes", and every version (newest first)
+ * with its request, list of changes, test report, changed lines and code. The versions come
+ * from the detail endpoint, fetched again whenever the game changes.
  */
-function GameDetail({ summary, onChanged, onDeleted }) {
+function GameDetail({ summary, info, onChanged, onDeleted }) {
   const [game, setGame] = useState(null);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -271,23 +267,25 @@ function GameDetail({ summary, onChanged, onDeleted }) {
     };
   }, [summary.id, summary.updatedAt]);
 
-  async function act(action) {
-    if (CONFIRM[action] && !window.confirm(CONFIRM[action])) return;
+  /** Runs one admin move; on success shows the game as the server now has it. */
+  async function run(send, confirmText) {
+    if (confirmText && !window.confirm(confirmText)) return false;
     setBusy(true);
     setError(null);
-    const res = await actOnGeneration(summary.id, action);
+    const res = await send();
     setBusy(false);
     if (!res.ok) {
       setError(res.message ?? 'Something went wrong.');
-      return;
+      return false;
     }
-    setGame(res.game);
+    if (res.game?.versions) setGame(res.game);
     onChanged();
+    return true;
   }
 
   async function remove() {
     const waiting = summary.status === 'generating';
-    if (!window.confirm(waiting ? 'Cancel making this game?' : 'Delete this game for good?')) return;
+    if (!window.confirm(waiting ? 'Cancel making this game?' : 'Delete this game and all its versions for good?')) return;
     setBusy(true);
     const res = await deleteGeneration(summary.id);
     setBusy(false);
@@ -298,33 +296,31 @@ function GameDetail({ summary, onChanged, onDeleted }) {
     onDeleted();
   }
 
-  // Generating: show the live progress from the list (it's polled), not the detail.
   const running = summary.progress?.queuePosition === 0;
-  const actions = ACTIONS[summary.status] ?? [];
+  const { publishedVersion: published, playtestVersion: playtest } = summary;
+  const versions = game ? [...game.versions].reverse() : [];
 
   return (
     <section className="card gen-detail" aria-labelledby="detail-heading">
       <h2 id="detail-heading">{summary.name ?? shorten(summary.prompt)}</h2>
-      <p>
+      <p className="gen-live">
         <StatusChip status={summary.status} />
+        {published !== null && <span className="muted small">Everyone plays v{published}.</span>}
+        {playtest !== null && <span className="muted small">You're playtesting v{playtest}.</span>}
       </p>
       {summary.description && <p>{summary.description}</p>}
       <p className="muted small">
         Idea: <q>{summary.prompt}</q>
         <br />
-        {summary.model} · started {formatTime(summary.createdAt)} · id <span className="mono">{summary.id}</span>
+        started {formatTime(summary.createdAt)} · id <span className="mono">{summary.id}</span>
       </p>
 
       {summary.progress && <Progress progress={summary.progress} />}
-      {summary.status === 'failed' && summary.error && (
-        <p className="error">
-          <strong>Failed:</strong> {summary.error}
-        </p>
-      )}
-      {summary.status === 'playtest' && (
+      {playtest !== null && (
         <p className="banner" role="status">
-          Only you can start it: it's in your game picker on the <a href="/host">host page</a>. Try it with real
-          phones, then publish it or reject it.
+          Only you can start v{playtest}: it's in your game picker on the <a href="/host">host page</a>
+          {published !== null && <>, next to v{published}, which everyone else keeps playing</>}. Try it with real
+          phones, then publish it.
         </p>
       )}
 
@@ -334,37 +330,200 @@ function GameDetail({ summary, onChanged, onDeleted }) {
         </p>
       )}
       <div className="gen-actions">
-        {actions.map(([action, label]) => (
+        {playtest !== null && (
           <button
-            key={action}
             type="button"
-            className={action === 'reject' ? 'secondary-button' : 'primary-button'}
-            onClick={() => act(action)}
+            className="primary-button"
             disabled={busy}
+            onClick={() =>
+              run(
+                () => actOnGeneration(summary.id, 'publish'),
+                `Publish v${playtest}? Every host will be able to start it${published !== null ? `, instead of v${published}` : ''}.`,
+              )
+            }
           >
-            {label}
+            Publish v{playtest}
           </button>
-        ))}
+        )}
+        {playtest !== null && (
+          <button type="button" className="secondary-button" disabled={busy} onClick={() => run(() => actOnGeneration(summary.id, 'stop-playtest'))}>
+            Stop playtest
+          </button>
+        )}
+        {published !== null && (
+          <button
+            type="button"
+            className="secondary-button"
+            disabled={busy}
+            onClick={() => run(() => actOnGeneration(summary.id, 'unpublish'), 'Unpublish it? Other hosts will no longer see this game.')}
+          >
+            Unpublish
+          </button>
+        )}
         {!running && (
           <button type="button" className="secondary-button danger-button" onClick={remove} disabled={busy}>
-            {summary.status === 'generating' ? 'Cancel' : 'Delete'}
+            {summary.status === 'generating' ? 'Cancel' : 'Delete game'}
           </button>
         )}
       </div>
 
-      {game?.report && <Report report={game.report} />}
-      {game?.source && (
-        <details className="gen-source" open={summary.status === 'review'}>
-          <summary>
-            Code ({game.source.split('\n').length} lines){summary.status === 'review' && ': read it before playtesting'}
-          </summary>
-          {/* Shown as text only. The browser never runs it. */}
-          <pre>
-            <code>{game.source}</code>
-          </pre>
-        </details>
+      {game && (
+        <ChangeForm
+          game={game}
+          enabled={info.enabled && summary.status !== 'generating'}
+          onAsk={(text, basedOn) => run(() => requestChanges(summary.id, text, basedOn))}
+          info={info}
+        />
       )}
+
+      <h3>Versions</h3>
+      {versions.map((v, i) => (
+        <Version
+          key={v.version}
+          version={v}
+          open={i === 0}
+          live={v.version === published ? 'published' : v.version === playtest ? 'playtest' : null}
+          busy={busy}
+          onPlaytest={() => run(() => playtestVersion(summary.id, v.version))}
+        />
+      ))}
     </section>
+  );
+}
+
+/** "Ask for changes": what to change, and which version to start from. */
+function ChangeForm({ game, enabled, onAsk, info }) {
+  const ready = game.versions.filter((v) => v.status === 'ready');
+  // Same default as the server: the playtest version, else the published one, else the newest ready one.
+  const fallback = game.playtestVersion ?? game.publishedVersion ?? ready.at(-1)?.version ?? null;
+  const [text, setText] = useState('');
+  const [basedOn, setBasedOn] = useState(fallback);
+  const length = text.trim().length;
+  if (ready.length === 0) return null;
+  const base = ready.some((v) => v.version === basedOn) ? basedOn : fallback;
+
+  async function handleSubmit(event) {
+    event.preventDefault();
+    if (await onAsk(text, base)) setText('');
+  }
+
+  return (
+    <form className="admin-form gen-change" onSubmit={handleSubmit}>
+      <label>
+        Ask for changes
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          rows={3}
+          maxLength={info.maxIdeaLength}
+          placeholder="e.g. Rounds are too long: make them 20 seconds. Show the scoreboard after each round."
+          disabled={!enabled}
+        />
+      </label>
+      <div className="gen-change-row">
+        <label>
+          Start from{' '}
+          <select value={base} onChange={(e) => setBasedOn(Number(e.target.value))} disabled={!enabled}>
+            {[...ready].reverse().map((v) => (
+              <option key={v.version} value={v.version}>
+                v{v.version}
+                {v.version === game.publishedVersion ? ' (published)' : v.version === game.playtestVersion ? ' (playtest)' : ''}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button type="submit" className="primary-button" disabled={!enabled || length < info.minIdeaLength}>
+          Make a new version
+        </button>
+      </div>
+    </form>
+  );
+}
+
+/** One version: what was asked, what the AI says it changed, its tests, changed lines and code. */
+function Version({ version: v, open, live, busy, onPlaytest }) {
+  return (
+    <article className="gen-version" aria-label={`Version ${v.version}`}>
+      <details open={open}>
+        <summary>
+          <strong>v{v.version}</strong> {v.name && <span>{v.name}</span>}{' '}
+          <span className={`status-chip status-${v.status}`}>{VERSION_STATUS_TEXT[v.status]}</span>
+          {live && <span className={`status-chip status-${live}`}>{live === 'published' ? 'Published' : 'Playtest'}</span>}
+        </summary>
+        <p className="small">
+          {v.basedOn === null ? (
+            <>From the idea.</>
+          ) : (
+            <>
+              Changed from v{v.basedOn}: <q>{v.request}</q>
+            </>
+          )}
+          <span className="muted"> · {formatTime(v.createdAt)}</span>
+        </p>
+        {v.changelog && (
+          <div className="gen-changelog">
+            <p className="small muted">What the AI says it changed:</p>
+            <ul>
+              {v.changelog.split('\n').map((line, i) => (
+                <li key={i}>{line.replace(/^- /, '')}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {v.status === 'failed' && v.error && (
+          <p className="error">
+            <strong>Failed:</strong> {v.error}
+          </p>
+        )}
+        {v.status === 'ready' && !live && (
+          <div className="gen-actions">
+            <button type="button" className="primary-button" disabled={busy} onClick={onPlaytest}>
+              Playtest v{v.version}
+            </button>
+          </div>
+        )}
+        {v.report && <Report report={v.report} />}
+        {v.changes && <ChangedLines changes={v.changes} basedOn={v.basedOn} />}
+        {v.source && (
+          <details className="gen-source" open={v.status === 'ready' && !live && !v.changes}>
+            <summary>
+              Code ({v.source.split('\n').length} lines){v.status === 'ready' && !live && !v.changes && ': read it before playtesting'}
+            </summary>
+            {/* Shown as text only. The browser never runs it. */}
+            <pre>
+              <code>{v.source}</code>
+            </pre>
+          </details>
+        )}
+      </details>
+    </article>
+  );
+}
+
+/** The changed lines compared with the version it was made from, git-diff style. */
+function ChangedLines({ changes, basedOn }) {
+  return (
+    <details className="gen-source gen-diff" open>
+      <summary>
+        Changed lines since v{basedOn}: <span className="diff-add-count">+{changes.added}</span>{' '}
+        <span className="diff-del-count">−{changes.removed}</span>
+      </summary>
+      {changes.hunks.length === 0 && <p className="muted small">No lines changed.</p>}
+      {changes.hunks.map((hunk, i) => (
+        <pre key={i}>
+          {hunk.map((line, j) => (
+            // Spans, not divs: a <pre> may only hold inline content. CSS makes each line a row.
+            <span key={j} className={`diff-line diff-${line.type}`}>
+              <span className="diff-num">{line.type === 'add' ? '' : line.oldLine}</span>
+              <span className="diff-num">{line.type === 'del' ? '' : line.newLine}</span>
+              {/* The + and − are the cue that doesn't depend on color. */}
+              <span className="diff-mark">{line.type === 'add' ? '+' : line.type === 'del' ? '−' : ' '}</span>
+              <code>{line.text}</code>
+            </span>
+          ))}
+        </pre>
+      ))}
+    </details>
   );
 }
 
@@ -375,7 +534,7 @@ function Progress({ progress }) {
   return (
     <div role="status">
       <p>
-        <strong>Working on it…</strong> <span className="muted small">(usually 30 s to a few minutes)</span>
+        <strong>Working on it…</strong> <span className="muted small">(usually a few minutes)</span>
       </p>
       <ol className="gen-steps">
         {progress.steps.map((step, i) => (
@@ -418,6 +577,14 @@ function Report({ report }) {
 
 function StatusChip({ status }) {
   return <span className={`status-chip status-${status}`}>{STATUS_TEXT[status] ?? status}</span>;
+}
+
+/** "published v2 · playtest v3", or null if nothing is live. */
+function liveText(game) {
+  const parts = [];
+  if (game.publishedVersion !== null) parts.push(`published v${game.publishedVersion}`);
+  if (game.playtestVersion !== null) parts.push(`playtest v${game.playtestVersion}`);
+  return parts.length ? parts.join(' · ') : null;
 }
 
 function progressText(progress) {

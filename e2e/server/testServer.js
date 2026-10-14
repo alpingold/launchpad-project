@@ -3,7 +3,8 @@
 // the app itself:
 //   0. Test-only games that use every input block and widget (inputGame.js, widgetGame.js).
 //   1. A FAKE generator instead of the OpenShell sandbox + GenAI Studio. The tests don't
-//      need Docker, an API key or the network, and a game takes ~2 s instead of ~30 s.
+//      need Docker, an API key or the network, and a game takes ~2 s instead of minutes.
+//      A change request renames the game to "Robot Majority 2".
 //      It still sends progress steps and runs the real harness on the code it returns.
 //   2. An admin account (accounts.js) in the throwaway in-memory database.
 import { readFileSync } from 'node:fs';
@@ -38,14 +39,21 @@ async function fakeGenerator(job, { onStep }) {
   onStep(`attempt 1/4: asking ${job.model}`);
   await pause(1000);
   onStep('attempt 1/4: testing the game');
-  const source = job.idea.includes('broken') ? BROKEN_SOURCE : GOOD_SOURCE;
+  // A change request (K6) renames the game, so the tests can see which version is which.
+  const broken = (job.change?.request ?? job.idea).includes('broken');
+  const source = broken
+    ? BROKEN_SOURCE
+    : job.change
+      ? job.change.source.replace(/name: '[^']*'/, "name: 'Robot Majority 2'")
+      : GOOD_SOURCE;
+  const changelog = job.change ? '- Renamed it to Robot Majority 2' : null;
   const report = await checkGameSource(source);
   if (!report.ok) {
     onStep(`attempt 1/4: ${report.problems.length} problem(s)`);
-    return { ok: false, model: job.model, source, report, error: 'no passing game after 1 attempt' };
+    return { ok: false, model: job.model, source, report, changelog, error: 'no passing game after 1 attempt' };
   }
   onStep('attempt 1/4: passed');
-  return { ok: true, model: job.model, source, report };
+  return { ok: true, model: job.model, source, report, changelog };
 }
 
 const db = openDatabase(config.DB_PATH);

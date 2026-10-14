@@ -28,7 +28,11 @@ export default function GamePicker({ playerCount, onStart, disabled = false }) {
         <select value={selectedId} onChange={(e) => setChosenId(e.target.value)}>
           {games.map((g) => (
             <option key={g.id} value={g.id}>
-              {g.source === 'generated' ? `${g.name} (AI-made)` : g.name}
+              {g.source !== 'generated'
+                ? g.name
+                : g.status === 'playtest'
+                  ? `${g.name} (AI-made, v${g.version} playtest)` // can sit next to the published version
+                  : `${g.name} (AI-made)`}
             </option>
           ))}
         </select>
