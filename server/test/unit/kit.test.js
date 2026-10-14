@@ -2,7 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { BLOCKS, BLOCK_TYPES } from '../../src/games/kit/blocks.js';
-import { validateScreen, offeredActions, assetIdsIn, sameJson, MAX_BLOCKS, MAX_DEPTH } from '../../src/games/kit/screen.js';
+import { validateScreen, offeredActions, readAction, assetIdsIn, sameJson, MAX_BLOCKS, MAX_DEPTH } from '../../src/games/kit/screen.js';
+import { seededRandom } from '../../src/games/random.js';
 
 // The game kit (plan §12): blocks, screens, and the checks on them.
 
@@ -87,6 +88,80 @@ test('offeredActions finds every button and choice option, however deeply nested
   assert.deepEqual(offeredActions(s), [{ go: 1 }, { a: 1 }, { b: 1 }]);
   assert.deepEqual(offeredActions(screen(text())), []);
   assert.deepEqual(offeredActions(undefined), []);
+});
+
+test('input blocks: rules between fields', () => {
+  const cases = [
+    [{ type: 'multiChoice', options: [{ label: 'A' }, { label: 'B' }], max: 3, action: {} }, /"max" must not be more than the number of options/],
+    [{ type: 'multiChoice', options: [{ label: 'A' }, { label: 'B' }], min: 2, max: 1, action: {} }, /"min" must not be more than "max"/],
+    [{ type: 'slider', min: 5, max: 5, action: {} }, /"min" must be less than "max"/],
+    [{ type: 'slider', min: 0, max: 100000, action: {} }, /too many steps/],
+    [{ type: 'slider', min: 0, max: 10, initial: 11, action: {} }, /"initial" must be between/],
+    [{ type: 'textInput', maxLength: 500, action: {} }, /"maxLength" must be ≥ 1, ≤ 200/],
+    [{ type: 'rank', items: [{ label: 'Only one' }], action: {} }, /"items" must have 2–8 items/],
+  ];
+  for (const [block, pattern] of cases) assert.match(validateScreen(screen(block)) ?? 'valid', pattern, JSON.stringify(block));
+});
+
+test('readAction: only actions on the screen, and only valid input, get through (cleaned up)', () => {
+  const s = screen(
+    { type: 'button', label: 'Go', action: { go: 1 } },
+    { type: 'textInput', maxLength: 10, action: { say: 1 } },
+    { type: 'multiChoice', options: [{ label: 'A' }, { label: 'B' }, { label: 'C' }], max: 2, action: { tick: 1 } },
+    { type: 'slider', min: 0, max: 1, step: 0.1, action: { slide: 1 } },
+    { type: 'rank', items: [{ label: 'A' }, { label: 'B' }, { label: 'C' }], action: { order: 1 } },
+  );
+  const ok = (action, input, expected) => assert.deepEqual(readAction(s, action, input), { ok: true, input: expected }, JSON.stringify([action, input]));
+  const no = (action, input, pattern) => {
+    const result = readAction(s, action, input);
+    assert.equal(result.ok, false, JSON.stringify([action, input]));
+    assert.match(result.problem, pattern);
+  };
+
+  ok({ go: 1 }, undefined, undefined);
+  no({ go: 1 }, 'extra', /a button sends no input/);
+  no({ go: 2 }, undefined, /isn't on the player's screen/);
+
+  ok({ say: 1 }, '  Hello  ', 'Hello');
+  ok({ say: 1 }, 'e\u0301', '\u00e9'); // normalized, so "é" typed two ways is the same text
+  no({ say: 1 }, '   ', /must be 1–10 characters/);
+  no({ say: 1 }, 'x'.repeat(11), /must be 1–10 characters/);
+  no({ say: 1 }, 'a\nb', /control characters/);
+  no({ say: 1 }, 'hi\u202e', /control characters/); // invisible right-to-left override
+  no({ say: 1 }, 42, /must be text/);
+  no({ say: 1 }, undefined, /must be text/);
+
+  ok({ tick: 1 }, [2, 0], [0, 2]);
+  no({ tick: 1 }, [], /must pick 1–2 options/);
+  no({ tick: 1 }, [0, 1, 2], /must pick 1–2 options/);
+  no({ tick: 1 }, [0, 0], /the same option twice/);
+  no({ tick: 1 }, [3], /option indexes/);
+  no({ tick: 1 }, '0', /option indexes/);
+
+  ok({ slide: 1 }, 0.30000000000000004, 0.3);
+  ok({ slide: 1 }, 1, 1);
+  no({ slide: 1 }, 0.35, /on a step of 0.1/);
+  no({ slide: 1 }, 2, /from 0 to 1/);
+  no({ slide: 1 }, '0.5', /from 0 to 1/);
+
+  ok({ order: 1 }, [2, 0, 1], [2, 0, 1]);
+  no({ order: 1 }, [0, 1], /every item index/);
+  no({ order: 1 }, [0, 0, 1], /every item index/);
+});
+
+test('multiline text inputs allow line breaks', () => {
+  const s = screen({ type: 'textInput', multiline: true, action: { say: 1 } });
+  assert.deepEqual(readAction(s, { say: 1 }, 'line one\nline two'), { ok: true, input: 'line one\nline two' });
+});
+
+test("the bots' inputs are always valid (every input block, many seeds)", () => {
+  for (const type of BLOCK_TYPES.filter((t) => BLOCKS[t].input)) {
+    const block = BLOCKS[type].example;
+    for (let seed = 1; seed <= 50; seed++) {
+      const input = BLOCKS[type].input.bot(block, seededRandom(seed));
+      assert.equal(readAction(screen(block), block.action, input).ok, true, `${type} seed ${seed}: ${JSON.stringify(input)}`);
+    }
+  }
 });
 
 test('assetIdsIn finds images, buttons and choice options', () => {

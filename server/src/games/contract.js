@@ -19,8 +19,9 @@ import { config } from '../config.js';
 //   4. Randomness only from ctx.random(); time only from ctx.now() and ctx.setTimeout().
 //   5. Treat every action as untrusted: check it against the current game state
 //      (right player? right moment? sensible values?) and ignore anything else.
-//      The platform already drops any action that isn't a button or choice option on
-//      that player's screen right now, but only the game knows if it makes sense.
+//      The platform already drops any action that isn't on that player's screen right
+//      now, and checks typed/picked values (text length, slider range…) against the
+//      block, but only the game knows if the action makes sense.
 //   6. Call ctx.endGame({ rankings, scores? }) exactly once when the game is over.
 //   7. Synchronous code only: no async functions, Promises, or the global setTimeout.
 //      The platform can only catch errors that happen while it is calling the game
@@ -78,9 +79,12 @@ import { config } from '../config.js';
 /**
  * What createGame() returns. Only onAction is required.
  * @typedef {Object} GameInstance
- * @property {(playerId: string, action: object) => void} onAction
- *   A player's phone sent { type: 'game:action', action }. `action` is whatever object
- *   the tapped button/option carried, or anything a misbehaving client made up: validate it.
+ * @property {(playerId: string, action: object, input?: unknown) => void} onAction
+ *   A player used a control on their screen. `action` is the object on that button, choice
+ *   option or input block. `input` is the value from an input block (textInput: text;
+ *   multiChoice: option indexes; slider: a number; rank: item indexes in order), already
+ *   checked against the block; buttons and choices send none. Still check both against
+ *   the game's state.
  * @property {(playerId: string) => void} [onPlayerDisconnect]
  *   The player dropped, left, or was removed. They may or may not come back.
  * @property {(playerId: string) => void} [onPlayerReconnect]

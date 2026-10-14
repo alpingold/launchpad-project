@@ -80,15 +80,41 @@ function playerIdsOf(block) {
 }
 
 /**
- * The actions a (valid) screen lets a player send: from every button and choice option on
- * it. GameRunner drops any action that isn't one of these (plan §11b, "offered actions").
+ * The controls a (valid) screen offers a player: one entry per action it can send, with the
+ * block it came from (that block decides whether a value comes with it).
  * @param {{ blocks: object[] } | undefined} screen
- * @returns {object[]}
+ * @returns {{ action: object, block: object }[]}
  */
+export function controlsOn(screen) {
+  const controls = [];
+  if (screen) {
+    walk(screen.blocks, (block) => {
+      for (const action of BLOCKS[block.type].actions?.(block) ?? []) controls.push({ action, block });
+    });
+  }
+  return controls;
+}
+
+/** Just the actions a screen offers. */
 export function offeredActions(screen) {
-  const actions = [];
-  if (screen) walk(screen.blocks, (block) => actions.push(...(BLOCKS[block.type].actions?.(block) ?? [])));
-  return actions;
+  return controlsOn(screen).map((control) => control.action);
+}
+
+/**
+ * Checks a player's action (and its input, if any) against the screen on their phone
+ * right now (plan §11b and §12c). GameRunner only passes on what this accepts:
+ *  - the action must be one the screen offers (an old screen's taps are dropped), and
+ *  - a block that takes a value (textInput, slider…) must get a valid one; the game
+ *    receives it cleaned up (e.g. trimmed text). Buttons and choices take no value.
+ * @returns {{ ok: true, input: unknown } | { ok: false, problem: string }}
+ */
+export function readAction(screen, action, input) {
+  const control = controlsOn(screen).find((c) => sameJson(c.action, action));
+  if (!control) return { ok: false, problem: "that action isn't on the player's screen" };
+  const rules = BLOCKS[control.block.type].input;
+  if (!rules) return input === undefined ? { ok: true, input: undefined } : { ok: false, problem: `a ${control.block.type} sends no input` };
+  const result = rules.read(control.block, input);
+  return 'problem' in result ? { ok: false, problem: `${control.block.type} input ${result.problem}` } : { ok: true, input: result.value };
 }
 
 /** Every asset id a (valid) screen shows (the harness checks they're in the art library). */

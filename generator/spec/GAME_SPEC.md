@@ -20,7 +20,7 @@ export default {
   maxPlayers: 12,                     // integer, at most 12
   createGame(ctx, options) {          // called once when the host presses Start
     // set up state, send the first screens, return the GameInstance
-    return { onAction(playerId, action) { /* ... */ } };
+    return { onAction(playerId, action, input) { /* ... */ } };
   },
 };
 ```
@@ -46,7 +46,7 @@ export default {
 
 | Member | When it's called |
 |---|---|
-| `onAction(playerId, action)` | **Required.** A player tapped a button or a choice option. `action` is the object you put on that button. |
+| `onAction(playerId, action, input)` | **Required.** A player used a control: tapped a button or choice option, or submitted an input block. `action` is the object you put on it. `input` is the submitted value for input blocks (see each block's "Sends"), already checked by the platform; buttons and choices send none. |
 | `onPlayerDisconnect(playerId)` | Optional. The player's phone dropped. They may come back, or not. Stop waiting for them. |
 | `onPlayerReconnect(playerId)` | Optional. They're back. Use it only to update your state (e.g. "not away anymore"): the platform puts their latest screen back on their phone by itself. |
 | `onHostReconnect()` | Optional. The platform resends the host screen's latest screen by itself. |

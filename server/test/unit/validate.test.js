@@ -102,6 +102,10 @@ test('accepts every message type with valid fields', () => {
     { type: 'host:start_game', gameId: 'reaction-race' },
     { type: 'host:start_game', gameId: 'reaction-race', options: { rounds: 3 } },
     { type: 'game:action', action: { tap: true } },
+    // `input` can be any JSON value: the game runner checks it against the player's screen.
+    { type: 'game:action', action: { say: true }, input: 'Hello' },
+    { type: 'game:action', action: { order: true }, input: [2, 0, 1] },
+    { type: 'game:action', action: { slide: true }, input: 0 },
   ];
   for (const value of valid) {
     assert.deepEqual(parse(value), { ok: true, msg: value }, JSON.stringify(value));

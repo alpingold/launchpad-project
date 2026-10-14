@@ -278,14 +278,14 @@ export class RoomManager {
     }
   }
 
-  /** game:action — passes a player's action to the running game (which validates it). */
-  handleGameAction(connId, action) {
+  /** game:action — passes a player's action (and input) to the running game, which checks it. */
+  handleGameAction(connId, action, input) {
     const membership = this.members.get(connId);
     if (membership?.role !== 'player') throw new RoomError('WRONG_PHASE');
     const room = this.rooms.get(membership.code);
     if (room.phase !== 'in_game' || !room.game) throw new RoomError('WRONG_PHASE');
     room.lastActivityAt = this.now();
-    room.game.handleAction(membership.playerId, action);
+    room.game.handleAction(membership.playerId, action, input);
   }
 
   // --- Connection events ------------------------------------------------------

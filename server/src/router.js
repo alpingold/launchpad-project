@@ -38,7 +38,7 @@ export function createRouter(rooms) {
       sender: 'host',
       run: (conn, msg) => rooms.startGame(conn.id, msg.gameId, msg.options ?? {}),
     },
-    [CLIENT.GAME_ACTION]: { sender: 'player', run: (conn, msg) => rooms.handleGameAction(conn.id, msg.action) },
+    [CLIENT.GAME_ACTION]: { sender: 'player', run: (conn, msg) => rooms.handleGameAction(conn.id, msg.action, msg.input) },
   };
 
   /** Returns an error code if this connection may not send this kind of message, else null. */

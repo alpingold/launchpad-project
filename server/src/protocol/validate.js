@@ -60,6 +60,14 @@ function readPlainObject(value) {
   return isPlainObject(value) ? value : INVALID;
 }
 
+/**
+ * Any JSON value (it's already parsed). Used for game:action's `input`, which the game's
+ * runner checks against the block on the player's screen. Size is capped by max payload.
+ */
+function readJson(value) {
+  return value;
+}
+
 /** Wraps a reader so a missing field is allowed (and simply left out of the result). */
 function optional(reader) {
   return (value) => (value === undefined ? undefined : reader(value));
@@ -76,7 +84,7 @@ const SCHEMAS = {
   [CLIENT.ROOM_LEAVE]: {},
   [CLIENT.HOST_KICK]: { playerId: readPlayerId },
   [CLIENT.HOST_START_GAME]: { gameId: readGameId, options: optional(readPlainObject) },
-  [CLIENT.GAME_ACTION]: { action: readPlainObject },
+  [CLIENT.GAME_ACTION]: { action: readPlainObject, input: optional(readJson) },
 };
 
 /**

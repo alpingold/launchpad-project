@@ -1,6 +1,7 @@
 // The server the browser tests run against: the real server (same code as
 // server/src/index.js), with two test-only differences, so nothing test-related lives in
 // the app itself:
+//   0. A test-only game that uses every input block (inputGame.js).
 //   1. A FAKE generator instead of the OpenShell sandbox + GenAI Studio. The tests don't
 //      need Docker, an API key or the network, and a game takes ~2 s instead of ~30 s.
 //      It still sends progress steps and runs the real harness on the code it returns.
@@ -14,6 +15,7 @@ import { hashPassword } from '../../server/src/auth/passwords.js';
 import { createDefaultRegistry } from '../../server/src/games/index.js';
 import { checkGameSource } from '../../server/src/games/harness/check.js';
 import { ADMIN } from './accounts.js';
+import inputGame from './inputGame.js';
 
 /**
  * What the fake "AI" writes: the official Majority Rules game (it passes every check),
@@ -49,7 +51,10 @@ const db = openDatabase(config.DB_PATH);
 const admin = createUser(db, ADMIN.username, await hashPassword(ADMIN.password));
 setAdmin(db, admin.username, true);
 
-const server = createGameServer({}, { db, games: createDefaultRegistry(), runGenerator: fakeGenerator });
+const games = createDefaultRegistry();
+games.register(inputGame);
+
+const server = createGameServer({}, { db, games, runGenerator: fakeGenerator });
 server.httpServer.listen(config.PORT, () => {
   console.log(`[e2e server] listening on http://localhost:${config.PORT}`);
 });

@@ -367,6 +367,25 @@ test('only actions on the player\'s screen right now reach the game', () => {
   assert.deepEqual(received, [[ALEX, { round: 1, pick: 'blue' }]]);
 });
 
+test('input reaches the game checked and cleaned up; bad input never does', () => {
+  const received = [];
+  const { runner } = run((ctx) => {
+    ctx.sendToPlayer(ALEX, { blocks: [{ type: 'textInput', maxLength: 30, action: { caption: true, round: 1 } }] });
+    ctx.sendToPlayer(BLAKE, { blocks: [{ type: 'button', label: 'Go', action: { go: 1 } }] });
+    return { onAction: (...args) => received.push(args) };
+  });
+  runner.handleAction(ALEX, { caption: true, round: 1 }, '  A cat on a skateboard  ');
+  runner.handleAction(ALEX, { caption: true, round: 1 }, 'x'.repeat(31)); // too long
+  runner.handleAction(ALEX, { caption: true, round: 1 }); // no text
+  runner.handleAction(ALEX, { caption: true, round: 1 }, ['not', 'text']);
+  runner.handleAction(BLAKE, { go: 1 }, 'a button takes no input');
+  runner.handleAction(BLAKE, { go: 1 });
+  assert.deepEqual(received, [
+    [ALEX, { caption: true, round: 1 }, 'A cat on a skateboard'],
+    [BLAKE, { go: 1 }],
+  ]);
+});
+
 test('once a screen changes, actions from the old screen are dropped', () => {
   const received = [];
   const { runner } = run((ctx) => {

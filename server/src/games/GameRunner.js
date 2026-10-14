@@ -1,5 +1,5 @@
 import { config } from '../config.js';
-import { validateScreen, offeredActions, sameJson } from './kit/screen.js';
+import { validateScreen, readAction } from './kit/screen.js';
 import { isPlainObject } from '../protocol/validate.js';
 import { seededRandom, newSeed } from './random.js';
 
@@ -99,15 +99,20 @@ export class GameRunner {
   }
 
   /**
-   * A player tapped something. Only actions that are on that player's screen right now
-   * (their latest button, or one of their latest choice options) reach the game; anything
-   * else is a stale tap from an old screen or a made-up message, and is dropped quietly.
+   * A player used a control. Only actions that are on that player's screen right now reach
+   * the game, and only with a valid input for that block (text of the right length, a
+   * slider value in range…); anything else is a stale tap from an old screen or a made-up
+   * message, and is dropped quietly (plan §11b, §12c).
+   * @param {string} playerId
+   * @param {object} action
+   * @param {unknown} [input]  the value from a textInput, multiChoice, slider or rank
    */
-  handleAction(playerId, action) {
+  handleAction(playerId, action, input) {
     if (!this.instance || !this.playerIds.has(playerId)) return;
-    const offered = offeredActions(this.lastPlayerScreens.get(playerId));
-    if (!offered.some((a) => sameJson(a, action))) return;
-    this.safely('onAction', () => this.instance.onAction(playerId, action));
+    const checked = readAction(this.lastPlayerScreens.get(playerId), action, input);
+    if (!checked.ok) return;
+    if (checked.input === undefined) this.safely('onAction', () => this.instance.onAction(playerId, action));
+    else this.safely('onAction', () => this.instance.onAction(playerId, action, checked.input));
   }
 
   playerDisconnected(playerId) {

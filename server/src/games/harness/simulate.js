@@ -11,7 +11,8 @@
 
 import { performance } from 'node:perf_hooks';
 import { GameRunner } from '../GameRunner.js';
-import { offeredActions, assetIdsIn } from '../kit/screen.js';
+import { controlsOn, assetIdsIn } from '../kit/screen.js';
+import { BLOCKS } from '../kit/blocks.js';
 import { seededRandom } from '../random.js';
 
 /** A game must finish within this much simulated time. */
@@ -116,16 +117,18 @@ export function simulateGame(game, { playerCount, scenario, seed, assetIds, sour
 
   let runner;
   /**
-   * A bot looks at its phone and (maybe) taps one of the offered buttons after a moment.
-   * Like a person, it keeps tapping if the same screen is still showing afterwards.
+   * A bot looks at its phone and (maybe) uses one of its controls after a moment: taps a
+   * button, or fills in a text box / slider / ranking with a random valid value and submits.
+   * Like a person, it keeps going if the same screen is still showing afterwards.
    */
   function botSees(playerId, screen) {
-    const actions = offeredActions(screen);
-    if (!actions.length || playerId === quietId || away.has(playerId) || rand() > answerChance) return;
-    const action = actions[Math.floor(rand() * actions.length)];
+    const controls = controlsOn(screen);
+    if (!controls.length || playerId === quietId || away.has(playerId) || rand() > answerChance) return;
+    const { action, block } = controls[Math.floor(rand() * controls.length)];
+    const input = BLOCKS[block.type].input?.bot(block, rand);
     clock.setTimeout(() => {
       if (away.has(playerId)) return;
-      runner.handleAction(playerId, structuredClone(action));
+      runner.handleAction(playerId, structuredClone(action), input);
       if (phones.get(playerId) === screen) botSees(playerId, screen);
     }, between(minDelay, maxDelay));
   }
@@ -169,6 +172,10 @@ export function simulateGame(game, { playerCount, scenario, seed, assetIds, sour
     const victim = players[Math.min(1, playerCount - 1)].id;
     clock.setTimeout(() => {
       for (const junk of [{}, { hack: true }, { answer: 99 }, { tap: true, round: -1 }]) runner.handleAction(victim, junk);
+      // Real actions with junk values: the platform must drop these before the game sees them.
+      for (const { action } of controlsOn(phones.get(victim))) {
+        for (const junk of ['', 'x'.repeat(5000), -1e9, [99, 99], { hack: true }, null]) runner.handleAction(victim, structuredClone(action), junk);
+      }
     }, 1500);
     clock.setTimeout(() => {
       away.add(victim);

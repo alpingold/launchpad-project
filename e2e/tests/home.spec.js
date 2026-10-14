@@ -6,7 +6,7 @@ test('home page explains the site and lists the games', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'BoilerGames', level: 1 })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'How it works' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Reaction Race' })).toBeVisible();
-  await expect(page.getByText('1–12 players')).toBeVisible();
+  await expect(page.locator('.game-cards li', { hasText: 'Reaction Race' })).toContainText('1–12 players');
 });
 
 test('the join box sends you to the join page with the code filled in', async ({ page }) => {

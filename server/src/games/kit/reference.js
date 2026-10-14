@@ -32,6 +32,7 @@ export function kitReference() {
         lines.push('');
         for (const [name, field] of fields) lines.push(`- \`${name}\`${field.optional ? ' (optional)' : ''}: ${field.type}`);
       }
+      if (def.input) lines.push('', `Sends to onAction: \`action\`, plus \`input\` = ${def.input.doc}.`);
       lines.push('', `Example: \`${JSON.stringify(def.example)}\``);
     }
   }
