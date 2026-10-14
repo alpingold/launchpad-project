@@ -47,19 +47,20 @@ test('type, slide, tick and rank on a phone; the game gets checked values', asyn
 
 test('after sending, the control shows "Sent" and locks until the game moves on', async ({ people }) => {
   const host = await people.host();
-  const alex = await people.player(host.code, 'Alex');
+  const alex = await people.player(host.code, 'Alex', { controllable: true });
   const blake = await people.player(host.code, 'Blake');
   await host.page.getByRole('combobox', { name: 'Game' }).selectOption('input-test');
   await host.page.getByRole('button', { name: 'Start game' }).click();
+  await expect(alex.page.getByLabel('Say something')).toBeVisible();
 
-  // Slow Alex's network down, so there's time to see the button between the click and
-  // the game's next screen arriving.
-  const cdp = await alex.page.context().newCDPSession(alex.page);
-  await cdp.send('Network.emulateNetworkConditions', { offline: false, latency: 400, downloadThroughput: -1, uploadThroughput: -1 });
+  // Hold back the server's messages to Alex, so the game's next screen can't replace the
+  // control before we've looked at it (on localhost it arrives within milliseconds).
+  alex.network.hold();
   await alex.page.getByLabel('Say something').fill('Hi');
   await alex.page.getByRole('button', { name: 'Send' }).click();
   await expect(alex.page.getByRole('button', { name: 'Sent ✓' })).toBeDisabled();
   await expect(alex.page.getByLabel('Say something')).toBeDisabled();
+  alex.network.release();
   await expect(alex.page.getByLabel('How many?')).toBeVisible(); // then the next step arrives
 
   // Blake's screen is unaffected.

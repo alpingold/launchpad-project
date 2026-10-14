@@ -42,7 +42,7 @@ export const test = base.extend({
 
       /**
        * Opens the join page on a phone-sized screen and joins `code` as `name`.
-       * With `controllable: true`, also returns `network` to cut and restore its connection.
+       * With `controllable: true`, also returns `network` to cut, restore, hold or release its connection.
        */
       async player(code, name, { expectJoined = true, controllable = false } = {}) {
         const { context, page } = await newPage({ ...devices['Pixel 7'] });
@@ -77,19 +77,31 @@ export function uniqueUsername() {
  *
  * cut():     closes the current connection on both ends, and refuses new ones
  * restore(): lets new connections through again, so the page's auto-reconnect succeeds
+ * hold():    keeps the server's messages from reaching the page (they wait in a queue)
+ * release(): delivers the held messages, in order, and stops holding
  */
 async function controlWebSockets(page) {
   const live = [];
   let blocked = false;
+  let holding = false;
+  const held = [];
   await page.routeWebSocket(/\/ws$/, (ws) => {
     if (blocked) {
       ws.close();
       return;
     }
-    const server = ws.connectToServer(); // pass messages through unchanged
+    const server = ws.connectToServer(); // page → server messages pass through unchanged
+    server.onMessage((message) => (holding ? held.push({ ws, message }) : ws.send(message)));
     live.push({ ws, server });
   });
   return {
+    hold() {
+      holding = true;
+    },
+    release() {
+      holding = false;
+      for (const { ws, message } of held.splice(0)) ws.send(message);
+    },
     async cut() {
       blocked = true;
       for (const { ws, server } of live.splice(0)) {
