@@ -4,6 +4,8 @@ import { readFileSync } from 'node:fs';
 import { BLOCKS, BLOCK_TYPES } from '../../src/games/kit/blocks.js';
 import { validateScreen, offeredActions, readAction, assetIdsIn, sameJson, MAX_BLOCKS, MAX_DEPTH } from '../../src/games/kit/screen.js';
 import { seededRandom } from '../../src/games/random.js';
+import { checkStrokes } from '../../src/games/kit/drawing.js';
+import { config } from '../../src/config.js';
 
 // The game kit (plan §12): blocks, screens, and the checks on them.
 
@@ -195,8 +197,19 @@ test('drawings: the format, its limits, and the pen colors', () => {
   // The same format shows on screens, and a full-size drawing fits easily.
   assert.equal(validateScreen(screen({ type: 'drawing', strokes: [line()] })), null);
   assert.match(validateScreen(screen({ type: 'drawing', strokes: 'a cat' })), /"strokes" must be a list of strokes/);
-  const biggest = [{ color: 'black', points: Array.from({ length: 1500 * 2 }, (_, i) => (i % 2 ? 750 : 1000)) }];
-  assert.ok(JSON.stringify(biggest).length < 16_000, 'a maximum drawing is under 16 KB');
+  // The biggest drawing a phone can send: every stroke and point used, longest numbers.
+  const biggest = Array.from({ length: 150 }, () => ({ color: 'purple', points: Array.from({ length: 20 }, (_, i) => (i % 2 ? 750 : 1000)) }));
+  assert.equal(checkStrokes(biggest), null);
+  assert.ok(JSON.stringify(biggest).length < 20_000, 'a maximum drawing is under 20 KB');
+  // ...and a gallery of 12 of them (one per player) still fits in one screen.
+  const gallery = {
+    blocks: [
+      { type: 'text', text: 'Vote for your favorite!', size: 'big' },
+      { type: 'grid', columns: 3, children: Array.from({ length: 12 }, (_, i) => ({ type: 'drawing', strokes: biggest, size: 'small', caption: `${i + 1}` })) },
+    ],
+  };
+  assert.equal(validateScreen(gallery), null);
+  assert.ok(JSON.stringify(gallery).length < config.GAME_MAX_PAYLOAD_BYTES, 'a 12-drawing gallery fits in one screen');
 });
 
 test('multiline text inputs allow line breaks', () => {

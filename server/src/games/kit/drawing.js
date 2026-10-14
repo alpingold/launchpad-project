@@ -7,7 +7,7 @@ import { isPlainObject } from '../../protocol/validate.js';
 //
 // Coordinates are whole numbers on a 1000 × 750 canvas (4:3), whatever the phone's size.
 // Colors are names from a fixed palette, so games and phones can't inject CSS.
-// The limits keep one drawing around 10 KB, so a big screen can show a gallery of them.
+// The limits keep one drawing under 18 KB, so a big screen can show a gallery of 12.
 
 export const CANVAS_WIDTH = 1000;
 export const CANVAS_HEIGHT = 750;
@@ -42,12 +42,17 @@ export function checkStrokes(strokes) {
   return null;
 }
 
-/** A random scribble (for the test bots). */
+/**
+ * A random drawing for the test bots. One in four uses all the ink (the most strokes and
+ * points allowed, up to 18 KB as JSON), so the harness sees the biggest drawings real
+ * players can send: a gallery of 12 of them has to fit in one screen.
+ */
 export function botScribble(rand, colors = ['black']) {
-  return Array.from({ length: 1 + Math.floor(rand() * 4) }, () => ({
-    color: colors[Math.floor(rand() * colors.length)],
-    points: Array.from({ length: 2 * (2 + Math.floor(rand() * 20)) }, (_, i) =>
-      Math.floor(rand() * (i % 2 === 0 ? CANVAS_WIDTH : CANVAS_HEIGHT)),
-    ),
-  }));
+  const color = () => colors[Math.floor(rand() * colors.length)];
+  const coords = (pairs) =>
+    Array.from({ length: 2 * pairs }, (_, i) => Math.floor(rand() * (i % 2 === 0 ? CANVAS_WIDTH : CANVAS_HEIGHT)));
+  if (rand() < 0.25) {
+    return Array.from({ length: MAX_STROKES }, () => ({ color: color(), points: coords(MAX_POINTS / MAX_STROKES) }));
+  }
+  return Array.from({ length: 1 + Math.floor(rand() * 4) }, () => ({ color: color(), points: coords(2 + Math.floor(rand() * 20)) }));
 }

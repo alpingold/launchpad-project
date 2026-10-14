@@ -85,9 +85,9 @@ export const config = {
   // --- Games ---
 
   // Largest single screen a game may send (JSON size). Most are under 1 KB; the big one
-  // is a gallery of drawings on the big screen. This stops a buggy (or generated) game
-  // from flooding phones with huge payloads.
-  GAME_MAX_PAYLOAD_BYTES: 96 * 1024,
+  // is a gallery of drawings: one drawing is at most 18 KB, so 12 of them need about
+  // 220 KB. This stops a buggy (or generated) game from flooding phones with huge payloads.
+  GAME_MAX_PAYLOAD_BYTES: 256 * 1024,
 
   // Longest delay a game may ask for with ctx.setTimeout.
   GAME_MAX_TIMER_MS: 10 * 60 * 1000,
