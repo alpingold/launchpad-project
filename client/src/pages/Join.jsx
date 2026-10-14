@@ -145,7 +145,7 @@ export default function Join() {
             players={room.players}
             youId={me.playerId}
             clockOffset={game.clockOffset}
-            onAction={(action) => socketRef.current.send({ type: 'game:action', action })}
+            onAction={(action, input) => socketRef.current.send({ type: 'game:action', action, input })}
           />
           <p className="muted small">
             {me.name} · room <span className="mono">{me.code}</span>

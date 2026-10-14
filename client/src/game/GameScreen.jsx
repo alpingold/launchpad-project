@@ -12,7 +12,7 @@ import { ScreenContext } from './blocks/context.js';
  * @param {number} props.screenKey            increases with every new screen (resets the error boundary)
  * @param {{id: string, name: string}[]} props.players  for looking up names
  * @param {string} [props.youId]
- * @param {(action: object) => void} [props.onAction]   phones only; sends game:action
+ * @param {(action: object, input?: unknown) => void} [props.onAction]   phones only; sends game:action
  * @param {number} [props.clockOffset]        server time minus device time, for timers
  */
 export default function GameScreen({ screen, screenKey, players, youId = null, onAction = null, clockOffset = 0 }) {

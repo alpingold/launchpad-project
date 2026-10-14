@@ -562,6 +562,124 @@ body {
   width: 100%;
 }
 
+.game-button.toggle {
+  background: var(--chip);
+  color: var(--text);
+}
+
+.game-button.toggle.on {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.game-button.toggle:disabled:not(.on) {
+  opacity: 0.5;
+}
+
+/* Input blocks with a submit button (K2) */
+.blk-input {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  width: min(100%, 22rem);
+}
+
+.blk-input-label {
+  margin: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.blk-input input:not([type='range']),
+.blk-input textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.7rem 0.8rem;
+  border: 2px solid var(--input-border);
+  border-radius: 0.75rem;
+  font: inherit;
+  font-size: 1.25rem; /* 16px+ also stops iPhones from zooming in on focus */
+  resize: vertical;
+}
+
+.blk-input .game-button[type='submit'] {
+  min-height: 3.5rem;
+  font-size: 1.3rem;
+}
+
+.blk-input .game-button:disabled {
+  opacity: 0.5;
+}
+
+.host-game .blk-input .game-button:disabled {
+  opacity: 1; /* on the big screen it's a picture of the control, not a greyed-out one */
+}
+
+.blk-slider-value {
+  font-size: 2.5rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.blk-slider {
+  width: 100%;
+  height: 2.5rem; /* a big touch target */
+}
+
+.rank-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.rank-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.6rem;
+  border-radius: 0.75rem;
+  background: var(--chip);
+  font-size: 1.2rem;
+}
+
+.rank-list .asset {
+  width: 2.5rem;
+  height: 2.5rem;
+}
+
+.rank-position {
+  min-width: 1.5rem;
+  font-weight: 800;
+  color: var(--muted);
+}
+
+.rank-label {
+  flex: 1;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.rank-list button {
+  width: 2.75rem;
+  height: 2.75rem;
+  border: 2px solid var(--input-border);
+  border-radius: 0.5rem;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 1.1rem;
+  cursor: pointer;
+}
+
+.rank-list button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
 .countdown-number {
   margin: 0;
   font-size: 6rem;
