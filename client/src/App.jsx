@@ -4,6 +4,7 @@ import Join from './pages/Join.jsx';
 import NotFound from './pages/NotFound.jsx';
 import Login from './pages/Login.jsx';
 import Admin from './pages/Admin.jsx';
+import Kit from './pages/Kit.jsx';
 import { SettingsProvider } from './settings/SettingsContext.jsx';
 import SettingsMenu from './settings/SettingsMenu.jsx';
 
@@ -15,6 +16,7 @@ const PAGES = {
   '/join': Join,
   '/login': Login,
   '/admin': Admin,
+  '/kit': Kit,
 };
 
 /** "/join/" and "/join" are the same page. */

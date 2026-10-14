@@ -1244,3 +1244,66 @@ select {
   font-weight: 600;
   vertical-align: middle;
 }
+
+/* K4: the game kit page */
+.kit {
+  max-width: 52rem;
+}
+
+.kit-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  margin: 1rem 0;
+}
+
+.kit-block {
+  margin: 1rem 0;
+}
+
+.kit-block h3 {
+  font-size: 1.4rem;
+}
+
+.kit-block h4 {
+  margin-bottom: 0.3rem;
+}
+
+/* A phone-sized frame around each preview */
+.kit-preview {
+  max-width: 24rem;
+  margin: 1rem auto 0.5rem;
+  padding: 0 1rem;
+  border: 2px solid var(--border);
+  border-radius: 1.5rem;
+  background: var(--bg);
+}
+
+.kit-received {
+  max-width: 24rem;
+  margin: 0 auto;
+  font-size: 0.95rem;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.kit-fields {
+  margin-top: 0;
+  padding-left: 1.25rem;
+  line-height: 1.6;
+}
+
+.kit-json {
+  max-height: 20rem;
+  overflow: auto;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--bg);
+  font-size: 0.85rem;
+}
+
+code {
+  font-family: ui-monospace, monospace;
+  overflow-wrap: anywhere;
+}

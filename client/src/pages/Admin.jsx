@@ -108,7 +108,7 @@ function AdminPanel() {
       <h1>AI games</h1>
       <p className="muted">
         Describe a game; the AI writes it and tests it in a sandbox. Nothing runs on this server until you read the
-        code and press Playtest.
+        code and press Playtest. The AI builds screens from the blocks in the <a href="/kit">game kit</a>.
       </p>
       {loadError && (
         <p className="error" role="alert">

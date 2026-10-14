@@ -1,17 +1,44 @@
 import { BLOCKS, BLOCK_TYPES } from './blocks.js';
 import { MAX_BLOCKS, MAX_DEPTH } from './screen.js';
 import { config } from '../../config.js';
+import { PALETTE } from './drawing.js';
 
 // The kit reference: every block, written out from the definitions in blocks.js (plan §12d).
-// The AI generator puts this in its prompt, so the AI always sees exactly the blocks and
-// fields the server accepts. (The /kit page will use the same definitions, in K4.)
+// Two forms of the same thing, so they can't disagree:
+//  - kitCatalog(): data, served at GET /api/kit for the public /kit page
+//  - kitReference(): markdown, in the AI generator's prompt
 
-const GROUPS = [
+export const GROUPS = [
   ['layout', 'Layout: blocks that hold other blocks'],
   ['display', 'Display: things to look at'],
   ['input', 'Input: things players use on their phones (the big screen shows them, not usable)'],
   ['widget', 'Widgets: fast games on the phone (the phone does the timing, counting or drawing, then sends ONE result)'],
 ];
+
+/**
+ * Every block as plain data (no functions), grouped, plus the screen-wide limits.
+ * @returns {{ limits: object, palette: string[], groups: { id: string, title: string, blocks: object[] }[] }}
+ */
+export function kitCatalog() {
+  return {
+    limits: { maxDepth: MAX_DEPTH, maxBlocks: MAX_BLOCKS, maxScreenBytes: config.GAME_MAX_PAYLOAD_BYTES },
+    palette: PALETTE,
+    groups: GROUPS.map(([id, title]) => ({
+      id,
+      title,
+      blocks: BLOCK_TYPES.filter((type) => BLOCKS[type].group === id).map((type) => {
+        const def = BLOCKS[type];
+        return {
+          type,
+          purpose: def.purpose,
+          fields: Object.entries(def.fields).map(([name, field]) => ({ name, type: field.type, optional: field.optional })),
+          sends: def.input?.doc ?? null,
+          example: def.example,
+        };
+      }),
+    })),
+  };
+}
 
 /** @returns {string} markdown */
 export function kitReference() {
@@ -23,18 +50,16 @@ export function kitReference() {
     `A screen must be at most ${config.GAME_MAX_PAYLOAD_BYTES / 1024} KB as JSON. Unknown fields are errors. Optional fields are left out, never \`undefined\` or \`null\`.`,
     'Text is shown as plain text, not HTML. Styling is only the words listed below, never CSS.',
   ];
-  for (const [group, title] of GROUPS) {
-    lines.push('', `### ${title}`);
-    for (const type of BLOCK_TYPES.filter((t) => BLOCKS[t].group === group)) {
-      const def = BLOCKS[type];
-      lines.push('', `#### \`${type}\``, '', def.purpose);
-      const fields = Object.entries(def.fields);
-      if (fields.length) {
+  for (const group of kitCatalog().groups) {
+    lines.push('', `### ${group.title}`);
+    for (const block of group.blocks) {
+      lines.push('', `#### \`${block.type}\``, '', block.purpose);
+      if (block.fields.length) {
         lines.push('');
-        for (const [name, field] of fields) lines.push(`- \`${name}\`${field.optional ? ' (optional)' : ''}: ${field.type}`);
+        for (const field of block.fields) lines.push(`- \`${field.name}\`${field.optional ? ' (optional)' : ''}: ${field.type}`);
       }
-      if (def.input) lines.push('', `Sends to onAction: \`action\`, plus \`input\` = ${def.input.doc}.`);
-      lines.push('', `Example: \`${JSON.stringify(def.example)}\``);
+      if (block.sends) lines.push('', `Sends to onAction: \`action\`, plus \`input\` = ${block.sends}.`);
+      lines.push('', `Example: \`${JSON.stringify(block.example)}\``);
     }
   }
   return lines.join('\n');

@@ -1,6 +1,7 @@
 import express from 'express';
 import { config } from '../config.js';
 import { GameRegistry } from '../games/registry.js';
+import { kitCatalog } from '../games/kit/reference.js';
 import { openDatabase } from '../db/database.js';
 import { createAuthRouter } from './authRoutes.js';
 import { currentUser } from '../auth/currentUser.js';
@@ -37,6 +38,13 @@ export function createApp({ games = new GameRegistry(), db = openDatabase(':memo
   app.get('/api/games', (req, res) => {
     const user = currentUser(db, req.headers.cookie).user;
     res.json({ games: games.list({ userId: user?.id ?? null }) });
+  });
+
+  // The game kit: every block games can use, with examples (the public /kit page).
+  // The same for everyone and only changes with the code, so it's built once.
+  const kit = kitCatalog();
+  app.get('/api/kit', (_req, res) => {
+    res.json(kit);
   });
 
   // Sign up, log in, log out, who am I.
