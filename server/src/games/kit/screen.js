@@ -106,14 +106,15 @@ export function offeredActions(screen) {
  *  - the action must be one the screen offers (an old screen's taps are dropped), and
  *  - a block that takes a value (textInput, slider…) must get a valid one; the game
  *    receives it cleaned up (e.g. trimmed text). Buttons and choices take no value.
+ * @param {{ now?: number }} [context]  when the action arrived (server time), for widgets
  * @returns {{ ok: true, input: unknown } | { ok: false, problem: string }}
  */
-export function readAction(screen, action, input) {
+export function readAction(screen, action, input, context = {}) {
   const control = controlsOn(screen).find((c) => sameJson(c.action, action));
   if (!control) return { ok: false, problem: "that action isn't on the player's screen" };
   const rules = BLOCKS[control.block.type].input;
   if (!rules) return input === undefined ? { ok: true, input: undefined } : { ok: false, problem: `a ${control.block.type} sends no input` };
-  const result = rules.read(control.block, input);
+  const result = rules.read(control.block, input, context);
   return 'problem' in result ? { ok: false, problem: `${control.block.type} input ${result.problem}` } : { ok: true, input: result.value };
 }
 

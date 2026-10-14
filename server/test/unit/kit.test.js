@@ -24,7 +24,7 @@ test('every block has a purpose, a group, and a component on the client (server 
   const map = index.slice(index.indexOf('BLOCK_COMPONENTS'));
   for (const type of BLOCK_TYPES) {
     assert.ok(BLOCKS[type].purpose.length > 10, `${type} purpose`);
-    assert.ok(['layout', 'display', 'input'].includes(BLOCKS[type].group), `${type} group`);
+    assert.ok(['layout', 'display', 'input', 'widget'].includes(BLOCKS[type].group), `${type} group`);
     assert.match(map, new RegExp(`\\b${type}:`), `client/src/game/blocks/index.jsx has no component for "${type}"`);
   }
 });
@@ -147,6 +147,56 @@ test('readAction: only actions on the screen, and only valid input, get through 
   ok({ order: 1 }, [2, 0, 1], [2, 0, 1]);
   no({ order: 1 }, [0, 1], /every item index/);
   no({ order: 1 }, [0, 0, 1], /every item index/);
+});
+
+test('widgets: results are checked, and impossible ones dropped', () => {
+  const GO = 1_000_000;
+  const s = screen(
+    { type: 'reaction', goAt: GO, action: { tap: 1 } },
+    { type: 'mash', startsAt: GO, durationMs: 5000, action: { mash: 1 } },
+    { type: 'timingBar', target: { from: 400, to: 600 }, action: { stop: 1 } },
+    { type: 'tapTargets', startsAt: GO, durationMs: 10_000, count: 5, seed: 7, action: { hit: 1 } },
+  );
+  const read = (action, input, now = GO + 1000) => readAction(s, action, input, { now });
+
+  assert.deepEqual(read({ tap: 1 }, { ms: 250 }), { ok: true, input: { ms: 250 } });
+  assert.deepEqual(read({ tap: 1 }, { early: true }, GO - 2000), { ok: true, input: { early: true } }, 'too early is a real result');
+  assert.match(read({ tap: 1 }, { ms: 250 }, GO - 2000).problem, /arrived before GO/);
+  assert.match(read({ tap: 1 }, { ms: 20 }).problem, /\{ ms \} \(80–10000\)/, 'faster than a human');
+  assert.match(read({ tap: 1 }, { ms: 250, early: true }).problem, /\{ ms \}/);
+
+  assert.deepEqual(read({ mash: 1 }, { taps: 60 }), { ok: true, input: { taps: 60 } });
+  assert.match(read({ mash: 1 }, { taps: 101 }).problem, /"taps" must be a whole number from 0 to 100/, '20 taps a second at most');
+  assert.match(read({ mash: 1 }, { taps: 3.5 }).problem, /whole number/);
+
+  assert.deepEqual(read({ stop: 1 }, { position: 512 }), { ok: true, input: { position: 512 } });
+  assert.match(read({ stop: 1 }, { position: 1001 }).problem, /0 to 1000/);
+
+  assert.deepEqual(read({ hit: 1 }, { hits: 5, ms: 4200 }), { ok: true, input: { hits: 5, ms: 4200 } });
+  assert.match(read({ hit: 1 }, { hits: 6, ms: 4200 }).problem, /"hits" must be a whole number from 0 to 5/);
+  assert.match(read({ hit: 1 }, { hits: 5 }).problem, /must be \{ hits, ms \}/);
+});
+
+test('drawings: the format, its limits, and the pen colors', () => {
+  const pad = screen({ type: 'drawPad', colors: ['black', 'red'], action: { draw: 1 } });
+  const line = (color = 'black') => ({ color, points: [0, 0, 1000, 750] });
+  const read = (strokes) => readAction(pad, { draw: 1 }, { strokes });
+  assert.deepEqual(read([line(), line('red')]), { ok: true, input: { strokes: [line(), line('red')] } });
+  assert.match(read([line('blue')]).problem, /a color that isn't on this drawPad/);
+  assert.match(read([{ color: 'chartreuse', points: [0, 0] }]).problem, /color must be one of black, white/);
+  assert.match(read([{ color: 'black', points: [0, 0, 1001, 0] }]).problem, /x 0–1000 and y 0–750/);
+  assert.match(read([{ color: 'black', points: [0, 0, 5] }]).problem, /points must be \[x1, y1/);
+  assert.match(read([{ color: 'black', points: [1.5, 2] }]).problem, /whole numbers/);
+  assert.match(read([{ color: 'black', points: [0, 0], width: 99 }]).problem, /must be \{ color, points \}/);
+  assert.match(read([]).problem, /empty drawing/);
+  const huge = [{ color: 'black', points: Array.from({ length: 1501 * 2 }, () => 1) }];
+  assert.match(read(huge).problem, /too many points \(at most 1500\)/);
+
+  // The same format shows on screens, and a full-size drawing fits easily.
+  assert.equal(validateScreen(screen({ type: 'drawing', strokes: [line()] })), null);
+  assert.match(validateScreen(screen({ type: 'drawing', strokes: 'a cat' })), /"strokes" must be a list of strokes/);
+  const biggest = [{ color: 'black', points: Array.from({ length: 1500 * 2 }, (_, i) => (i % 2 ? 750 : 1000)) }];
+  assert.ok(JSON.stringify(biggest).length < 16_000, 'a maximum drawing is under 16 KB');
 });
 
 test('multiline text inputs allow line breaks', () => {

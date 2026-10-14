@@ -9,7 +9,8 @@ import { config } from '../../config.js';
 const GROUPS = [
   ['layout', 'Layout: blocks that hold other blocks'],
   ['display', 'Display: things to look at'],
-  ['input', 'Input: things players use on their phones (the big screen shows them, not tappable)'],
+  ['input', 'Input: things players use on their phones (the big screen shows them, not usable)'],
+  ['widget', 'Widgets: fast games on the phone (the phone does the timing, counting or drawing, then sends ONE result)'],
 ];
 
 /** @returns {string} markdown */

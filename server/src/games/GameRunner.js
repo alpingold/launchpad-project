@@ -105,11 +105,11 @@ export class GameRunner {
    * message, and is dropped quietly (plan §11b, §12c).
    * @param {string} playerId
    * @param {object} action
-   * @param {unknown} [input]  the value from a textInput, multiChoice, slider or rank
+   * @param {unknown} [input]  the value from an input block or widget (text, a slider value, a drawing…)
    */
   handleAction(playerId, action, input) {
     if (!this.instance || !this.playerIds.has(playerId)) return;
-    const checked = readAction(this.lastPlayerScreens.get(playerId), action, input);
+    const checked = readAction(this.lastPlayerScreens.get(playerId), action, input, { now: this.now() });
     if (!checked.ok) return;
     if (checked.input === undefined) this.safely('onAction', () => this.instance.onAction(playerId, action));
     else this.safely('onAction', () => this.instance.onAction(playerId, action, checked.input));

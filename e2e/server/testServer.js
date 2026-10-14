@@ -1,7 +1,7 @@
 // The server the browser tests run against: the real server (same code as
 // server/src/index.js), with two test-only differences, so nothing test-related lives in
 // the app itself:
-//   0. A test-only game that uses every input block (inputGame.js).
+//   0. Test-only games that use every input block and widget (inputGame.js, widgetGame.js).
 //   1. A FAKE generator instead of the OpenShell sandbox + GenAI Studio. The tests don't
 //      need Docker, an API key or the network, and a game takes ~2 s instead of ~30 s.
 //      It still sends progress steps and runs the real harness on the code it returns.
@@ -16,6 +16,7 @@ import { createDefaultRegistry } from '../../server/src/games/index.js';
 import { checkGameSource } from '../../server/src/games/harness/check.js';
 import { ADMIN } from './accounts.js';
 import inputGame from './inputGame.js';
+import widgetGame from './widgetGame.js';
 
 /**
  * What the fake "AI" writes: the official Majority Rules game (it passes every check),
@@ -53,6 +54,7 @@ setAdmin(db, admin.username, true);
 
 const games = createDefaultRegistry();
 games.register(inputGame);
+games.register(widgetGame);
 
 const server = createGameServer({}, { db, games, runGenerator: fakeGenerator });
 server.httpServer.listen(config.PORT, () => {

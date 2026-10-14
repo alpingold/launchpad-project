@@ -16,9 +16,10 @@ export const config = {
   // URL path clients connect to (ws://host/ws). Upgrades on any other path are refused.
   WS_PATH: '/ws',
 
-  // Largest single message (in bytes) a client may send. Our biggest real message
-  // is a few hundred bytes; `ws` closes the socket with code 1009 if this is exceeded.
-  WS_MAX_PAYLOAD_BYTES: 4 * 1024,
+  // Largest single message (in bytes) a client may send. The biggest real one is a
+  // drawing from a drawPad (at most 1500 points, about 10–15 KB); everything else is a
+  // few hundred bytes. `ws` closes the socket with code 1009 if this is exceeded.
+  WS_MAX_PAYLOAD_BYTES: 32 * 1024,
 
   // How often we ping every socket. A socket that hasn't answered the previous
   // ping by the next tick is considered dead and dropped (so worst case ~2x this).
@@ -83,9 +84,10 @@ export const config = {
 
   // --- Games ---
 
-  // Largest single message a game may send (JSON size). Views are small; this stops a
-  // buggy (or generated) game from flooding phones with huge payloads.
-  GAME_MAX_PAYLOAD_BYTES: 8 * 1024,
+  // Largest single screen a game may send (JSON size). Most are under 1 KB; the big one
+  // is a gallery of drawings on the big screen. This stops a buggy (or generated) game
+  // from flooding phones with huge payloads.
+  GAME_MAX_PAYLOAD_BYTES: 96 * 1024,
 
   // Longest delay a game may ask for with ctx.setTimeout.
   GAME_MAX_TIMER_MS: 10 * 60 * 1000,

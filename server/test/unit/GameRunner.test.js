@@ -171,10 +171,10 @@ test('a game can catch a contract error itself and carry on', () => {
   assert.deepEqual(ended, []);
 });
 
-test('screens over 8 KB end the game, even if every field is within its own limit', (t) => {
+test('screens over 96 KB end the game, even if every field is within its own limit', (t) => {
   quietErrors(t);
-  // 8 options, each carrying a 2 KB action object: valid fields, ~17 KB in total.
-  const options = Array.from({ length: 8 }, () => ({ label: 'Pick', action: { blob: 'x'.repeat(2000) } }));
+  // 8 options, each carrying a 13 KB action object: valid fields, ~104 KB in total.
+  const options = Array.from({ length: 8 }, () => ({ label: 'Pick', action: { blob: 'x'.repeat(13_000) } }));
   const { delivered, ended } = run((ctx) => {
     ctx.broadcast({ blocks: [{ type: 'choice', options }] });
     return { onAction() {} };

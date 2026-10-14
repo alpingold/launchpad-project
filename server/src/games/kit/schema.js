@@ -68,6 +68,11 @@ export function playerId({ optional } = {}) {
   });
 }
 
+/** A field with its own check (for shapes the helpers here don't cover, like drawings). */
+export function custom(type, check, { optional } = {}) {
+  return field(type, check, { optional });
+}
+
 /** Any plain object; it's sent back to the game unchanged when the player uses the control. */
 export function action() {
   return field('object, sent back to onAction unchanged', (v) => (isPlainObject(v) ? null : 'must be an object'));

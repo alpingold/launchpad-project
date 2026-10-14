@@ -1,4 +1,6 @@
-import { text, number, oneOf, boolean, asset, playerId, action, list, object, children } from './schema.js';
+import { text, number, oneOf, boolean, asset, playerId, action, list, object, children, custom } from './schema.js';
+import { PALETTE, checkStrokes, botScribble } from './drawing.js';
+import { isPlainObject } from '../../protocol/validate.js';
 
 // THE BLOCKS (plan §12b): everything a game can put on a screen.
 //
@@ -21,7 +23,7 @@ const align = oneOf(ALIGNS, { optional: true });
 
 /**
  * @typedef {Object} BlockDefinition
- * @property {'layout' | 'display' | 'input'} group
+ * @property {'layout' | 'display' | 'input' | 'widget'} group
  * @property {string} purpose        one line: what it's for
  * @property {Record<string, ReturnType<typeof text>>} fields
  * @property {(block: object) => string | null} [check]   rules between fields
@@ -31,8 +33,9 @@ const align = oneOf(ALIGNS, { optional: true });
  *
  * @typedef {Object} InputRules
  * @property {string} doc            what onAction receives as `input` (for the kit reference)
- * @property {(block: object, input: unknown) => { value: unknown } | { problem: string }} read
- *   checks a player's input against this block; `value` is what the game receives (cleaned up)
+ * @property {(block: object, input: unknown, context: { now?: number }) => { value: unknown } | { problem: string }} read
+ *   checks a player's input against this block; `value` is what the game receives (cleaned up).
+ *   `context.now` is the server time it arrived (widgets use it to spot impossible timing)
  * @property {(block: object, rand: () => number) => unknown} bot
  *   a random valid input, for the test harness's bots
  */
@@ -51,6 +54,21 @@ const shuffled = (items, rand) => {
 };
 /** Control characters and invisible formatting; newlines are allowed separately. */
 const CONTROL_RE = /[\p{Cc}\p{Cf}]/u;
+
+/** An object with exactly these keys, each a whole number in its range; or a problem. */
+function readCounts(input, ranges) {
+  if (!isPlainObject(input) || Object.keys(input).length !== Object.keys(ranges).length) {
+    return { problem: `must be { ${Object.keys(ranges).join(', ')} }` };
+  }
+  for (const [key, [min, max]] of Object.entries(ranges)) {
+    const v = input[key];
+    if (!Number.isInteger(v) || v < min || v > max) return { problem: `"${key}" must be a whole number from ${min} to ${max}` };
+  }
+  return { value: { ...input } };
+}
+
+/** Strokes for a drawing, checked by drawing.js. */
+const strokes = custom('list of { color, points: [x1, y1, x2, y2, ...] } (see drawPad)', checkStrokes);
 
 /** The submit button's label on the input blocks below. */
 const submitLabel = text({ max: 20, optional: true });
@@ -349,6 +367,136 @@ export const BLOCKS = {
       type: 'rank',
       items: [{ label: 'Breakfast' }, { label: 'Lunch' }, { label: 'Dinner' }],
       action: { ranked: true },
+    },
+  },
+
+  // --- Widgets: the phone does the fast part itself (timing, counting taps, drawing) and
+  // sends ONE result. That's what makes reflex games fair on slow Wi-Fi: the time is
+  // measured on the phone, not by when a message reaches the server. A modified phone
+  // could lie, so the platform rejects impossible results; fine for a party game.
+  reaction: {
+    group: 'widget',
+    purpose:
+      'A reflex test. The phone shows a waiting button until `goAt` (server time from ctx.now()), then GO; the player taps as fast as they can. One tap per screen.',
+    fields: {
+      goAt: number(),
+      waitLabel: text({ max: 30, optional: true }),
+      goLabel: text({ max: 20, optional: true }),
+      action: action(),
+    },
+    actions: (block) => [block.action],
+    input: {
+      doc: '{ ms } = their reaction time in milliseconds (80–10000), measured on the phone; or { early: true } if they tapped before GO',
+      read(block, input, { now } = {}) {
+        if (isPlainObject(input) && input.early === true && Object.keys(input).length === 1) return { value: { early: true } };
+        const result = readCounts(input, { ms: [80, 10_000] });
+        if ('problem' in result) return { problem: 'must be { ms } (80–10000) or { early: true }' };
+        // GO hasn't happened yet on the server's clock, so this "reaction" is made up.
+        if (now !== undefined && now < block.goAt - 500) return { problem: 'arrived before GO' };
+        return result;
+      },
+      bot: (block, rand) => (rand() < 0.1 ? { early: true } : { ms: 150 + Math.floor(rand() * 700) }),
+    },
+    example: { type: 'reaction', goAt: 1_700_000_003_000, action: { tap: true, round: 1 } },
+  },
+  mash: {
+    group: 'widget',
+    purpose:
+      'Tap as many times as you can. Counting starts at `startsAt` (server time) and lasts `durationMs`; then the phone sends the count by itself.',
+    fields: {
+      startsAt: number(),
+      durationMs: number({ min: 1000, max: 30_000, integer: true }),
+      label: text({ max: 20, optional: true }),
+      action: action(),
+    },
+    actions: (block) => [block.action],
+    input: {
+      doc: '{ taps } = how many times they tapped in time (at most 20 per second)',
+      read: (block, input) => readCounts(input, { taps: [0, Math.ceil((block.durationMs / 1000) * 20)] }),
+      bot: (block, rand) => ({ taps: Math.floor(rand() * (block.durationMs / 1000) * 8) }),
+    },
+    example: { type: 'mash', startsAt: 1_700_000_003_000, durationMs: 5000, label: 'MASH!', action: { mash: true, round: 1 } },
+  },
+  timingBar: {
+    group: 'widget',
+    purpose:
+      'A marker slides back and forth across a bar (one sweep every `periodMs`); the player taps to stop it, ideally inside the `target` zone. One tap per screen.',
+    fields: {
+      periodMs: number({ min: 500, max: 5000, integer: true, optional: true }),
+      target: object({ from: number({ min: 0, max: 1000, integer: true }), to: number({ min: 0, max: 1000, integer: true }) }),
+      label: text({ max: 60, optional: true }),
+      stopLabel: text({ max: 20, optional: true }),
+      action: action(),
+    },
+    check: (block) => (block.target.from >= block.target.to ? '"target.from" must be less than "target.to"' : null),
+    actions: (block) => [block.action],
+    input: {
+      doc: '{ position } = where the marker stopped, 0 (left) to 1000 (right); inside the target if target.from ≤ position ≤ target.to',
+      read: (block, input) => readCounts(input, { position: [0, 1000] }),
+      bot: (block, rand) => ({ position: Math.floor(rand() * 1001) }),
+    },
+    example: { type: 'timingBar', target: { from: 450, to: 550 }, periodMs: 1200, label: 'Stop it in the green!', action: { stop: true, round: 1 } },
+  },
+  tapTargets: {
+    group: 'widget',
+    purpose:
+      'Targets pop up one at a time at random spots (from `seed`: give each round a new one with ctx.random()); the player taps each. Starts at `startsAt` (server time); ends when all `count` are hit or after `durationMs`, then the phone sends the result by itself.',
+    fields: {
+      startsAt: number(),
+      durationMs: number({ min: 3000, max: 30_000, integer: true }),
+      count: number({ min: 1, max: 20, integer: true }),
+      seed: number({ min: 0, max: 2_147_483_647, integer: true }),
+      action: action(),
+    },
+    actions: (block) => [block.action],
+    input: {
+      doc: '{ hits, ms } = how many targets they hit, and how long it took in milliseconds (durationMs if they ran out of time)',
+      read: (block, input) => readCounts(input, { hits: [0, block.count], ms: [0, block.durationMs] }),
+      bot: (block, rand) => ({ hits: Math.floor(rand() * (block.count + 1)), ms: Math.floor(rand() * block.durationMs) }),
+    },
+    example: { type: 'tapTargets', startsAt: 1_700_000_003_000, durationMs: 10_000, count: 8, seed: 12345, action: { done: true, round: 1 } },
+  },
+  drawPad: {
+    group: 'widget',
+    purpose:
+      'A drawing canvas with the given pen `colors`, undo and clear buttons, and a submit button. Show drawings to everyone with the `drawing` block.',
+    fields: {
+      colors: list(oneOf(PALETTE), { min: 1, max: 8, optional: true }),
+      label: text({ max: 100, optional: true }),
+      submitLabel,
+      action: action(),
+    },
+    actions: (block) => [block.action],
+    input: {
+      doc: '{ strokes } = the drawing, in the format the `drawing` block shows: [{ color, points: [x1, y1, x2, y2, ...] }], x 0–1000, y 0–750',
+      read(block, input) {
+        if (!isPlainObject(input) || Object.keys(input).length !== 1 || !('strokes' in input)) return { problem: 'must be { strokes }' };
+        const problem = checkStrokes(input.strokes);
+        if (problem) return { problem: `strokes ${problem}` };
+        const colors = block.colors ?? ['black'];
+        if (input.strokes.some((stroke) => !colors.includes(stroke.color))) return { problem: "uses a color that isn't on this drawPad" };
+        if (input.strokes.length === 0) return { problem: 'is an empty drawing' };
+        return { value: { strokes: input.strokes } };
+      },
+      bot: (block, rand) => ({ strokes: botScribble(rand, block.colors ?? ['black']) }),
+    },
+    example: { type: 'drawPad', label: 'Draw: a cat on a skateboard', colors: ['black', 'red', 'blue'], action: { drawing: true, round: 1 } },
+  },
+  drawing: {
+    group: 'display',
+    purpose: "Shows a drawing (from a player's drawPad: pass its `strokes` on). Put several in a `grid` for a gallery.",
+    fields: {
+      strokes,
+      caption: text({ max: 60, optional: true }),
+      size: oneOf(['small', 'normal', 'big'], { optional: true }),
+    },
+    example: {
+      type: 'drawing',
+      strokes: [
+        { color: 'black', points: [100, 600, 500, 150, 900, 600, 100, 600] },
+        { color: 'red', points: [450, 450, 550, 450] },
+      ],
+      caption: 'A mountain (by Alex)',
     },
   },
 };
