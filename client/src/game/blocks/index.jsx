@@ -1,6 +1,7 @@
 import { Column, Row, Grid, Card } from './layout.jsx';
-import { Text, Image, Timer, Progress, Scoreboard, PlayerName, Divider } from './display.jsx';
+import { Text, Image, Timer, Progress, Scoreboard, PlayerName, Divider, Drawing } from './display.jsx';
 import { Button, Choice, TextInput, MultiChoice, Slider, Rank } from './input.jsx';
+import { Reaction, Mash, TimingBar, TapTargets, DrawPad } from './widgets.jsx';
 
 // One trusted component per block type (plan §12b). Must match server/src/games/kit/blocks.js:
 // a server test checks every block there has an entry here.
@@ -22,6 +23,12 @@ export const BLOCK_COMPONENTS = {
   multiChoice: MultiChoice,
   slider: Slider,
   rank: Rank,
+  reaction: Reaction,
+  mash: Mash,
+  timingBar: TimingBar,
+  tapTargets: TapTargets,
+  drawPad: DrawPad,
+  drawing: Drawing,
 };
 
 /**

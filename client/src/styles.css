@@ -680,6 +680,137 @@ body {
   cursor: default;
 }
 
+/* Widgets (K3): fast games on the phone */
+.widget {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  width: min(100%, 26rem);
+}
+
+.widget-status {
+  margin: 0;
+  font-size: 1.4rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.widget-count {
+  font-size: 1.6rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.widget-reaction:disabled {
+  opacity: 1;
+}
+
+.widget-timing {
+  position: relative;
+  width: 100%;
+  height: 3rem;
+  border-radius: 999px;
+  background: var(--chip);
+  overflow: hidden;
+}
+
+.widget-timing-target {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: var(--good-bg);
+  opacity: 0.6;
+}
+
+.widget-timing-marker {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0.4rem;
+  margin-left: -0.2rem;
+  background: var(--text);
+}
+
+.widget-arena {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  border-radius: 1rem;
+  background: var(--chip);
+  touch-action: manipulation;
+}
+
+.widget-target {
+  position: absolute;
+  width: 3.5rem;
+  height: 3.5rem;
+  margin: -1.75rem 0 0 -1.75rem; /* centered on its spot */
+  border: 0.4rem solid var(--on-accent);
+  border-radius: 50%;
+  background: var(--danger);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+/* Drawings: always white paper, so they look the same in light and dark mode */
+.drawing-paper {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 0.75rem;
+  background: #ffffff;
+  border: 2px solid var(--border);
+}
+
+.drawpad-canvas {
+  touch-action: none; /* drawing must not scroll the page */
+  cursor: crosshair;
+}
+
+.drawpad-tools {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.drawpad-swatch {
+  width: 2.5rem;
+  height: 2.5rem;
+  border: 3px solid var(--muted); /* visible around black on dark mode and white on light */
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.drawpad-swatch.on {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.blk-drawing {
+  margin: 0;
+  width: min(100%, 22rem);
+}
+
+.blk-drawing.size-small {
+  width: min(100%, 12rem);
+}
+
+.blk-drawing.size-big {
+  width: min(100%, 36rem);
+}
+
+.blk-grid .blk-drawing {
+  width: 100%;
+}
+
+.blk-drawing figcaption {
+  margin-top: 0.3rem;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
 .countdown-number {
   margin: 0;
   font-size: 6rem;

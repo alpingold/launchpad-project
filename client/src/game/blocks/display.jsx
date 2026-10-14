@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { AssetImage } from '../assets.jsx';
 import { useScreen } from './context.js';
+import { CANVAS_WIDTH, CANVAS_HEIGHT, Strokes } from './drawing.jsx';
 
 // Display blocks: things to look at. All text is React text, so a game can never inject HTML.
 
@@ -21,8 +22,8 @@ export function Image({ block }) {
   );
 }
 
-/** The current server time, updated a few times a second (for timers). */
-function useServerNow() {
+/** The current server time, updated a few times a second (for timers and widgets). */
+export function useServerNow() {
   const { clockOffset } = useScreen();
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -105,4 +106,16 @@ export function PlayerName({ block }) {
 
 export function Divider() {
   return <hr className="blk-divider" />;
+}
+
+/** A drawing from a drawPad, on white paper. */
+export function Drawing({ block }) {
+  return (
+    <figure className={`blk-drawing size-${block.size ?? 'normal'}`}>
+      <svg className="drawing-paper" viewBox={`0 0 ${CANVAS_WIDTH} ${CANVAS_HEIGHT}`} role="img" aria-label={block.caption ?? 'A drawing'}>
+        <Strokes strokes={block.strokes} />
+      </svg>
+      {block.caption && <figcaption>{block.caption}</figcaption>}
+    </figure>
+  );
 }
