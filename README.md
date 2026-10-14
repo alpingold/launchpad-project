@@ -98,7 +98,11 @@ available to every host, and **Reject** takes it away. All of these apply immedi
 a restart. Hosts see an **AI-made** badge on these games.
 
 Games draw everything with the **game kit**: screens built from blocks (text, images, timers,
-bars, buttons, choices, layouts…), all defined in `server/src/games/kit/blocks.js`.
+bars, buttons, choices, layouts), input blocks (text boxes, multi-picks, sliders, rankings) and
+widgets that run on the phone (reaction timer, button mashing, timing bar, tap targets, drawing
+pad). All of them are defined in `server/src/games/kit/blocks.js`, and the **`/kit` page**
+shows every one live. The official games (Reaction Race, Majority Rules, Sketch & Guess, Fill
+the Blank) double as the examples the AI learns from.
 
 Every game, hand-made or generated, can be checked with the **game test harness**:
 
