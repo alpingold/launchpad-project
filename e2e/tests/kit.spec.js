@@ -10,6 +10,8 @@ test('the kit page shows every block group, and blocks work as previews', async 
   for (const group of ['Layout', 'Display', 'Input', 'Widgets']) {
     await expect(page.getByRole('link', { name: group, exact: true })).toBeVisible();
   }
+  // Group notes come from the server too (the same text the AI reads).
+  await expect(page.locator('#widget')).toContainText('A widget starts over whenever that phone gets a new screen');
 
   // A display block: the scoreboard example shows the demo players' names.
   const scoreboard = page.locator('#block-scoreboard');

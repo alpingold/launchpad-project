@@ -15,7 +15,7 @@ import { checkFields } from './schema.js';
 export const MAX_DEPTH = 5;
 /** Blocks per screen, counting every nested block. */
 export const MAX_BLOCKS = 60;
-const MAX_TOP_LEVEL = 30;
+export const MAX_TOP_LEVEL = 30;
 
 /**
  * Walks every block in a (structurally valid) screen, depth first.

@@ -76,6 +76,7 @@ export default function Kit() {
           {kit.groups.map((group) => (
             <section key={group.id} id={group.id} aria-labelledby={`${group.id}-heading`}>
               <h2 id={`${group.id}-heading`}>{group.title}</h2>
+              {group.note && <p>{group.note}</p>}
               {group.blocks.map((block) => (
                 <BlockCard key={block.type} block={block} usable={group.id === 'input' || group.id === 'widget'} />
               ))}
