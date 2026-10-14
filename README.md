@@ -67,12 +67,12 @@ Hosting needs an account; players join as guests with just a room code.
   ```sh
   npm run admin -- users                 # list accounts
   npm run admin -- grant <username>      # make an account an admin (can generate games)
-  npm run admin -- games                 # list AI-generated games and their status
+  npm run admin -- games                 # list AI-generated games, their versions, and what's live
   npm run admin -- import-game <file> --owner <username>   # store a game (must pass check-game)
-  npm run admin -- set-status <game id> playtest|published|rejected
+  npm run admin -- set-live <game id> published|playtest <version|none>
   ```
-  Game changes take effect when the server restarts. A `playtest` game shows up only in its
-  owner's game picker; `published` games show up for every host.
+  Game changes take effect when the server restarts. A `playtest` version shows up only in its
+  owner's game picker; the `published` version shows up for every host.
 
 ## AI-made games
 
@@ -91,11 +91,18 @@ unless you start the server with `GENERATION_ENABLED=1`:
 GENERATION_ENABLED=1 npm run dev:server
 ```
 
-On the admin page you type an idea, pick a model, and watch its progress. Jobs run one at a
-time. A finished game waits for review with its test report and code (shown as text; the
-browser never runs it). **Playtest** makes it startable by you alone, **Publish** makes it
-available to every host, and **Reject** takes it away. All of these apply immediately, without
-a restart. Hosts see an **AI-made** badge on these games.
+On the admin page you type an idea and watch its progress. Jobs run one at a time. A
+finished game waits for review with its test report and code (shown as text; the browser
+never runs it). **Playtest** makes a version startable by you alone, **Publish** makes it
+available to every host, and **Unpublish** takes it away. All of these apply immediately,
+without a restart. Hosts see an **AI-made** badge on these games.
+
+**Asking for changes** (plan §12e) makes a new version of a game: describe what to change
+("rounds are too long; show the scoreboard after each round") and the AI rewrites the game
+from that version's code, tested the same way. Each version shows the request, the AI's list
+of changes and the **changed lines**. You can playtest a new version while everyone else keeps
+playing the published one, then publish it; rolling back means playtesting an older version
+and publishing it.
 
 Games draw everything with the **game kit**: screens built from blocks (text, images, timers,
 bars, buttons, choices, layouts), input blocks (text boxes, multi-picks, sliders, rankings) and
