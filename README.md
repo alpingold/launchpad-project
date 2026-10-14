@@ -97,6 +97,9 @@ browser never runs it). **Playtest** makes it startable by you alone, **Publish*
 available to every host, and **Reject** takes it away. All of these apply immediately, without
 a restart. Hosts see an **AI-made** badge on these games.
 
+Games draw everything with the **game kit**: screens built from blocks (text, images, timers,
+bars, buttons, choices, layouts…), all defined in `server/src/games/kit/blocks.js`.
+
 Every game, hand-made or generated, can be checked with the **game test harness**:
 
 ```sh
