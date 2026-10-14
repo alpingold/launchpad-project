@@ -89,6 +89,8 @@ The kit is big on purpose. A good game uses it:
   you only check it against the game: right phase, right round, not already answered.
 - Compare typed text loosely: lowercase it and drop spaces and punctuation before
   comparing (see `normalize` in Sketch & Guess).
+- **Don't give the answer away.** Nothing on a phone may hint at it: a slider's `min`,
+  `max` and `initial` must not depend on the answer, and options are shuffled.
 - An input block clears when that phone gets a new screen. Send a new screen after a wrong
   guess (with "Not X, try again!"), not while the player is still typing.
 
@@ -118,7 +120,8 @@ widget, **Sketch & Guess** drawing and typed guesses, **Fill the Blank** writing
 - **Widgets:** set `goAt` / `startsAt` a few seconds in the future (`ctx.now() + 3000`), so
   every phone starts together. While a widget runs, don't send that phone a new screen (it
   would start over): update only the big screen. Then add your own `ctx.setTimeout` that
-  ends the round even if some results never arrive.
+  ends the round even if some results never arrive, about 2 seconds after the widget's
+  time is up: results that arrive after the round has ended are lost.
 - **Every wait for players needs a timeout.** People walk away, phones die, someone never
   answers. If the game waits for "everyone", also `ctx.setTimeout` a fallback that moves
   on, and don't wait for players who are disconnected. Show the wait with a `timer` bar.

@@ -17,7 +17,9 @@ export const GROUPS = [
     'widget',
     'Widgets: fast games on the phone (the phone does the timing, counting or drawing, then sends ONE result)',
     'A widget starts over whenever that phone gets a new screen. So while a widget is running, send that phone nothing: ' +
-      'update only the big screen, and give each phone its next screen once its own result is in (or the round is over).',
+      'update only the big screen, and give each phone its next screen once its own result is in (or the round is over). ' +
+      'Results travel over the network: `mash` and `tapTargets` send theirs when time runs out, so wait about 2 seconds ' +
+      'after startsAt + durationMs before ending the round, or you lose them.',
   ],
 ];
 
