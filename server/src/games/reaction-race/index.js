@@ -1,27 +1,29 @@
-// REACTION RACE: the demo game (plan §4c).
+// REACTION RACE: the demo game (plan §4c), rebuilt on the reaction widget (plan §12, K4).
 //
 // Each round: everyone waits, then after a random 2–5 seconds the screens say GO.
-// The first player whose tap reaches the server wins the round. Tapping before GO
-// is a false start: you sit out the rest of that round. Most round wins after
-// all rounds wins the game.
+// The fastest reaction wins the round. Tapping before GO is a false start: no time for
+// you this round. Most round wins after all rounds wins the game.
 //
 // How it's built (a pattern worth copying for other games):
 //  - All game state lives in a few variables inside createGame.
 //  - hostView() and playerView(id) describe what each screen should show RIGHT NOW,
-//    based only on that state, as a list of blocks (text, image, button, scoreboard…).
+//    based only on that state, as a list of blocks (text, image, widget, scoreboard…).
 //  - Whenever the state changes, showEveryone() sends those screens out.
 //  - A refreshed phone or host screen needs nothing from us: the platform remembers
 //    the latest screen on each and sends it again.
 //
-// Fairness note: "first" means first to arrive at the server. A phone on slower Wi-Fi
-// is slightly disadvantaged. Fine for a demo; a real reaction minigame might measure
-// time on the phone instead (and then have to trust it, which brings its own problems).
+// Fairness: each phone measures its own reaction time (the `reaction` widget), from the
+// moment GO appears on it to the tap. So a phone on slow Wi-Fi isn't at a disadvantage.
+// The platform rejects impossible times (under 80 ms, or arriving before GO).
+//
+// Careful with widgets: re-sending a phone's screen restarts its widget. So at GO only the
+// big screen changes; each phone gets a new screen once its own result is in.
 
 const DEFAULT_ROUNDS = 5;
 const GO_DELAY_MIN_MS = 2000; // shortest wait before GO
 const GO_DELAY_MAX_MS = 5000; // longest wait before GO
-const ROUND_TIMEOUT_MS = 10_000; // nobody tapped after GO: move on
-const RESULT_PAUSE_MS = 2500; // how long a round's result stays up
+const TAP_WINDOW_MS = 5000; // after GO, how long to wait for everyone's result
+const RESULT_PAUSE_MS = 4000; // how long a round's result stays up
 const FINAL_PAUSE_MS = 6000; // how long the final scoreboard stays up before the lobby
 
 /** @type {import('../contract.js').GameModule} */
@@ -29,7 +31,7 @@ export default {
   contractVersion: 3,
   id: 'reaction-race',
   name: 'Reaction Race',
-  description: 'Wait for GO, then tap as fast as you can. Tap too early and you sit out the round.',
+  description: 'Wait for GO, then tap as fast as you can. Your phone times you. Tap too early and you sit out the round.',
   minPlayers: 1,
   maxPlayers: 12,
 
@@ -42,14 +44,13 @@ export default {
     let round = 1;
     /** @type {'ready' | 'go' | 'result' | 'final'} */
     let phase = 'ready';
+    let goAt = 0; // when GO shows this round (server time)
     /** @type {Record<string, number>} round wins per player id */
     const scores = Object.fromEntries(ctx.players.map((p) => [p.id, 0]));
-    /** players who tapped before GO this round */
-    let falseStarts = new Set();
+    /** @type {Map<string, { ms: number } | { early: true }>} this round's results, in arrival order */
+    let results = new Map();
     /** @type {string | null} who won the current round (null = nobody) */
     let roundWinner = null;
-    /** @type {'timeout' | 'false-starts'} why a round had no winner */
-    let noWinnerReason = 'timeout';
     /** players currently disconnected (they can't tap, so don't wait for them) */
     const away = new Set();
     let timer = null; // the one pending ctx timer, if any
@@ -73,16 +74,58 @@ export default {
     /** A small "Round 2 of 5" line at the top of every in-round screen. */
     const roundLine = () => ({ type: 'text', text: `Round ${round} of ${rounds}`, tone: 'muted' });
 
+    /** How one player did this round, in words. */
+    function resultText(id) {
+      const r = results.get(id);
+      if (!r) return 'no tap';
+      return 'early' in r ? 'too soon!' : `${r.ms} ms`;
+    }
+
+    /** Everyone's times this round, fastest first, then false starts and no-shows. */
+    function timesList() {
+      const order = (id) => {
+        const r = results.get(id);
+        return !r ? 20_000 : 'early' in r ? 10_001 : r.ms;
+      };
+      const ids = ctx.players.map((p) => p.id).sort((a, b) => order(a) - order(b));
+      return {
+        type: 'card',
+        children: ids.map((id) => ({
+          type: 'row',
+          gap: 'big',
+          children: [
+            { type: 'playerName', playerId: id, tone: id === roundWinner ? 'good' : 'normal' },
+            { type: 'text', text: resultText(id), tone: id === roundWinner ? 'good' : 'muted' },
+          ],
+        })),
+      };
+    }
+
     function hostView() {
       switch (phase) {
         case 'ready':
           return { blocks: [roundLine(), { type: 'text', text: 'Get ready…', size: 'huge', bold: true }, { type: 'text', text: 'Wait for GO!', size: 'big' }] };
-        case 'go':
-          return { blocks: [roundLine(), { type: 'image', asset: 'go-sign', size: 'big' }, { type: 'text', text: 'GO!', size: 'huge', tone: 'good', bold: true }] };
+        case 'go': {
+          const tapped = ctx.players.filter((p) => results.has(p.id)).length;
+          return {
+            blocks: [
+              roundLine(),
+              { type: 'image', asset: 'go-sign', size: 'big' },
+              { type: 'text', text: 'GO!', size: 'huge', tone: 'good', bold: true },
+              { type: 'progress', value: tapped, max: ctx.players.length, label: `${tapped} of ${ctx.players.length} tapped` },
+            ],
+          };
+        }
         case 'result':
-          return roundWinner
-            ? { blocks: [{ type: 'image', asset: 'trophy' }, { type: 'text', text: `${nameOf[roundWinner]} wins round ${round}!`, size: 'huge', bold: true }] }
-            : noWinnerView();
+          return {
+            blocks: [
+              roundLine(),
+              roundWinner
+                ? { type: 'text', text: `${nameOf[roundWinner]} wins round ${round}!`, size: 'huge', bold: true }
+                : { type: 'text', text: 'Nobody got a time!', size: 'huge', bold: true },
+              timesList(),
+            ],
+          };
         case 'final':
           return finalScores();
       }
@@ -90,34 +133,33 @@ export default {
 
     function playerView(playerId) {
       if (phase === 'final') return finalScores();
-      if (phase === 'result') {
-        if (!roundWinner) return noWinnerView();
-        if (roundWinner === playerId) return { blocks: [{ type: 'image', asset: 'trophy' }, { type: 'text', text: 'You won this round!', size: 'big', tone: 'good', bold: true }] };
-        return { blocks: [{ type: 'text', text: `${nameOf[roundWinner]} was fastest!`, size: 'big', bold: true }] };
-      }
       const yourWins = { type: 'text', text: `Your wins: ${scores[playerId]}`, tone: 'muted' };
-      if (falseStarts.has(playerId)) {
+      if (phase === 'result') {
+        const headline = !roundWinner
+          ? 'Nobody got a time!'
+          : roundWinner === playerId
+            ? 'You won this round!'
+            : `${nameOf[roundWinner]} was fastest!`;
         return {
           blocks: [
-            roundLine(),
-            { type: 'text', text: 'Too soon!', size: 'big', tone: 'bad', bold: true },
-            { type: 'text', text: 'You tapped before GO. Wait for the next round.' },
+            ...(roundWinner === playerId ? [{ type: 'image', asset: 'trophy' }] : []),
+            { type: 'text', text: headline, size: 'big', tone: roundWinner === playerId ? 'good' : 'normal', bold: true },
+            { type: 'text', text: `Your time: ${resultText(playerId)}` },
             yourWins,
           ],
         };
       }
-      // The action carries the round number, so a late tap from a previous round is ignored.
-      const action = { tap: true, round };
-      const button =
-        phase === 'go'
-          ? { type: 'button', label: 'TAP!', action, asset: 'go-sign', size: 'big', tone: 'good' }
-          : { type: 'button', label: 'Wait for it…', action, size: 'big', tone: 'muted' };
-      return { blocks: [roundLine(), button, yourWins] };
-    }
-
-    function noWinnerView() {
-      const text = noWinnerReason === 'false-starts' ? 'Everyone tapped too early!' : 'Nobody tapped in time!';
-      return { blocks: [{ type: 'text', text, size: 'big', bold: true }] };
+      const mine = results.get(playerId);
+      if (mine && 'early' in mine) {
+        return {
+          blocks: [roundLine(), { type: 'text', text: 'Too soon!', size: 'big', tone: 'bad', bold: true }, { type: 'text', text: 'You tapped before GO. Wait for the next round.' }, yourWins],
+        };
+      }
+      if (mine) {
+        return { blocks: [roundLine(), { type: 'text', text: `${mine.ms} ms`, size: 'huge', bold: true }, { type: 'text', text: 'Waiting for the others…', tone: 'muted' }, yourWins] };
+      }
+      // The action carries the round number, so a result from a previous round is ignored.
+      return { blocks: [roundLine(), { type: 'reaction', goAt, action: { tap: true, round } }, yourWins] };
     }
 
     function showEveryone() {
@@ -134,34 +176,33 @@ export default {
 
     function startRound() {
       phase = 'ready';
-      falseStarts = new Set();
+      results = new Map();
       roundWinner = null;
-      noWinnerReason = 'timeout';
-      showEveryone();
       const delay = GO_DELAY_MIN_MS + ctx.random() * (GO_DELAY_MAX_MS - GO_DELAY_MIN_MS);
+      goAt = ctx.now() + delay;
+      showEveryone();
       after(delay, () => {
         phase = 'go';
-        showEveryone();
-        after(ROUND_TIMEOUT_MS, () => finishRound(null));
+        ctx.sendToHost(hostView()); // only the big screen: phones' widgets switch to GO by themselves
+        after(TAP_WINDOW_MS, finishRound);
       });
     }
 
-    /**
-     * If everyone who could still tap has false-started, nobody can win this round:
-     * end it now instead of waiting for the 10-second timeout.
-     */
-    function endRoundIfEveryoneIsOut() {
-      if (phase !== 'ready' && phase !== 'go') return;
-      if (falseStarts.size === 0) return; // e.g. everyone just disconnected: keep waiting
-      const someoneCanTap = ctx.players.some((p) => !falseStarts.has(p.id) && !away.has(p.id));
-      if (!someoneCanTap) finishRound(null, 'false-starts');
+    /** Ends the round as soon as every player who is here has a result. */
+    function finishIfEveryoneIsIn() {
+      const here = ctx.players.filter((p) => !away.has(p.id));
+      if (here.length > 0 && here.every((p) => results.has(p.id))) finishRound();
     }
 
-    function finishRound(winner, reason = 'timeout') {
+    function finishRound() {
       phase = 'result';
-      roundWinner = winner;
-      noWinnerReason = reason;
-      if (winner) scores[winner]++;
+      // Fastest valid time wins; on an exact tie, whoever's result arrived first.
+      let best = null;
+      for (const [id, r] of results) {
+        if ('ms' in r && (best === null || r.ms < results.get(best).ms)) best = id;
+      }
+      roundWinner = best;
+      if (best) scores[best]++;
       showEveryone();
       after(RESULT_PAUSE_MS, () => {
         if (round < rounds) {
@@ -178,22 +219,19 @@ export default {
     startRound();
 
     return {
-      onAction(playerId, action) {
-        // Untrusted input: only a tap for THIS round counts, and only from someone still in it.
-        if (action.tap !== true || action.round !== round || falseStarts.has(playerId)) return;
-        if (phase === 'ready') {
-          falseStarts.add(playerId);
-          ctx.sendToPlayer(playerId, playerView(playerId));
-          endRoundIfEveryoneIsOut();
-        } else if (phase === 'go') {
-          finishRound(playerId);
-        }
-        // Taps during 'result' or 'final' are simply ignored.
+      onAction(playerId, action, input) {
+        // The platform already checked `input` is { ms } or { early: true }. Still: only
+        // this round, only while it's running, and only one result per player.
+        if (action.round !== round || (phase !== 'ready' && phase !== 'go') || results.has(playerId)) return;
+        results.set(playerId, input);
+        ctx.sendToPlayer(playerId, playerView(playerId));
+        if (phase === 'go') ctx.sendToHost(hostView()); // the "tapped" count went up
+        finishIfEveryoneIsIn();
       },
 
       onPlayerDisconnect(playerId) {
         away.add(playerId);
-        endRoundIfEveryoneIsOut();
+        if (phase === 'ready' || phase === 'go') finishIfEveryoneIsIn();
       },
 
       onPlayerReconnect(playerId) {

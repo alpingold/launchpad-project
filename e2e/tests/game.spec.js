@@ -1,6 +1,7 @@
 import { test, expect } from './helpers.js';
 
-// Playing Reaction Race in real browsers: host big screen + phones.
+// Playing Reaction Race in real browsers: host big screen + phones. Each phone times its
+// own reaction (the reaction widget), so the fastest time wins, not the fastest network.
 // Games are shortened to 1 round (see gameOptions in helpers.js). Even so, each round waits
 // a random 2–5 s for GO and the final scoreboard stays up for 6 s, so these tests are slower.
 test.setTimeout(60_000);
@@ -15,9 +16,11 @@ async function startShortGame(people) {
   return { host, alex, blake };
 }
 
-test('a whole game: wait, GO, first tap wins, final scores, back to the lobby', async ({ people }) => {
+test('a whole game: wait, GO, fastest time wins, final scores, back to the lobby', async ({ people }) => {
   const { host, alex, blake } = await startShortGame(people);
   await expect(alex.page.getByRole('button', { name: 'Wait for it…' })).toBeVisible();
+  // Blake false-starts, so Alex's time is the only one (two real taps could come out either way).
+  await blake.page.getByRole('button', { name: 'Wait for it…' }).click();
 
   // GO: the host shows the GO sign art, phones show TAP!.
   await expect(alex.page.getByRole('button', { name: 'TAP!' })).toBeVisible(GO_WAIT);
@@ -28,8 +31,10 @@ test('a whole game: wait, GO, first tap wins, final scores, back to the lobby', 
 
   await alex.page.getByRole('button', { name: 'TAP!' }).click();
   await expect(alex.page.getByRole('heading', { name: 'You won this round!' })).toBeVisible();
+  await expect(alex.page.getByText(/^Your time: \d+ ms$/)).toBeVisible();
   await expect(blake.page.getByRole('heading', { name: 'Alex was fastest!' })).toBeVisible();
   await expect(host.page.getByRole('heading', { name: 'Alex wins round 1!' })).toBeVisible();
+  await expect(host.page.getByText('too soon!')).toBeVisible(); // everyone's times, on the big screen
 
   // Final scoreboard, with names looked up from the room.
   await expect(host.page.getByRole('heading', { name: 'Final scores' })).toBeVisible();
@@ -56,9 +61,9 @@ test('if everyone taps too early, the round ends right away', async ({ people })
   const { host, alex, blake } = await startShortGame(people);
   await alex.page.getByRole('button', { name: 'Wait for it…' }).click();
   await blake.page.getByRole('button', { name: 'Wait for it…' }).click();
-  // Well under the 2–5 s GO wait plus 10 s timeout the old behavior needed.
-  await expect(host.page.getByRole('heading', { name: 'Everyone tapped too early!' })).toBeVisible({ timeout: 1000 });
-  await expect(alex.page.getByRole('heading', { name: 'Everyone tapped too early!' })).toBeVisible();
+  // Right away: well before the 2–5 s wait for GO.
+  await expect(host.page.getByRole('heading', { name: 'Nobody got a time!' })).toBeVisible({ timeout: 1000 });
+  await expect(alex.page.getByRole('heading', { name: 'Nobody got a time!' })).toBeVisible();
 });
 
 test('equal top scores are announced as a tie in the lobby', async ({ people }) => {

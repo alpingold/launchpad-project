@@ -4,7 +4,7 @@ import { GameRunner } from '../../src/games/GameRunner.js';
 import { validateGameModule } from '../../src/games/contract.js';
 import reactionRace from '../../src/games/reaction-race/index.js';
 import { knownAssetIds, assetIdsIn } from '../helpers/assets.js';
-import { find, texts, headline } from '../helpers/screens.js';
+import { find, texts, headline, blocksOf } from '../helpers/screens.js';
 
 const PLAYERS = [
   { id: 'p_aaaa1111', name: 'Alex' },
@@ -14,11 +14,12 @@ const PLAYERS = [
 const [ALEX, BLAKE, CASEY] = PLAYERS.map((p) => p.id);
 
 /**
- * Runs Reaction Race through the real GameRunner with mock time.
- * Returns helpers to look at the latest screen for each phone and the host, and to move time forward.
+ * Runs Reaction Race through the real GameRunner with mock time (timers AND ctx.now(), so
+ * the platform's "arrived before GO" check sees the same clock).
  */
 function play(t, { rounds, seed = 1, players = PLAYERS } = {}) {
   t.mock.timers.enable({ apis: ['setTimeout'] });
+  let clock = 1_000_000;
   const delivered = [];
   const ended = [];
   const runner = new GameRunner({
@@ -26,6 +27,7 @@ function play(t, { rounds, seed = 1, players = PLAYERS } = {}) {
     players,
     options: rounds === undefined ? {} : { rounds },
     seed,
+    now: () => clock,
     deliver: (target, screen) => delivered.push({ target, screen }),
     onEnd: (results) => ended.push(results),
   });
@@ -41,175 +43,171 @@ function play(t, { rounds, seed = 1, players = PLAYERS } = {}) {
     }
     return undefined;
   }
-
-  let elapsed = 0;
-  function tick(ms) {
+  const tick = (ms) => {
+    clock += ms;
     t.mock.timers.tick(ms);
-    elapsed += ms;
-  }
-  /** Moves time forward in small steps until `check()` is true; returns how long that took. */
+  };
+  /** Moves time forward in small steps until `check()` is true. */
   function tickUntil(check, maxMs = 30_000) {
-    const start = elapsed;
-    while (!check()) {
-      if (elapsed - start > maxMs) throw new Error('condition never became true');
+    for (let waited = 0; !check(); waited += 50) {
+      if (waited > maxMs) throw new Error('condition never became true');
       tick(50);
     }
-    return elapsed - start;
   }
   const head = (who) => headline(latest(who));
   /** "Round 2 of 5": the first line of the host's in-round screens. */
   const roundLine = () => texts(latest('host'))[0];
   const isGo = () => head('host') === 'GO!';
-  const tap = (playerId, round) => runner.handleAction(playerId, { tap: true, round });
+  /** What a phone's reaction widget sends: a time in ms, or 'early'. */
+  const tap = (playerId, round, result) =>
+    runner.handleAction(playerId, { tap: true, round }, result === 'early' ? { early: true } : { ms: result });
 
-  return { runner, delivered, ended, latest, head, roundLine, tick, tickUntil, isGo, tap };
+  return { runner, delivered, ended, latest, head, roundLine, tick, tickUntil, isGo, tap, now: () => clock };
 }
 
 test('follows the game contract', () => {
   assert.deepEqual(validateGameModule(reactionRace), []);
 });
 
-test('round 1 starts with "get ready" on the host and a waiting button on phones', (t) => {
-  const { latest } = play(t);
-  assert.deepEqual(latest('host'), {
-    blocks: [
-      { type: 'text', text: 'Round 1 of 5', tone: 'muted' },
-      { type: 'text', text: 'Get ready…', size: 'huge', bold: true },
-      { type: 'text', text: 'Wait for GO!', size: 'big' },
-    ],
-  });
-  assert.deepEqual(latest(ALEX), {
-    blocks: [
-      { type: 'text', text: 'Round 1 of 5', tone: 'muted' },
-      { type: 'button', label: 'Wait for it…', action: { tap: true, round: 1 }, size: 'big', tone: 'muted' },
-      { type: 'text', text: 'Your wins: 0', tone: 'muted' },
-    ],
-  });
+test('a round starts with "get ready" on the host and a reaction widget on phones', (t) => {
+  const { latest, now } = play(t);
+  assert.deepEqual(texts(latest('host')), ['Round 1 of 5', 'Get ready…', 'Wait for GO!']);
+  const widget = find(latest(ALEX), 'reaction');
+  assert.deepEqual(widget.action, { tap: true, round: 1 });
+  const delay = widget.goAt - now();
+  assert.ok(delay >= 2000 && delay <= 5000, `GO in 2–5 s (got ${delay} ms)`);
+  assert.deepEqual(latest(BLAKE), latest(ALEX), 'everyone gets the same GO time');
 });
 
 test('GO comes after a random 2–5 seconds, different for different seeds', (t) => {
-  const delays = [];
+  const goTimes = new Set();
   for (const seed of [1, 2, 3, 4, 5]) {
     const game = play(t, { seed });
+    goTimes.add(find(game.latest(ALEX), 'reaction').goAt);
     game.tick(1950);
     assert.equal(game.isGo(), false, 'never before 2 s');
-    const delay = 1950 + game.tickUntil(game.isGo);
-    assert.ok(delay >= 2000 && delay <= 5050, `delay ${delay}`);
-    delays.push(delay);
+    game.tickUntil(game.isGo);
     t.mock.timers.reset();
   }
-  assert.ok(new Set(delays).size > 1, 'not always the same delay');
+  assert.ok(goTimes.size > 1, 'GO time is random');
 });
 
-test('at GO, phones get the TAP! button with the go-sign art', (t) => {
-  const { latest, tickUntil, isGo } = play(t);
+test('at GO only the big screen changes: phones keep their widget (re-sending would restart it)', (t) => {
+  const { delivered, tickUntil, isGo, latest } = play(t);
+  const before = delivered.length;
   tickUntil(isGo);
-  assert.deepEqual(find(latest(BLAKE), 'button'), { type: 'button', label: 'TAP!', action: { tap: true, round: 1 }, asset: 'go-sign', size: 'big', tone: 'good' });
+  assert.deepEqual(
+    delivered.slice(before).map((d) => d.target.to),
+    ['host'],
+  );
   assert.equal(find(latest('host'), 'image').asset, 'go-sign');
 });
 
-test('first tap after GO wins the round; later taps change nothing', (t) => {
-  const { latest, tickUntil, isGo, tap, head } = play(t);
+test('the fastest time wins, whoever arrives first; everyone sees all the times', (t) => {
+  const { latest, head, tickUntil, isGo, tap } = play(t);
   tickUntil(isGo);
-  tap(BLAKE, 1);
-  tap(ALEX, 1);
-
+  tap(CASEY, 1, 400); // arrives first, but slower
+  assert.equal(head(CASEY), '400 ms');
+  assert.ok(texts(latest(CASEY)).includes('Waiting for the others…'));
+  assert.equal(find(latest('host'), 'progress').label, '1 of 3 tapped');
+  tap(ALEX, 1, 310);
+  tap(BLAKE, 1, 215);
   assert.equal(head('host'), 'Blake wins round 1!');
-  assert.equal(find(latest('host'), 'image').asset, 'trophy');
+  assert.deepEqual(
+    find(latest('host'), 'card').children.map((row) => texts({ blocks: row.children })[0]),
+    ['215 ms', '310 ms', '400 ms'],
+    'fastest first',
+  );
   assert.equal(head(BLAKE), 'You won this round!');
   assert.equal(head(ALEX), 'Blake was fastest!');
+  assert.ok(texts(latest(ALEX)).includes('Your time: 310 ms'));
 });
 
-test('tapping before GO is a false start: sit out the round', (t) => {
-  const { latest, tickUntil, isGo, tap, head } = play(t);
-  tap(ALEX, 1); // too early
+test('tapping before GO is a false start: no time this round', (t) => {
+  const { latest, head, tickUntil, isGo, tap } = play(t);
+  tap(ALEX, 1, 'early');
   assert.equal(head(ALEX), 'Too soon!');
-  assert.equal(find(latest(BLAKE), 'button').label, 'Wait for it…', 'others unaffected');
-
+  assert.ok(find(latest(BLAKE), 'reaction'), 'others unaffected');
   tickUntil(isGo);
-  assert.equal(head(ALEX), 'Too soon!', 'no TAP! button for a false starter');
-  tap(ALEX, 1); // ignored
-  assert.equal(head('host'), 'GO!');
-  tap(CASEY, 1);
-  assert.equal(head('host'), 'Casey wins round 1!');
+  tap(ALEX, 1, 150); // a second result this round is ignored
+  tap(BLAKE, 1, 300);
+  tap(CASEY, 1, 350);
+  assert.equal(head('host'), 'Blake wins round 1!');
+  assert.ok(texts(latest(ALEX)).includes('Your time: too soon!'));
 });
 
-test('if everyone false-starts, the round ends right away instead of waiting', (t) => {
-  const { latest, tick, tap, isGo, head, roundLine } = play(t);
-  tap(ALEX, 1);
-  tap(BLAKE, 1);
-  assert.equal(head('host'), 'Get ready…', 'Casey can still tap: keep going');
-  tap(CASEY, 1);
-  assert.equal(head('host'), 'Everyone tapped too early!');
-  assert.equal(head(ALEX), 'Everyone tapped too early!');
-  tick(10_000);
-  assert.equal(isGo(), false, 'the old GO timer was cancelled');
-  assert.equal(roundLine(), 'Round 2 of 5', 'next round started after the result pause');
+test('a "reaction time" that arrives before GO is impossible, so the platform drops it', (t) => {
+  const { head, tap } = play(t);
+  tap(ALEX, 1, 250); // GO is still seconds away on the server's clock
+  assert.equal(head(ALEX), undefined, 'still the widget, no result');
+  assert.equal(head('host'), 'Get ready…');
 });
 
-test('a disconnected player is not waited for when everyone else false-starts', (t) => {
-  const { runner, latest, tap, head } = play(t);
+test('if everyone false-starts, the round ends right away with no winner', (t) => {
+  const { head, roundLine, tick, tap } = play(t);
+  tap(ALEX, 1, 'early');
+  tap(BLAKE, 1, 'early');
+  assert.equal(head('host'), 'Get ready…', 'Casey can still play: keep going');
+  tap(CASEY, 1, 'early');
+  assert.equal(head('host'), 'Nobody got a time!');
+  tick(4000);
+  assert.equal(roundLine(), 'Round 2 of 5', 'next round after the result pause');
+});
+
+test('disconnected players are not waited for', (t) => {
+  const { runner, head, tickUntil, isGo, tap } = play(t);
   runner.playerDisconnected(CASEY);
-  tap(ALEX, 1);
-  tap(BLAKE, 1);
-  assert.equal(head('host'), 'Everyone tapped too early!');
+  tickUntil(isGo);
+  tap(ALEX, 1, 300);
+  tap(BLAKE, 1, 250);
+  assert.equal(head('host'), 'Blake wins round 1!');
 });
 
-test('the round also ends if the last player who could tap disconnects', (t) => {
-  const { runner, latest, tap, head } = play(t);
-  tap(ALEX, 1);
-  tap(BLAKE, 1);
+test('the round also ends when the last player it was waiting for disconnects', (t) => {
+  const { runner, head, tickUntil, isGo, tap } = play(t);
+  tickUntil(isGo);
+  tap(ALEX, 1, 300);
+  tap(BLAKE, 1, 250);
   runner.playerDisconnected(CASEY);
-  assert.equal(head('host'), 'Everyone tapped too early!');
+  assert.equal(head('host'), 'Blake wins round 1!');
 });
 
-test('if everyone disconnects without false-starting, the round keeps waiting', (t) => {
-  const { runner, latest } = play(t);
-  for (const p of PLAYERS) runner.playerDisconnected(p.id);
-  assert.equal(headline(latest('host')), 'Get ready…');
-});
-
-test('taps from another round, or malformed taps, are ignored', (t) => {
-  const { runner, latest, tickUntil, isGo, head } = play(t);
+test("results for another round, or that aren't valid, are ignored", (t) => {
+  const { runner, head, tickUntil, isGo } = play(t);
   tickUntil(isGo);
-  for (const action of [{ tap: true, round: 2 }, { tap: true, round: 0 }, { tap: true }, { tap: 'yes', round: 1 }, {}]) {
-    runner.handleAction(ALEX, action);
-  }
+  runner.handleAction(ALEX, { tap: true, round: 2 }, { ms: 200 });
+  runner.handleAction(ALEX, { tap: true, round: 1 }, { ms: 20 }); // faster than possible
+  runner.handleAction(ALEX, { tap: true, round: 1 }); // no result
+  runner.handleAction(ALEX, { tap: true, round: 1 }, { ms: 200, extra: 1 });
   assert.equal(head('host'), 'GO!');
+  assert.equal(head(ALEX), undefined, 'Alex still has the widget');
 });
 
-test('if nobody taps within 10 s of GO, the round has no winner', (t) => {
-  const { latest, tick, tickUntil, isGo, head } = play(t);
+test('if not everyone taps within 5 s of GO, the round ends with whoever did', (t) => {
+  const { head, tick, tickUntil, isGo, tap } = play(t);
   tickUntil(isGo);
-  tick(9_950);
+  tap(ALEX, 1, 500);
+  tick(4950);
   assert.equal(head('host'), 'GO!');
   tick(100);
-  assert.equal(head('host'), 'Nobody tapped in time!');
+  assert.equal(head('host'), 'Alex wins round 1!');
 });
 
 test('a full 5-round game: final scoreboard, then endGame with rankings', (t) => {
-  const { latest, ended, tickUntil, tick, isGo, tap, roundLine } = play(t);
+  const { latest, ended, roundLine, tickUntil, tick, isGo, tap } = play(t);
   const winners = [ALEX, BLAKE, ALEX, ALEX, BLAKE];
   for (const [i, winner] of winners.entries()) {
     const round = i + 1;
     tickUntil(() => roundLine() === `Round ${round} of 5`);
     tickUntil(isGo);
-    tap(winner, round);
+    for (const p of PLAYERS) tap(p.id, round, p.id === winner ? 200 : 400);
   }
   tickUntil(() => find(latest('host'), 'scoreboard'));
-  assert.deepEqual(latest(CASEY), {
-    blocks: [
-      { type: 'text', text: 'Final scores', size: 'big', bold: true },
-      {
-        type: 'scoreboard',
-        rows: [
-          { playerId: ALEX, score: 3 },
-          { playerId: BLAKE, score: 2 },
-          { playerId: CASEY, score: 0 },
-        ],
-      },
-    ],
-  });
+  assert.deepEqual(find(latest(CASEY), 'scoreboard').rows, [
+    { playerId: ALEX, score: 3 },
+    { playerId: BLAKE, score: 2 },
+    { playerId: CASEY, score: 0 },
+  ]);
   assert.deepEqual(ended, [], 'scoreboard stays up for a moment');
   tick(6000);
   assert.deepEqual(ended, [{ rankings: [ALEX, BLAKE, CASEY], scores: { [ALEX]: 3, [BLAKE]: 2, [CASEY]: 0 } }]);
@@ -223,39 +221,34 @@ test('options.rounds sets the number of rounds; bad values fall back to 5', (t) 
 
 test('a refreshed phone or host screen gets its current screen again', (t) => {
   const { runner, delivered, tickUntil, isGo, tap } = play(t);
-  tap(ALEX, 1); // false start, so Alex's current screen is "Too soon!"
+  tap(ALEX, 1, 'early');
   tickUntil(isGo);
   delivered.length = 0;
   runner.playerReconnected(ALEX);
   runner.playerReconnected(BLAKE);
   runner.hostReconnected();
-  assert.deepEqual(delivered.map((d) => [d.target.playerId ?? d.target.to, headline(d.screen) ?? find(d.screen, 'button').label]), [
-    [ALEX, 'Too soon!'],
-    [BLAKE, 'TAP!'],
-    ['host', 'GO!'],
-  ]);
-});
-
-test('a player disconnecting mid-round does not stop the game', (t) => {
-  const { runner, latest, tickUntil, isGo, tap, head } = play(t);
-  runner.playerDisconnected(ALEX);
-  tickUntil(isGo);
-  tap(BLAKE, 1);
-  assert.equal(head('host'), 'Blake wins round 1!');
+  assert.deepEqual(
+    delivered.map((d) => [d.target.playerId ?? d.target.to, headline(d.screen) ?? blocksOf(d.screen)[1].type]),
+    [
+      [ALEX, 'Too soon!'],
+      [BLAKE, 'reaction'],
+      ['host', 'GO!'],
+    ],
+  );
 });
 
 test('works with a single player', (t) => {
   const { ended, latest, tickUntil, tick, isGo, tap } = play(t, { rounds: 1, players: [PLAYERS[0]] });
   tickUntil(isGo);
-  tap(ALEX, 1);
+  tap(ALEX, 1, 300);
   tickUntil(() => find(latest('host'), 'scoreboard'));
   tick(6000);
   assert.deepEqual(ended, [{ rankings: [ALEX], scores: { [ALEX]: 1 } }]);
 });
 
-// A small "simulated players" check (plan §5, E4): many games with random tapping must
+// A small "simulated players" check (plan §5, E4): many games with random results must
 // always finish cleanly, and every screen must use art that exists in the library.
-test('simulated games with random tapping always end cleanly and only use known art', (t) => {
+test('simulated games with random results always end cleanly and only use known art', (t) => {
   const known = knownAssetIds();
   for (let seed = 1; seed <= 25; seed++) {
     const game = play(t, { seed, rounds: 3 });
@@ -268,7 +261,7 @@ test('simulated games with random tapping always end cleanly and only use known 
       if (guard++ > 2000) throw new Error(`seed ${seed}: game never ended`);
       game.tick(50);
       for (const p of PLAYERS) {
-        if (rng() < 0.05) game.tap(p.id, 1 + Math.floor(rng() * 3));
+        if (rng() < 0.05) game.tap(p.id, 1 + Math.floor(rng() * 3), rng() < 0.2 ? 'early' : 100 + Math.floor(rng() * 900));
       }
     }
     assert.equal(game.ended[0].error, undefined, `seed ${seed} ended with an error`);
