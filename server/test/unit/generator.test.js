@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { extractCode } from '../../../generator/src/extract.js';
 import { chat } from '../../../generator/src/llm.js';
-import { systemPrompt, firstMessages, fixMessage, MAX_IDEA_LENGTH } from '../../../generator/src/prompt.js';
+import { systemPrompt, firstMessages, fixMessage, MAX_IDEA_LENGTH, EXAMPLES } from '../../../generator/src/prompt.js';
 import { generateGame } from '../../../generator/src/run.js';
 import { MODELS, DEFAULT_MODEL } from '../../../generator/src/models.js';
 import { BLOCK_TYPES } from '../../src/games/kit/blocks.js';
@@ -79,12 +79,19 @@ test('chat: gives up after 4 tries, and does not retry a bad request', async () 
 
 // --- The prompt ---------------------------------------------------------------------------
 
-test('the prompt contains the spec, both example games, and the art library', () => {
+test('the prompt contains the spec, the example games, and the art library', async () => {
   const prompt = systemPrompt();
   assert.ok(prompt.includes(SPEC));
-  assert.ok(prompt.includes(read('../../src/games/reaction-race/index.js')));
-  assert.ok(prompt.includes(GOOD_GAME));
+  assert.deepEqual(EXAMPLES.map((e) => e.name), ['reaction-race.js', 'sketch-guess.js', 'fill-the-blank.js']);
+  for (const example of EXAMPLES) {
+    const source = read(`../../src/games/${example.name.replace('.js', '')}/index.js`);
+    assert.ok(prompt.includes(source), example.name);
+    // The spec points the model at each example by its name, so the names must be right.
+    const { default: game } = await import(`../../src/games/${example.name.replace('.js', '')}/index.js`);
+    assert.ok(SPEC.includes(`**${game.name}**`), `the spec mentions ${game.name}`);
+  }
   assert.match(prompt, /`go-sign`: Green GO sign/);
+  assert.match(prompt, /A widget starts over whenever that phone gets a new screen/);
 });
 
 test('the idea goes in its own marked section, trimmed to the length limit', () => {

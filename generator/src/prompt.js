@@ -1,5 +1,5 @@
-// Builds what the model reads: the spec, the block reference, two example games, the art
-// library, and the idea.
+// Builds what the model reads: the spec, the block reference, three example games, the
+// art library, and the idea.
 //
 // The idea comes from a person typing into a form, so it's treated as DATA: it goes in
 // its own clearly marked section, and the instructions say it only describes the game.
@@ -15,9 +15,13 @@ const read = (relative) => readFileSync(new URL(relative, import.meta.url), 'utf
 /** Longest game idea we accept (the server checks this too). */
 export const MAX_IDEA_LENGTH = 1000;
 
-const EXAMPLES = [
+// Three official games, chosen to cover the kit between them: a widget (Reaction Race),
+// drawing plus typed guesses (Sketch & Guess), and writing plus voting (Fill the Blank).
+// Majority Rules is left out to keep the prompt shorter: Fill the Blank covers `choice`.
+export const EXAMPLES = [
   { name: 'reaction-race.js', source: () => read('../../server/src/games/reaction-race/index.js') },
-  { name: 'majority-rules.js', source: () => read('../../server/src/games/majority-rules/index.js') },
+  { name: 'sketch-guess.js', source: () => read('../../server/src/games/sketch-guess/index.js') },
+  { name: 'fill-the-blank.js', source: () => read('../../server/src/games/fill-the-blank/index.js') },
 ];
 
 /** The art library, as the model should see it: id, description, tags. */
@@ -35,7 +39,7 @@ ${read('../spec/GAME_SPEC.md')}
 
 ${kitReference()}
 
-## Example games (both pass every test; copy their structure)
+## Example games (all pass every test; copy their structure)
 
 ${examples}
 

@@ -101,8 +101,8 @@ Games draw everything with the **game kit**: screens built from blocks (text, im
 bars, buttons, choices, layouts), input blocks (text boxes, multi-picks, sliders, rankings) and
 widgets that run on the phone (reaction timer, button mashing, timing bar, tap targets, drawing
 pad). All of them are defined in `server/src/games/kit/blocks.js`, and the **`/kit` page**
-shows every one live. The official games (Reaction Race, Majority Rules, Sketch & Guess, Fill
-the Blank) double as the examples the AI learns from.
+shows every one live. Three official games (Reaction Race, Sketch & Guess, Fill the Blank)
+double as the examples the AI learns from.
 
 Every game, hand-made or generated, can be checked with the **game test harness**:
 

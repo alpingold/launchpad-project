@@ -8,7 +8,7 @@ problems and tries again (up to 4 attempts).
 ```
 generator/
   src/run.js                    the loop: ask the model → run the test harness → fix → ...
-  src/prompt.js                 what the model reads: spec + 2 example games + art list + the idea
+  src/prompt.js                 what the model reads: spec + block reference + 3 example games + art list + the idea
   src/llm.js                    GenAI Studio chat API (plain fetch, retries on rate limits)
   src/extract.js                pulls the code out of the model's reply
   src/models.js                 the allowed models
