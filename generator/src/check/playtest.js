@@ -80,7 +80,7 @@ const INIT_SCRIPT = `(() => {
  * @typedef {Object} PlaytestFinding
  * @property {string} rule     csp | error | network | navigation | hang | blank | silent | refused | results | load
  * @property {string} message
- * @property {string} [screen] 'big screen' or 'phone 2'
+ * @property {string} [screen] where it happened: 'big screen', 'phone 2', or several ('big screen, phone 1')
  * @property {number} [line]   in the game file
  * @property {string} [code]   that line
  * @property {number} [count]  how many times it happened (repeats are merged)
@@ -507,16 +507,29 @@ class Findings {
   warn(f) {
     this.#push(this.warnings, f);
   }
+  /** The same finding on several screens becomes one, naming them all. */
   #push(list, f) {
-    const same = list.find((x) => x.rule === f.rule && x.message === f.message && x.line === f.line && x.screen === f.screen);
-    if (same) same.count = (same.count ?? 1) + 1;
-    else if (list.length < 30) list.push(Object.fromEntries(Object.entries(f).filter(([, v]) => v !== undefined)));
+    const same = list.find((x) => x.rule === f.rule && x.message === f.message && x.line === f.line);
+    if (!same) {
+      if (list.length < 30) list.push(Object.fromEntries(Object.entries(f).filter(([, v]) => v !== undefined)));
+      return;
+    }
+    same.count = (same.count ?? 1) + 1;
+    if (f.screen && !(same.screen ?? '').split(', ').includes(f.screen)) {
+      same.screen = same.screen ? `${same.screen}, ${f.screen}` : f.screen;
+    }
   }
 }
 
 async function launchChromium(headed) {
+  // In the sandbox image the browser lives in /app/ms-playwright (generator/Dockerfile).
+  // `openshell sandbox exec` doesn't pass the image's environment on, so look for it here.
+  if (!process.env.PLAYWRIGHT_BROWSERS_PATH && existsSync('/app/ms-playwright')) {
+    process.env.PLAYWRIGHT_BROWSERS_PATH = '/app/ms-playwright';
+  }
   const { chromium } = await import('playwright-core');
-  return chromium.launch({ headless: !headed });
+  // /dev/shm is small (or missing) in containers: Chromium uses /tmp instead.
+  return chromium.launch({ headless: !headed, args: ['--disable-dev-shm-usage'] });
 }
 
 function readAssets() {

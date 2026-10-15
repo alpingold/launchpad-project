@@ -4,6 +4,7 @@
 !server/package.json
 !server/src
 !generator/package.json
+!generator/package-lock.json
 !generator/src
-!generator/spec
-!client/public/game-assets/manifest.json
+!client/src/game/frame
+!client/public/game-assets
