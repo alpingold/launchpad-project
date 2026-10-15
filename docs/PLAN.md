@@ -1,6 +1,6 @@
 # BoilerGames: Implementation Plan (MVP lobby + extension structure)
 
-> **Status (2026-10-14):** M0–M7 done. AI game generation A0–A6 done. **Now: the game dev kit, contract v3 (§12, milestones K1–K6)**, because AI-made games were too simple with 5 fixed screens. K1–K6 are done. **On branch `iframe-games`: frame games (§13); F0–F5 built (2026-10-15); F5's live test with the real model is next, then the decision on merging**; on `main`, next is deploying (M8). A7 (bring your own key) waits on RCAC's answer. This file is the living plan: decisions and changes are recorded here as they happen, so `git log docs/PLAN.md` shows how it evolved.
+> **Status (2026-10-14):** M0–M7 done. AI game generation A0–A6 done. **Now: the game dev kit, contract v3 (§12, milestones K1–K6)**, because AI-made games were too simple with 5 fixed screens. K1–K6 are done. **On branch `iframe-games`: frame games (§13); F0–F5 done and live-tested (2026-10-15). Not merging yet (decided 2026-10-15): first iron out the open items in §13n (a "players actually move" check, storing every build attempt, game length)**; on `main`, next is deploying (M8). A7 (bring your own key) waits on RCAC's answer. This file is the living plan: decisions and changes are recorded here as they happen, so `git log docs/PLAN.md` shows how it evolved.
 
 _Site renamed from "LaunchPad Party" to **BoilerGames** on 2026-10-11 (built for the Purdue LaunchPad club; the club name stays where it refers to the club)._
 
@@ -1237,6 +1237,7 @@ approved designs qwen built from. qwen's builds are from earlier the same day.
 - **llama4's 16K context can't hold a build** (prompt ~11–15K tokens + the game).
 - Conclusion so far: qwen makes the best games but is slowest; gemma4 is fast and sometimes
   good but unreliable; gpt-oss is fast with lower quality; llama4 is out for building.
+  **Decided (2026-10-15): qwen3.8:27b stays the only model.**
 
 ---
 

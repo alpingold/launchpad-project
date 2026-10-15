@@ -2,13 +2,11 @@
 // better games in both comparisons (plan §11g, §12j), and on 2026-10-14 we decided that's
 // worth its slower runs (about 2–5 minutes per game). gpt-oss:120b was dropped.
 // The list stays a list, so trying another model later is one line here.
-// 2026-10-15: three more are allowed again, for a comparison on frame games (plan §13n).
-// Context limits are RCAC's (docs.rcac.purdue.edu/services/genai/models).
+// 2026-10-15: compared again on frame games against gpt-oss:120b, gemma4:26b-a4b and
+// llama4:latest (plan §13n): qwen made the best games by a clear margin, so it stays the
+// only one. (llama4's 16K context can't even hold a build.)
 export const MODELS = Object.freeze([
-  { id: 'qwen3.8:27b', note: 'thinks before it writes: about 1–3 minutes per attempt' },
-  { id: 'gpt-oss:120b', note: 'fast; 65K context' },
-  { id: 'gemma4:26b-a4b', note: 'fast (4B active parameters); 65K context' },
-  { id: 'llama4:latest', note: '16K context: likely too small for building a game' },
+  { id: 'qwen3.8:27b', note: 'thinks before it writes: about 1–5 minutes per attempt' },
 ]);
 
 export const DEFAULT_MODEL = MODELS[0].id;

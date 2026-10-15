@@ -97,9 +97,9 @@ test('chat: gives up after 4 tries, and does not retry a bad request', async () 
 
 // --- Models ------------------------------------------------------------------------------
 
-test('model list: qwen3.8:27b by default, three more for the comparison (plan §13n)', () => {
+test('model list: qwen3.8:27b only (the others lost the comparison in plan §13n)', () => {
   assert.equal(DEFAULT_MODEL, 'qwen3.8:27b');
-  assert.deepEqual(MODELS.map((m) => m.id), ['qwen3.8:27b', 'gpt-oss:120b', 'gemma4:26b-a4b', 'llama4:latest']);
+  assert.deepEqual(MODELS.map((m) => m.id), ['qwen3.8:27b']);
 });
 
 // --- The prompts ---------------------------------------------------------------------------
