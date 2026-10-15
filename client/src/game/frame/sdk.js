@@ -12,6 +12,7 @@
 //   party.now()                                               server time in ms
 //   party.asset(id)                                           URL of an approved picture
 //   party.on(name, fn)                                        listen (see below)
+//   party.ui.…                                                ready-made pieces (ui.js)
 //
 //   On a phone:       party.send(data)                        → the big screen's 'event'
 //                     party.on('message', fn(data))           one-off messages
@@ -167,6 +168,7 @@
           restored: msg.restored, // the big screen's last save, after a reload (else undefined)
         });
         document.documentElement.dataset.theme = info.theme;
+        document.documentElement.dataset.role = info.role; // base.css makes the big screen bigger
         // The heartbeat: while this keeps ticking, the game isn't stuck. (If the game hangs,
         // this whole page hangs with it; the server notices the silence: plan §13e.)
         if (info.role === 'host') {
@@ -223,7 +225,7 @@
     }
   });
 
-  window.party = Object.freeze({
+  var api = {
     ready: function (fn) {
       if (typeof fn !== 'function') throw new Error('party.ready needs a function');
       if (info) fn(info);
@@ -293,7 +295,12 @@
       flush(); // everything sent before the game ended arrives before the end
       post({ type: 'end', results: results });
     },
-  });
+  };
+
+  // party.ui: the helpers from ui.js, which ran just before this and left its factory here.
+  api.ui = typeof window.__partyUi === 'function' ? window.__partyUi(api) : null;
+  delete window.__partyUi;
+  window.party = Object.freeze(api);
 
   post({ type: 'loaded' }); // the platform answers with 'init'
 })();

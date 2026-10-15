@@ -1,7 +1,10 @@
 import sdkSource from './sdk.js?raw';
+import uiSource from './ui.js?raw';
+import baseStyle from './base.css?raw';
 
 // Wraps a game file (a fragment of HTML, plan §13c) in the document its iframe shows.
-// The first thing in it is the security policy, then the `party` SDK, then the game.
+// The first thing in it is the security policy, then the base style (base.css), the
+// `party` SDK with its helpers (ui.js, sdk.js), then the game.
 //
 // The Content-Security-Policy (plan §13e) is a list of what this document may load:
 //  - only its own inline scripts and styles (no scripts from anywhere else, and no eval:
@@ -32,15 +35,6 @@ export function contentSecurityPolicy(origin) {
   ].join('; ');
 }
 
-// Plain defaults (the site's own colors) so a game that brings no styles still looks fine in
-// both themes. F2 adds the full BoilerGames look and helpers inside frames.
-const BASE_STYLE = `
-  :root { color-scheme: light; --bg: #f5f5fa; --surface: #ffffff; --text: #1a1a2e; --muted: #6b6b80; --accent: #4a3aff; --on-accent: #ffffff; }
-  :root[data-theme="dark"] { color-scheme: dark; --bg: #14141f; --surface: #1f1f2e; --text: #ececf5; --muted: #a3a3b8; --accent: #5b4dff; }
-  html, body { margin: 0; height: 100%; }
-  body { background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; }
-`;
-
 /**
  * @param {string} gameSource  the game file
  * @param {string} origin      our site's origin (window.location.origin)
@@ -53,7 +47,8 @@ export function buildFrameDocument(gameSource, origin) {
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="${csp}">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<style>${BASE_STYLE}</style>
+<style>${baseStyle}</style>
+<script>${uiSource}</script>
 <script>${sdkSource}</script>
 </head>
 <body>

@@ -1,0 +1,332 @@
+/* THE BASE STYLE of every frame game (plan §13, F2): BoilerGames' look, inside the frame.
+   A game that brings no CSS of its own still looks right, in light and dark mode, on a
+   phone and on a TV. Every rule here is inside :where(), which gives it no weight at all:
+   any CSS the game writes wins, so a game can restyle or ignore all of this.
+
+   The SDK puts data-theme="light|dark" and data-role="host|player" on <html>. */
+
+:root {
+  color-scheme: light;
+  --bg: #f5f5fa;
+  --surface: #ffffff;
+  --text: #1a1a2e;
+  --muted: #6b6b80;
+  --border: #e2e2f0;
+  --accent: #4a3aff;
+  --on-accent: #ffffff;
+  --good: #1a7f37;
+  --bad: #b00020;
+  --gold: #b88700;
+  --radius: 12px;
+  --font: system-ui, sans-serif;
+  --mono: ui-monospace, 'Cascadia Mono', Menlo, Consolas, monospace;
+  font-size: 16px;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #14141f;
+  --surface: #1f1f2e;
+  --text: #ececf5;
+  --muted: #a3a3b8;
+  --border: #2c2c40;
+  --accent: #5b4dff;
+  --on-accent: #ffffff;
+  --good: #4ade80;
+  --bad: #ff6b81;
+  --gold: #ffd84d;
+}
+
+/* The big screen is seen from across the room: everything measured in rem/em grows. */
+:root[data-role='host'] {
+  font-size: clamp(18px, 1.7vw, 34px);
+}
+
+:where(html, body) {
+  margin: 0;
+  height: 100%;
+}
+
+:where(body) {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  line-height: 1.4;
+  -webkit-tap-highlight-color: transparent;
+}
+
+:where(h1, h2, h3) {
+  margin: 0 0 0.4em;
+  line-height: 1.15;
+}
+:where(h1) {
+  font-size: 2rem;
+}
+:where(h2) {
+  font-size: 1.5rem;
+}
+:where(p) {
+  margin: 0 0 0.75em;
+}
+
+:where(button) {
+  font: inherit;
+  font-weight: 700;
+  min-height: 3rem;
+  padding: 0.6em 1.2em;
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--accent);
+  color: var(--on-accent);
+  cursor: pointer;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+}
+:where(button:disabled) {
+  opacity: 0.45;
+  cursor: default;
+}
+:where(button.secondary) {
+  background: var(--surface);
+  color: var(--text);
+  border: 2px solid var(--border);
+}
+/* A big thumb target that fills the phone's width. */
+:where(button.big) {
+  width: 100%;
+  min-height: 4.5rem;
+  font-size: 1.5rem;
+}
+
+:where(input, textarea, select) {
+  font: inherit;
+  padding: 0.6em 0.75em;
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  box-sizing: border-box;
+}
+
+/* Layout helpers */
+:where(.screen) {
+  box-sizing: border-box;
+  min-height: 100%;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+:where(.stack) {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+:where(.row) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+:where(.center) {
+  text-align: center;
+  align-items: center;
+  justify-content: center;
+}
+:where(.grow) {
+  flex: 1;
+  min-height: 0;
+}
+:where(.card) {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem;
+}
+:where(.muted) {
+  color: var(--muted);
+}
+:where(.big-text) {
+  font-size: 2.25rem;
+  font-weight: 800;
+  line-height: 1.1;
+}
+:where(.good) {
+  color: var(--good);
+}
+:where(.bad) {
+  color: var(--bad);
+}
+:where(.mono) {
+  font-family: var(--mono);
+}
+
+/* ---- party.ui helpers (ui.js) ------------------------------------------------------- */
+
+:where(.pu-joystick) {
+  position: relative;
+  width: 100%;
+  max-width: 22rem;
+  aspect-ratio: 1;
+  margin: 0 auto;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--surface) 0%, var(--surface) 55%, rgba(127, 127, 160, 0.25) 100%);
+  border: 3px solid rgba(127, 127, 160, 0.45);
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+:where(.pu-joystick.pu-off) {
+  opacity: 0.4;
+}
+:where(.pu-knob) {
+  position: absolute;
+  left: 33%;
+  top: 33%;
+  width: 34%;
+  height: 34%;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  pointer-events: none;
+}
+
+:where(.pu-gamepad) {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  width: 100%;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+:where(.pu-dpad) {
+  display: grid;
+  grid-template-columns: repeat(3, 4.5rem);
+  grid-template-rows: repeat(3, 4.5rem);
+  gap: 0.25rem;
+}
+:where(.pu-dpad.pu-horizontal) {
+  grid-template-columns: repeat(2, 5.5rem);
+  grid-template-rows: 5.5rem;
+}
+:where(.pu-pad-buttons) {
+  display: flex;
+  gap: 0.75rem;
+}
+:where(.pu-hold) {
+  min-height: 0;
+  padding: 0;
+  font-size: 1.6rem;
+  border-radius: 1rem;
+}
+:where(.pu-pad-buttons .pu-hold) {
+  width: 5.5rem;
+  height: 5.5rem;
+  border-radius: 50%;
+  font-size: 1.15rem;
+}
+:where(.pu-hold.pu-down) {
+  filter: brightness(0.8);
+  transform: scale(0.96);
+}
+
+:where(.pu-timer) {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+}
+:where(.pu-timer-track) {
+  flex: 1;
+  height: 0.8rem;
+  border-radius: 1rem;
+  background: var(--border);
+  overflow: hidden;
+}
+:where(.pu-timer-fill) {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 1rem;
+}
+:where(.pu-timer.pu-low .pu-timer-fill) {
+  background: var(--bad);
+}
+:where(.pu-timer-seconds) {
+  min-width: 2.5ch;
+  text-align: right;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+:where(.pu-scoreboard) {
+  width: 100%;
+  border-collapse: collapse;
+}
+:where(.pu-scoreboard caption) {
+  font-weight: 800;
+  font-size: 1.25rem;
+  text-align: left;
+  padding-bottom: 0.4em;
+}
+:where(.pu-scoreboard td) {
+  padding: 0.35em 0.5em;
+  border-top: 1px solid var(--border);
+}
+:where(.pu-scoreboard .pu-rank) {
+  width: 2.5ch;
+  color: var(--muted);
+}
+:where(.pu-scoreboard .pu-score) {
+  text-align: right;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+:where(.pu-scoreboard .pu-me td) {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+:where(.pu-dot) {
+  display: inline-block;
+  width: 0.8em;
+  height: 0.8em;
+  margin-right: 0.45em;
+  border-radius: 50%;
+  vertical-align: -0.05em;
+}
+
+/* Drawings are always on white paper, so they look the same in light and dark mode. */
+:where(.pu-paper) {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  background: #ffffff;
+  border-radius: var(--radius);
+  border: 2px solid var(--border);
+  touch-action: none;
+}
+:where(.pu-drawpad-tools) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+:where(.pu-swatch) {
+  width: 2.75rem;
+  height: 2.75rem;
+  min-height: 0;
+  padding: 0;
+  border-radius: 50%;
+  border: 3px solid var(--border);
+}
+:where(.pu-swatch.pu-chosen) {
+  border-color: var(--text);
+  transform: scale(1.1);
+}
+
+:where(.pu-ascii) {
+  display: block;
+  width: 100%;
+  height: 100%;
+}

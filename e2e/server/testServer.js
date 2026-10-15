@@ -1,8 +1,8 @@
 // The server the browser tests run against: the real server (same code as
 // server/src/index.js), with two test-only differences, so nothing test-related lives in
 // the app itself:
-//   0. A test-only frame game, Probe (probe.html): pings, state, players, and it tries every
-//      way out of its sandboxed frame.
+//   0. Test-only frame games: Probe (probe.html: pings, state, players, and it tries every
+//      way out of its sandboxed frame) and UI Demo (ui-demo.html: every party.ui helper).
 //   1. A FAKE generator instead of the OpenShell sandbox + GenAI Studio. The tests don't
 //      need Docker, an API key or the network, and a game takes ~2 s instead of minutes.
 //      It writes a renamed Probe ("Robot Majority"); a change request renames it to
@@ -21,6 +21,7 @@ import { frameGameOrThrow, frameGameReport } from '../../server/src/games/frameG
 import { ADMIN } from './accounts.js';
 
 const PROBE_SOURCE = readFileSync(new URL('./probe.html', import.meta.url), 'utf8');
+const UI_DEMO_SOURCE = readFileSync(new URL('./ui-demo.html', import.meta.url), 'utf8');
 
 /** What the fake "AI" writes: the Probe game, renamed so the tests can tell it apart. */
 const GOOD_SOURCE = PROBE_SOURCE.replace('"name": "Probe"', '"name": "Robot Majority"');
@@ -59,6 +60,7 @@ setAdmin(db, admin.username, true);
 
 const games = createDefaultRegistry();
 games.register(frameGameOrThrow(PROBE_SOURCE, 'probe'));
+games.register(frameGameOrThrow(UI_DEMO_SOURCE, 'ui-demo'));
 
 // A short hang watchdog (normally 15 s), so the test of a hung big screen is quick.
 const server = createGameServer({ GAME_WATCHDOG_MS: 5000 }, { db, games, runGenerator: fakeGenerator });

@@ -1,0 +1,82 @@
+<script type="application/json" id="game-info">
+  { "name": "UI Demo", "description": "Test-only: every party.ui helper on a phone and the big screen.", "minPlayers": 1, "maxPlayers": 12 }
+</script>
+<!--
+  A test-only frame game for the browser tests (plan §13, F2). Phones get a joystick, a
+  gamepad and a drawing pad; the big screen shows a timer, a scoreboard, an ASCII map
+  where the gamepad moves your "@", and the last drawing. The big screen also writes what
+  it received in a log, so the tests can check each helper end to end.
+-->
+<style>
+  .host-layout { display: grid; grid-template-columns: 2fr 1fr; gap: 1rem; height: 100%; box-sizing: border-box; padding: 1rem; }
+  #map { min-height: 12rem; height: 45vh; }
+  #art { max-width: 20rem; }
+</style>
+<div id="app"></div>
+<script>
+  const { el, joystick, gamepad, timer, scoreboard, drawPad, drawing, ascii } = party.ui;
+
+  party.ready(({ role, me, players }) => {
+    const app = document.getElementById('app');
+    if (role === 'host') startHost(app, players);
+    else startPhone(app, players.find((p) => p.id === me));
+  });
+
+  function startHost(app, players) {
+    const nameOf = (id) => players.find((p) => p.id === id)?.name ?? id;
+    const log = el('ul', { 'aria-label': 'Log' });
+    const left = el('div', { class: 'stack' }, el('h1', {}, 'UI Demo'), el('div', { id: 'timer' }), el('div', { id: 'map', class: 'card' }));
+    const right = el('div', { class: 'stack' }, el('div', { id: 'scores' }), el('div', { id: 'art' }), log);
+    app.append(el('div', { class: 'host-layout' }, left, right));
+
+    timer('#timer', { endsAt: party.now() + 60_000 });
+    const scores = scoreboard('#scores', { title: 'Taps' });
+    const art = drawing('#art', [], { label: 'Last drawing' });
+    const map = ascii('#map', { cols: 20, rows: 7, colors: { '#': '#8d6e63', '$': '#d4a017' } });
+    const WALLS = ['####################', '#                  #', '#   $         $    #', '#                  #', '#        $         #', '#                  #', '####################'];
+
+    const spots = new Map(players.map((p, i) => [p.id, { x: 2 + i * 2, y: 3 }]));
+    const taps = new Map(players.map((p) => [p.id, 0]));
+    const write = (text) => log.append(el('li', {}, text));
+    function draw() {
+      map.render(WALLS, { cells: [...spots].map(([id, s]) => ({ x: s.x, y: s.y, ch: '@', color: '#e53935' })) });
+      scores.update(players.map((p) => ({ id: p.id, name: p.name, score: taps.get(p.id) })));
+    }
+    draw();
+
+    party.on('event', (from, data) => {
+      const who = nameOf(from);
+      if (data.stick) write(`stick ${who}: ${data.stick.x.toFixed(2)}, ${data.stick.y.toFixed(2)}`);
+      if (data.pad) {
+        const held = Object.keys(data.pad).filter((k) => data.pad[k]);
+        write(`pad ${who}: ${held.join(' ') || 'none'}`);
+        const s = spots.get(from);
+        if (data.pad.right) s.x = Math.min(18, s.x + 1);
+        if (data.pad.left) s.x = Math.max(1, s.x - 1);
+        if (data.pad.jump) taps.set(from, taps.get(from) + 1);
+        write(`${who} at ${s.x},${s.y}`);
+        draw();
+      }
+      if (data.drawing) {
+        art.show(data.drawing);
+        write(`drawing ${who}: ${data.drawing.length} strokes`);
+      }
+    });
+  }
+
+  function startPhone(app, me) {
+    app.append(
+      el('div', { class: 'screen' },
+        el('h1', {}, `Phone ${me.name}`),
+        el('div', { id: 'stick' }),
+        el('div', { id: 'pad' }),
+        el('div', { id: 'drawpad' }),
+        el('button', { class: 'big', id: 'send-drawing' }, 'Send drawing'),
+      ),
+    );
+    joystick('#stick', { onChange: (x, y) => party.send({ stick: { x, y } }) });
+    gamepad('#pad', { dpad: 'horizontal', buttons: [{ id: 'jump', label: 'Jump' }], onChange: (state) => party.send({ pad: state }) });
+    const pad = drawPad('#drawpad');
+    document.getElementById('send-drawing').onclick = () => party.send({ drawing: pad.strokes() });
+  }
+</script>
