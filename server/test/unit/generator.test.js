@@ -183,6 +183,10 @@ test('the build prompt: the template and the example (with its design) the desig
   assert.match(system.content, /"name": "Tower Dash"/, 'the example game');
   assert.doesNotMatch(system.content, /"name": "Bumper Blobs"/);
   assert.match(user.content, /<design>\n# Tower Dash/);
+
+  const [noExample] = buildMessages('Run and jump', design, { exampleGame: false });
+  assert.doesNotMatch(noExample.content, /"name": "Tower Dash"/, 'plan §13o: the example game can be left out');
+  assert.match(noExample.content, /"name": "Treasure Hunt"/, 'the template stays');
 });
 
 test('change prompts: the plan sees the design, code and request; the build gets the approved plan', () => {

@@ -170,9 +170,13 @@ function currentGame({ idea, design, source, earlierRequests = [] }) {
 
 // --- Step 2: the build -------------------------------------------------------------------
 
-function buildSystemPrompt(design) {
+/**
+ * @param {string | null | undefined} design
+ * @param {{ exampleGame?: boolean }} [opts]  exampleGame: false leaves the example game out (plan §13o)
+ */
+function buildSystemPrompt(design, { exampleGame = true } = {}) {
   const template = pickTemplate(design);
-  const example = pickExample(design);
+  const example = exampleGame ? pickExample(design) : null;
   const parts = [`You write party games for BoilerGames from an approved design. Follow these instructions exactly.`, read('../spec/GAME_SPEC.md')];
   parts.push(`## The art library (the only allowed \`party.asset\` ids)\n\n${describeAssets()}`);
   if (template) {
@@ -211,11 +215,12 @@ const BUILD_ANSWER = `Reply with the complete game file in ONE \`\`\`html code b
  * Building a new game from its approved design.
  * @param {string} idea
  * @param {string} design
+ * @param {{ exampleGame?: boolean }} [opts]  exampleGame: false leaves the example game out (plan §13o)
  * @returns {import('./llm.js').Message[]}
  */
-export function buildMessages(idea, design) {
+export function buildMessages(idea, design, opts) {
   return [
-    { role: 'system', content: buildSystemPrompt(design) },
+    { role: 'system', content: buildSystemPrompt(design, opts) },
     {
       role: 'user',
       content: `Build this game. The design was approved by the game's owner.\n\n<design>\n${String(design).trim()}\n</design>\n\nThe idea it came from, for context:\n\n${data('game-idea', idea)}\n\n${BUILD_ANSWER}`,
