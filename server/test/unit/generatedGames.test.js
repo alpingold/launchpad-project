@@ -11,7 +11,12 @@ import {
   getGeneratedGame,
   listGeneratedGames,
   listLiveVersions,
-  listGeneratingVersions,
+  listBusyVersions,
+  saveDraft,
+  startRedraft,
+  designFailed,
+  startBuild,
+  deleteVersion,
   deleteGeneratedGame,
   gameStatus,
   mainVersion,
@@ -38,14 +43,15 @@ function setup() {
   return { db, admin, other, store };
 }
 
-test('a new game starts with version 1 generating, then ready with code, fingerprint and report', () => {
+test('a new game starts with version 1 designing; built, it is ready with code, fingerprint and report', () => {
   const { db, admin } = setup();
   const game = createGeneratedGame(db, { ownerUserId: admin.id, prompt: 'a tapping game', model: 'qwen3.8:27b', now: 5 });
   assert.match(game.id, /^g-[a-z2-9]{8}$/);
   assert.deepEqual([game.publishedVersion, game.playtestVersion], [null, null]);
-  assert.deepEqual(game.versions.map((v) => [v.version, v.status, v.request, v.model]), [[1, 'generating', 'a tapping game', 'qwen3.8:27b']]);
-  assert.equal(gameStatus(game), 'generating');
-  assert.deepEqual(listGeneratingVersions(db).map((v) => [v.gameId, v.version]), [[game.id, 1]]);
+  assert.deepEqual(game.versions.map((v) => [v.version, v.status, v.request, v.model, v.design]), [[1, 'designing', 'a tapping game', 'qwen3.8:27b', null]]);
+  assert.equal(gameStatus(game), 'designing');
+  assert.deepEqual(listBusyVersions(db).map((v) => [v.gameId, v.version]), [[game.id, 1]]);
+  assert.throws(() => createGeneratedGame(db, { ownerUserId: admin.id, prompt: 'x', status: 'ready' }), /can't start as ready/);
 
   saveVersionSource(db, game.id, 1, { source: 'code', report: { ok: true }, name: 'Tap', description: 'Tap it', now: 6 });
   const saved = getGeneratedGame(db, game.id);
@@ -200,4 +206,39 @@ test('loadGeneratedGames: tampered or broken versions are skipped with a warning
   assert.match(reasons[blockGame], /no game info/);
   assert.match(reasons[badInfo], /isn't valid JSON/);
   assert.equal(warnings.length, 3);
+});
+
+test('designs: drafts pile up, a failed draft falls back to the last one, building clears old results', () => {
+  const { db, admin } = setup();
+  const { id } = createGeneratedGame(db, { ownerUserId: admin.id, prompt: 'a tapping game' });
+  designFailed(db, id, 1, 'model call failed');
+  assert.deepEqual([getGeneratedGame(db, id).versions[0].status, getGeneratedGame(db, id).versions[0].error], ['failed', 'model call failed'], 'no draft to fall back on');
+
+  saveDraft(db, id, 1, { text: '# Tap\n', by: 'ai', now: 7 });
+  let v = getGeneratedGame(db, id).versions[0];
+  assert.deepEqual([v.status, v.design, v.error, gameStatus(getGeneratedGame(db, id))], ['design_ready', '# Tap\n', null, 'design']);
+
+  startRedraft(db, id, 1, 'two rounds');
+  assert.deepEqual([getGeneratedGame(db, id).versions[0].status, getGeneratedGame(db, id).versions[0].designFeedback], ['designing', 'two rounds']);
+  saveDraft(db, id, 1, { text: '# Tap twice\n', by: 'ai', feedback: 'two rounds', now: 8 });
+  saveDraft(db, id, 1, { text: '# Tap twice, fast\n', by: 'admin', now: 9 });
+  startRedraft(db, id, 1, 'three rounds');
+  designFailed(db, id, 1, 'model call failed');
+  v = getGeneratedGame(db, id).versions[0];
+  assert.deepEqual([v.status, v.design, v.designFeedback, v.error], ['design_ready', '# Tap twice, fast\n', null, 'model call failed']);
+  assert.deepEqual(v.drafts, [
+    { text: '# Tap\n', by: 'ai', at: 7 },
+    { text: '# Tap twice\n', by: 'ai', feedback: 'two rounds', at: 8 },
+    { text: '# Tap twice, fast\n', by: 'admin', at: 9 },
+  ]);
+
+  startBuild(db, id, 1);
+  markVersionFailed(db, id, 1, 'no passing game', { source: 'bad', report: { ok: false } });
+  startBuild(db, id, 1);
+  v = getGeneratedGame(db, id).versions[0];
+  assert.deepEqual([v.status, v.source, v.report, v.error, v.design], ['generating', null, null, null, '# Tap twice, fast\n']);
+
+  const two = addVersion(db, id, { request: 'a tiny fix', basedOn: 1, status: 'generating' });
+  deleteVersion(db, id, two);
+  assert.deepEqual(getGeneratedGame(db, id).versions.map((x) => x.version), [1]);
 });

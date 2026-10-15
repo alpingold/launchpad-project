@@ -10,10 +10,16 @@ import { changedLines } from '../generation/lineDiff.js';
  * a logged-in admin: 401 if not logged in, 403 if logged in but not an admin.
  *
  *   GET    /api/admin/generations                    → { info, games: [summary] }   (newest first)
- *   POST   /api/admin/generations  { idea, model? }  → 202 { game }   starts generating a new game
- *   GET    /api/admin/generations/:id                → { game }   every version: code, report, changes
- *   POST   /api/admin/generations/:id/versions  { request, basedOn? }
- *                                                    → 202 { game }   asks for changes: a new version
+ *   POST   /api/admin/generations  { idea, model? }  → 202 { game }   a new game: its design is written first
+ *   GET    /api/admin/generations/:id                → { game }   every version: design, drafts, code, report, changes
+ *   POST   /api/admin/generations/:id/versions  { request, basedOn?, skipDesign? }
+ *                                                    → 202 { game }   asks for changes: a new version (a plan first,
+ *                                                                     unless skipDesign: a small fix, straight to code)
+ *   Designs (plan §13i, F5), for a version whose design or plan waits for you:
+ *   POST   /api/admin/generations/:id/versions/:v/redesign { feedback } → 202 { game }   a new draft
+ *   POST   /api/admin/generations/:id/versions/:v/design   { design }   → { game }       your own edit
+ *   POST   /api/admin/generations/:id/versions/:v/build                 → 202 { game }   "Build it"
+ *   POST   /api/admin/generations/:id/versions/:v/discard               → { game }       the newest version only
  *   POST   /api/admin/generations/:id/versions/:v/playtest → { game }   only you can start that version
  *   POST   /api/admin/generations/:id/publish        → { game }   the playtest version goes to everyone
  *   POST   /api/admin/generations/:id/stop-playtest  → { game }
@@ -72,6 +78,9 @@ export function createAdminRouter({ db, generation }) {
         basedOn: v.basedOn,
         changelog: v.changelog,
         model: v.model,
+        design: v.design,
+        drafts: v.drafts,
+        designFeedback: v.designFeedback,
         name: v.name,
         description: v.description,
         error: v.error,
@@ -121,9 +130,39 @@ export function createAdminRouter({ db, generation }) {
   router.post(
     '/generations/:id/versions',
     handle((req, res) => {
-      const { request, basedOn, model } = req.body ?? {};
-      const game = generation.requestChanges({ id: req.params.id, request, basedOn, model });
+      const { request, basedOn, model, skipDesign } = req.body ?? {};
+      const game = generation.requestChanges({ id: req.params.id, request, basedOn, model, skipDesign });
       res.status(202).json({ game: detail(game) });
+    }),
+  );
+
+  const versionOf = (req) => ({ id: req.params.id, version: Number(req.params.version) });
+
+  router.post(
+    '/generations/:id/versions/:version/redesign',
+    handle((req, res) => {
+      res.status(202).json({ game: detail(generation.redesign({ ...versionOf(req), feedback: req.body?.feedback })) });
+    }),
+  );
+
+  router.post(
+    '/generations/:id/versions/:version/design',
+    handle((req, res) => {
+      res.json({ game: detail(generation.editDesign({ ...versionOf(req), design: req.body?.design })) });
+    }),
+  );
+
+  router.post(
+    '/generations/:id/versions/:version/build',
+    handle((req, res) => {
+      res.status(202).json({ game: detail(generation.build(versionOf(req))) });
+    }),
+  );
+
+  router.post(
+    '/generations/:id/versions/:version/discard',
+    handle((req, res) => {
+      res.json({ game: detail(generation.discard(versionOf(req))) });
     }),
   );
 

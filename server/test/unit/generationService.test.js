@@ -2,19 +2,24 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { openDatabase } from '../../src/db/database.js';
 import { createUser } from '../../src/db/users.js';
-import { createGeneratedGame, getGeneratedGame, gameStatus } from '../../src/db/generatedGames.js';
+import { createGeneratedGame, getGeneratedGame, gameStatus, saveDraft, startRedraft } from '../../src/db/generatedGames.js';
 import { GameRegistry } from '../../src/games/registry.js';
 import { GenerationService, MAX_QUEUED } from '../../src/generation/service.js';
 import { renamedSource } from '../helpers/frameGames.js';
 
-// The generation queue, versions and going live (plan §11 A5, §12e K6). A fake generator
-// stands in for the OpenShell sandbox; each call waits until the test lets it finish.
+// The generation queue, designs, versions and going live (plan §11 A5, §12e K6, §13i F5).
+// A fake generator stands in for the OpenShell sandbox; each call waits until the test lets
+// it finish. Every version is designed first (a design job), then built (a build job).
 
 const GOOD_SOURCE = renamedSource('Majority Rules');
 const PASSED = { ok: true, model: 'qwen3.8:27b', source: GOOD_SOURCE, report: { ok: true, problems: [], game: { name: 'Majority Rules', description: 'Vote!' } }, attempts: [] };
 const IDEA = 'Everyone votes; the most popular answer wins';
 const CHANGED_SOURCE = renamedSource('Majority Rules 2');
 const CHANGED = { ...PASSED, source: CHANGED_SOURCE, changelog: '- Renamed it', report: { ...PASSED.report, game: { name: 'Majority Rules 2', description: 'Vote!' } } };
+const DESIGN = '# Majority Rules\n## Rules\nEveryone votes.\n';
+const DESIGNED = { ok: true, model: 'qwen3.8:27b', design: DESIGN, attempts: [] };
+const PLAN = '# Change: rename\n## What changes\n- The name\n';
+const PLANNED = { ...DESIGNED, design: PLAN };
 
 /** A fake generator: each call stays "running" until finish(result) is called for it. */
 function fakeGenerator() {
@@ -60,35 +65,94 @@ test('starting checks the input and the switch', () => {
   assert.match(off.service.info().disabledReason, /GENERATION_ENABLED=1/);
 });
 
-test('on the iframe-games branch, the real sandbox generator is switched off until it makes frame games (F5)', () => {
+test('the real sandbox generator is on (frame games since F5)', () => {
   const db = openDatabase(':memory:');
-  const admin = createUser(db, 'admin', 'scrypt$x');
   const service = new GenerationService({ db, games: new GameRegistry(), enabled: true, log: () => {} });
-  assert.equal(service.info().enabled, false);
-  assert.match(service.info().disabledReason, /frame games/);
-  assert.equal(codeOf(() => service.start({ ownerUserId: admin.id, idea: IDEA })), 'GENERATION_DISABLED');
+  assert.equal(service.info().enabled, true);
+  assert.equal(service.info().disabledReason, null);
 });
 
-test('a job runs in the background, shows progress, and ends up as version 1, ready for review', async () => {
+test('a new game: its design is written first, then built when the admin says so', async () => {
   const { service, admin, calls, db } = setup();
   const game = service.start({ ownerUserId: admin.id, idea: `  ${IDEA}  ` });
-  assert.equal(gameStatus(game), 'generating');
+  assert.equal(gameStatus(game), 'designing');
   assert.equal(game.prompt, IDEA, 'trimmed');
   assert.equal(game.versions[0].model, 'qwen3.8:27b', 'default model');
-  assert.deepEqual(calls[0].job, { idea: IDEA, model: 'qwen3.8:27b' }, 'a new game: no `change`');
+  assert.deepEqual(calls[0].job, { step: 'design', idea: IDEA, model: 'qwen3.8:27b' });
 
-  calls[0].onStep('attempt 1/4: asking qwen3.8:27b');
-  assert.deepEqual(service.progress(game.id).steps.map((s) => s.text), ['attempt 1/4: asking qwen3.8:27b']);
+  calls[0].onStep('design: asking qwen3.8:27b');
+  assert.deepEqual(service.progress(game.id).steps.map((s) => s.text), ['design: asking qwen3.8:27b']);
   assert.equal(service.progress(game.id).queuePosition, 0);
 
-  calls[0].finish(PASSED);
+  calls[0].finish(DESIGNED);
   await service.current;
-  const saved = getGeneratedGame(db, game.id);
+  let saved = getGeneratedGame(db, game.id);
+  assert.equal(gameStatus(saved), 'design', 'waiting for the admin');
+  assert.deepEqual([saved.versions[0].status, saved.versions[0].design], ['design_ready', DESIGN]);
+  assert.deepEqual(saved.versions[0].drafts.map((d) => [d.text, d.by]), [[DESIGN, 'ai']]);
+  assert.equal(calls.length, 1, 'nothing is built until the admin says so');
+
+  service.build({ id: game.id, version: 1 });
+  assert.equal(gameStatus(service.get(game.id)), 'generating');
+  assert.deepEqual(calls[1].job, { step: 'build', idea: IDEA, model: 'qwen3.8:27b', design: DESIGN });
+  calls[1].finish(PASSED);
+  await service.current;
+  saved = getGeneratedGame(db, game.id);
   assert.equal(gameStatus(saved), 'review');
   const [v1] = saved.versions;
-  assert.deepEqual([v1.version, v1.status, v1.name, v1.request, v1.basedOn], [1, 'ready', 'Majority Rules', IDEA, null]);
+  assert.deepEqual([v1.version, v1.status, v1.name, v1.request, v1.basedOn, v1.design], [1, 'ready', 'Majority Rules', IDEA, null, DESIGN]);
   assert.equal(v1.source, GOOD_SOURCE);
   assert.equal(service.progress(game.id), null, 'no longer queued or running');
+});
+
+test('designs: new drafts with feedback, the admin\'s own edits, and what is refused', async () => {
+  const { service, admin, calls } = setup();
+  const { id } = service.start({ ownerUserId: admin.id, idea: IDEA });
+  const v = { id, version: 1 };
+  assert.equal(codeOf(() => service.build(v)), 'BUSY', 'not while the design is being written');
+  calls[0].finish(DESIGNED);
+  await service.current;
+
+  // A new draft: the job carries the last draft and the feedback.
+  assert.equal(codeOf(() => service.redesign({ ...v, feedback: 'no' })), 'INVALID_FEEDBACK');
+  service.redesign({ ...v, feedback: '  Make it 2 rounds  ' });
+  assert.equal(gameStatus(service.get(id)), 'designing');
+  assert.deepEqual(calls[1].job.redraft, { draft: DESIGN, feedback: 'Make it 2 rounds' });
+  calls[1].finish({ ...DESIGNED, design: '# Majority Rules\n## Rules\nTwo rounds.\n' });
+  await service.current;
+  let v1 = service.get(id).versions[0];
+  assert.deepEqual(v1.drafts.map((d) => [d.by, d.feedback ?? null]), [['ai', null], ['ai', 'Make it 2 rounds']]);
+  assert.match(v1.design, /Two rounds/);
+
+  // A failed new draft keeps the last one, and says why.
+  service.redesign({ ...v, feedback: 'Make it 3 rounds' });
+  calls[2].finish({ ok: false, error: 'model call failed' });
+  await service.current;
+  v1 = service.get(id).versions[0];
+  assert.deepEqual([v1.status, v1.error, v1.drafts.length], ['design_ready', 'model call failed', 2]);
+  assert.match(v1.design, /Two rounds/);
+
+  // The admin's own edit: a new draft, right away, no job.
+  assert.equal(codeOf(() => service.editDesign({ ...v, design: 'too short' })), 'INVALID_DESIGN');
+  service.editDesign({ ...v, design: '# Majority Rules\n## Rules\nTwo rounds, 30 s each.' });
+  v1 = service.get(id).versions[0];
+  assert.deepEqual([v1.drafts.at(-1).by, v1.design, v1.error], ['admin', '# Majority Rules\n## Rules\nTwo rounds, 30 s each.\n', null]);
+  assert.equal(calls.length, 3);
+  service.editDesign({ ...v, design: v1.design });
+  assert.equal(service.get(id).versions[0].drafts.length, 3, 'an unchanged edit adds no draft');
+
+  // Building uses the latest draft. A failed build keeps the design: change it, or build again.
+  service.build(v);
+  assert.match(calls[3].job.design, /30 s each/);
+  calls[3].finish({ ok: false, source: null, report: null, error: 'no passing game after 4 attempts' });
+  await service.current;
+  assert.equal(service.get(id).versions[0].status, 'failed');
+  service.build(v);
+  assert.match(calls[4].job.design, /30 s each/, 'built again from the same design');
+  calls[4].finish(PASSED);
+  await service.current;
+  assert.equal(codeOf(() => service.redesign({ ...v, feedback: 'Too late now' })), 'WRONG_STATUS', 'built and passed');
+  assert.equal(codeOf(() => service.build({ id, version: 7 })), 'NOT_FOUND');
 });
 
 test('one job at a time, in order; the queue has a limit', async () => {
@@ -101,7 +165,7 @@ test('one job at a time, in order; the queue has a limit', async () => {
   for (let i = 2; i < MAX_QUEUED; i++) service.start({ ownerUserId: admin.id, idea: IDEA });
   assert.equal(codeOf(() => service.start({ ownerUserId: admin.id, idea: IDEA })), 'QUEUE_FULL');
 
-  calls[0].finish(PASSED);
+  calls[0].finish(DESIGNED);
   await service.current;
   assert.equal(calls.length, 2, 'the next one started');
   assert.equal(calls[1].job.model, 'qwen3.8:27b');
@@ -112,13 +176,23 @@ test('one job at a time, in order; the queue has a limit', async () => {
 test('failures are saved with the reason, and the last attempt if there was one', async () => {
   const { service, admin, calls, db } = setup();
   const a = service.start({ ownerUserId: admin.id, idea: IDEA });
-  calls[0].finish({ ok: false, source: 'export default {}', report: { ok: false, problems: [{ message: 'bad' }] }, error: 'no passing game after 4 attempts' });
+  calls[0].finish(DESIGNED);
+  await service.current;
+  service.build({ id: a.id, version: 1 });
+  calls[1].finish({ ok: false, source: 'export default {}', report: { ok: false, problems: [{ message: 'bad' }] }, error: 'no passing game after 4 attempts' });
   await service.current;
   const failed = getGeneratedGame(db, a.id);
   assert.equal(gameStatus(failed), 'failed');
   assert.equal(failed.versions[0].error, 'no passing game after 4 attempts');
   assert.equal(failed.versions[0].source, 'export default {}');
   assert.equal(failed.versions[0].report.problems[0].message, 'bad');
+  assert.equal(failed.versions[0].design, DESIGN, 'the design stays');
+
+  // A design that fails with no earlier draft: the version has failed.
+  const c = service.start({ ownerUserId: admin.id, idea: IDEA });
+  calls[2].finish({ ok: false, error: 'the model wrote no design' });
+  await service.current;
+  assert.deepEqual([getGeneratedGame(db, c.id).versions[0].status, getGeneratedGame(db, c.id).versions[0].error], ['failed', 'the model wrote no design']);
 
   // A generator that throws (e.g. a bug) also ends as "failed", and the queue moves on.
   const throwing = new GenerationService({ db, games: new GameRegistry(), enabled: true, log: () => {}, runGenerator: async () => { throw new Error('boom'); } });
@@ -127,27 +201,42 @@ test('failures are saved with the reason, and the last attempt if there was one'
   assert.equal(getGeneratedGame(db, b.id).versions[0].error, 'boom');
 });
 
-test('after a restart, versions that were cut off are marked failed', () => {
+test('after a restart, versions that were cut off are marked failed (a new draft goes back to the last one)', () => {
   const { db, admin, games } = setup();
   const stuck = createGeneratedGame(db, { ownerUserId: admin.id, prompt: IDEA });
+  const building = createGeneratedGame(db, { ownerUserId: admin.id, prompt: IDEA, status: 'generating' });
+  const redrafting = createGeneratedGame(db, { ownerUserId: admin.id, prompt: IDEA });
+  saveDraft(db, redrafting.id, 1, { text: DESIGN, by: 'ai' });
+  startRedraft(db, redrafting.id, 1, 'Shorter please');
   new GenerationService({ db, games, enabled: true, log: () => {} }).recoverInterrupted();
   assert.equal(gameStatus(getGeneratedGame(db, stuck.id)), 'failed');
   assert.match(getGeneratedGame(db, stuck.id).versions[0].error, /server restarted/);
+  assert.equal(gameStatus(getGeneratedGame(db, building.id)), 'failed');
+  const back = getGeneratedGame(db, redrafting.id).versions[0];
+  assert.deepEqual([back.status, back.design, back.designFeedback], ['design_ready', DESIGN, null]);
+  assert.match(back.error, /server restarted/);
 });
 
-/** A game whose version 1 finished generating and is waiting for review. */
-async function reviewed(ctx, result = PASSED) {
-  const game = ctx.service.start({ ownerUserId: ctx.admin.id, idea: IDEA });
+/** Lets the fake generator answer the design job, then "Build it" with `result`. */
+async function designAndBuild(ctx, id, version, design, result) {
+  ctx.calls.at(-1).finish(design);
+  await ctx.service.current;
+  ctx.service.build({ id, version });
   ctx.calls.at(-1).finish(result);
   await ctx.service.current;
+}
+
+/** A game whose version 1 was designed and built, and is waiting for review. */
+async function reviewed(ctx, result = PASSED) {
+  const game = ctx.service.start({ ownerUserId: ctx.admin.id, idea: IDEA });
+  await designAndBuild(ctx, game.id, 1, DESIGNED, result);
   return game.id;
 }
 
-/** Asks for a change and lets the fake generator answer with `result`. */
+/** Asks for a change: its plan, then the build answered with `result`. */
 async function changed(ctx, id, request = 'Give it a new name please', result = CHANGED, basedOn) {
   ctx.service.requestChanges({ id, request, basedOn });
-  ctx.calls.at(-1).finish(result);
-  await ctx.service.current;
+  await designAndBuild(ctx, id, ctx.service.get(id).versions.at(-1).version, PLANNED, result);
   return ctx.service.get(id).versions.at(-1);
 }
 
@@ -213,8 +302,11 @@ test('asking for changes: the model gets the base code and the earlier requests;
   const { service, calls } = ctx;
   const id = await reviewed(ctx);
   const v2 = await changed(ctx, id, '  Make the rounds shorter  ');
-  assert.deepEqual(calls.at(-1).job, { idea: IDEA, model: 'qwen3.8:27b', change: { request: 'Make the rounds shorter', source: GOOD_SOURCE, earlierRequests: [] } });
-  assert.deepEqual([v2.request, v2.basedOn, v2.changelog, v2.status], ['Make the rounds shorter', 1, '- Renamed it', 'ready']);
+  // The plan job, then the build job with the approved plan. Both see the game's design.
+  const change = { request: 'Make the rounds shorter', source: GOOD_SOURCE, design: DESIGN, earlierRequests: [] };
+  assert.deepEqual(calls.at(-2).job, { step: 'design', idea: IDEA, model: 'qwen3.8:27b', change });
+  assert.deepEqual(calls.at(-1).job, { step: 'build', idea: IDEA, model: 'qwen3.8:27b', change: { ...change, plan: PLAN } });
+  assert.deepEqual([v2.request, v2.basedOn, v2.changelog, v2.status, v2.design], ['Make the rounds shorter', 1, '- Renamed it', 'ready', PLAN]);
 
   await changed(ctx, id, 'Add a scoreboard after each round');
   assert.equal(calls.at(-1).job.change.source, CHANGED_SOURCE, 'by default, changes the newest ready version');
@@ -243,6 +335,10 @@ test('asking for changes: refused while a version is being made, for bad request
 
   service.requestChanges({ id, request: 'A perfectly fine request' });
   assert.equal(codeOf(ask('Another request meanwhile')), 'BUSY');
+  ctx.calls.at(-1).finish(PLANNED);
+  await service.current;
+  assert.match(codeOf(ask('Another request meanwhile')), /BUSY/, 'a plan waiting for you counts too');
+  service.build({ id, version: 2 });
   ctx.calls.at(-1).finish({ ok: false, error: 'no passing game after 4 attempts' });
   await service.current;
   assert.equal(service.get(id).versions[1].status, 'failed');
@@ -310,4 +406,27 @@ test('deleting: removes every live version and the database rows; a waiting job 
   ctx.calls.at(-1).finish(PASSED);
   await ctx.service.current;
   assert.equal(ctx.calls.length, before, 'the cancelled job never ran');
+});
+
+test('small fixes skip the plan; the newest version can be discarded while it has no passing code', async () => {
+  const ctx = setup();
+  const { service, calls } = ctx;
+  const id = await reviewed(ctx);
+  service.requestChanges({ id, request: 'Fix the typo in the title', skipDesign: true });
+  assert.equal(service.get(id).versions[1].status, 'generating');
+  assert.deepEqual(calls.at(-1).job.change.plan, null, 'built from the request alone');
+  calls.at(-1).finish(CHANGED);
+  await service.current;
+  assert.equal(service.get(id).versions[1].status, 'ready');
+
+  service.requestChanges({ id, request: 'Something we will not want' });
+  calls.at(-1).finish(PLANNED);
+  await service.current;
+  assert.equal(codeOf(() => service.discard({ id, version: 2 })), 'WRONG_STATUS', 'only the newest');
+  assert.equal(codeOf(() => service.discard({ id, version: 1 })), 'WRONG_STATUS', 'never version 1');
+  service.discard({ id, version: 3 });
+  assert.deepEqual(service.get(id).versions.map((v) => v.version), [1, 2]);
+  assert.equal(gameStatus(service.get(id)), 'review');
+  service.requestChanges({ id, request: 'Now something else' }); // no longer blocked
+  assert.equal(service.get(id).versions.at(-1).version, 3);
 });

@@ -58,19 +58,39 @@ test('only admins get in: 401 logged out, 403 for other accounts', async () => {
   assert.deepEqual(body.games, []);
 });
 
-test('the whole flow: generate → playtest (only for me) → publish → ask for changes → playtest v2 next to v1 → publish → delete', async () => {
+test('the whole flow: design → new draft → edit → build → playtest (only for me) → publish → change (plan, build) → playtest v2 next to v1 → publish → delete', async () => {
   const admin = await adminCookie();
   const created = await post('/api/admin/generations', { idea: IDEA, model: 'qwen3.8:27b' }, admin);
   assert.equal(created.status, 202);
   const { game } = await created.json();
-  assert.equal(game.status, 'generating');
+  assert.equal(game.status, 'designing');
   assert.equal(game.progress.queuePosition, 0);
 
+  finishGeneration({ ok: true, design: '# Majority Rules\n## Rules\nVote.\n' });
+  await server.generation.current;
+  const detailOf = async () => (await (await get(`/api/admin/generations/${game.id}`, admin)).json()).game;
+  let detail = await detailOf();
+  assert.equal(detail.status, 'design');
+  assert.deepEqual([detail.versions[0].status, detail.versions[0].design], ['design_ready', '# Majority Rules\n## Rules\nVote.\n']);
+
+  // A new draft with feedback, then my own edit.
+  const redesign = await post(`/api/admin/generations/${game.id}/versions/1/redesign`, { feedback: 'Three rounds' }, admin);
+  assert.equal(redesign.status, 202);
+  assert.equal((await redesign.json()).game.versions[0].designFeedback, 'Three rounds');
+  finishGeneration({ ok: true, design: '# Majority Rules\n## Rules\nVote, 3 rounds.\n' });
+  await server.generation.current;
+  const edited = await post(`/api/admin/generations/${game.id}/versions/1/design`, { design: '# Majority Rules\n## Rules\nVote, 3 rounds of 20 s.' }, admin);
+  assert.equal(edited.status, 200);
+  assert.deepEqual((await edited.json()).game.versions[0].drafts.map((d) => d.by), ['ai', 'ai', 'admin']);
+
+  // Build it.
+  const build = await post(`/api/admin/generations/${game.id}/versions/1/build`, {}, admin);
+  assert.equal(build.status, 202);
+  assert.equal((await build.json()).game.status, 'generating');
   finishGeneration({ ok: true, source: GOOD_SOURCE, report: { ok: true, problems: [], game: { name: 'Majority Rules', description: 'Vote' } } });
   await server.generation.current;
 
-  const detailOf = async () => (await (await get(`/api/admin/generations/${game.id}`, admin)).json()).game;
-  let detail = await detailOf();
+  detail = await detailOf();
   assert.equal(detail.status, 'review');
   assert.equal(detail.name, 'Majority Rules');
   assert.equal(detail.testsPassed, true);
@@ -96,7 +116,10 @@ test('the whole flow: generate → playtest (only for me) → publish → ask fo
   // Ask for changes: version 2, made from version 1's code.
   const asked = await post(`/api/admin/generations/${game.id}/versions`, { request: 'Call it Majority Rules 2' }, admin);
   assert.equal(asked.status, 202);
-  assert.equal((await asked.json()).game.versions[1].status, 'generating');
+  assert.equal((await asked.json()).game.versions[1].status, 'designing', 'a plan first');
+  finishGeneration({ ok: true, design: '# Change: the name\n## What changes\n- The name\n' });
+  await server.generation.current;
+  await post(`/api/admin/generations/${game.id}/versions/2/build`, {}, admin);
   const v2Source = renamedSource('Majority Rules 2');
   finishGeneration({ ok: true, source: v2Source, changelog: '- Renamed it', report: { ok: true, problems: [], game: { name: 'Majority Rules 2', description: 'Vote' } } });
   await server.generation.current;
@@ -138,6 +161,13 @@ test('bad requests get clear errors', async () => {
   assert.deepEqual(await errorOf(await post(`/api/admin/generations/${game.id}/publish`, {}, admin)), [409, 'WRONG_STATUS']);
   assert.deepEqual(await errorOf(await post(`/api/admin/generations/${game.id}/versions/1/playtest`, {}, admin)), [409, 'WRONG_STATUS']);
   assert.deepEqual(await errorOf(await post(`/api/admin/generations/${game.id}/versions/x/playtest`, {}, admin)), [404, 'NOT_FOUND']);
+  assert.deepEqual(await errorOf(await post(`/api/admin/generations/${game.id}/versions/1/build`, {}, admin)), [409, 'BUSY'], 'its design is still being written');
+  finishGeneration({ ok: true, design: '# A game\n## Rules\nVote.\n' });
+  await server.generation.current;
+  assert.deepEqual(await errorOf(await post(`/api/admin/generations/${game.id}/versions/1/redesign`, { feedback: 'x' }, admin)), [400, 'INVALID_FEEDBACK']);
+  assert.deepEqual(await errorOf(await post(`/api/admin/generations/${game.id}/versions/1/design`, { design: 42 }, admin)), [400, 'INVALID_DESIGN']);
+  assert.deepEqual(await errorOf(await post(`/api/admin/generations/${game.id}/versions/1/discard`, {}, admin)), [409, 'WRONG_STATUS']);
+  assert.deepEqual(await errorOf(await post(`/api/admin/generations/${game.id}/versions/2/build`, {}, admin)), [404, 'NOT_FOUND']);
   assert.deepEqual(await errorOf(await post(`/api/admin/generations/${game.id}/versions`, { request: 'tiny' }, admin)), [400, 'INVALID_REQUEST']);
   assert.deepEqual(await errorOf(await post(`/api/admin/generations/${game.id}/versions`, { request: 'A fine request' }, admin)), [409, 'BUSY']);
 

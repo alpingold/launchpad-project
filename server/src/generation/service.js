@@ -1,11 +1,14 @@
-// THE GENERATION SERVICE (plan §11, A5; versions since K6 §12e): the server's side of
-// AI-generated games.
+// THE GENERATION SERVICE (plan §11, A5; versions since K6 §12e; designs first since F5
+// §13i): the server's side of AI-generated games.
 //
-// - Starting: an admin's idea becomes a game with version 1 "generating", and joins a queue.
-//   Asking for changes adds the next version the same way, made from an earlier version's
-//   code plus the request. Jobs run ONE AT A TIME, each in its own OpenShell sandbox
+// - Starting: an admin's idea becomes a game whose version 1 is "designing": the model
+//   writes a short design. The admin reads it, asks for changes (a new draft) or edits it,
+//   and clicks "Build it": then the code is written from the approved design. Asking for
+//   changes adds the next version the same way, with a short plan of the change first
+//   (or, for a small fix, straight to the code).
+// - Every model step is a job. Jobs run ONE AT A TIME, each in its own OpenShell sandbox
 //   (sandbox.js): GenAI Studio allows only 20 requests a minute, and each sandbox needs
-//   memory. A game has at most one version generating at a time.
+//   memory. A game has at most one version in progress at a time.
 // - Finishing: a passing version is saved as "ready" for review. A failed one keeps its
 //   reason, and its last attempt if there was one.
 // - Going live: the admin playtests a ready version (only they can start it), then
@@ -22,15 +25,27 @@ import {
   setLiveVersions,
   getGeneratedGame,
   listGeneratedGames,
-  listGeneratingVersions,
+  listBusyVersions,
   deleteGeneratedGame,
+  startRedraft,
+  saveDraft,
+  designFailed,
+  startBuild,
+  deleteVersion,
+  BUSY_STATUSES,
 } from '../db/generatedGames.js';
 import { liveGameId, registerVersion } from '../games/generated.js';
 import { runGeneratorInSandbox } from './sandbox.js';
 import { MODELS, DEFAULT_MODEL, isAllowedModel } from '../../../generator/src/models.js';
+import { MAX_DESIGN_LENGTH } from '../../../generator/src/extract.js';
 
 export const MIN_IDEA_LENGTH = 10;
 export const MAX_IDEA_LENGTH = 1000;
+/** Feedback on a design ("make it 2 rounds") may be shorter than an idea. */
+export const MIN_FEEDBACK_LENGTH = 3;
+/** A design the admin edits by hand. */
+export const MIN_DESIGN_LENGTH = 20;
+export { MAX_DESIGN_LENGTH };
 /** At most this many jobs waiting or running at once, so nobody can queue up hours of work. */
 export const MAX_QUEUED = 5;
 /** Progress lines kept per job (the admin page shows them while it runs). */
@@ -45,9 +60,6 @@ export class GenerationError extends Error {
   }
 }
 
-/** Flipped to true in F5, once the generator in the sandbox writes frame games. */
-const SANDBOX_MAKES_FRAME_GAMES = false;
-
 export class GenerationService {
   /**
    * @param {Object} deps
@@ -60,16 +72,10 @@ export class GenerationService {
   constructor({ db, games, enabled, runGenerator = runGeneratorInSandbox, log = (m) => console.log(m) }) {
     this.db = db;
     this.games = games;
-    // Branch iframe-games: the sandbox's generator was written for block games, which this
-    // server no longer runs. It comes back for frame games in F5 (plan §13i). Until then
-    // only a stand-in generator (the tests' fake) can make games.
-    const sandboxReady = runGenerator !== runGeneratorInSandbox || SANDBOX_MAKES_FRAME_GAMES;
-    this.enabled = Boolean(enabled) && sandboxReady;
-    this.disabledReason = !enabled
-      ? "Generating games isn't set up on this server (start it with GENERATION_ENABLED=1; see generator/README.md)."
-      : sandboxReady
-        ? null
-        : "The AI generator doesn't make frame games yet (plan §13, milestone F5).";
+    this.enabled = Boolean(enabled);
+    this.disabledReason = this.enabled
+      ? null
+      : "Generating games isn't set up on this server (start it with GENERATION_ENABLED=1; see generator/README.md).";
     this.runGenerator = runGenerator;
     this.log = log;
     /** @type {string[]} ids of games with a version waiting to run, oldest first */
@@ -82,16 +88,30 @@ export class GenerationService {
     this.current = Promise.resolve();
   }
 
-  /** On startup: anything still "generating" was cut off by a restart. */
+  /** On startup: anything the sandbox was working on was cut off by a restart. */
   recoverInterrupted() {
-    for (const v of listGeneratingVersions(this.db)) {
-      markVersionFailed(this.db, v.gameId, v.version, 'The server restarted while this version was being made. Try again.');
+    for (const v of listBusyVersions(this.db)) {
+      if (v.status === 'designing') {
+        // With an earlier draft, it waits on that one again; without, it has failed.
+        designFailed(this.db, v.gameId, v.version, 'The server restarted while this draft was being written. Try again.');
+      } else {
+        markVersionFailed(this.db, v.gameId, v.version, 'The server restarted while this version was being made. Try again.');
+      }
     }
   }
 
   /** What the admin page needs to know before starting anything. */
   info() {
-    return { enabled: this.enabled, disabledReason: this.disabledReason, models: MODELS, defaultModel: DEFAULT_MODEL, minIdeaLength: MIN_IDEA_LENGTH, maxIdeaLength: MAX_IDEA_LENGTH };
+    return {
+      enabled: this.enabled,
+      disabledReason: this.disabledReason,
+      models: MODELS,
+      defaultModel: DEFAULT_MODEL,
+      minIdeaLength: MIN_IDEA_LENGTH,
+      maxIdeaLength: MAX_IDEA_LENGTH,
+      minFeedbackLength: MIN_FEEDBACK_LENGTH,
+      maxDesignLength: MAX_DESIGN_LENGTH,
+    };
   }
 
   /** Refuses new work if generating is off or the queue is full. */
@@ -105,7 +125,8 @@ export class GenerationService {
   }
 
   /**
-   * Starts generating a new game. Returns right away; the work happens in the background.
+   * Starts a new game: its design is written first. Returns right away; the work happens in
+   * the background.
    * @param {{ ownerUserId: number, idea: unknown, model?: unknown }} request  idea/model are untrusted input
    */
   start({ ownerUserId, idea, model = DEFAULT_MODEL }) {
@@ -119,16 +140,19 @@ export class GenerationService {
 
   /**
    * Asks for changes to a game: makes its next version from version `basedOn` (by default
-   * the one being playtested, else the published one, else the newest ready one).
-   * @param {{ id: string, request: unknown, basedOn?: unknown, model?: unknown }} change  untrusted input
+   * the one being playtested, else the published one, else the newest ready one). It starts
+   * with a plan of the change, unless `skipDesign` (a small fix: straight to the code).
+   * @param {{ id: string, request: unknown, basedOn?: unknown, model?: unknown, skipDesign?: unknown }} change  untrusted input
    */
-  requestChanges({ id, request, basedOn, model = DEFAULT_MODEL }) {
+  requestChanges({ id, request, basedOn, model = DEFAULT_MODEL, skipDesign = false }) {
     const game = this.get(id);
     this.checkCanQueue();
     const trimmed = checkText(request, 'INVALID_REQUEST', 'Describe the change');
     checkModel(model);
-    if (game.versions.some((v) => v.status === 'generating')) {
-      throw new GenerationError(409, 'BUSY', 'A version of this game is already being made. Wait for it to finish.');
+    const open = game.versions.find((v) => BUSY_STATUSES.includes(v.status) || v.status === 'design_ready');
+    if (open) {
+      const why = open.status === 'design_ready' ? `v${open.version}'s ${open.basedOn === null ? 'design' : 'plan'} is waiting for you: build it or discard it first.` : 'A version of this game is already being made. Wait for it to finish.';
+      throw new GenerationError(409, 'BUSY', why);
     }
     const base =
       basedOn === undefined
@@ -137,8 +161,70 @@ export class GenerationService {
     if (!base || base.status !== 'ready') {
       throw new GenerationError(409, 'NO_BASE_VERSION', 'Changes can only be made to a version that passed the tests.');
     }
-    addVersion(this.db, id, { request: trimmed, basedOn: base.version, model });
+    addVersion(this.db, id, { request: trimmed, basedOn: base.version, model, status: skipDesign === true ? 'generating' : 'designing' });
     this.enqueue(id);
+    return this.get(id);
+  }
+
+  /**
+   * A version whose design (or plan) the admin may work on: waiting for them, or failed with
+   * a design (to change it or build it again).
+   */
+  designedVersion(id, versionNumber) {
+    const game = this.get(id);
+    const version = findVersion(game, versionNumber);
+    if (!version) throw new GenerationError(404, 'NOT_FOUND', 'There is no such version.');
+    if (this.running === id || this.queue.includes(id)) throw new GenerationError(409, 'BUSY', 'This game has a job running. Wait for it to finish.');
+    const open = version.status === 'design_ready' || (version.status === 'failed' && version.design !== null);
+    if (!open) throw new GenerationError(409, 'WRONG_STATUS', 'This version has no design waiting for you.');
+    return { game, version };
+  }
+
+  /** "Change the design": the model writes a new draft with the admin's feedback. */
+  redesign({ id, version: versionNumber, feedback }) {
+    const { version } = this.designedVersion(id, versionNumber);
+    this.checkCanQueue();
+    const trimmed = typeof feedback === 'string' ? feedback.trim() : '';
+    if (trimmed.length < MIN_FEEDBACK_LENGTH || trimmed.length > MAX_IDEA_LENGTH) {
+      throw new GenerationError(400, 'INVALID_FEEDBACK', `Say what to change in ${MIN_FEEDBACK_LENGTH}–${MAX_IDEA_LENGTH} characters.`);
+    }
+    startRedraft(this.db, id, version.version, trimmed);
+    this.enqueue(id);
+    return this.get(id);
+  }
+
+  /** The admin's own edit of the design: saved as a new draft, right away. */
+  editDesign({ id, version: versionNumber, design }) {
+    const { version } = this.designedVersion(id, versionNumber);
+    const text = typeof design === 'string' ? design.trim() : '';
+    if (text.length < MIN_DESIGN_LENGTH || text.length > MAX_DESIGN_LENGTH) {
+      throw new GenerationError(400, 'INVALID_DESIGN', `A design is ${MIN_DESIGN_LENGTH}–${MAX_DESIGN_LENGTH} characters.`);
+    }
+    if (text === version.design?.trim()) return this.get(id); // nothing changed
+    saveDraft(this.db, id, version.version, { text: `${text}\n`, by: 'admin' });
+    return this.get(id);
+  }
+
+  /** "Build it": writes the code from the approved design (or tries again after a failed build). */
+  build({ id, version: versionNumber }) {
+    const { version } = this.designedVersion(id, versionNumber);
+    this.checkCanQueue();
+    startBuild(this.db, id, version.version);
+    this.enqueue(id);
+    return this.get(id);
+  }
+
+  /** Throws away the newest version while it's only a design (or failed), to ask for something else. */
+  discard({ id, version: versionNumber }) {
+    const game = this.get(id);
+    const version = findVersion(game, versionNumber);
+    if (!version) throw new GenerationError(404, 'NOT_FOUND', 'There is no such version.');
+    if (version.version === 1) throw new GenerationError(409, 'WRONG_STATUS', 'Version 1 is the game itself: delete the game instead.');
+    if (version !== game.versions.at(-1) || !['design_ready', 'failed'].includes(version.status)) {
+      throw new GenerationError(409, 'WRONG_STATUS', 'Only the newest version can be discarded, while it has no code that passed.');
+    }
+    if (this.running === id || this.queue.includes(id)) throw new GenerationError(409, 'BUSY', 'This game has a job running. Wait for it to finish.');
+    deleteVersion(this.db, id, version.version);
     return this.get(id);
   }
 
@@ -160,28 +246,20 @@ export class GenerationService {
     });
   }
 
-  /** Makes the game's generating version: a new game from its idea, or a change. */
+  /** Runs the game's job: a design (or plan, or new draft) for a "designing" version, or the build for a "generating" one. */
   async run(id) {
     const game = getGeneratedGame(this.db, id);
-    const version = game?.versions.find((v) => v.status === 'generating');
+    const version = game?.versions.find((v) => BUSY_STATUSES.includes(v.status));
     if (!version) return; // deleted while it waited
     const started = Date.now();
     const onStep = (text) => {
       const steps = this.steps.get(id);
       if (steps && steps.length < MAX_STEPS) steps.push({ seconds: Math.round((Date.now() - started) / 1000), text });
     };
+    const designing = version.status === 'designing';
+    const job = this.jobFor(game, version);
 
-    const job = { idea: game.prompt, model: version.model };
-    if (version.basedOn !== null) {
-      // The requests that led to the base version, oldest first, so the model knows the history.
-      const earlierRequests = [];
-      for (let v = findVersion(game, version.basedOn); v && v.basedOn !== null; v = findVersion(game, v.basedOn)) {
-        earlierRequests.unshift(v.request);
-      }
-      job.change = { request: version.request, source: findVersion(game, version.basedOn).source, earlierRequests };
-    }
-
-    this.log(`[generate] ${id} v${version.version}: started with ${version.model}`);
+    this.log(`[generate] ${id} v${version.version}: ${designing ? (job.redraft ? 'new draft' : 'design') : 'build'} started with ${version.model}`);
     let result;
     try {
       result = await this.runGenerator(job, { onStep });
@@ -190,6 +268,16 @@ export class GenerationService {
     }
     if (!getGeneratedGame(this.db, id)) return; // deleted while it was running
 
+    if (designing) {
+      if (result.ok && typeof result.design === 'string') {
+        saveDraft(this.db, id, version.version, { text: result.design.slice(0, MAX_DESIGN_LENGTH), by: 'ai', feedback: version.designFeedback });
+        this.log(`[generate] ${id} v${version.version}: design ready`);
+      } else {
+        designFailed(this.db, id, version.version, result.error ?? 'unknown error');
+        this.log(`[generate] ${id} v${version.version}: design failed: ${result.error}`);
+      }
+      return;
+    }
     const changelog = result.changelog ?? null;
     if (result.ok && result.source) {
       const { name, description } = result.report?.game ?? {};
@@ -200,6 +288,29 @@ export class GenerationService {
       markVersionFailed(this.db, id, version.version, result.error ?? 'unknown error', saved);
       this.log(`[generate] ${id} v${version.version}: failed: ${result.error}`);
     }
+  }
+
+  /** The sandbox job for a version's next step (generator/src/run.js describes them). */
+  jobFor(game, version) {
+    const designing = version.status === 'designing';
+    const job = { step: designing ? 'design' : 'build', idea: game.prompt, model: version.model };
+    if (version.basedOn !== null) {
+      // The requests that led to the base version, oldest first, so the model knows the history.
+      const earlierRequests = [];
+      for (let v = findVersion(game, version.basedOn); v && v.basedOn !== null; v = findVersion(game, v.basedOn)) {
+        earlierRequests.unshift(v.request);
+      }
+      // The game's own design is version 1's (later versions hold change plans).
+      const gameDesign = findVersion(game, 1)?.design ?? null;
+      job.change = { request: version.request, source: findVersion(game, version.basedOn).source, design: gameDesign, earlierRequests };
+      if (!designing) job.change.plan = version.design; // null for a small fix
+    } else if (!designing) {
+      job.design = version.design;
+    }
+    if (designing && version.designFeedback && version.design) {
+      job.redraft = { draft: version.design, feedback: version.designFeedback };
+    }
+    return job;
   }
 
   /** Where a game's job is: its place in line (0 = running now) and its progress so far. */
@@ -282,7 +393,7 @@ export class GenerationService {
   /** Deletes a game and all its versions for good (it disappears from the game picker right away). */
   remove(id) {
     const game = this.get(id);
-    if (this.running === id) throw new GenerationError(409, 'WRONG_STATUS', "A game can't be deleted while a version is being made.");
+    if (this.running === id) throw new GenerationError(409, 'WRONG_STATUS', "A game can't be deleted while its job is running.");
     if (this.queue.includes(id)) {
       this.queue.splice(this.queue.indexOf(id), 1); // still waiting: just drop it
       this.steps.delete(id);

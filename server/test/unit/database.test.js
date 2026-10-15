@@ -73,7 +73,7 @@ test('migration 4 (K6): every existing generated game becomes its own version 1,
   insert.run('g-published', 'published', 'Play Me', 'code', 'sha', '{"ok":true}', null);
   insert.run('g-rejected', 'rejected', 'Nope', 'code', 'sha', '{"ok":true}', null);
 
-  assert.deepEqual(migrate(db), [4]);
+  assert.deepEqual(migrate(db, { migrations: MIGRATIONS.filter((m) => m.version <= 4) }), [4]);
   const live = (id) => {
     const g = getGeneratedGame(db, id);
     return [g.versions[0].status, g.publishedVersion, g.playtestVersion];
@@ -92,6 +92,30 @@ test('migration 4 (K6): every existing generated game becomes its own version 1,
   );
   const columns = db.prepare('PRAGMA table_info(generated_games)').all().map((c) => c.name);
   assert.deepEqual(columns, ['id', 'owner_user_id', 'prompt', 'created_at', 'updated_at', 'published_version', 'playtest_version']);
+});
+
+test('migration 5 (F5): versions keep every field, and can now be designing or waiting on a design', () => {
+  const db = new Database(':memory:');
+  db.pragma('foreign_keys = ON');
+  db.exec(SCHEMA);
+  migrate(db, { migrations: MIGRATIONS.filter((m) => m.version <= 4) });
+  db.prepare("INSERT INTO users (id, username, password_hash, created_at) VALUES (1, 'admin', 'scrypt$x', 1)").run();
+  db.prepare("INSERT INTO generated_games (id, owner_user_id, prompt, created_at, updated_at, published_version) VALUES ('g-old', 1, 'an idea', 1, 2, 1)").run();
+  db.prepare(
+    `INSERT INTO game_versions (game_id, version, request, based_on, changelog, model, status, name, description, source, source_sha256, report_json, error, created_at, updated_at)
+     VALUES ('g-old', 1, 'an idea', NULL, '- x', 'qwen3.8:27b', 'ready', 'Old', 'An old game', 'code', 'sha', '{"ok":true}', NULL, 3, 4)`,
+  ).run();
+
+  assert.deepEqual(migrate(db), [5]);
+  const [v1] = getGeneratedGame(db, 'g-old').versions;
+  assert.deepEqual(
+    [v1.status, v1.name, v1.description, v1.source, v1.sourceSha256, v1.report, v1.changelog, v1.createdAt, v1.design, v1.drafts],
+    ['ready', 'Old', 'An old game', 'code', 'sha', { ok: true }, '- x', 3, null, []],
+  );
+  db.prepare("UPDATE game_versions SET status = 'design_ready' WHERE game_id = 'g-old'").run();
+  assert.throws(() => db.prepare("UPDATE game_versions SET status = 'dancing' WHERE game_id = 'g-old'").run(), /CHECK constraint/);
+  db.prepare("DELETE FROM generated_games WHERE id = 'g-old'").run();
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM game_versions').get().n, 0, 'deleting a game still deletes its versions');
 });
 
 test('a brand-new database file gets no (pointless) backup', (t) => {

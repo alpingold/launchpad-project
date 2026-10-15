@@ -5,15 +5,27 @@ import { createHash, randomBytes } from 'node:crypto';
 //
 // A GAME is the idea and who owns it. Its code lives in VERSIONS: version 1 is made from
 // the idea, and every "ask for changes" makes the next one from an earlier version.
-//   A version:  generating → ready  (passed the tests; code + report saved)
-//               generating → failed (the generator gave up)
+// Each version is designed first and built only once the admin approves (plan §13i, F5):
+//   designing → design_ready  (a draft to read: v1's design, or a change's plan)
+//   design_ready → designing  (a new draft with the admin's feedback; or they edit it)
+//   design_ready → generating (the admin clicked "Build it")
+//   generating → ready        (passed the checks; code + report saved)
+//   generating → failed       (the generator gave up; the design stays, to change or retry)
+// A small fix can skip the design: its version starts at "generating".
 // A game has at most two LIVE versions, chosen by the admin:
 //   published_version: the one every host can start
 //   playtest_version:  one only its owner can start, to try before publishing
 // Only live versions are ever loaded into the server.
 
-/** @typedef {'generating' | 'failed' | 'ready'} VersionStatus */
-export const VERSION_STATUSES = Object.freeze(['generating', 'failed', 'ready']);
+/** @typedef {'designing' | 'design_ready' | 'generating' | 'failed' | 'ready'} VersionStatus */
+export const VERSION_STATUSES = Object.freeze(['designing', 'design_ready', 'generating', 'failed', 'ready']);
+/** Statuses where the sandbox is (or will be) working on the version. */
+export const BUSY_STATUSES = Object.freeze(['designing', 'generating']);
+
+/**
+ * One draft of a design or change plan.
+ * @typedef {{ text: string, by: 'ai' | 'admin', feedback?: string, at: number }} DesignDraft
+ */
 
 /**
  * @typedef {Object} GameVersion
@@ -24,6 +36,9 @@ export const VERSION_STATUSES = Object.freeze(['generating', 'failed', 'ready'])
  * @property {string | null} changelog   the model's "- …" list of what it changed
  * @property {string | null} model
  * @property {VersionStatus} status
+ * @property {string | null} design        the latest draft (once built: the design it was built from)
+ * @property {DesignDraft[]} drafts        every draft, oldest first
+ * @property {string | null} designFeedback  the admin's feedback while a new draft is written
  * @property {string | null} name
  * @property {string | null} description
  * @property {string | null} source
@@ -66,6 +81,9 @@ function versionFromRow(row) {
     changelog: row.changelog,
     model: row.model,
     status: row.status,
+    design: row.design,
+    drafts: row.drafts_json ? JSON.parse(row.drafts_json) : [],
+    designFeedback: row.design_feedback,
     name: row.name,
     description: row.description,
     source: row.source,
@@ -95,11 +113,11 @@ function gameFromRow(db, row) {
 const touch = (db, gameId, now) => db.prepare('UPDATE generated_games SET updated_at = ? WHERE id = ?').run(now, gameId);
 
 /**
- * Starts a new generated game: the game, plus its version 1 "generating" (the generator
- * fills it in later).
+ * Starts a new generated game: the game, plus its version 1, "designing" (the generator
+ * writes its design first) or straight to "generating".
  * @returns {GeneratedGame}
  */
-export function createGeneratedGame(db, { ownerUserId, prompt, model = null, now = Date.now() }) {
+export function createGeneratedGame(db, { ownerUserId, prompt, model = null, status = 'designing', now = Date.now() }) {
   const id = newGeneratedGameId();
   db.transaction(() => {
     db.prepare('INSERT INTO generated_games (id, owner_user_id, prompt, created_at, updated_at) VALUES (?, ?, ?, ?, ?)').run(
@@ -111,26 +129,92 @@ export function createGeneratedGame(db, { ownerUserId, prompt, model = null, now
     );
     db.prepare(
       `INSERT INTO game_versions (game_id, version, request, model, status, created_at, updated_at)
-       VALUES (?, 1, ?, ?, 'generating', ?, ?)`,
-    ).run(id, prompt, model, now, now);
+       VALUES (?, 1, ?, ?, ?, ?, ?)`,
+    ).run(id, prompt, model, startStatus(status), now, now);
   })();
   return getGeneratedGame(db, id);
 }
 
+const startStatus = (status) => {
+  if (status !== 'designing' && status !== 'generating') throw new Error(`a version can't start as ${status}`);
+  return status;
+};
+
 /**
- * Starts the next version of a game: a change request on version `basedOn`.
+ * Starts the next version of a game: a change request on version `basedOn`, starting with
+ * its plan ("designing"), or for a small fix straight at "generating".
  * @returns {number} the new version's number
  */
-export function addVersion(db, gameId, { request, basedOn, model = null, now = Date.now() }) {
+export function addVersion(db, gameId, { request, basedOn, model = null, status = 'designing', now = Date.now() }) {
   return db.transaction(() => {
     const { next } = db.prepare('SELECT COALESCE(MAX(version), 0) + 1 AS next FROM game_versions WHERE game_id = ?').get(gameId);
     db.prepare(
       `INSERT INTO game_versions (game_id, version, request, based_on, model, status, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, 'generating', ?, ?)`,
-    ).run(gameId, next, request, basedOn, model, now, now);
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(gameId, next, request, basedOn, model, startStatus(status), now, now);
     touch(db, gameId, now);
     return next;
   })();
+}
+
+// --- Designs (plan §13i, F5) ----------------------------------------------------------------
+
+/** The admin asked for a new draft: back to "designing", remembering what to change. */
+export function startRedraft(db, gameId, version, feedback, { now = Date.now() } = {}) {
+  db.prepare(
+    `UPDATE game_versions SET status = 'designing', design_feedback = ?, error = NULL, updated_at = ? WHERE game_id = ? AND version = ?`,
+  ).run(feedback, now, gameId, version);
+  touch(db, gameId, now);
+}
+
+/**
+ * A new draft (from the model, or the admin's own edit): it becomes the design, joins the
+ * history, and the version waits for the admin ("design_ready").
+ * @param {{ text: string, by: 'ai' | 'admin', feedback?: string | null, now?: number }} draft
+ */
+export function saveDraft(db, gameId, version, { text, by, feedback = null, now = Date.now() }) {
+  db.transaction(() => {
+    const row = db.prepare('SELECT drafts_json FROM game_versions WHERE game_id = ? AND version = ?').get(gameId, version);
+    if (!row) return;
+    const drafts = row.drafts_json ? JSON.parse(row.drafts_json) : [];
+    drafts.push({ text, by, ...(feedback ? { feedback } : {}), at: now });
+    db.prepare(
+      `UPDATE game_versions
+       SET status = 'design_ready', design = ?, drafts_json = ?, design_feedback = NULL, error = NULL, updated_at = ?
+       WHERE game_id = ? AND version = ?`,
+    ).run(text, JSON.stringify(drafts), now, gameId, version);
+    touch(db, gameId, now);
+  })();
+}
+
+/**
+ * Writing a draft failed. With an earlier draft, the version goes back to waiting on it
+ * (the error says the new draft failed); without one, the version has failed.
+ */
+export function designFailed(db, gameId, version, error, { now = Date.now() } = {}) {
+  db.prepare(
+    `UPDATE game_versions
+     SET status = CASE WHEN design IS NULL THEN 'failed' ELSE 'design_ready' END,
+         design_feedback = NULL, error = ?, updated_at = ?
+     WHERE game_id = ? AND version = ?`,
+  ).run(String(error).slice(0, 2000), now, gameId, version);
+  touch(db, gameId, now);
+}
+
+/** "Build it": the version is built from its design (again, after a failed build). */
+export function startBuild(db, gameId, version, { now = Date.now() } = {}) {
+  db.prepare(
+    `UPDATE game_versions
+     SET status = 'generating', error = NULL, source = NULL, source_sha256 = NULL, report_json = NULL, changelog = NULL, updated_at = ?
+     WHERE game_id = ? AND version = ?`,
+  ).run(now, gameId, version);
+  touch(db, gameId, now);
+}
+
+/** Removes one version (the service only allows the newest, unbuilt one). */
+export function deleteVersion(db, gameId, version, { now = Date.now() } = {}) {
+  db.prepare('DELETE FROM game_versions WHERE game_id = ? AND version = ?').run(gameId, version);
+  touch(db, gameId, now);
 }
 
 /**
@@ -168,9 +252,9 @@ export function markVersionFailed(db, gameId, version, error, { source = null, r
   touch(db, gameId, now);
 }
 
-/** Every version still "generating" (after a restart, these were interrupted). */
-export function listGeneratingVersions(db) {
-  return db.prepare("SELECT * FROM game_versions WHERE status = 'generating' ORDER BY created_at").all().map(versionFromRow);
+/** Every version the sandbox was working on ("designing" or "generating"): after a restart, these were cut off. */
+export function listBusyVersions(db) {
+  return db.prepare("SELECT * FROM game_versions WHERE status IN ('designing', 'generating') ORDER BY created_at").all().map(versionFromRow);
 }
 
 /**
@@ -228,12 +312,15 @@ export function deleteGeneratedGame(db, id) {
 
 /**
  * One word for where a game is, for lists:
- *   generating: a version is being made     published / playtest: live
+ *   designing: a design is being written    design: a design is waiting for you
+ *   generating: a version is being built    published / playtest: live
  *   failed: its newest version failed       review: has code, but nothing is live
  * @param {GeneratedGame} game
  */
 export function gameStatus(game) {
+  if (game.versions.some((v) => v.status === 'designing')) return 'designing';
   if (game.versions.some((v) => v.status === 'generating')) return 'generating';
+  if (game.versions.some((v) => v.status === 'design_ready')) return 'design';
   if (game.publishedVersion !== null) return 'published';
   if (game.playtestVersion !== null) return 'playtest';
   return game.versions.at(-1)?.status === 'failed' ? 'failed' : 'review';

@@ -93,6 +93,44 @@ export const MIGRATIONS = [
       ALTER TABLE generated_games DROP COLUMN error;
     `,
   },
+  {
+    version: 5,
+    description: 'designs first: a version is designed, approved, then built (plan §13i, F5)',
+    sql: `
+      -- SQLite can't change a CHECK constraint, so the table is rebuilt with the new statuses
+      -- and columns, and every row is copied across.
+      --   designing    → the model is writing a design (or a change plan, or a new draft)
+      --   design_ready → waiting for the admin: change it, edit it, or "Build it"
+      --   generating   → building the code from the approved design
+      CREATE TABLE game_versions_new (
+        game_id         TEXT    NOT NULL REFERENCES generated_games(id) ON DELETE CASCADE,
+        version         INTEGER NOT NULL,
+        request         TEXT    NOT NULL,
+        based_on        INTEGER,
+        changelog       TEXT,
+        model           TEXT,
+        status          TEXT    NOT NULL CHECK (status IN ('designing', 'design_ready', 'generating', 'failed', 'ready')),
+        design          TEXT,              -- the latest draft; once built, the design it was built from
+        drafts_json     TEXT,              -- every draft: [{ text, by: 'ai' | 'admin', feedback?, at }]
+        design_feedback TEXT,              -- what the admin asked to change, while a new draft is written
+        name            TEXT,
+        description     TEXT,
+        source          TEXT,
+        source_sha256   TEXT,
+        report_json     TEXT,
+        error           TEXT,
+        created_at      INTEGER NOT NULL,
+        updated_at      INTEGER NOT NULL,
+        PRIMARY KEY (game_id, version)
+      );
+      INSERT INTO game_versions_new
+        (game_id, version, request, based_on, changelog, model, status, name, description, source, source_sha256, report_json, error, created_at, updated_at)
+      SELECT game_id, version, request, based_on, changelog, model, status, name, description, source, source_sha256, report_json, error, created_at, updated_at
+      FROM game_versions;
+      DROP TABLE game_versions;
+      ALTER TABLE game_versions_new RENAME TO game_versions;
+    `,
+  },
 ];
 
 /** The version a fully up-to-date database has. */
