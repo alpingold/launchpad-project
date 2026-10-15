@@ -3,7 +3,7 @@
   "private": true,
   "description": "Root scripts only. The server and client are separate programs with their own package.json.",
   "scripts": {
-    "install:all": "npm --prefix server install && npm --prefix client install && npm --prefix e2e install",
+    "install:all": "npm --prefix server install && npm --prefix client install && npm --prefix e2e install && npm --prefix generator install",
     "dev:server": "npm --prefix server run dev",
     "dev:client": "npm --prefix client run dev",
     "test": "npm --prefix server test",
@@ -11,6 +11,8 @@
     "start": "npm --prefix server start",
     "test:e2e": "npm --prefix e2e test",
     "admin": "node server/scripts/admin.js",
-    "generate": "node server/scripts/generate.js"
+    "generate": "node server/scripts/generate.js",
+    "check-game": "node generator/src/check/cli.js",
+    "test:check": "npm --prefix generator test"
   }
 }

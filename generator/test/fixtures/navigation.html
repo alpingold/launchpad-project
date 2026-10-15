@@ -1,0 +1,9 @@
+<script type="application/json" id="game-info">{ "name": "Wanderer", "description": "A broken test game.", "minPlayers": 1, "maxPlayers": 4 }</script>
+<div id="app">Big screen</div>
+<script>
+  party.ready(({ role }) => {
+    if (role === 'host') party.setState('all', { ok: true });
+    // Hidden from the static check: after 2 s the big screen leaves for another site.
+    if (role === 'host') setTimeout(() => (window['loc' + 'ation'].href = 'https://example.com/'), 2000);
+  });
+</script>

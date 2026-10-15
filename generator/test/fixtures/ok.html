@@ -1,0 +1,24 @@
+<script type="application/json" id="game-info">{ "name": "Fine", "description": "A broken test game.", "minPlayers": 1, "maxPlayers": 4 }</script>
+<div id="app"></div>
+<script>
+  // A tiny game with nothing wrong: first to 3 taps wins.
+  party.ready(({ role }) => {
+    const app = document.getElementById('app');
+    if (role === 'host') {
+      const taps = Object.fromEntries(party.players.map((p) => [p.id, 0]));
+      app.textContent = 'Tap!';
+      party.setState('all', { text: 'Tap the button!' });
+      party.on('event', (from) => {
+        taps[from] += 1;
+        party.save(taps);
+        app.textContent = party.players.map((p) => p.name + ': ' + taps[p.id]).join(', ');
+        if (taps[from] >= 3) party.end({ rankings: [from], scores: taps });
+      });
+    } else {
+      const button = party.ui.el('button', { class: 'big', onClick: () => party.send({ tap: true }) }, 'Tap');
+      const text = party.ui.el('p');
+      app.append(text, button);
+      party.on('state', (s) => (text.textContent = s.text));
+    }
+  });
+</script>

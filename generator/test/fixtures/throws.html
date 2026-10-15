@@ -1,0 +1,15 @@
+<script type="application/json" id="game-info">{ "name": "Butterfingers", "description": "A broken test game.", "minPlayers": 1, "maxPlayers": 4 }</script>
+<div id="app">Tap away</div>
+<script>
+  party.ready(({ role }) => {
+    if (role === 'host') {
+      party.setState('all', { ok: true });
+      party.on('event', (from, data) => {
+        const player = party.players.find((p) => p.id === from);
+        player.score.total += 1; // there is no score: this throws on every tap
+      });
+    } else {
+      document.getElementById('app').append(party.ui.el('button', { class: 'big', onClick: () => party.send({ tap: 1 }) }, 'Tap'));
+    }
+  });
+</script>

@@ -1,6 +1,12 @@
 {
   "name": "boilergames-generator",
   "private": true,
-  "description": "Runs inside the OpenShell sandbox: asks a model for a game and tests it. No dependencies.",
-  "type": "module"
+  "description": "Runs inside the OpenShell sandbox: asks a model for a game and checks it. Its one dependency, playwright-core, drives the headless browser for the playtest.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test --test-timeout=90000 \"test/**/*.test.js\""
+  },
+  "dependencies": {
+    "playwright-core": "1.64.0"
+  }
 }

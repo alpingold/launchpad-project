@@ -1,0 +1,9 @@
+<script type="application/json" id="game-info">{ "name": "Nothing", "description": "A broken test game.", "minPlayers": 1, "maxPlayers": 4 }</script>
+<div id="app"></div>
+<script>
+  party.ready(({ role }) => {
+    // Forgets to draw anything on the big screen.
+    if (role === 'host') party.setState('all', { ok: true });
+    else document.getElementById('app').textContent = 'Phone';
+  });
+</script>

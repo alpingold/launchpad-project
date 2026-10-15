@@ -1,0 +1,8 @@
+<script type="application/json" id="game-info">{ "name": "Fancy Fonts", "description": "A broken test game.", "minPlayers": 1, "maxPlayers": 4 }</script>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P">
+<div id="app">Big screen</div>
+<script>
+  party.ready(({ role }) => {
+    if (role === 'host') party.setState('all', { ok: true });
+  });
+</script>

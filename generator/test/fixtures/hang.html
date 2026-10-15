@@ -1,0 +1,11 @@
+<script type="application/json" id="game-info">{ "name": "Forever", "description": "A broken test game.", "minPlayers": 1, "maxPlayers": 4 }</script>
+<div id="app">Big screen</div>
+<script>
+  party.ready(({ role }) => {
+    if (role !== 'host') return;
+    party.setState('all', { ok: true });
+    setTimeout(() => {
+      for (;;) {} // stuck: the whole big-screen page freezes
+    }, 1500);
+  });
+</script>

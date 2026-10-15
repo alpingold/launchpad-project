@@ -1,0 +1,9 @@
+<script type="application/json" id="game-info">{ "name": "Wrong Winner", "description": "A broken test game.", "minPlayers": 1, "maxPlayers": 4 }</script>
+<div id="app">Big screen</div>
+<script>
+  party.ready(({ role }) => {
+    if (role !== 'host') return;
+    party.setState('all', { ok: true });
+    setTimeout(() => party.end({ rankings: ['nobody'] }), 1000); // not a player in this game
+  });
+</script>
