@@ -93,8 +93,16 @@ A game talks to BoilerGames only through the `party` SDK
 (`client/src/game/frame/sdk.js`):
 - `party.ready(fn)`, `party.on(…)` and `party.now()` work on every screen.
 - Phones have `party.send(data)`.
-- The big screen has `party.sendTo` / `party.sendAll`, `party.setState(player, state)` (kept
-  and resent after a phone reloads), and `party.end({ rankings, scores })`.
+- The big screen has:
+  - `party.sendTo` / `party.sendAll`, sent in batches, so calling them every frame is fine
+  - `party.setState(player, state)`, kept and resent after a phone reloads
+  - `party.save(snapshot)`: after a big-screen reload the game starts again with
+    `party.ready`'s `restored`
+  - `party.end({ rankings, scores })`
+
+If a game hangs the big screen (which freezes that whole tab), the server notices that the
+page has gone quiet and stops the game after 15 s. A game that loads another page into its
+frame is removed.
 
 The file starts with its info, which is the only part the server reads:
 

@@ -1,6 +1,6 @@
 # BoilerGames: Implementation Plan (MVP lobby + extension structure)
 
-> **Status (2026-10-14):** M0–M7 done. AI game generation A0–A6 done. **Now: the game dev kit, contract v3 (§12, milestones K1–K6)**, because AI-made games were too simple with 5 fixed screens. K1–K6 are done. **On branch `iframe-games`: frame games (§13); F0 done (2026-10-15), F1 next**; on `main`, next is deploying (M8). A7 (bring your own key) waits on RCAC's answer. This file is the living plan: decisions and changes are recorded here as they happen, so `git log docs/PLAN.md` shows how it evolved.
+> **Status (2026-10-14):** M0–M7 done. AI game generation A0–A6 done. **Now: the game dev kit, contract v3 (§12, milestones K1–K6)**, because AI-made games were too simple with 5 fixed screens. K1–K6 are done. **On branch `iframe-games`: frame games (§13); F0 and F1 done (2026-10-15), F2 next**; on `main`, next is deploying (M8). A7 (bring your own key) waits on RCAC's answer. This file is the living plan: decisions and changes are recorded here as they happen, so `git log docs/PLAN.md` shows how it evolved.
 
 _Site renamed from "LaunchPad Party" to **BoilerGames** on 2026-10-11 (built for the Purdue LaunchPad club; the club name stays where it refers to the club)._
 
@@ -904,14 +904,15 @@ The platform injects a small script before the game's own code. This is the whol
 
 | On | Call | What it does |
 |---|---|---|
-| both | `party.ready(fn)` | `fn({ role, me, players, theme })` runs once the platform is connected. `me` is the player id (null on the big screen) |
+| both | `party.ready(fn)` | `fn({ role, me, players, theme, restored })` runs once the platform is connected. `me` is the player id (null on the big screen). `restored`: the big screen's last save, after a reload (F1) |
 | both | `party.now()` | Server time in ms (with clock-offset correction), so timers agree across screens |
 | both | `party.asset(id)` | URL of an approved asset from the manifest (§4b) |
 | phone | `party.send(data)` | An event to the big screen's game (any JSON, size-capped) |
 | phone | `party.on('message', fn)` / `party.on('state', fn)` | Messages and the latest state from the big screen |
 | big screen | `party.on('event', fn)` | `fn(playerId, data)`: an event from a phone |
-| big screen | `party.sendTo(playerId, data)` / `party.sendAll(data)` | One-off **messages** ("you were hit!") |
+| big screen | `party.sendTo(playerId, data)` / `party.sendAll(data)` | One-off **messages** ("you were hit!"). Copied as JSON when called and sent in batches at most every 50 ms (F1), so a game can call these every frame |
 | big screen | `party.setState(playerId \| 'all', state)` | **Sticky state**: the server keeps the latest per phone and replays it after a reconnect, so games can't forget reconnects (the lesson from A1) |
+| big screen | `party.save(snapshot)` | Kept by the server (latest only) and handed back as `restored` if the big screen reloads (F1). Never sent to phones: it may hold secrets |
 | big screen | `party.on('left', fn)` / `party.on('back', fn)` | A phone dropped / came back |
 | big screen | `party.end({ rankings, scores? })` | The game is over; checked by the server as `endGame` is today |
 
@@ -946,7 +947,11 @@ Every walls-in measure is something the **browser** enforces, not our code:
   - **Detect and end (F1).** The platform counts the iframe's `load` events. A second one means the frame went somewhere else: the iframe is removed and the game ends. This can't stop the first request, so the leak in point 1 still happens, but players see at most a flash.
   - **The static check (F4)** rejects navigation in code: `location`, `window.open`, links, forms, meta refresh. This catches AI accidents, not deliberately hidden code.
   - **Your review.** With admin approval, the worst case is a small, non-secret leak from a game approved by mistake. **Accepted (2026-10-15).**
-- **A game can hang or slow down one browser tab.** The SDK sends a heartbeat. If the big screen's game stops answering for ~5 s, the platform ends the game (F1). It can never freeze the server or other rooms.
+- **A game can hang or slow down one browser tab.** It can never freeze the server or other rooms.
+  - **Finding (F1):** a game stuck in an endless loop freezes the **whole big-screen tab**, not just its frame. Tested in Chromium: the iframe runs on the page's own thread, so our page can't notice anything.
+  - **So the server watches instead.** The big screen's SDK ticks every second, and the page passes that on as `game:alive` every 2 s. If nothing arrives for 15 s, the server stops the game ("the game stopped responding") and the phones go back to the lobby.
+  - **A hidden tab pauses the watch,** because its timers slow right down. A disconnected big screen is left to the 30 s grace period.
+  - The frozen tab itself has to be closed by hand.
 
 ### 13f. The server becomes a relay
 
@@ -956,13 +961,20 @@ Every walls-in measure is something the **browser** enforces, not our code:
 |---|---|---|
 | `game:started { gameId, players, source }` | server → everyone | — (now includes the game file) |
 | `game:event { data }` | phone → server → big screen as `{ from, data }` | in a game; JSON; ≤ 24 KB (a drawing fits); rate limit |
-| `game:send { to, data }` | big screen → one phone or all | sender is the host; `to` is a real player id or `all`; ≤ 32 KB |
-| `game:state { to, state }` | big screen → phone(s), remembered | same; the latest per phone is replayed on reconnect |
+| `game:batch { items, save? }` (F1; replaced `game:send` / `game:state`) | big screen → phones, in order: `{ to, data }` is a message, `{ to, state }` is remembered and replayed on reconnect; `save` is kept for a big-screen reload | sender is the host; every `to` is a real player id or `all` (checked before anything is delivered); ≤ 100 items; ≤ 32 KB |
+| `game:alive { paused? }` (F1) | big screen → server | resets the hang watchdog; `paused` while the tab is hidden |
 | `game:end { rankings, scores? }` | big screen → server → everyone as `game:ended` | the same checks as `endGame` today |
 
-- **Rate limits.** Continuous input, like a joystick at ~15 per second, fits the existing 20/s limit. The big screen sends one `game:send` for all phones, not one per phone. If the spike shows these limits are too tight, raise them during games.
+- **Rate limits (tuned in F1, without raising them).**
+  - Phones' continuous input, like a joystick at ~12 per second, fits the 20/s limit.
+  - The big screen's messages go out in batches, at most ~20 a second however busy the game is.
+  - The page also refuses anything over the limit before it reaches the server. A flood (tested: 100 events at once) gets one burst through, and the connection survives instead of being closed.
 - **The host can always stop a game.** A "Stop game" button outside the frame ends it with no winner. Games can be long (an RPG), so the platform puts no time limit on them.
-- **If the big screen disconnects,** phones show "waiting for the host…" as today. If it comes back within 30 s, the frame restarts, and **in F0 the game ends** ("the big screen reloaded"). F1 adds save/restore (`party.save(snapshot)` kept by the server, handed back on reload).
+- **If the big screen disconnects,** phones show "waiting for the host…" as today. If it comes back within 30 s:
+  - a page that still runs the game (the connection only blipped) carries on
+  - a reloaded page restarts the game from its last `party.save`
+  - a reloaded page with no save stops the game ("the big screen reloaded")
+- **Why a game stopped** is shown in the lobby on every screen: `stopped` is `host`, `reload`, `unresponsive` or `broken` (it left its frame).
 - **Gone from the server:** the kit, screen checks, the offered-actions check, bots, the harness, game timers. Games check phones' events themselves, as they already had to (rule 5).
 
 ### 13g. The first game: Bumper Blobs (new, impossible with the kit)
@@ -1064,7 +1076,7 @@ The two ASCII games also stress-test the SDK for genres that aren't party rounds
 | M | Goal | You can run / review |
 |---|---|---|
 | **F0 Spike** ✅ _done 2026-10-15: `server/src/games/frameGame.js` (reads only the game-info JSON) and `FrameRelay.js`; `client/src/game/GameFrame.jsx` (srcdoc, sandbox, message checks, a client-side rate limit matching the server's), `frame/frameDocument.js` (CSP) and `frame/sdk.js`; **Bumper Blobs** (joystick + Dash + arrow keys; shrinking ice; best of 3). The host's **Stop game** button came forward from F1. A big-screen reload stops the game. A browser test tries nine ways out of the sandbox on both screens (all blocked; with `allow-same-origin` a game could read the host token). The generator is switched off with a clear reason; stored block games are skipped at startup. Changes from the plan: phone events may be up to 24 KB (not 8); `host:start_game` no longer takes options_ | Remove the block games (13k); `FrameRelay` + the new messages; `GameFrame.jsx` (srcdoc wrapper, CSP, message checks); the `party` SDK basics; Bumper Blobs; tests: relay unit tests, and e2e tests that play a round and prove the walls (the iframe can't read the cookie or storage, `fetch` is blocked) | Play Bumper Blobs on the big screen with 2+ real phones (Tailscale works). **Go/no-go:** does it feel smooth, and is it worth the cost? |
-| **F1 Robustness** | Big screen save/restore; heartbeat (hung frame → game ends); frame navigation → game ends (13e); tune rate limits. (Sticky state replay and the Stop game button were done in F0.) | Refresh a phone and the big screen mid-game; a deliberately broken or redirecting game ends cleanly |
+| **F1 Robustness** ✅ _done 2026-10-15: `game:batch` (SDK batches every 50 ms) and `party.save`/`restored`; the server-side hang watchdog (the hung frame freezes the whole tab, so the page can't notice); a frame that loads another page is removed (phone) or stops the game (big screen); the lobby says why a game stopped; Bumper Blobs saves and survives a big-screen reload. Q15 decided: phones need nothing more than sticky state_ | Big screen save/restore; heartbeat (hung frame → game ends); frame navigation → game ends (13e); tune rate limits. (Sticky state replay and the Stop game button were done in F0.) | Refresh a phone and the big screen mid-game; a deliberately broken or redirecting game ends cleanly |
 | **F2 Look and feel + helpers** | The kit as a library inside frames: base stylesheet (colour tokens, buttons, dark mode from `party.theme`), joystick, D-pad, timer, scoreboard, drawing pad, ASCII grid renderer | A plain game looks right in both themes; Bumper Blobs uses the shared joystick |
 | **F3 Example games + templates** | The ASCII platformer and the ASCII RPG (13j); starter templates (party rounds, real-time, turn-based adventure) taken from the three games | Play both with phones; each template runs as a tiny working game |
 | **F4 Checking games** | Static check plus a **headless-browser** playtest with simulated phones, CSP violation reports and screenshots; screenshots and flags on the admin page. Needs Chromium in the generator image (ask before adding Playwright there) | `npm run check-game game.html` passes the three examples; broken fixtures (network, navigation, throws, blank screen) fail clearly |
@@ -1079,7 +1091,7 @@ The two ASCII games also stress-test the SDK for genres that aren't party rounds
 - **Phones:** canvas games on cheap phones, battery, and audio (browsers only play sound after a tap).
 - **Long games** (an RPG) make a big-screen refresh more painful, so F1's save/restore matters more.
 - **Bigger designs, bigger files.** An RPG is more code than a party round. Keep an eye on the file-size cap, the prompt size and qwen's time per attempt.
-- **Q15:** should phones also be able to save/restore their own frame state, or is the big screen's sticky state enough? Decide in F1.
+- **Q15 (decided in F1): sticky state is enough.** A phone is a controller. Its `state` from the big screen is what it should show, and it comes back after a reload; anything else on the phone is the game's own business.
 - **Q16:** keep a way to run the old block games (e.g. as a frame game that draws blocks), or let them go for good? Decide at the merge.
 - **Q17:** let players join a game that's already running (drop-in for RPGs)? D7 says no for now.
 - **Q18:** save a game's progress between game nights (an RPG campaign)? Would need storage per game; out of scope for now.
