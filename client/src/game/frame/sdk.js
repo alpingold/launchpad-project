@@ -13,6 +13,7 @@
 //   party.asset(id)                                           URL of an approved picture
 //   party.on(name, fn)                                        listen (see below)
 //   party.ui.…                                                ready-made pieces (ui.js)
+//   party.kit.…                                               game-logic helpers (kit.js)
 //
 //   On a phone:       party.send(data)                        → the big screen's 'event'
 //                     party.on('message', fn(data))           one-off messages
@@ -300,6 +301,9 @@
   // party.ui: the helpers from ui.js, which ran just before this and left its factory here.
   api.ui = typeof window.__partyUi === 'function' ? window.__partyUi(api) : null;
   delete window.__partyUi;
+  // party.kit: the game-logic helpers from kit.js (plan §13o), made the same way.
+  api.kit = typeof window.__partyKit === 'function' ? window.__partyKit(api) : null;
+  delete window.__partyKit;
   window.party = Object.freeze(api);
 
   post({ type: 'loaded' }); // the platform answers with 'init'

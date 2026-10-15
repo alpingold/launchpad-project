@@ -127,6 +127,7 @@ export async function playtest(source, opts = {}) {
   const parts = {
     style: readFileSync(path.join(FRAME_DIR, 'base.css'), 'utf8'),
     ui: readFileSync(path.join(FRAME_DIR, 'ui.js'), 'utf8'),
+    kit: readFileSync(path.join(FRAME_DIR, 'kit.js'), 'utf8'),
     sdk: readFileSync(path.join(FRAME_DIR, 'sdk.js'), 'utf8'),
   };
   const srcdoc = frameDocumentFrom(parts, source, ORIGIN);

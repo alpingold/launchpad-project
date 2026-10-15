@@ -1,6 +1,6 @@
 // Wraps a game file (a fragment of HTML, plan §13c) in the document its iframe shows.
 // The first thing in it is the security policy, then the base style (base.css), the
-// `party` SDK with its helpers (ui.js, sdk.js), then the game.
+// `party` SDK with its helpers (ui.js, kit.js, sdk.js), then the game.
 //
 // The Content-Security-Policy (plan §13e) is a list of what this document may load:
 //  - only its own inline scripts and styles (no scripts from anywhere else, and no eval:
@@ -36,11 +36,11 @@ export function contentSecurityPolicy(origin) {
 }
 
 /**
- * @param {{ style: string, ui: string, sdk: string }} parts  base.css, ui.js and sdk.js, as text
+ * @param {{ style: string, ui: string, kit: string, sdk: string }} parts  base.css, ui.js, kit.js and sdk.js, as text
  * @param {string} gameSource  the game file
  * @param {string} origin      our site's origin (window.location.origin)
  */
-export function frameDocumentFrom({ style, ui, sdk }, gameSource, origin) {
+export function frameDocumentFrom({ style, ui, kit, sdk }, gameSource, origin) {
   const csp = contentSecurityPolicy(origin).replaceAll('"', '&quot;');
   return `<!doctype html>
 <html>
@@ -50,6 +50,7 @@ export function frameDocumentFrom({ style, ui, sdk }, gameSource, origin) {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>${style}</style>
 <script>${ui}</script>
+<script>${kit}</script>
 <script>${sdk}</script>
 </head>
 <body>
