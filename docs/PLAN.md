@@ -1071,8 +1071,11 @@ short). Three ways to steer it:
 server (was 512 KB) and 300 KB in the AI's rulebook (was 150 KB); the current code sent with a
 change request 300K characters; one message from the big screen 120 KB (was 30 KB), so a
 `party.save` snapshot (a whole RPG) can be ~110 KB; the WebSocket cap 128 KB (was 32 KB);
-a phone's event 48 KB (was 24 KB). The real ceiling for changes is the model's context: a
-300 KB game is roughly 75–100K tokens.
+a phone's event 48 KB (was 24 KB). **Corrected the same day:** the model's context is 65,536
+tokens (RCAC's model list), and a change request holds the old game and the new one, so
+AI-written games are limited to **100 KB** (~25–30K tokens; ours are 19–29 KB), and so is the
+code sent with a change. The fix loop now sends only the newest attempt back, not all of them:
+each attempt is ~10K tokens, and keeping them all would overflow the context by attempt 4.
 
 ### 13j. Example games (hand-written, also the AI's examples)
 

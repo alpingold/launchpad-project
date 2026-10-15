@@ -207,6 +207,9 @@ test('build job: write → check → fix until it passes; the report goes back t
   assert.equal(result.ok, true);
   assert.equal(checks, 2);
   assert.deepEqual(result.attempts.map((a) => a.ok), [false, false, true]);
+  // Each request carries the prompt plus only the latest attempt (the context is 65K tokens).
+  assert.deepEqual(model.calls.map((c) => c.length), [2, 4, 4]);
+  assert.equal(model.calls[2][2].content, 'no code, sorry', 'the second attempt, not the first');
   const fix = model.calls[1].at(-1).content;
   assert.match(fix, /line 12: `fetch` is blocked\.\n {4}code: fetch\("\/x"\); \(on the big screen\)/);
   assert.match(model.calls[2].at(-1).content, /no game file/);
@@ -219,10 +222,10 @@ test('build job: gives up after the attempts, keeping the last game and report; 
   assert.match(result.error, /after 2 attempts/);
   assert.equal(result.source, GAME.trim() + '\n');
 
-  const huge = `${GAME}<!-- ${'x'.repeat(310 * 1024)} -->\n`;
+  const huge = `${GAME}<!-- ${'x'.repeat(110 * 1024)} -->\n`;
   const big = await runJob({ step: 'build', idea: 'A racing platformer for friends', design: DESIGN, maxAttempts: 1 }, { chatFn: fakeModel([fenced('html', huge)]).chatFn, check: passing });
   assert.equal(big.ok, false);
-  assert.match(big.report.problems[0].message, /the limit is 300 KB/);
+  assert.match(big.report.problems[0].message, /the limit is 100 KB/);
 });
 
 test('build job for a change: the changelog is kept', async () => {
@@ -242,6 +245,7 @@ test('bad jobs are refused before any model call', async () => {
     [{ step: 'build', idea: 'A long enough idea' }, /needs the approved design/],
     [{ step: 'dance', idea: 'A long enough idea' }, /must be "design" or "build"/],
     [{ step: 'design', idea: 'A long enough idea', change: { request: 'Make it better please', source: '' } }, /current game file/],
+    [{ step: 'design', idea: 'A long enough idea', change: { request: 'Make it better please', source: 'x'.repeat(100_001) } }, /too big for the AI to change \(100K characters; at most 100K/],
     [{ step: 'design', idea: 'A long enough idea', redraft: { draft: 'x' } }, /last draft/],
     [{ step: 'design', idea: 'A long enough idea', examples: 'no' }, /examples must be true or false/],
   ];

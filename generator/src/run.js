@@ -60,8 +60,9 @@ export async function runJob(job, deps = {}) {
   const { change, redraft } = job;
   if (change !== undefined) {
     if (!isText(change?.request, 10)) return fail(`the change request must be 10–${MAX_IDEA_LENGTH} characters`);
-    if (typeof change.source !== 'string' || change.source.length === 0 || change.source.length > MAX_SOURCE_LENGTH) {
-      return fail('a change needs the current game file');
+    if (typeof change.source !== 'string' || change.source.length === 0) return fail('a change needs the current game file');
+    if (change.source.length > MAX_SOURCE_LENGTH) {
+      return fail(`the game is too big for the AI to change (${Math.round(change.source.length / 1000)}K characters; at most ${MAX_SOURCE_LENGTH / 1000}K fit in the model's context)`);
     }
   }
   if (redraft !== undefined && (typeof redraft?.draft !== 'string' || !isText(redraft.feedback, 3))) {
@@ -115,7 +116,11 @@ async function design(job, model, { chatFn = chat, onStep = () => {} }) {
 async function build(job, model, { chatFn = chat, check = checkGame, onStep = () => {} }) {
   const maxAttempts = job.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
   const { change } = job;
-  const messages = change ? changeBuildMessages({ idea: job.idea, ...change }, change.plan ?? null) : buildMessages(job.idea, job.design);
+  // The conversation is the prompt plus, after a failed attempt, ONLY that attempt and its
+  // problems: earlier attempts are dropped. Each one is a whole game (~10K tokens), and the
+  // model's context is 65K (plan §13n): keeping them all would overflow by attempt 4.
+  const prompt = change ? changeBuildMessages({ idea: job.idea, ...change }, change.plan ?? null) : buildMessages(job.idea, job.design);
+  let messages = prompt;
   const result = { ok: false, model, source: null, report: null, changelog: null, attempts: [] };
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -126,14 +131,13 @@ async function build(job, model, { chatFn = chat, check = checkGame, onStep = ()
     } catch (err) {
       return { ...result, error: err.message };
     }
-    messages.push({ role: 'assistant', content: reply.content });
 
     const source = extractGameFile(reply.content);
     // The list of changes comes with the first answer that has code (fixes don't repeat it).
     if (change && source && result.changelog === null) result.changelog = extractChangelog(reply.content);
     if (!source) {
       result.attempts.push({ attempt, seconds: reply.seconds, ok: false, problems: 1, usage: reply.usage });
-      messages.push({ role: 'user', content: NO_CODE_MESSAGE });
+      messages = [...prompt, { role: 'assistant', content: reply.content }, { role: 'user', content: NO_CODE_MESSAGE }];
       continue;
     }
 
@@ -147,12 +151,13 @@ async function build(job, model, { chatFn = chat, check = checkGame, onStep = ()
       return { ...result, ok: true };
     }
     onStep(`attempt ${attempt}/${maxAttempts}: ${report.problems.length} problem(s)`);
-    messages.push({ role: 'user', content: fixMessage(formatReport(report)) });
+    // Only the game file goes back (not the model's chatter around it), to keep it short.
+    messages = [...prompt, { role: 'assistant', content: `\`\`\`html\n${source}\`\`\`` }, { role: 'user', content: fixMessage(formatReport(report)) }];
   }
   return { ...result, error: `no passing game after ${maxAttempts} attempts` };
 }
 
-/** checkGame, plus the generator's own size limit (the rulebook's 300 KB). */
+/** checkGame, plus the generator's own size limit (the rulebook's 100 KB). */
 async function checkWithSize(source, check, onStep) {
   const report = await check(source, { seconds: PLAYTEST_SECONDS, onStep: (text) => onStep(`  ${text}`) });
   const bytes = Buffer.byteLength(source);

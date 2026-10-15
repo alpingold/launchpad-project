@@ -20,12 +20,14 @@ const read = (relative) => readFileSync(new URL(relative, import.meta.url), 'utf
 /** Longest idea, change request or feedback we accept (the server checks this too). */
 export const MAX_IDEA_LENGTH = 1000;
 /**
- * Longest current game file we send back to the model with a change. (The real ceiling is
- * the model's context: a 300 KB file is roughly 75–100K tokens.)
+ * The model's context is 65,536 tokens (qwen3.8:27b on GenAI Studio), and a change request
+ * has to hold the old game AND the new one: about 100 KB each (~25–30K tokens) is the most
+ * that fits. So that's the limit for AI-written games, and for a game the AI may change.
+ * (Hand-made games may be bigger: the server allows 1 MB.)
  */
-export const MAX_SOURCE_LENGTH = 300_000;
-/** The size limit the rulebook gives the model (the server's own limit is larger). */
-export const MAX_GAME_BYTES = 300 * 1024;
+export const MAX_SOURCE_LENGTH = 100_000;
+/** The size limit the rulebook gives the model. */
+export const MAX_GAME_BYTES = 100 * 1024;
 
 /** The headings every design has, in order (generator/spec/DESIGN.md). */
 export const DESIGN_HEADINGS = ['Genre and feel', 'Players', 'Big screen', 'Phones', 'Rules', 'Ending and winner', 'Length', 'Art', 'Template', 'Closest example', 'Edge cases'];

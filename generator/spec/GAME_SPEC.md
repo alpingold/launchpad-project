@@ -37,7 +37,7 @@ phases or screens. A game must start, react to its players, and end with `party.
   other fields.
 - It's a fragment that goes inside `<body>`: no `<html>`, `<head>` or `<body>` tags. The
   `party` SDK, its helpers and the base styles are already loaded before your code runs.
-- **At most 300 KB.** Everything is in this one file: no other files exist.
+- **At most 100 KB.** Everything is in this one file: no other files exist.
 
 ## The rules (the checks enforce them)
 
