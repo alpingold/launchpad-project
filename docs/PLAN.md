@@ -1,6 +1,6 @@
 # BoilerGames: Implementation Plan (MVP lobby + extension structure)
 
-> **Status (2026-10-14):** M0–M7 done. AI game generation A0–A6 done. **Now: the game dev kit, contract v3 (§12, milestones K1–K6)**, because AI-made games were too simple with 5 fixed screens. K1–K6 are done. Next: deploying (M8). A7 (bring your own key) waits on RCAC's answer. This file is the living plan: decisions and changes are recorded here as they happen, so `git log docs/PLAN.md` shows how it evolved.
+> **Status (2026-10-14):** M0–M7 done. AI game generation A0–A6 done. **Now: the game dev kit, contract v3 (§12, milestones K1–K6)**, because AI-made games were too simple with 5 fixed screens. K1–K6 are done. **On branch `iframe-games`: frame games (§13), F0 spike next**; on `main`, next is deploying (M8). A7 (bring your own key) waits on RCAC's answer. This file is the living plan: decisions and changes are recorded here as they happen, so `git log docs/PLAN.md` shows how it evolved.
 
 _Site renamed from "LaunchPad Party" to **BoilerGames** on 2026-10-11 (built for the Purdue LaunchPad club; the club name stays where it refers to the club)._
 
@@ -773,7 +773,7 @@ The client components stay hand-written. The existing sync test is extended so t
 - **Party mode / minigames (option 3).** A hand-written board game that runs picked games as minigames (`ctx.runMinigame`, Q6). Games declare an optional `tags` field (e.g. `minigame`, `drawing`, `reflex`) so the catalogue can filter by mode.
 - **Editing code by hand** on the admin page (a new version, re-tested in the sandbox before review).
 - **More widgets:** tilt/shake (iOS asks permission for motion sensors), sounds, a "hold" button, a word picker.
-- **Free-form client code** in a cross-origin sandboxed iframe, only if the kit proves too limiting (see 12a).
+- **Free-form client code** in a cross-origin sandboxed iframe, only if the kit proves too limiting (see 12a). _Being explored on branch `iframe-games`: §13._
 
 ### 12h. Milestones (before M8)
 
@@ -825,6 +825,172 @@ Four ideas, run in the sandbox with `npm run generate` (six runs in parallel). T
 - **qwen designs better games again** (fewer logic bugs, and it followed the widget rules), but it's 2–3× slower. **Decided 2026-10-14: qwen3.8:27b is the only model; gpt-oss:120b is dropped.** Better games are worth a few minutes' wait, especially with a good spec. The admin page shows the model instead of a picker; adding one back is a line in `generator/src/models.js`.
 - **Passing the tests ≠ a good game.** Every gpt-oss game had a logic or design bug that only reading or playtesting finds. That's what K6's "ask for changes" is for: describe the bug, get a new version.
 - The bots matter as much as the checks: a test is only as good as the inputs it tries.
+
+---
+
+## 13. Frame games: each game brings its own page (branch `iframe-games`, decided 2026-10-15)
+
+> **This section lives only on the `iframe-games` branch.** `main` keeps the game dev kit (§12). If frame games work out, the branch is rebased onto `main` and this becomes the plan; if not, we go back to `main` and nothing there changed.
+
+### 13a. Why
+
+After K6, the kit was still the limit, in the same way the 5 screens were before it:
+- every new kind of interaction needs a new hand-written block, plus its checks, bots and docs
+- drawings have to fit in a 256 KB screen
+- widgets need timing workarounds (the 2 s grace period)
+- every game looks the same, and nothing can move or animate
+
+**The mentor's advice (2026-10-15):** "you'd want to do stuff with iframes, i.e. the game server should not care about the design of the game beyond the concept of 'events'."
+
+**Decided (2026-10-15):**
+- **Each game is a web page** that runs in a sandboxed **iframe** (a page inside a page) on the big screen and on every phone. It draws whatever it wants.
+- **The game's logic runs in the big screen's iframe** (option B, the AirConsole model). The server only passes **events** between the big screen and the phones, and **never runs game code**.
+- **Frames only on this branch.** The block games, the kit, the GameRunner and the harness are removed, not kept side by side. The games will be new ones.
+- **The first game is new**: one the kit could never do (13g).
+
+**This reverses three earlier decisions:** Q1 (declarative views, §4a), E6 ("no generated UI code ever runs in a browser", §5), and "free HTML/JS is not built" (§12a). The protection moves from "the platform draws everything" to "the browser's sandbox walls the game in" (13e).
+
+**The big win:** today a broken or malicious AI game runs inside the server process (§11e). Then it runs inside one browser tab, walled off from the site, and the server only forwards small JSON messages.
+
+### 13b. The big picture
+
+```
+ Big screen (/host)                       Server                        Phone (/join)
+ ┌───────────────────────────┐                                         ┌──────────────────────┐
+ │ platform: room code, ⚙    │                                         │ platform: name, ⚙,   │
+ │ ┌───────────────────────┐ │   game:event    ┌──────────────────┐    │ leave                │
+ │ │ GAME (iframe, host)   │◀┼─────────────────│ rooms + players  │◀───┼─┐                    │
+ │ │ - the rules + timers  │ │                 │ forwards events, │    │ │┌─────────────────┐ │
+ │ │ - scores, who won     │─┼────────────────▶│ checks size/rate │────┼─┼▶ GAME (iframe,   │ │
+ │ │ - draws the big screen│ │ game:send/state │ remembers state  │    │  │ player): draws  │ │
+ │ └───────────────────────┘ │  game:end       └──────────────────┘    │  │ the controller  │ │
+ └───────────────────────────┘                                         │  └─────────────────┘ │
+                                                                       └──────────────────────┘
+```
+
+- **Phones send events to the big screen only.** The big screen sends to one phone or to all of them. Phones never talk to each other directly.
+- **The big screen's game is the referee**, as GameRunner's game is today. Whatever it decides (scores, who won) is final. Cheating is limited to what a phone sends, and the game checks that, as before.
+- **The server still owns** rooms, codes, joining, reconnecting, accounts, the game list, generation, and when a game starts and ends.
+
+### 13c. A frame game is one HTML file
+
+```html
+<script type="application/json" id="game-info">
+  { "name": "Bumper Blobs", "description": "Push everyone off the ice.", "minPlayers": 2, "maxPlayers": 12 }
+</script>
+<style> /* whatever it likes */ </style>
+<canvas id="arena"></canvas>
+<script>
+  party.ready(({ role, me, players }) => {
+    if (role === 'host') startReferee(players); // the big screen: rules + drawing
+    else showJoystick(me);                      // a phone: the controller
+  });
+</script>
+```
+
+- **One file, both roles.** The same page runs on the big screen and on phones; `party.role` says which. AI generation already produces one file, and versions, diffs, the source column and review all keep working unchanged. The two roles share constants, so they can't disagree about them.
+- **A fragment, not a whole document.** The platform wraps it in its own `<html><head>`, with the security policy and the `party` SDK first (13e).
+- **`game-info`** is plain JSON. The server reads it with `JSON.parse` and **never runs the file**, not even to get its name.
+- **Where it's stored:** official frame games are files in the repo (`server/src/games/<id>/game.html`). Generated ones go in the DB, as now.
+
+### 13d. The `party` SDK (what a game can do)
+
+The platform injects a small script before the game's own code. This is the whole contract, the replacement for `ctx`:
+
+| On | Call | What it does |
+|---|---|---|
+| both | `party.ready(fn)` | `fn({ role, me, players, theme })` runs once the platform is connected. `me` is the player id (null on the big screen) |
+| both | `party.now()` | Server time in ms (with clock-offset correction), so timers agree across screens |
+| both | `party.asset(id)` | URL of an approved asset from the manifest (§4b) |
+| phone | `party.send(data)` | An event to the big screen's game (any JSON, size-capped) |
+| phone | `party.on('message', fn)` / `party.on('state', fn)` | Messages and the latest state from the big screen |
+| big screen | `party.on('event', fn)` | `fn(playerId, data)`: an event from a phone |
+| big screen | `party.sendTo(playerId, data)` / `party.sendAll(data)` | One-off **messages** ("you were hit!") |
+| big screen | `party.setState(playerId \| 'all', state)` | **Sticky state**: the server keeps the latest per phone and replays it after a reconnect, so games can't forget reconnects (the lesson from A1) |
+| big screen | `party.on('left', fn)` / `party.on('back', fn)` | A phone dropped / came back |
+| big screen | `party.end({ rankings, scores? })` | The game is over; checked by the server as `endGame` is today |
+
+**Two kinds of message, on purpose:**
+- **Messages** are fire-and-forget. If a phone is offline when one is sent, it misses it.
+- **State** is "what this phone should show now". The latest one is kept and replayed after a reconnect.
+
+### 13e. Walls around the game (security)
+
+Every walls-in measure is something the **browser** enforces, not our code:
+
+1. **`<iframe sandbox="allow-scripts">`**, without `allow-same-origin`. The game runs as an anonymous origin ("null"). It **can't read** our page, the login cookie, localStorage or sessionStorage (the room tokens). It also **can't redirect** our page, open popups, or submit forms.
+2. **A Content-Security-Policy** (a list of what a page may load), put first in the wrapped document:
+   `default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob: <our site>/game-assets/; media-src <our site>/game-assets/`
+   There's no `connect-src`, so the game **can't** use `fetch`, WebSockets or beacons, and can't load scripts or images from anywhere else. Its only way out is `postMessage` to our page.
+3. **Our page checks every message from the iframe:**
+   - it came from *that* iframe (`event.source`)
+   - it has the right shape
+   - it fits the size limit
+
+   Only then does it go to the server, which checks everything again (sizes, rate, player ids, results).
+4. **The code arrives over the room's WebSocket** (in `game:started`), so only people in the room get it. It's put in the iframe's `srcdoc`, which needs no extra server and no second domain.
+
+**What the walls don't stop, honestly:**
+- **A game can still *draw* anything**, including a fake "log in again" form. Your review of AI games stays important. Players are guests with no passwords, so the realistic target is the host.
+- **A game can navigate its own iframe to another site** (CSP can't block that). That could leak what the game knows, like player names and drawings, but never cookies or tokens. The platform watches the iframe's `load` event and ends the game if the frame navigates away (F1).
+- **A game can hang or slow down one browser tab.** The SDK sends a heartbeat. If the big screen's game stops answering for ~5 s, the platform ends the game (F1). It can never freeze the server or other rooms.
+
+### 13f. The server becomes a relay
+
+`FrameRelay` (`server/src/games/FrameRelay.js`) replaces `GameRunner`. It sits at the same seam (§5 E2), so RoomManager barely changes.
+
+| Message | From → to | Server checks |
+|---|---|---|
+| `game:started { gameId, players, source }` | server → everyone | — (now includes the game file) |
+| `game:event { data }` | phone → server → big screen as `{ from, data }` | in a game; JSON; ≤ 8 KB; rate limit |
+| `game:send { to, data }` | big screen → one phone or all | sender is the host; `to` is a real player id or `all`; ≤ 32 KB |
+| `game:state { to, state }` | big screen → phone(s), remembered | same; the latest per phone is replayed on reconnect |
+| `game:end { rankings, scores? }` | big screen → server → everyone as `game:ended` | the same checks as `endGame` today |
+
+- **Rate limits.** Continuous input, like a joystick at ~15 per second, fits the existing 20/s limit. The big screen sends one `game:send` for all phones, not one per phone. If the spike shows these limits are too tight, raise them during games.
+- **If the big screen disconnects,** phones show "waiting for the host…" as today. If it comes back within 30 s, the frame restarts, and **in F0 the game ends** ("the big screen reloaded"). F1 adds save/restore (`party.save(snapshot)` kept by the server, handed back on reload).
+- **Gone from the server:** the kit, screen checks, the offered-actions check, bots, the harness, game timers. Games check phones' events themselves, as they already had to (rule 5).
+
+### 13g. The first game: Bumper Blobs (new, impossible with the kit)
+
+- **The big screen:** an icy circular arena, drawn at 60 frames per second on a `<canvas>`. Each player is a coloured blob with their name on it.
+- **Phones:** a joystick. Drag a thumb to steer, sending the direction ~15 times a second.
+- **Rules:** blobs bump each other. Get pushed off the ice and you're out. The last blob on wins the round, best of 3 rounds.
+- **Why this game:** it needs everything the kit couldn't do:
+  - continuous input
+  - smooth animation
+  - physics
+  - a custom controller
+
+  It also tests how real-time feels with the extra hop (phone → server → big screen).
+
+### 13h. What's removed on this branch
+
+- **Server:** `GameRunner.js`, `contract.js`, `kit/`, `harness/`, the four block games, `game:action`, `/api/kit`. Also the screen-size and widget settings in `config.js`.
+- **Client:** `game/blocks/`, `GameScreen.jsx`, the `/kit` page and its link from the home page.
+- **Generator:** its prompt, spec and examples are written for blocks. **Generation is switched off on the branch until F4** ("not available for frame games yet"). The admin page, versions, diffs and the sandbox stay.
+- **Stored AI games** (Silly Sketch, Reflex Frenzy) are block games. They fail their load check and are skipped. They aren't deleted, so `main` can still run them from the same database.
+- **No database changes in F0.**
+
+### 13i. Milestones (branch `iframe-games`)
+
+| M | Goal | You can run / review |
+|---|---|---|
+| **F0 Spike** | Remove the block games (13h); `FrameRelay` + the new messages; `GameFrame.jsx` (srcdoc wrapper, CSP, message checks); the `party` SDK basics; Bumper Blobs; tests: relay unit tests, and e2e tests that play a round and prove the walls (the iframe can't read the cookie or storage, `fetch` is blocked) | Play Bumper Blobs on the big screen with 2+ real phones (Tailscale works). **Go/no-go:** does it feel smooth, and is it worth the cost? |
+| **F1 Robustness** | Sticky state replay on reconnect; big screen save/restore; heartbeat (hung frame → game ends); frame navigation → game ends; tune rate limits | Refresh a phone and the big screen mid-game; a deliberately broken game ends cleanly |
+| **F2 Look and feel** | A platform base stylesheet inside frames (colour tokens, buttons, dark mode from `party.theme`), plus small helpers ("kit as a library": scoreboard, timer, drawing pad), so games look like BoilerGames without having to | A plain game looks right in both themes |
+| **F3 Checking games** | A harness that loads a game in a **headless browser** with simulated phones, plus a light static check. Needs Chromium in the generator image (ask before adding Playwright there) | `npm run check-game game.html` passes Bumper Blobs; broken fixtures fail clearly |
+| **F4 Generator on frames** | Spec, SDK reference and examples rewritten; generation switched back on; `/kit` comes back as the SDK docs | `npm run generate` makes a frame game that passes and is fun |
+| **Decide** | Rebase onto `main` (this becomes the plan) or drop the branch | |
+
+### 13j. Risks and open questions
+
+- **The big screen is the referee.** A slow or busy host laptop slows the game for everyone, and browsers slow down timers in background tabs, so the big screen tab must stay in front.
+- **Latency:** phone → server → big screen is one hop more than block games. On the same Wi-Fi that's tens of milliseconds. Bumper Blobs will show whether it's noticeable.
+- **AI-written UI** is more code to get wrong and more to review. F3 (testing in a real browser) matters more than the harness did.
+- **Phones:** canvas games on cheap phones, battery, and audio (browsers only play sound after a tap).
+- **Q15:** should phones also be able to save/restore their own frame state, or is the big screen's sticky state enough? Decide in F1.
+- **Q16:** keep a way to run the old block games (e.g. as a frame game that draws blocks), or let them go for good? Decide at the merge.
 
 ---
 
