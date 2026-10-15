@@ -1,4 +1,5 @@
 import { test } from 'node:test';
+import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import { GameRegistry } from '../../src/games/registry.js';
 import { readFrameGame, validateFrameGame, frameGameReport } from '../../src/games/frameGame.js';
@@ -93,6 +94,15 @@ test('register refuses duplicate ids', () => {
 
 test('get does not find built-in object properties', () => {
   assert.equal(new GameRegistry().get('constructor'), undefined);
+});
+
+test("the generator's starter templates are valid frame games", () => {
+  for (const name of ['rounds', 'realtime', 'turns']) {
+    const source = readFileSync(new URL(`../../../generator/templates/${name}.html`, import.meta.url), 'utf8');
+    const result = readFrameGame(source, `template-${name}`);
+    assert.equal(result.ok, true, `${name}: ${result.problems?.join('; ')}`);
+    assert.match(source, /TEMPLATE/, `${name} marks the parts to change`);
+  }
 });
 
 test('the default registry offers the official games, each read from its game.html', () => {

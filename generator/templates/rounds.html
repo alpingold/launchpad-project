@@ -1,0 +1,173 @@
+<script type="application/json" id="game-info">
+  { "name": "Unique Number", "description": "Pick a number from 1 to 5. You score it only if nobody else picked the same.", "minPlayers": 1, "maxPlayers": 12 }
+</script>
+<!--
+  STARTER TEMPLATE: PARTY ROUNDS (plan §13i). Everyone answers at once on their phone, the
+  big screen reveals the answers, scores go up, next round; after the last round, the final
+  scores and party.end. The example game is "Unique Number": swap in your own rules where it
+  says TEMPLATE.
+
+  The shape (the big screen is the referee; phones only send answers):
+    ask    → each phone shows the question (party.setState), answers come in (party.on('event'))
+    reveal → when everyone answered or the timer ran out: score, show, pause
+    final  → after the last round: winner, then party.end({ rankings, scores })
+  Already handled: a timer so nothing waits forever, players who leave (we stop waiting
+  for them), phones that reload (setState is replayed), and a big screen that reloads
+  (party.save after every change, restored in party.ready).
+-->
+<style>
+  .big-screen { display: grid; grid-template-columns: 2fr 1fr; gap: 1.5rem; }
+  .answers { display: flex; flex-wrap: wrap; gap: 0.75rem; }
+  .answers .card { min-width: 8rem; text-align: center; }
+  .pick { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0.5rem; }
+</style>
+<div id="app"></div>
+<script>
+  'use strict';
+
+  // ---- TEMPLATE: the rules -----------------------------------------------------------------
+  const ROUNDS = 3;
+  const ANSWER_MS = 20_000;
+  const REVEAL_MS = 3500;
+  const FINAL_MS = 5000;
+  const QUESTION = 'Pick a number. You score it only if nobody else picks it!';
+  const OPTIONS = [1, 2, 3, 4, 5]; // what a phone can answer
+
+  /** Is this a valid answer from a phone? (Never trust what a phone sends.) */
+  const isAnswer = (data) => OPTIONS.includes(data?.pick);
+
+  /** Points for each player this round, from everyone's answers ({ playerId: answer }). */
+  function scoreRound(answers) {
+    const counts = {};
+    for (const a of Object.values(answers)) counts[a.pick] = (counts[a.pick] ?? 0) + 1;
+    return Object.fromEntries(Object.entries(answers).map(([id, a]) => [id, counts[a.pick] === 1 ? a.pick : 0]));
+  }
+
+  /** How one answer is shown on the big screen at the reveal. */
+  const showAnswer = (a) => String(a.pick);
+  // ---- end of the rules --------------------------------------------------------------------
+
+  party.ready(({ role, restored }) => (role === 'host' ? referee(restored) : phone()));
+
+  function referee(restored) {
+    const { el, timer, scoreboard } = party.ui;
+    const app = document.getElementById('app');
+    const title = el('h1');
+    const body = el('div', { class: 'stack' });
+    const timerSlot = el('div');
+    app.append(el('div', { class: 'screen big-screen' }, el('div', { class: 'stack' }, title, timerSlot, body), el('div', { id: 'scores' })));
+    const scores = scoreboard('#scores', { title: 'Scores' });
+    let clock = null;
+    let pending = null;
+
+    // Everything the game needs is in `g`, so saving and restoring is one line each.
+    let g = restored ?? { round: 1, phase: 'ask', answers: {}, lastPoints: {}, totals: Object.fromEntries(party.players.map((p) => [p.id, 0])) };
+    const nameOf = (id) => party.players.find((p) => p.id === id)?.name ?? '?';
+    const waitingFor = () => party.players.filter((p) => p.connected && !(p.id in g.answers));
+
+    function ask() {
+      g.phase = 'ask';
+      g.answers = {};
+      clock?.destroy();
+      clock = timer(timerSlot, { endsAt: party.now() + ANSWER_MS });
+      clearTimeout(pending);
+      pending = setTimeout(reveal, ANSWER_MS);
+      show();
+    }
+
+    function reveal() {
+      clearTimeout(pending);
+      g.lastPoints = scoreRound(g.answers);
+      for (const [id, pts] of Object.entries(g.lastPoints)) g.totals[id] += pts;
+      g.phase = 'reveal';
+      clock?.destroy();
+      show();
+      pending = setTimeout(nextRound, REVEAL_MS);
+    }
+
+    function nextRound() {
+      if (g.round < ROUNDS) {
+        g.round += 1;
+        ask();
+      } else finalScreen();
+    }
+
+    function finalScreen() {
+      g.phase = 'final';
+      show();
+      pending = setTimeout(() => {
+        const ranked = [...party.players].sort((a, b) => g.totals[b.id] - g.totals[a.id]);
+        party.end({ rankings: ranked.map((p) => p.id), scores: g.totals });
+      }, FINAL_MS);
+    }
+
+    party.on('event', (from, data) => {
+      if (g.phase !== 'ask' || from in g.answers || !isAnswer(data)) return;
+      g.answers[from] = data;
+      show();
+      if (waitingFor().length === 0) reveal();
+    });
+    party.on('left', () => g.phase === 'ask' && waitingFor().length === 0 && Object.keys(g.answers).length > 0 && reveal());
+
+    /** Draws the big screen and tells every phone what to show; saves the game. */
+    function show() {
+      title.textContent = g.phase === 'final' ? 'Final scores' : `Round ${g.round} of ${ROUNDS}`;
+      if (g.phase === 'ask') {
+        body.replaceChildren(el('p', { class: 'big-text' }, QUESTION), el('p', { class: 'muted' }, `Answered: ${Object.keys(g.answers).length} of ${party.players.length}`));
+      } else if (g.phase === 'reveal') {
+        body.replaceChildren(
+          el('div', { class: 'answers' },
+            party.players.map((p) => el('div', { class: 'card' }, el('div', {}, p.name), el('div', { class: 'big-text' }, g.answers[p.id] ? showAnswer(g.answers[p.id]) : '–'), el('div', { class: g.lastPoints[p.id] ? 'good' : 'muted' }, `+${g.lastPoints[p.id] ?? 0}`))),
+          ),
+        );
+      } else {
+        const best = Math.max(...Object.values(g.totals));
+        const winners = party.players.filter((p) => g.totals[p.id] === best).map((p) => p.name);
+        body.replaceChildren(el('p', { class: 'big-text' }, winners.length === 1 ? `${winners[0]} wins!` : `It's a tie: ${winners.join(' & ')}!`));
+      }
+      scores.update(party.players.map((p) => ({ id: p.id, name: p.name, score: g.totals[p.id] })));
+      for (const p of party.players) {
+        party.setState(p.id, {
+          phase: g.phase,
+          round: g.round,
+          answered: p.id in g.answers,
+          points: g.lastPoints[p.id] ?? 0,
+          total: g.totals[p.id],
+        });
+      }
+      party.save(g);
+    }
+
+    // A new game, or a reload: a question starts over; a reveal (already scored) moves on.
+    if (g.phase === 'ask') ask();
+    else if (g.phase === 'reveal') {
+      show();
+      pending = setTimeout(nextRound, REVEAL_MS);
+    } else finalScreen();
+  }
+
+  function phone() {
+    const { el } = party.ui;
+    const app = document.getElementById('app');
+    const status = el('p', { class: 'big-text center', role: 'status' }, 'Get ready…');
+    const area = el('div', { class: 'stack' });
+    app.append(el('div', { class: 'screen center' }, status, area));
+
+    party.on('state', (s) => {
+      if (s.phase === 'ask' && !s.answered) {
+        status.textContent = `Round ${s.round}: pick a number`;
+        // TEMPLATE: the answer controls.
+        area.replaceChildren(el('div', { class: 'pick' }, OPTIONS.map((n) => el('button', { class: 'big', onClick: () => party.send({ pick: n }) }, n))));
+      } else if (s.phase === 'ask') {
+        status.textContent = 'Answer sent! Waiting for the others…';
+        area.replaceChildren();
+      } else if (s.phase === 'reveal') {
+        status.textContent = s.points ? `+${s.points} points!` : 'No points this round.';
+        area.replaceChildren(el('p', { class: 'muted' }, `Total: ${s.total}`));
+      } else {
+        status.textContent = `Final score: ${s.total}`;
+        area.replaceChildren();
+      }
+    });
+  }
+</script>

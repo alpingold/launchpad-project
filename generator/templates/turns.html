@@ -1,0 +1,167 @@
+<script type="application/json" id="game-info">
+  { "name": "Treasure Hunt", "description": "Take turns: roll, pick a direction, and be the first to reach the treasure.", "minPlayers": 1, "maxPlayers": 6 }
+</script>
+<!--
+  STARTER TEMPLATE: TURN-BASED ADVENTURE (plan §13i). One player acts at a time; the big
+  screen draws the world in text characters (party.ui.ascii) and keeps a log; the phone
+  whose turn it is gets buttons. The example game is "Treasure Hunt": swap in your own
+  world and actions where it says TEMPLATE.
+
+  The shape:
+    state `g` (everything: saved with party.save after every change, restored in party.ready)
+    nextTurn() → the current player's phone gets choices (party.setState), a turn timer runs
+    party.on('event') → only the current player's valid choice counts → act() → nextTurn()
+  Already handled: a turn timer (a slow or missing player is skipped), players who leave
+  (skipped at once), phones that reload, and a big screen that reloads mid-turn.
+-->
+<style>
+  .big-screen { display: grid; grid-template-columns: 2fr 1fr; gap: 1rem; height: 100%; box-sizing: border-box; padding: 1rem; }
+  #map { min-height: 14rem; height: 60vh; background: #10101a; border-radius: var(--radius); }
+  .log { font-family: var(--mono); font-size: 0.9rem; list-style: none; padding: 0; }
+  .dirs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; }
+</style>
+<div id="app"></div>
+<script>
+  'use strict';
+
+  // ---- TEMPLATE: the world and its actions ----------------------------------------------------
+  const MAP = [
+    '##########################',
+    '#        #               #',
+    '#  ##    #     ######    #',
+    '#   #          #    #    #',
+    '#   #####      #  $ #    #',
+    '#              #    #    #',
+    '#     ###      ##  ##    #',
+    '#                        #',
+    '##########################',
+  ];
+  const START = { x: 2, y: 7 };
+  const TURN_MS = 20_000;
+  const COLORS = ['#ff5a5f', '#ffb400', '#3ec300', '#00a6ed', '#c77dff', '#ff7eb6'];
+  const DIRS = { North: [0, -1], South: [0, 1], West: [-1, 0], East: [1, 0] };
+  const solid = (x, y) => MAP[y]?.[x] !== ' ' && MAP[y]?.[x] !== '$';
+
+  /** The current player's choices this turn. */
+  const choicesFor = () => Object.keys(DIRS);
+
+  /** Do the action; returns a line for the log, and whether that player has won. */
+  function act(g, hero, choice) {
+    const [dx, dy] = DIRS[choice];
+    let steps = 0;
+    while (steps < g.roll && !solid(hero.x + dx, hero.y + dy)) {
+      hero.x += dx;
+      hero.y += dy;
+      steps += 1;
+      if (MAP[hero.y][hero.x] === '$') return { line: `${hero.name} finds the treasure!`, won: true };
+    }
+    return { line: `${hero.name} rolled ${g.roll} and went ${choice.toLowerCase()} ${steps} step${steps === 1 ? '' : 's'}.`, won: false };
+  }
+  // ---- end of the world -------------------------------------------------------------------------
+
+  party.ready(({ role, me, restored }) => (role === 'host' ? referee(restored) : phone(me)));
+
+  function referee(restored) {
+    const { el, ascii, timer } = party.ui;
+    const app = document.getElementById('app');
+    const status = el('p', { class: 'big-text', role: 'status' });
+    const logList = el('ul', { class: 'log', 'aria-label': 'Log' });
+    const timerSlot = el('div');
+    app.append(el('div', { class: 'big-screen' }, el('div', { class: 'stack' }, el('h1', {}, 'Treasure Hunt'), el('div', { id: 'map' })), el('div', { class: 'stack' }, status, timerSlot, logList)));
+    const map = ascii('#map', { cols: MAP[0].length, rows: MAP.length, colors: { '#': '#8d6e63', '$': '#ffd84d' } });
+    let clock = null;
+    let pending = null;
+
+    let g = restored ?? {
+      turn: -1,
+      roll: 1,
+      log: ['Find the treasure ($)! Roll, then pick a direction.'],
+      winner: null,
+      heroes: party.players.map((p, i) => ({ id: p.id, name: p.name, color: COLORS[i % COLORS.length], x: START.x + (i % 3), y: START.y - Math.floor(i / 3) })),
+    };
+    const connected = (id) => party.players.find((p) => p.id === id)?.connected !== false;
+
+    function nextTurn() {
+      g.turn = (g.turn + 1) % g.heroes.length;
+      g.roll = 1 + Math.floor(Math.random() * 3);
+      const hero = g.heroes[g.turn];
+      clock?.destroy();
+      clock = timer(timerSlot, { endsAt: party.now() + TURN_MS });
+      clearTimeout(pending);
+      // A slow player's turn is skipped; one who has left is skipped right away.
+      pending = setTimeout(() => skip(hero), connected(hero.id) ? TURN_MS : 1000);
+      show();
+    }
+
+    function skip(hero) {
+      log(`${hero.name} is skipped.`);
+      nextTurn();
+    }
+
+    function log(line) {
+      g.log = [...g.log, line].slice(-8);
+    }
+
+    party.on('event', (from, data) => {
+      const hero = g.heroes[g.turn];
+      if (g.winner || hero?.id !== from || !choicesFor().includes(data?.choice)) return; // not your turn, or not a real choice
+      const { line, won } = act(g, hero, data.choice);
+      log(line);
+      if (won) return finish(hero);
+      nextTurn();
+    });
+    party.on('left', (id) => {
+      if (g.heroes[g.turn]?.id === id && !g.winner) {
+        clearTimeout(pending);
+        pending = setTimeout(() => skip(g.heroes[g.turn]), 1000);
+      }
+    });
+
+    function finish(hero) {
+      clearTimeout(pending);
+      clock?.destroy();
+      g.winner = hero.id;
+      show();
+      setTimeout(() => party.end({ rankings: [hero.id, ...g.heroes.filter((h) => h !== hero).map((h) => h.id)], scores: { [hero.id]: 1 } }), 4000);
+    }
+
+    function show() {
+      const hero = g.heroes[g.turn];
+      status.textContent = g.winner ? `${hero.name} wins!` : `${hero.name}'s turn (rolled ${g.roll})`;
+      logList.replaceChildren(...g.log.map((line) => el('li', {}, line)));
+      map.render(MAP, { cells: g.heroes.map((h) => ({ x: h.x, y: h.y, ch: (h.name.trim()[0] || '?').toUpperCase(), color: h.color })) });
+      for (const h of g.heroes) {
+        const mine = h === hero && !g.winner;
+        party.setState(h.id, {
+          color: h.color,
+          text: g.winner ? (g.winner === h.id ? 'You found the treasure!' : `${hero.name} found the treasure.`) : mine ? `Your turn! You rolled ${g.roll}.` : `${hero.name}'s turn…`,
+          choices: mine ? choicesFor() : [],
+        });
+      }
+      party.save(g);
+    }
+
+    if (restored && !restored.winner) {
+      g.turn -= 1; // the interrupted player gets their turn back
+      nextTurn();
+    } else if (restored) {
+      finish(g.heroes.find((h) => h.id === g.winner));
+    } else {
+      nextTurn();
+    }
+  }
+
+  function phone() {
+    const { el } = party.ui;
+    const status = el('p', { class: 'big-text center', role: 'status' }, 'Get ready…');
+    const buttons = el('div', { class: 'dirs' });
+    document.getElementById('app').append(el('div', { class: 'screen' }, status, el('div', { class: 'grow' }), buttons));
+    party.on('state', (s) => {
+      status.textContent = s.text;
+      status.style.color = s.color;
+      // TEMPLATE: the action buttons (here, directions in a cross).
+      const spot = { North: '1 / 2', West: '2 / 1', East: '2 / 3', South: '3 / 2' };
+      buttons.replaceChildren(...s.choices.map((c) => el('button', { class: 'big', style: { gridArea: spot[c] ?? 'auto' }, onClick: () => party.send({ choice: c }) }, c)));
+    });
+  }
+</script>

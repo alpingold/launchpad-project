@@ -1,0 +1,144 @@
+<script type="application/json" id="game-info">
+  { "name": "Star Catch", "description": "Steer your dot with the joystick and catch the stars. First to 5 wins.", "minPlayers": 1, "maxPlayers": 12 }
+</script>
+<!--
+  STARTER TEMPLATE: REAL-TIME (plan §13i). The big screen runs the world in small fixed
+  steps and draws it on a <canvas> every frame; phones are controllers (party.ui.joystick)
+  that send their direction when it changes. The example game is "Star Catch": swap in your
+  own world where it says TEMPLATE.
+
+  The shape:
+    party.on('event') stores each player's latest input (never trust it: clamp it)
+    requestAnimationFrame → update(dt) in fixed steps → draw()
+    party.setState only when a phone's status changes (not every frame)
+    party.save when something worth keeping changes (here: a catch), restored in party.ready
+  Already handled: players who leave (their input stops), phones that reload, a big screen
+  that reloads, and a time limit so the game always ends.
+-->
+<style>
+  #world { display: block; width: 100vw; height: 100vh; }
+</style>
+<div id="app"></div>
+<script>
+  'use strict';
+
+  // ---- TEMPLATE: the world -------------------------------------------------------------------
+  const WIN_AT = 5;
+  const TIME_LIMIT_MS = 90_000;
+  const SPEED = 0.45; // world widths per second at full tilt
+  const COLORS = ['#ff5a5f', '#ffb400', '#3ec300', '#00a6ed', '#c77dff', '#ff7eb6', '#00c2a8', '#ff8c42', '#8f9bff', '#c0ca33', '#a1887f', '#f4f4f4'];
+  const newStar = () => ({ x: 0.1 + Math.random() * 0.8, y: 0.15 + Math.random() * 0.75 });
+  // ---- end of the world -------------------------------------------------------------------------
+
+  party.ready(({ role, restored }) => (role === 'host' ? referee(restored) : phone()));
+
+  function referee(restored) {
+    document.body.style.overflow = 'hidden';
+    const canvas = party.ui.el('canvas', { id: 'world', role: 'img', 'aria-label': 'The game' });
+    document.getElementById('app').append(canvas);
+    const ctx = canvas.getContext('2d');
+
+    const players = party.players.map((p, i) => ({
+      id: p.id,
+      name: p.name,
+      color: COLORS[i % COLORS.length],
+      x: 0.2 + (0.6 * i) / Math.max(1, party.players.length - 1 || 1),
+      y: 0.5,
+      inX: 0,
+      inY: 0,
+      score: Number(restored?.scores?.[p.id]) || 0,
+    }));
+    const byId = new Map(players.map((p) => [p.id, p]));
+    let star = newStar();
+    let endsAt = party.now() + (restored?.leftMs ?? TIME_LIMIT_MS);
+    let over = false;
+
+    party.on('event', (from, data) => {
+      const p = byId.get(from);
+      if (!p || typeof data?.x !== 'number' || typeof data?.y !== 'number') return;
+      const len = Math.hypot(data.x, data.y);
+      p.inX = len > 1 ? data.x / len : data.x;
+      p.inY = len > 1 ? data.y / len : data.y;
+    });
+    party.on('left', (id) => Object.assign(byId.get(id) ?? {}, { inX: 0, inY: 0 }));
+
+    function tell(text) {
+      for (const p of players) party.setState(p.id, { color: p.color, score: p.score, text: text ?? `Catch the stars! First to ${WIN_AT}.` });
+    }
+
+    // TEMPLATE: one small step of the world.
+    function update(dt) {
+      for (const p of players) {
+        p.x = Math.min(0.98, Math.max(0.02, p.x + p.inX * SPEED * dt));
+        p.y = Math.min(0.98, Math.max(0.05, p.y + p.inY * SPEED * dt));
+        if (Math.hypot(p.x - star.x, p.y - star.y) < 0.045) {
+          p.score += 1;
+          star = newStar();
+          party.save({ scores: Object.fromEntries(players.map((q) => [q.id, q.score])), leftMs: endsAt - party.now() });
+          tell();
+          if (p.score >= WIN_AT) return finish();
+        }
+      }
+      if (party.now() > endsAt) finish();
+    }
+
+    function finish() {
+      over = true;
+      const ranked = [...players].sort((a, b) => b.score - a.score);
+      tell(`${ranked[0].name} wins!`);
+      setTimeout(() => party.end({ rankings: ranked.map((p) => p.id), scores: Object.fromEntries(players.map((p) => [p.id, p.score])) }), 3000);
+    }
+
+    // TEMPLATE: draw everything (the world is 0..1 across and down).
+    function draw() {
+      const dpr = window.devicePixelRatio || 1;
+      const w = canvas.clientWidth;
+      const h = canvas.clientHeight;
+      canvas.width = Math.round(w * dpr);
+      canvas.height = Math.round(h * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.fillStyle = '#0d1b2a';
+      ctx.fillRect(0, 0, w, h);
+      ctx.font = `800 ${Math.max(28, h * 0.06)}px system-ui`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#ffd84d';
+      ctx.fillText('★', star.x * w, star.y * h);
+      ctx.font = `700 ${Math.max(14, h * 0.025)}px system-ui`;
+      for (const p of players) {
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(p.x * w, p.y * h, Math.max(10, h * 0.025), 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(`${p.name} ${p.score}`, p.x * w, p.y * h + Math.max(22, h * 0.05));
+      }
+      ctx.textAlign = 'left';
+      ctx.fillText(`${Math.max(0, Math.ceil((endsAt - party.now()) / 1000))} s`, 16, 24);
+    }
+
+    let last = performance.now();
+    function frame(now) {
+      const dt = Math.min(0.05, (now - last) / 1000);
+      last = now;
+      if (!over) for (let i = 0; i < 4; i++) update(dt / 4); // small fixed-ish steps
+      draw();
+      requestAnimationFrame(frame);
+    }
+    tell();
+    requestAnimationFrame(frame);
+  }
+
+  function phone() {
+    const { el, joystick } = party.ui;
+    const status = el('p', { class: 'big-text center', role: 'status' }, 'Get ready…');
+    const score = el('p', { class: 'center' });
+    document.getElementById('app').append(el('div', { class: 'screen' }, status, score, el('div', { id: 'stick', class: 'grow', style: { display: 'flex', alignItems: 'center' } })));
+    const stick = joystick('#stick', { onChange: (x, y) => party.send({ x, y }) });
+    party.on('state', (s) => {
+      stick.setColor(s.color);
+      status.textContent = s.text;
+      score.textContent = `Stars: ${s.score}`;
+    });
+  }
+</script>
