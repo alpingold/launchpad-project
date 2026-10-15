@@ -7,13 +7,13 @@
   scores and party.end. The example game is "Unique Number": swap in your own rules where it
   says TEMPLATE.
 
-  The shape (the big screen is the referee; phones only send answers):
+  The shape (the big screen is the referee; phones only send answers), as party.kit.phases:
     ask    → each phone shows the question (party.setState), answers come in (party.on('event'))
     reveal → when everyone answered or the timer ran out: score, show, pause
-    final  → after the last round: winner, then party.end({ rankings, scores })
+    final  → after the last round: winner, then party.end(party.kit.rank(totals))
   Already handled: a timer so nothing waits forever, players who leave (we stop waiting
   for them), phones that reload (setState is replayed), and a big screen that reloads
-  (party.save after every change, restored in party.ready).
+  (party.save after every change, restored in party.ready; the phase's deadline too).
 -->
 <style>
   .big-screen { display: grid; grid-template-columns: 2fr 1fr; gap: 1.5rem; }
@@ -51,6 +51,7 @@
 
   function referee(restored) {
     const { el, timer, scoreboard } = party.ui;
+    const { phases, rank } = party.kit;
     const app = document.getElementById('app');
     const title = el('h1');
     const body = el('div', { class: 'stack' });
@@ -58,92 +59,92 @@
     app.append(el('div', { class: 'screen big-screen' }, el('div', { class: 'stack' }, title, timerSlot, body), el('div', { id: 'scores' })));
     const scores = scoreboard('#scores', { title: 'Scores' });
     let clock = null;
-    let pending = null;
 
-    // Everything the game needs is in `g`, so saving and restoring is one line each.
-    let g = restored ?? { round: 1, phase: 'ask', answers: {}, lastPoints: {}, totals: Object.fromEntries(party.players.map((p) => [p.id, 0])) };
+    // Everything the game needs is in `g` (its phase too), so saving and restoring is one line each.
+    const g = restored ?? { round: 1, answers: {}, lastPoints: {}, totals: Object.fromEntries(party.players.map((p) => [p.id, 0])), flow: {} };
+    const save = () => party.save(g);
     const nameOf = (id) => party.players.find((p) => p.id === id)?.name ?? '?';
     const waitingFor = () => party.players.filter((p) => p.connected && !(p.id in g.answers));
 
-    function ask() {
-      g.phase = 'ask';
-      g.answers = {};
-      clock?.destroy();
-      clock = timer(timerSlot, { endsAt: party.now() + ANSWER_MS });
-      clearTimeout(pending);
-      pending = setTimeout(reveal, ANSWER_MS);
-      show();
-    }
-
-    function reveal() {
-      clearTimeout(pending);
-      g.lastPoints = scoreRound(g.answers);
-      for (const [id, pts] of Object.entries(g.lastPoints)) g.totals[id] += pts;
-      g.phase = 'reveal';
-      clock?.destroy();
-      show();
-      pending = setTimeout(nextRound, REVEAL_MS);
-    }
-
-    function nextRound() {
-      if (g.round < ROUNDS) {
-        g.round += 1;
-        ask();
-      } else finalScreen();
-    }
-
-    function finalScreen() {
-      g.phase = 'final';
-      show();
-      pending = setTimeout(() => {
-        const ranked = [...party.players].sort((a, b) => g.totals[b.id] - g.totals[a.id]);
-        party.end({ rankings: ranked.map((p) => p.id), scores: g.totals });
-      }, FINAL_MS);
-    }
+    // The phases, with their time limits (party.kit.phases: deadlines survive a reload).
+    const flow = phases(
+      {
+        ask: {
+          ms: ANSWER_MS,
+          enter() {
+            g.answers = {};
+            show();
+          },
+          timeout: () => flow.go('reveal'),
+        },
+        reveal: {
+          ms: REVEAL_MS,
+          enter() {
+            g.lastPoints = scoreRound(g.answers);
+            for (const [id, pts] of Object.entries(g.lastPoints)) g.totals[id] += pts;
+            show();
+          },
+          timeout() {
+            if (g.round < ROUNDS) {
+              g.round += 1;
+              flow.go('ask');
+            } else flow.go('final');
+          },
+        },
+        final: { ms: FINAL_MS, enter: () => show(), timeout: () => party.end(rank(g.totals)) },
+      },
+      { state: g.flow, onChange: save },
+    );
 
     party.on('event', (from, data) => {
-      if (g.phase !== 'ask' || from in g.answers || !isAnswer(data)) return;
+      if (flow.phase !== 'ask' || from in g.answers || !isAnswer(data)) return;
       g.answers[from] = data;
       show();
-      if (waitingFor().length === 0) reveal();
+      if (waitingFor().length === 0) flow.go('reveal');
     });
-    party.on('left', () => g.phase === 'ask' && waitingFor().length === 0 && Object.keys(g.answers).length > 0 && reveal());
+    // Someone left: maybe everyone still here has answered.
+    party.on('left', () => flow.phase === 'ask' && waitingFor().length === 0 && Object.keys(g.answers).length > 0 && flow.go('reveal'));
 
     /** Draws the big screen and tells every phone what to show; saves the game. */
     function show() {
-      title.textContent = g.phase === 'final' ? 'Final scores' : `Round ${g.round} of ${ROUNDS}`;
-      if (g.phase === 'ask') {
+      const phase = flow.phase;
+      title.textContent = phase === 'final' ? 'Final scores' : `Round ${g.round} of ${ROUNDS}`;
+      clock?.destroy();
+      clock = phase === 'ask' ? timer(timerSlot, { endsAt: flow.endsAt }) : null;
+      if (phase === 'ask') {
         body.replaceChildren(el('p', { class: 'big-text' }, QUESTION), el('p', { class: 'muted' }, `Answered: ${Object.keys(g.answers).length} of ${party.players.length}`));
-      } else if (g.phase === 'reveal') {
+      } else if (phase === 'reveal') {
         body.replaceChildren(
           el('div', { class: 'answers' },
             party.players.map((p) => el('div', { class: 'card' }, el('div', {}, p.name), el('div', { class: 'big-text' }, g.answers[p.id] ? showAnswer(g.answers[p.id]) : '–'), el('div', { class: g.lastPoints[p.id] ? 'good' : 'muted' }, `+${g.lastPoints[p.id] ?? 0}`))),
           ),
         );
       } else {
-        const best = Math.max(...Object.values(g.totals));
-        const winners = party.players.filter((p) => g.totals[p.id] === best).map((p) => p.name);
+        const { places } = rank(g.totals);
+        const winners = party.players.filter((p) => places[p.id] === 1).map((p) => nameOf(p.id));
         body.replaceChildren(el('p', { class: 'big-text' }, winners.length === 1 ? `${winners[0]} wins!` : `It's a tie: ${winners.join(' & ')}!`));
       }
       scores.update(party.players.map((p) => ({ id: p.id, name: p.name, score: g.totals[p.id] })));
       for (const p of party.players) {
         party.setState(p.id, {
-          phase: g.phase,
+          phase,
           round: g.round,
           answered: p.id in g.answers,
           points: g.lastPoints[p.id] ?? 0,
           total: g.totals[p.id],
         });
       }
-      party.save(g);
+      save();
     }
 
-    // A new game, or a reload: a question starts over; a reveal (already scored) moves on.
-    if (g.phase === 'ask') ask();
-    else if (g.phase === 'reveal') {
+    // A new game starts asking. After a reload: a question starts over (its answers were on
+    // phones that may have moved on); a reveal or the final screen carries on where it was.
+    if (!restored) flow.go('ask');
+    else if (flow.phase === 'ask') flow.go('ask');
+    else {
       show();
-      pending = setTimeout(nextRound, REVEAL_MS);
-    } else finalScreen();
+      flow.resume();
+    }
   }
 
   function phone() {

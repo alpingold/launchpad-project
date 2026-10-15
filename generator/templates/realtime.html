@@ -8,12 +8,13 @@
   own world where it says TEMPLATE.
 
   The shape:
+    party.kit.phases: 'countdown' (party.ui.countdown: 3, 2, 1, GO!) → 'play' (time limit) → 'final'
     party.on('event') stores each player's latest input (never trust it: clamp it)
-    requestAnimationFrame → update(dt) in fixed steps → draw()
+    requestAnimationFrame → update(dt) in small steps → draw()
     party.setState only when a phone's status changes (not every frame)
     party.save when something worth keeping changes (here: a catch), restored in party.ready
   Already handled: players who leave (their input stops), phones that reload, a big screen
-  that reloads, and a time limit so the game always ends.
+  that reloads (the scores and the time left), and a time limit so the game always ends.
 -->
 <style>
   #world { display: block; width: 100vw; height: 100vh; }
@@ -26,32 +27,48 @@
   const WIN_AT = 5;
   const TIME_LIMIT_MS = 90_000;
   const SPEED = 0.45; // world widths per second at full tilt
-  const COLORS = ['#ff5a5f', '#ffb400', '#3ec300', '#00a6ed', '#c77dff', '#ff7eb6', '#00c2a8', '#ff8c42', '#8f9bff', '#c0ca33', '#a1887f', '#f4f4f4'];
   const newStar = () => ({ x: 0.1 + Math.random() * 0.8, y: 0.15 + Math.random() * 0.75 });
   // ---- end of the world -------------------------------------------------------------------------
 
   party.ready(({ role, restored }) => (role === 'host' ? referee(restored) : phone()));
 
   function referee(restored) {
+    const { phases, colorOf, rank } = party.kit;
     document.body.style.overflow = 'hidden';
     const canvas = party.ui.el('canvas', { id: 'world', role: 'img', 'aria-label': 'The game' });
     document.getElementById('app').append(canvas);
     const ctx = canvas.getContext('2d');
 
+    // What's saved: the scores and the phase (with its deadline). Positions start over on a reload.
+    const g = restored ?? { scores: Object.fromEntries(party.players.map((p) => [p.id, 0])), flow: {} };
+    const save = () => party.save(g);
     const players = party.players.map((p, i) => ({
       id: p.id,
       name: p.name,
-      color: COLORS[i % COLORS.length],
+      color: colorOf(p.id),
       x: 0.2 + (0.6 * i) / Math.max(1, party.players.length - 1 || 1),
       y: 0.5,
       inX: 0,
       inY: 0,
-      score: Number(restored?.scores?.[p.id]) || 0,
     }));
     const byId = new Map(players.map((p) => [p.id, p]));
     let star = newStar();
-    let endsAt = party.now() + (restored?.leftMs ?? TIME_LIMIT_MS);
-    let over = false;
+
+    const flow = phases(
+      {
+        countdown: { ms: 3000, enter: () => { party.ui.countdown(document.body, { endsAt: flow.endsAt }); tell('Get ready…'); }, timeout: () => flow.go('play') },
+        play: { ms: TIME_LIMIT_MS, enter: () => tell(), timeout: () => flow.go('final') },
+        final: {
+          ms: 3000,
+          enter() {
+            const { rankings } = rank(g.scores);
+            tell(`${byId.get(rankings[0]).name} wins!`);
+          },
+          timeout: () => party.end(rank(g.scores)),
+        },
+      },
+      { state: g.flow, onChange: save },
+    );
 
     party.on('event', (from, data) => {
       const p = byId.get(from);
@@ -63,7 +80,7 @@
     party.on('left', (id) => Object.assign(byId.get(id) ?? {}, { inX: 0, inY: 0 }));
 
     function tell(text) {
-      for (const p of players) party.setState(p.id, { color: p.color, score: p.score, text: text ?? `Catch the stars! First to ${WIN_AT}.` });
+      for (const p of players) party.setState(p.id, { color: p.color, score: g.scores[p.id], text: text ?? `Catch the stars! First to ${WIN_AT}.` });
     }
 
     // TEMPLATE: one small step of the world.
@@ -72,21 +89,13 @@
         p.x = Math.min(0.98, Math.max(0.02, p.x + p.inX * SPEED * dt));
         p.y = Math.min(0.98, Math.max(0.05, p.y + p.inY * SPEED * dt));
         if (Math.hypot(p.x - star.x, p.y - star.y) < 0.045) {
-          p.score += 1;
+          g.scores[p.id] += 1;
           star = newStar();
-          party.save({ scores: Object.fromEntries(players.map((q) => [q.id, q.score])), leftMs: endsAt - party.now() });
+          save();
           tell();
-          if (p.score >= WIN_AT) return finish();
+          if (g.scores[p.id] >= WIN_AT) return flow.go('final');
         }
       }
-      if (party.now() > endsAt) finish();
-    }
-
-    function finish() {
-      over = true;
-      const ranked = [...players].sort((a, b) => b.score - a.score);
-      tell(`${ranked[0].name} wins!`);
-      setTimeout(() => party.end({ rankings: ranked.map((p) => p.id), scores: Object.fromEntries(players.map((p) => [p.id, p.score])) }), 3000);
     }
 
     // TEMPLATE: draw everything (the world is 0..1 across and down).
@@ -111,21 +120,27 @@
         ctx.arc(p.x * w, p.y * h, Math.max(10, h * 0.025), 0, Math.PI * 2);
         ctx.fill();
         ctx.fillStyle = '#ffffff';
-        ctx.fillText(`${p.name} ${p.score}`, p.x * w, p.y * h + Math.max(22, h * 0.05));
+        ctx.fillText(`${p.name} ${g.scores[p.id]}`, p.x * w, p.y * h + Math.max(22, h * 0.05));
       }
       ctx.textAlign = 'left';
-      ctx.fillText(`${Math.max(0, Math.ceil((endsAt - party.now()) / 1000))} s`, 16, 24);
+      if (flow.phase === 'play') ctx.fillText(`${Math.ceil(flow.left() / 1000)} s`, 16, 24);
     }
 
     let last = performance.now();
     function frame(now) {
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
-      if (!over) for (let i = 0; i < 4; i++) update(dt / 4); // small fixed-ish steps
+      if (flow.phase === 'play') for (let i = 0; i < 4; i++) update(dt / 4); // small steps
       draw();
       requestAnimationFrame(frame);
     }
-    tell();
+
+    // A new game starts with the countdown; after a reload, the saved phase carries on.
+    if (restored) {
+      if (flow.phase === 'countdown') party.ui.countdown(document.body, { endsAt: flow.endsAt });
+      tell(flow.phase === 'countdown' ? 'Get ready…' : undefined);
+      flow.resume();
+    } else flow.go('countdown');
     requestAnimationFrame(frame);
   }
 

@@ -90,7 +90,8 @@ party.ready(({ role, me, players, theme, restored }) => { ... })
 party.now()          // server time in ms: use it for every timer and deadline
 party.asset(id)      // URL of an approved picture (see the art library), or null
 party.players / party.me / party.role / party.theme   // the same, any time after ready
-party.ui             // ready-made pieces (below)
+party.ui             // ready-made pieces you can see (below)
+party.kit            // game-logic helpers: phases, votes, turns, results, platformer physics (below)
 party.on(name, fn)   // listen; the names are below
 ```
 
@@ -186,8 +187,51 @@ INK                             // the drawing colours: { black, red, blue, ... 
 
 ascii(target, { cols, rows, colors: { '#': '#8d6e63', '$': 'gold' }, background })
 //   A grid of text characters drawn on a canvas that fits its element (fast enough for 60 fps).
-//   .render(lines, { cells: [{ x, y, ch: '@', color: 'red' }], colors })
+//   .render(lines, { cells: [{ x, y, ch: '@', color: 'red' }], colors, camera, fog })
 //   lines: an array of strings (the map); cells: characters on top (players, monsters).
+//   A world bigger than cols × rows: camera: { x, y } is the top-left tile shown (party.kit.camera
+//   centres it). Lines and cells stay in world positions.
+//   Fog of war: fog: { seen: Set of "x,y" strings }: unseen tiles show '?' and hide their cells.
+
+countdown(target, { endsAt, onGo })
+//   A big 3, 2, 1, GO! over the screen, to endsAt (server time); onGo runs at zero.
+```
+
+## `party.kit`: game-logic helpers
+
+The machinery most games need, already right. Votes, turns and bodies are **plain objects**:
+keep them in your game state and they're saved with `party.save` like everything else.
+
+```js
+const { phases, vote, turns, rank, platformer, camera, colorOf, ordinal, roll, between, pick, shuffle } = party.kit;
+
+const flow = phases({                       // named phases with time limits that survive reloads
+  ask:    { ms: 20000, enter() { show(); }, timeout() { flow.go('reveal'); } },
+  reveal: { ms: 4000,  enter() { show(); }, timeout() { flow.go(g.round < 3 ? 'ask' : 'final'); } },
+  final:  { enter() { show(); } },          // no ms: stays until you call go()
+}, { state: g.flow, onChange: () => party.save(g) });   // g.flow = {} in a new game
+flow.go('ask');                             // a new game
+flow.resume();                              // after a reload (restored g): its timer runs again
+flow.phase; flow.endsAt;                    // for party.ui.timer({ endsAt: flow.endsAt })
+
+g.vote = vote.start(['North', 'East']);     // everyone may vote; { voters } to choose who
+vote.cast(g.vote, playerId, data.choice)    // false if it isn't a real option or voter
+vote.waitingFor(g.vote)                     // connected players who haven't voted ([] = all in)
+vote.result(g.vote)                         // { winner, counts, tied }; ties: random ({ tie: 'first' | 'none' })
+
+g.turns = turns.start();                    // everyone, in join order
+turns.current(g.turns)                      // whose turn it is (a player id)
+turns.next(g.turns)                         // the next CONNECTED player (null if nobody); g.turns.round
+
+party.end(rank(g.scores));                  // { rankings, scores, places }: ties share a place
+
+const world = platformer(LEVEL_LINES, { run: 7, jump: 15.5 });  // '#' solid, '=' one-way platform
+const body = world.body(world.find('S')[0]);  // stands on the tile below S; a plain object
+const touched = world.step(body, { left, right, jump }, dt);   // [{ ch: '$', x, y }] or [{ ch: 'fell' }]
+world.set(x, y, ' ');  world.lines();       // change a tile; the map as lines for party.ui.ascii
+camera(body.x, 45, world.cols)              // first column of a 45-wide view centred on the body
+
+colorOf(playerId)  ordinal(3) === '3rd'  roll(6)  between(2, 5)  pick(list)  shuffle(list)
 ```
 
 ## Base styles
