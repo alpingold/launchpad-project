@@ -81,7 +81,9 @@ test('a new game: its design is written first, then built when the admin says so
   assert.deepEqual(calls[0].job, { step: 'design', idea: IDEA, model: 'qwen3.8:27b' });
 
   calls[0].onStep('design: asking qwen3.8:27b');
-  assert.deepEqual(service.progress(game.id).steps.map((s) => s.text), ['design: asking qwen3.8:27b']);
+  calls[0].onStep('design: asking qwen3.8:27b (thinking 400 tokens, writing 0)', { replace: true });
+  calls[0].onStep('design: asking qwen3.8:27b (thinking 900 tokens, writing 120)', { replace: true });
+  assert.deepEqual(service.progress(game.id).steps.map((s) => s.text), ['design: asking qwen3.8:27b (thinking 900 tokens, writing 120)'], 'progress updates the step');
   assert.equal(service.progress(game.id).queuePosition, 0);
 
   calls[0].finish(DESIGNED);

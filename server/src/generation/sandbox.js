@@ -88,6 +88,7 @@ export async function runGeneratorInSandbox(job, { onStep = () => {}, cfg = conf
         timeoutMs: cfg.GENERATION_TIMEOUT_MS + 60_000,
         onStderrLine: (line) => {
           if (line.startsWith('STEP ')) onStep(line.slice(5));
+          else if (line.startsWith('STEP~ ')) onStep(line.slice(6), { replace: true }); // replaces the last step
         },
       },
     );
@@ -105,4 +106,4 @@ export async function runGeneratorInSandbox(job, { onStep = () => {}, cfg = conf
   }
 }
 
-const lastLines = (text) => text.trim().split('\n').filter((l) => !l.startsWith('STEP ')).slice(-3).join(' | ').slice(0, 500);
+const lastLines = (text) => text.trim().split('\n').filter((l) => !/^STEP~? /.test(l)).slice(-3).join(' | ').slice(0, 500);

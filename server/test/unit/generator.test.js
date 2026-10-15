@@ -73,7 +73,54 @@ test('chat: sends the conversation and returns the reply', async () => {
   assert.deepEqual(result.usage, { total_tokens: 5 });
   assert.equal(calls[0].url, 'https://x/api/chat/completions');
   assert.equal(calls[0].auth, 'Bearer k');
-  assert.deepEqual(calls[0].body, { model: 'qwen3.8:27b', messages: [{ role: 'user', content: 'hi' }], stream: false });
+  assert.deepEqual(calls[0].body, { model: 'qwen3.8:27b', messages: [{ role: 'user', content: 'hi' }], stream: true, stream_options: { include_usage: true } });
+});
+
+/** A streamed reply, as GenAI Studio sends it: `data:` lines, split across network chunks. */
+function streamed(pieces, { usage = { total_tokens: 9 }, hangAfter = null } = {}) {
+  const lines = [
+    ...pieces.map(([field, text]) => `data: ${JSON.stringify({ choices: [{ delta: { [field]: text } }] })}\n\n`),
+    `data: ${JSON.stringify({ choices: [], usage })}\n\n`,
+    'data: [DONE]\n\n',
+  ];
+  const bytes = new TextEncoder().encode(lines.join(''));
+  const chunks = [];
+  for (let i = 0; i < bytes.length; i += 7) chunks.push(bytes.slice(i, i + 7)); // lines cut mid-way
+  if (hangAfter !== null) chunks.length = hangAfter;
+  return (signal) => ({
+    status: 200,
+    ok: true,
+    headers: { get: () => 'text/event-stream; charset=utf-8' },
+    body: {
+      getReader: () => ({
+        read: () =>
+          chunks.length > 0
+            ? Promise.resolve({ value: chunks.shift(), done: false })
+            : hangAfter !== null
+              ? new Promise((_, reject) => signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError'))))
+              : Promise.resolve({ value: undefined, done: true }),
+      }),
+    },
+  });
+}
+
+test('chat: reads a streamed reply, keeping the answer and leaving out the thinking', async () => {
+  const fetchImpl = async (_url, init) => streamed([['reasoning_content', 'Hmm, '], ['reasoning_content', 'let me see.'], ['content', 'Hello'], ['content', ', world']])(init.signal);
+  const result = await chat([], { model: 'm', fetchImpl, sleep: noSleep });
+  assert.equal(result.content, 'Hello, world');
+  assert.deepEqual(result.usage, { total_tokens: 9 });
+});
+
+test('chat: a reply that goes silent is tried again; a slow one that keeps talking is not cut off', async () => {
+  let calls = 0;
+  const retries = [];
+  const fetchImpl = async (_url, init) => {
+    calls += 1;
+    return calls === 1 ? streamed([['content', 'stuck']], { hangAfter: 2 })(init.signal) : streamed([['content', 'done']])(init.signal);
+  };
+  const result = await chat([], { model: 'm', fetchImpl, sleep: noSleep, idleTimeoutMs: 50, onRetry: (t) => retries.push(t) });
+  assert.equal(result.content, 'done');
+  assert.match(retries[0], /the reply stopped for 0.05 s/);
 });
 
 test('chat: retries rate limits, server errors, empty replies and network errors', async () => {

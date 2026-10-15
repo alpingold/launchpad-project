@@ -27,11 +27,20 @@ const job = { idea: 'Everyone votes; the minority wins', model: 'qwen3.8:27b' };
 test('create → exec (job on stdin) → delete, and the result comes back', async () => {
   const steps = [];
   const { run, calls } = fakeOpenshell({
-    exec: { code: 0, stdout: `${JSON.stringify(RESULT)}\n`, stderr: 'STEP attempt 1/4: asking qwen3.8:27b\nnoise\nSTEP attempt 1/4: passed\n' },
+    exec: {
+      code: 0,
+      stdout: `${JSON.stringify(RESULT)}\n`,
+      stderr: 'STEP attempt 1/4: asking qwen3.8:27b\nnoise\nSTEP~ attempt 1/4: asking qwen3.8:27b (thinking 900 tokens, writing 0)\nSTEP attempt 1/4: passed\n',
+    },
   });
-  const result = await runGeneratorInSandbox(job, { run, onStep: (s) => steps.push(s) });
+  const result = await runGeneratorInSandbox(job, { run, onStep: (s, opts) => steps.push(opts?.replace ? `~${s}` : s) });
   assert.deepEqual(result, RESULT);
-  assert.deepEqual(steps, ['starting the sandbox', 'attempt 1/4: asking qwen3.8:27b', 'attempt 1/4: passed']);
+  assert.deepEqual(steps, [
+    'starting the sandbox',
+    'attempt 1/4: asking qwen3.8:27b',
+    '~attempt 1/4: asking qwen3.8:27b (thinking 900 tokens, writing 0)', // "STEP~": replaces the last step
+    'attempt 1/4: passed',
+  ]);
 
   assert.deepEqual(calls.map((c) => c.args.slice(0, 2)), [['sandbox', 'create'], ['sandbox', 'exec'], ['sandbox', 'delete']]);
   const [create, exec, del] = calls;
@@ -77,7 +86,7 @@ test('failures are explained', async () => {
   assert.equal(cutOff.error, "the generator's result was cut off after 26 bytes (exit 0)");
 
   const slow = await runGeneratorInSandbox(job, fakeOpenshell({ exec: { code: null, stdout: '', stderr: '', timedOut: true } }));
-  assert.match(slow.error, /took longer than 20 minutes/);
+  assert.match(slow.error, /took longer than 60 minutes/);
 
   const missing = Object.assign(new Error('spawn openshell ENOENT'), { code: 'ENOENT' });
   const notInstalled = await runGeneratorInSandbox(job, fakeOpenshell({ create: missing }));

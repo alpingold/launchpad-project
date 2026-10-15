@@ -15,7 +15,8 @@
 //   { "step": "build", ..., "change": { ..., "plan": "<the approved plan>" | null } }
 //       → the changed game file (plan null: a small fix with no plan).
 //
-// Progress lines ("STEP ...") go to stderr. The result is one JSON line on stdout:
+// Progress lines go to stderr: "STEP ..." adds a step; "STEP~ ..." replaces the last one
+// (how far a reply has streamed in, every ~15 s). The result is one JSON line on stdout:
 //   design: { ok, model, design, attempts, error? }
 //   build:  { ok, model, source, report, changelog, attempts, error? }
 
@@ -89,10 +90,11 @@ async function design(job, model, { chatFn = chat, onStep = () => {} }) {
   const result = { ok: false, model, design: null, attempts: [] };
 
   for (let attempt = 1; attempt <= DESIGN_ATTEMPTS; attempt++) {
-    onStep(`${what}${attempt > 1 ? ` (try ${attempt})` : ''}: asking ${model}`);
+    const asking = `${what}${attempt > 1 ? ` (try ${attempt})` : ''}: asking ${model}`;
+    onStep(asking);
     let reply;
     try {
-      reply = await chatFn(messages, { model, onRetry: onStep });
+      reply = await chatFn(messages, { model, onRetry: onStep, onProgress: (p) => onStep(`${asking} (${progressText(p)})`, { replace: true }) });
     } catch (err) {
       return { ...result, error: err.message };
     }
@@ -124,10 +126,11 @@ async function build(job, model, { chatFn = chat, check = checkGame, onStep = ()
   const result = { ok: false, model, source: null, report: null, changelog: null, attempts: [] };
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    onStep(`attempt ${attempt}/${maxAttempts}: asking ${model}`);
+    const asking = `attempt ${attempt}/${maxAttempts}: asking ${model}`;
+    onStep(asking);
     let reply;
     try {
-      reply = await chatFn(messages, { model, onRetry: onStep });
+      reply = await chatFn(messages, { model, onRetry: onStep, onProgress: (p) => onStep(`${asking} (${progressText(p)})`, { replace: true }) });
     } catch (err) {
       return { ...result, error: err.message };
     }
@@ -156,6 +159,9 @@ async function build(job, model, { chatFn = chat, check = checkGame, onStep = ()
   }
   return { ...result, error: `no passing game after ${maxAttempts} attempts` };
 }
+
+/** "thinking: 1,200 tokens, writing: 3,400" */
+const progressText = ({ thinking, writing }) => `thinking ${thinking.toLocaleString('en-US')} tokens, writing ${writing.toLocaleString('en-US')}`;
 
 /** checkGame, plus the generator's own size limit (the rulebook's 100 KB). */
 async function checkWithSize(source, check, onStep) {
@@ -191,7 +197,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   } catch {
     job = null;
   }
-  const result = await runJob(job, { onStep: (text) => process.stderr.write(`STEP ${text}\n`) });
+  const result = await runJob(job, { onStep: (text, { replace = false } = {}) => process.stderr.write(`STEP${replace ? '~' : ''} ${text}\n`) });
   // Exit only once the result is fully written: `openshell sandbox exec` passes stdout on
   // asynchronously, and exiting right away cut a built game's result off at 64 KB (F5).
   process.stdout.write(`${JSON.stringify(result)}\n`, () => process.exit(result.ok ? 0 : 1));

@@ -252,9 +252,13 @@ export class GenerationService {
     const version = game?.versions.find((v) => BUSY_STATUSES.includes(v.status));
     if (!version) return; // deleted while it waited
     const started = Date.now();
-    const onStep = (text) => {
+    // `replace`: how far a reply has streamed in, which updates the last step instead of adding one.
+    const onStep = (text, { replace = false } = {}) => {
       const steps = this.steps.get(id);
-      if (steps && steps.length < MAX_STEPS) steps.push({ seconds: Math.round((Date.now() - started) / 1000), text });
+      if (!steps) return;
+      const step = { seconds: Math.round((Date.now() - started) / 1000), text, live: replace };
+      if (replace && steps.length > 0) steps[steps.length - 1] = step;
+      else if (steps.length < MAX_STEPS) steps.push(step);
     };
     const designing = version.status === 'designing';
     const job = this.jobFor(game, version);

@@ -124,8 +124,11 @@ export const config = {
   GENERATOR_POLICY_PATH:
     process.env.GENERATOR_POLICY_PATH ||
     fileURLToPath(new URL('../../generator/openshell/policy.yaml', import.meta.url)),
-  // Longest one generation may take (several model calls plus tests), before it's stopped.
-  GENERATION_TIMEOUT_MS: 20 * 60 * 1000,
+  // A last-resort limit on one sandbox job (a design, or a build: up to 4 model calls plus a
+  // playtest each). Model calls stream, and a call only fails after 2 minutes of silence
+  // (generator/src/llm.js), so a slow but working model is never cut off by this in practice.
+  // Was 20 minutes until 2026-10-15, with 5 minutes per call.
+  GENERATION_TIMEOUT_MS: 60 * 60 * 1000,
 
   // Longest raw name string accepted before normalization. The real display-name
   // rules (1–16 characters, etc.) come in M3; this just stops absurd input early.

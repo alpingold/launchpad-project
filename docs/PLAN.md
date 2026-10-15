@@ -1239,6 +1239,13 @@ approved designs qwen built from. qwen's builds are from earlier the same day.
   good but unreliable; gpt-oss is fast with lower quality; llama4 is out for building.
   **Decided (2026-10-15): qwen3.8:27b stays the only model.**
 
+**No more fixed time limit per model call (2026-10-15).** Replies now **stream** (GenAI Studio
+sends the reply, and qwen's thinking, piece by piece: the first piece in ~0.3 s, then every
+few ms). A call only fails after **2 minutes of silence**, so a slow but working model is
+never cut off (the old 5-minute limit cut off two healthy replies in the live tests). The
+admin page shows how far a reply has got ("thinking 1,150 tokens, writing 1,463"). A whole
+sandbox job keeps a last-resort limit of 60 minutes (was 20).
+
 ---
 
 ## Verification (how to confirm the plan worked once built)
