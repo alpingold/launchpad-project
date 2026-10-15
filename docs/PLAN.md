@@ -1183,6 +1183,41 @@ Roughly in order of effort:
 **Before any of this:** users' games are their work; using them for training needs a clear
 note in the terms (especially from A7 on, when other hosts generate games).
 
+**Exploration, 2026-10-15: what's actually possible here.**
+- **The model's context is 65,536 tokens** (RCAC's model list), for qwen3.8:27b, gpt-oss:120b
+  and gemma4. This shaped two fixes the same day: the fix loop keeps only the newest attempt,
+  and AI-written games are limited to 100 KB.
+- **GenAI Studio has no embeddings API.** It uses EmbeddingGemma internally for its own
+  Knowledge Base but doesn't expose it. So retrieval can't use GenAI Studio embeddings.
+  Options, in order of preference:
+  1. *The model as librarian:* one short extra call with a catalog of the library (each
+     game's name, one-line description, template, art style, controls) and the approved
+     design; it names the 1–2 most useful examples for the build. No new dependency; the
+     catalog stays small (a line per game) until the library reaches hundreds of games.
+  2. *Tags:* the design's Template and Art sections already pick a template and an example;
+     extend that with genre and controls tags on every published game. Simple and testable,
+     but only as good as the tags.
+  3. *Local embeddings:* a small embedding model run by our own code (a new dependency and
+     a model download: ask first). Only worth it with a large library.
+- **"Custom models" in GenAI Studio are presets** (a base model with a saved system prompt),
+  not fine-tuned weights. A fine-tuned model would need its own place to run.
+- **Fine-tuning on Purdue hardware is plausible but not free:** RCAC ran a LoRA workshop
+  (Unsloth, Mistral 7B, QLoRA). The GPU cluster (Gilbreth, newer: Gautschi with H100s) is
+  bought by labs; undergraduates may get limited GPU time through Engineering's EURO
+  programme for projects that need it. A club project would most likely go through a
+  faculty member's lab. Serving the result needs a GPU too (or a quantised GGUF on a
+  smaller machine).
+- **The data, today:** `npm run admin -- export-data <file.jsonl>` writes one record per
+  version (idea or request, design drafts with feedback and who wrote them, the design, the
+  code, check results by rule, and how far it got). **Gaps to close before it's training
+  data:** failed build attempts aren't stored (only the last; they're the "broken → fixed"
+  pairs), nothing records how a game did with real players, and the library is tiny.
+
+**Suggested order:** (a) store every build attempt with its report; (b) record games played,
+finished vs stopped, and a thumbs up/down after a game; (c) the model-as-librarian retrieval
+once there are ~10 published games; (d) revisit fine-tuning at a few hundred games, with a
+lab's help.
+
 ---
 
 ## Verification (how to confirm the plan worked once built)
