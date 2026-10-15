@@ -1261,6 +1261,45 @@ the checker later: `typescript` as a dev dependency, `// @ts-check` file by file
 the protocol, FrameRelay and the database layer, and `npm run typecheck`. Full TypeScript, and
 an ORM (whose main benefit is typed queries), wait until then.
 
+
+### 13o. A bigger helper library (planned 2026-10-15)
+
+**What the AI gets today.** Design step (~3,800 tokens): the rulebook (`GAME_SPEC.md`, ~3,000:
+how games work, the rules, the `party` SDK ~950, the `party.ui` reference ~630), the design
+format (~600), the art list and the idea. Build step (~14,000 tokens for The Long Road): the
+rulebook 21%, the template the design picked 15%, **the example game's code 45%**, the
+example's design 5%, the approved design 11%. (The experiment in 13n removed the example
+*designs* from the *design* step; the example *game* is still in the build step.)
+
+**The helpers work.** In all 9 games the AI built (four models), the `party.ui` helpers were
+used for everything they cover (`el` for all HTML, `ascii` for every map, `gamepad`, `timer`,
+`scoreboard`), with no hand-written buttons, canvas drawing or touch handling, and none of
+the bugs we found were in a helper's area. Caveat: the example game uses them too, so some
+of it may be copying.
+
+**What the games still write by hand** (so, what new helpers would replace):
+
+| Hand-written | Seen in | Candidate helper |
+|---|---|---|
+| Platformer physics: tile map, gravity, jumps, coyote time | all 3 platformers (copied from Tower Dash); gemma's failed build broke there | `platformer`: a tile world and bodies |
+| Votes: collect, count, ties, time out, skip whoever left | every RPG | `vote` |
+| Turn order, turn timeouts, skipping disconnected players | every RPG | `turns` |
+| Phases and timers that survive a big-screen reload | every game | `phases`: deadline-based, saved with `party.save` |
+| A camera that follows the action; fog of war | platformers, RPGs | `ascii` gains a view and fog |
+| 3-2-1 countdowns, rankings with ties, dice, player colours | most games | small utilities |
+
+**Plan:**
+1. **Baseline first.** Three ideas built from FIXED approved designs (the racing platformer,
+   The Long Road, and a turn-based board game), in variants **A** (as today) and **B**
+   (today minus the example game's code). Compare: passed or not, attempts, time, tokens,
+   code size, hand-written machinery left, and a playability look at the screenshots. One
+   run each: a strong hint, not proof.
+2. **Build the helpers** (`vote`, `turns`, `phases`, the `ascii` view and fog, `platformer`,
+   the small utilities), each tested in the UI Demo game, each with a short entry in the
+   rulebook (~100 tokens; ~1,000 in all, a sixth of the example game).
+3. **Variant C** (new helpers, no example game) on the same designs; compare with A and B and
+   decide whether the example game stays in the build step.
+
 ---
 
 ## Verification (how to confirm the plan worked once built)
