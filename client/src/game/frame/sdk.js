@@ -8,7 +8,7 @@
 // A game is the same page on the big screen (role 'host': the referee) and on every phone
 // (role 'player': the controller):
 //
-//   party.ready(({ role, me, players, theme }) => { ... })    start here, once connected
+//   party.ready(({ role, me, players, theme, restored }) => { ... })   start here, once connected
 //   party.now()                                               server time in ms
 //   party.asset(id)                                           URL of an approved picture
 //   party.on(name, fn)                                        listen (see below)
@@ -19,6 +19,9 @@
 //   On the big screen: party.on('event', fn(playerId, data))
 //                     party.sendTo(playerId, data) / party.sendAll(data)
 //                     party.setState(playerId | 'all', state)
+//                     party.save(snapshot)                   kept by the server; if this page
+//                                                            reloads, the game starts again with
+//                                                            `restored` = the latest snapshot
 //                     party.on('left', fn(playerId)) / party.on('back', fn(playerId))
 //                     party.end({ rankings: [playerId, ...], scores?: { playerId: number } })
 //   Both:             party.on('players', fn(players))        [{ id, name, connected }]
@@ -35,8 +38,87 @@
   var lastState; // a phone's latest state, for handlers added after it arrived
   var hasState = false;
 
+  // The big screen's messages for phones are collected and sent together, at most every
+  // BATCH_EVERY_MS: a game can call sendTo/setState as often as it likes (even every frame)
+  // without going over the server's rate limit. A newer state for a phone replaces an older
+  // one still waiting; messages are all kept, in order.
+  var BATCH_EVERY_MS = 50;
+  var BATCH_MAX_BYTES = 28 * 1024; // the platform's limit is 30 KB per message
+  var pending = []; // [{ to, data } | { to, state }]
+  var pendingSave = { has: false, snapshot: undefined };
+  var flushTimer = null;
+  var lastFlushAt = 0;
+
   function post(msg) {
     parentWindow.postMessage(msg, '*'); // '*': the sandboxed frame has no origin of its own to name
+  }
+
+  /**
+   * A JSON copy, taken when the game calls: changing its object afterwards (before the batch
+   * goes out) changes nothing, and anything that isn't JSON fails right here, in the game.
+   */
+  function jsonCopy(value, what) {
+    var text = JSON.stringify(value);
+    if (text === undefined) throw new Error('party.' + what + ' needs a JSON value');
+    return JSON.parse(text);
+  }
+
+  function bytes(value) {
+    return new Blob([JSON.stringify(value)]).size;
+  }
+
+  function scheduleFlush() {
+    if (flushTimer !== null) return;
+    var wait = Math.max(0, BATCH_EVERY_MS - (Date.now() - lastFlushAt));
+    flushTimer = setTimeout(flush, wait);
+  }
+
+  /** Sends what's waiting, split into messages under the size limit. */
+  function flush() {
+    if (flushTimer !== null) clearTimeout(flushTimer);
+    flushTimer = null;
+    if (pending.length === 0 && !pendingSave.has) return;
+    lastFlushAt = Date.now();
+    var items = pending;
+    var save = pendingSave;
+    pending = [];
+    pendingSave = { has: false, snapshot: undefined };
+
+    var batch = [];
+    var size = 0;
+    for (var i = 0; i < items.length; i++) {
+      var itemSize = bytes(items[i]);
+      if (itemSize > BATCH_MAX_BYTES) {
+        console.error('[party] a message for ' + items[i].to + ' is too big (' + itemSize + ' bytes) and was dropped');
+        continue;
+      }
+      if (size + itemSize > BATCH_MAX_BYTES) {
+        post({ type: 'batch', items: batch });
+        batch = [];
+        size = 0;
+      }
+      batch.push(items[i]);
+      size += itemSize;
+    }
+    var last = { type: 'batch', items: batch };
+    if (save.has) {
+      if (bytes(save.snapshot) > BATCH_MAX_BYTES - size) {
+        if (batch.length > 0) post(last);
+        last = { type: 'batch', items: [] };
+      }
+      last.save = save.snapshot;
+    }
+    if (last.items.length > 0 || 'save' in last) post(last);
+  }
+
+  function queue(item) {
+    if ('state' in item) {
+      pending = pending.filter(function (waiting) {
+        return !('state' in waiting && waiting.to === item.to);
+      });
+    }
+    pending.push(item);
+    scheduleFlush();
   }
 
   function report(error) {
@@ -82,8 +164,16 @@
           players: copyPlayers(msg.players),
           theme: msg.theme,
           assets: msg.assets || {},
+          restored: msg.restored, // the big screen's last save, after a reload (else undefined)
         });
         document.documentElement.dataset.theme = info.theme;
+        // The heartbeat: while this keeps ticking, the game isn't stuck. (If the game hangs,
+        // this whole page hangs with it; the server notices the silence: plan §13e.)
+        if (info.role === 'host') {
+          setInterval(function () {
+            post({ type: 'alive' });
+          }, 1000);
+        }
         var callbacks = readyCallbacks;
         readyCallbacks = [];
         for (var i = 0; i < callbacks.length; i++) {
@@ -180,18 +270,27 @@
     // The big screen.
     sendTo: function (playerId, data) {
       requireRole('host', 'sendTo');
-      post({ type: 'sendTo', to: playerId, data: data });
+      queue({ to: playerId, data: jsonCopy(data, 'sendTo') });
     },
     sendAll: function (data) {
       requireRole('host', 'sendAll');
-      post({ type: 'sendTo', to: 'all', data: data });
+      queue({ to: 'all', data: jsonCopy(data, 'sendAll') });
     },
     setState: function (to, state) {
       requireRole('host', 'setState');
-      post({ type: 'setState', to: to, state: state });
+      queue({ to: to, state: jsonCopy(state, 'setState') });
+    },
+    save: function (snapshot) {
+      requireRole('host', 'save');
+      pendingSave = { has: true, snapshot: jsonCopy(snapshot, 'save') };
+      scheduleFlush();
+    },
+    get restored() {
+      return info ? info.restored : undefined;
     },
     end: function (results) {
       requireRole('host', 'end');
+      flush(); // everything sent before the game ended arrives before the end
       post({ type: 'end', results: results });
     },
   });

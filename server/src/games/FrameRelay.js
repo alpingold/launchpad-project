@@ -102,7 +102,7 @@ export class FrameRelay {
 
   /**
    * The game ends with no winner: the host stopped it, or the big screen can't carry on.
-   * @param {'host' | 'reload' | 'unresponsive'} [why]
+   * @param {'host' | 'reload' | 'unresponsive' | 'broken'} [why]  broken: the game left its frame
    */
   stop(why = 'host') {
     this.finish({ stopped: why });

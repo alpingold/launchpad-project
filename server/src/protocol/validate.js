@@ -90,9 +90,12 @@ function readBatchItems(value) {
   return items;
 }
 
-/** host:stop_game's reason: the host pressed Stop, or the big screen reloaded with no save. */
+/**
+ * host:stop_game's reason: the host pressed Stop, the big screen reloaded with no save, or
+ * its game loaded another page into its frame.
+ */
 function readStopReason(value) {
-  return value === 'host' || value === 'reload' ? value : INVALID;
+  return ['host', 'reload', 'broken'].includes(value) ? value : INVALID;
 }
 
 function readOptionalBoolean(value) {

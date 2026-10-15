@@ -35,6 +35,7 @@ export default function Join() {
   const [room, setRoom] = useState(null); // latest room:state
   const [closedReason, setClosedReason] = useState(null);
   const [game, handleGameMessage] = useGameMessages();
+  const [brokenRunId, setBrokenRunId] = useState(null); // a game that left its frame on this phone
   usePageTitle('Join');
   const socketRef = useRef(null);
   const closedRef = useRef(false); // readable inside socket callbacks
@@ -140,7 +141,11 @@ export default function Join() {
         <main className="page join join-game">
           {banner}
           {hostAway}
-          {game.run ? (
+          {game.run?.runId === brokenRunId ? (
+            <p className="error" role="alert">
+              This game tried to load another page, so it was closed on this phone.
+            </p>
+          ) : game.run ? (
             <GameFrame
               key={game.run.runId}
               run={game.run}
@@ -148,6 +153,7 @@ export default function Join() {
               me={me.playerId}
               roomPlayers={room.players}
               send={(msg) => socketRef.current.send(msg)}
+              onBroken={() => setBrokenRunId(game.run.runId)}
             />
           ) : (
             <p className="muted">Loading the game…</p>

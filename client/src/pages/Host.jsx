@@ -73,12 +73,11 @@ function HostRoom({ user }) {
       },
       onMessage(msg) {
         // Back after a reload in the middle of a game: the big screen's game (the referee)
-        // ran in the old page and its state is gone, so stop it. If only the connection
-        // blipped, this page still runs the game (same runId) and simply carries on.
-        // (Saving and restoring the big screen's game comes in F1, plan §13l.)
-        if (msg.type === 'game:started' && msg.resumed && runRef.current?.runId !== msg.runId) {
-          socket.send({ type: 'host:stop_game' });
-          setNotice('This page reloaded during a game, so the game was stopped.');
+        // ran in the old page. If it saved (party.save), the game starts again from that save;
+        // if not, its state is gone, so stop it. If only the connection blipped, this page
+        // still runs the game (same runId) and simply carries on.
+        if (msg.type === 'game:started' && msg.resumed && runRef.current?.runId !== msg.runId && !('snapshot' in msg)) {
+          socket.send({ type: 'host:stop_game', reason: 'reload' });
           return;
         }
         handleGameMessage(msg); // game:started / game:event / game:ended
@@ -187,6 +186,7 @@ function HostRoom({ user }) {
             role="host"
             roomPlayers={room.players}
             send={(msg) => socketRef.current.send(msg)}
+            onBroken={() => socketRef.current.send({ type: 'host:stop_game', reason: 'broken' })}
           />
         ) : (
           <p className="muted">Stopping the game…</p>

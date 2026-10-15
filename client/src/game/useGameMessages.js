@@ -8,6 +8,7 @@ import { useCallback, useRef, useState } from 'react';
  * @property {string} source     the game file, shown in GameFrame's iframe
  * @property {{ id: string, name: string }[]} players  everyone in the game
  * @property {number} clockOffset  server time minus this device's time, at the start
+ * @property {unknown} [restored]  the big screen's latest save, when this page came back mid-game
  * @property {{ push: (msg: object) => void, listen: (fn: (msg: object) => void) => () => void }} channel
  *   the server's messages for the game, kept until GameFrame listens
  */
@@ -40,6 +41,7 @@ export function useGameMessages() {
           clockOffset,
           channel: createChannel(),
         };
+        if ('snapshot' in msg) run.restored = msg.snapshot;
         runRef.current = run;
         setGame({ run, lastResults: null });
         return true;

@@ -281,7 +281,8 @@ export class RoomManager {
 
   /**
    * host:stop_game — the host ends the game early, with no winner.
-   * @param {'host' | 'reload'} [why]  'reload': the big screen reloaded and had no save to restore
+   * @param {'host' | 'reload' | 'broken'} [why]  reload: the big screen reloaded with no save to
+   *   restore; broken: its game loaded another page into its frame
    */
   stopGameByHost(hostConnId, why = 'host') {
     this.hostGame(hostConnId).stop(why);

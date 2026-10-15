@@ -5,6 +5,8 @@
   A test-only frame game (plan §13) for the browser tests. It uses every part of the
   `party` SDK, and on every screen it tries each way out of its sandbox, listing what
   happened under "Walls". Every line should end in "blocked".
+  Phones also have buttons that make the game misbehave on purpose (F1): hang the big
+  screen, leave the frame, flood the server with messages.
 -->
 <h1 id="role"></h1>
 <section aria-label="Walls"><h2>Walls</h2><ul id="walls"></ul></section>
@@ -14,6 +16,10 @@
 <p id="buttons" hidden>
   <button id="ping">Ping</button>
   <button id="win">Win</button>
+  <button id="flood">Flood</button>
+  <button id="hang">Hang the big screen</button>
+  <button id="leave-host">Big screen: leave the frame</button>
+  <button id="leave">Leave the frame</button>
 </p>
 <script>
   const $ = (id) => document.getElementById(id);
@@ -60,14 +66,16 @@
   });
 
   // --- The game ----------------------------------------------------------------------------
-  party.ready(({ role, me, players }) => {
+  party.ready(({ role, me, players, restored }) => {
     $('role').textContent = role === 'host' ? 'Big screen' : `Phone ${players.find((p) => p.id === me).name}`;
 
     if (role === 'host') {
       const nameOf = (id) => party.players.find((p) => p.id === id)?.name ?? id;
-      let events = 0;
-      const pings = {};
-      $('count').textContent = 'Events: 0';
+      // Saved after every event; a reloaded big screen picks up from the save.
+      let events = restored?.events ?? 0;
+      const pings = restored?.pings ?? {};
+      if (restored) line('log', 'restored');
+      $('count').textContent = `Events: ${events}`;
       party.on('event', (from, data) => {
         events += 1;
         $('count').textContent = `Events: ${events}`;
@@ -76,7 +84,10 @@
           party.setState(from, { pings: (pings[from] = (pings[from] ?? 0) + 1) });
           party.sendAll(`${nameOf(from)} pinged`);
         }
+        party.save({ events, pings });
         if (data === 'win') party.end({ rankings: [from], scores: { [from]: 1 } });
+        if (data === 'hang') for (;;) {} // stuck forever: this whole page freezes
+        if (data === 'leave') location.href = '/escaped';
       });
       party.on('left', (id) => line('log', `left: ${nameOf(id)}`));
       party.on('back', (id) => line('log', `back: ${nameOf(id)}`));
@@ -85,6 +96,12 @@
       $('count').textContent = 'Pings: 0';
       $('ping').onclick = () => party.send('ping');
       $('win').onclick = () => party.send('win');
+      $('flood').onclick = () => {
+        for (let i = 0; i < 100; i++) party.send('ping');
+      };
+      $('hang').onclick = () => party.send('hang');
+      $('leave-host').onclick = () => party.send('leave');
+      $('leave').onclick = () => (location.href = '/escaped');
       party.on('state', (state) => ($('count').textContent = `Pings: ${state.pings}`));
       party.on('message', (data) => ($('last-message').textContent = data));
     }

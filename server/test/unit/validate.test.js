@@ -110,6 +110,7 @@ test('accepts every message type with valid fields', () => {
     { type: 'host:start_game', gameId: 'reaction-race' },
     { type: 'host:stop_game' },
     { type: 'host:stop_game', reason: 'reload' },
+    { type: 'host:stop_game', reason: 'broken' },
     { type: 'game:alive' },
     { type: 'game:alive', paused: true },
     // Frame games' data can be any JSON value: only the game itself understands it (plan §13f).

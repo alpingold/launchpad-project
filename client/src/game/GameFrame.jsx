@@ -8,6 +8,7 @@ const PHONE_EVENT_MAX_BYTES = 24 * 1024; // GAME_EVENT_MAX_BYTES
 const HOST_MESSAGE_MAX_BYTES = 30 * 1024; // under WS_MAX_PAYLOAD_BYTES (32 KB) with room for the envelope
 const RATE_PER_SEC = 20; // RATE_LIMIT_PER_SEC
 const RATE_BURST = 40; // RATE_LIMIT_BURST
+const ALIVE_EVERY_MS = 2000; // how often the big screen tells the server its game still answers
 
 /**
  * Shows a running frame game (plan §13) in a sandboxed iframe, and is the ONLY door between
@@ -22,6 +23,13 @@ const RATE_BURST = 40; // RATE_LIMIT_BURST
  * tokens in sessionStorage, and can't redirect this page. frameDocument.js adds the
  * security policy that blocks the network.
  *
+ * It also watches for two ways a game can break out of its normal life (plan §13e):
+ *  - it loads another page into its frame (a second `load` event): the frame is removed and
+ *    onBroken('navigated') is called. That can't stop the first request, only what follows.
+ *  - on the big screen, it hangs: then this whole page hangs too (the frame shares its
+ *    thread), so the server's watchdog notices instead. This passes the SDK's heartbeat on
+ *    as game:alive, and pauses the watch while the tab is in the background.
+ *
  * Render it with key={run.runId}, so every new game gets a fresh iframe.
  *
  * @param {Object} props
@@ -30,8 +38,9 @@ const RATE_BURST = 40; // RATE_LIMIT_BURST
  * @param {string | null} [props.me]               this phone's player id
  * @param {{ id: string, connected: boolean }[]} props.roomPlayers  from room:state
  * @param {(msg: object) => void} props.send       sends a message to the server
+ * @param {(reason: 'navigated') => void} props.onBroken  the game left its frame; it's been removed
  */
-export default function GameFrame({ run, role, me = null, roomPlayers, send }) {
+export default function GameFrame({ run, role, me = null, roomPlayers, send, onBroken }) {
   const iframeRef = useRef(null);
   const theme = useResolvedTheme();
   const srcDoc = useMemo(() => buildFrameDocument(run.source, window.location.origin), [run.source]);
@@ -49,8 +58,9 @@ export default function GameFrame({ run, role, me = null, roomPlayers, send }) {
 
   // What the message handlers need, always current, without re-subscribing.
   const live = useRef(null);
-  live.current ??= { ready: false, queue: [], tokens: RATE_BURST, refilledAt: Date.now() };
-  Object.assign(live.current, { players, theme, send, role, me });
+  live.current ??= { ready: false, queue: [], tokens: RATE_BURST, refilledAt: Date.now(), aliveSentAt: 0, loads: 0 };
+  Object.assign(live.current, { players, theme, send, role, me, onBroken });
+  const [broken, setBroken] = useState(false);
 
   useEffect(() => {
     const state = live.current;
@@ -72,23 +82,33 @@ export default function GameFrame({ run, role, me = null, roomPlayers, send }) {
 
     /** A message from the game → the server message it stands for, or a reason to refuse it. */
     function fromGame(msg) {
-      const limit = state.role === 'host' ? HOST_MESSAGE_MAX_BYTES : PHONE_EVENT_MAX_BYTES;
-      const payload = msg.type === 'setState' ? msg.state : msg.type === 'end' ? msg.results : msg.data;
-      const json = JSON.stringify(payload);
-      if (json === undefined) return { refused: `${msg.type}: needs a JSON value` };
-      if (new Blob([json]).size > limit) return { refused: `${msg.type}: too big (the limit is ${limit} bytes)` };
-
+      let out = null;
       if (state.role === 'player') {
-        if (msg.type === 'send') return { out: { type: 'game:event', data: msg.data } };
-      } else if (msg.type === 'sendTo') {
-        return { out: { type: 'game:send', to: msg.to, data: msg.data } };
-      } else if (msg.type === 'setState') {
-        return { out: { type: 'game:state', to: msg.to, state: msg.state } };
+        if (msg.type === 'send') out = { type: 'game:event', data: msg.data };
+      } else if (msg.type === 'batch' && Array.isArray(msg.items)) {
+        out = { type: 'game:batch', items: msg.items };
+        if ('save' in msg) out.save = msg.save;
       } else if (msg.type === 'end') {
         const results = msg.results ?? {};
-        return { out: { type: 'game:end', rankings: results.rankings, scores: results.scores } };
+        out = { type: 'game:end', rankings: results.rankings, scores: results.scores };
       }
-      return { refused: `${msg.type}: not allowed on the ${state.role === 'host' ? 'big screen' : 'phone'}` };
+      if (!out) return { refused: `${msg.type}: not allowed on the ${state.role === 'host' ? 'big screen' : 'phone'}` };
+
+      // The server checks the details (targets, results); here, just that it's JSON and small enough.
+      const json = JSON.stringify(out);
+      const limit = state.role === 'host' ? HOST_MESSAGE_MAX_BYTES : PHONE_EVENT_MAX_BYTES;
+      if (msg.type === 'send' && msg.data === undefined) return { refused: 'send: needs a JSON value' };
+      if (new Blob([json]).size > limit) return { refused: `${msg.type}: too big (the limit is ${limit} bytes)` };
+      return { out };
+    }
+
+    /** The SDK's heartbeat (big screen only), passed on to the server's watchdog now and then. */
+    function alive() {
+      if (state.role !== 'host' || document.visibilityState === 'hidden') return;
+      const now = Date.now();
+      if (now - state.aliveSentAt < ALIVE_EVERY_MS) return;
+      state.aliveSentAt = now;
+      state.send({ type: 'game:alive' });
     }
 
     function onMessage(event) {
@@ -108,6 +128,7 @@ export default function GameFrame({ run, role, me = null, roomPlayers, send }) {
             players: state.players,
             theme: state.theme,
             assets,
+            restored: run.restored, // the big screen's save, if this page reloaded mid-game
             clockOffset: run.clockOffset,
           });
           state.ready = true;
@@ -116,6 +137,8 @@ export default function GameFrame({ run, role, me = null, roomPlayers, send }) {
         return;
       }
 
+      if (msg.type === 'alive') return alive();
+
       const { out, refused } = fromGame(msg);
       if (refused) return refuse(refused);
       if (!takeToken()) return refuse(`${msg.type}: too many messages (at most ${RATE_PER_SEC} a second)`);
@@ -123,6 +146,17 @@ export default function GameFrame({ run, role, me = null, roomPlayers, send }) {
     }
 
     window.addEventListener('message', onMessage);
+    // A big screen in a background tab: its timers slow right down, so ask the server to
+    // pause the watchdog until it's back in front.
+    function onVisibility() {
+      if (state.role !== 'host') return;
+      if (document.visibilityState === 'hidden') state.send({ type: 'game:alive', paused: true });
+      else {
+        state.aliveSentAt = 0;
+        alive();
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibility);
     // Messages from the server for the game: a phone's event (on the big screen), or the
     // big screen's messages and state (on a phone).
     const stopListening = run.channel.listen((msg) => {
@@ -133,6 +167,7 @@ export default function GameFrame({ run, role, me = null, roomPlayers, send }) {
     });
     return () => {
       window.removeEventListener('message', onMessage);
+      document.removeEventListener('visibilitychange', onVisibility);
       stopListening();
     };
   }, [run]);
@@ -145,6 +180,17 @@ export default function GameFrame({ run, role, me = null, roomPlayers, send }) {
     if (live.current.ready) iframeRef.current?.contentWindow?.postMessage({ type: 'theme', theme }, '*');
   }, [theme]);
 
+  // The first load is our document. Any later one means the game loaded another page into
+  // its frame (or reloaded itself): it's no longer the game that was reviewed. Remove it.
+  function onLoad() {
+    live.current.loads += 1;
+    if (live.current.loads > 1 && !broken) {
+      setBroken(true);
+      live.current.onBroken?.('navigated');
+    }
+  }
+
+  if (broken) return null;
   return (
     <iframe
       ref={iframeRef}
@@ -152,6 +198,7 @@ export default function GameFrame({ run, role, me = null, roomPlayers, send }) {
       title="Game"
       sandbox="allow-scripts"
       srcDoc={srcDoc}
+      onLoad={onLoad}
     />
   );
 }

@@ -9,6 +9,7 @@
 //      "Robot Majority 2". It still sends progress steps, and checks the game file the
 //      same way the real one will.
 //   2. An admin account (accounts.js) in the throwaway in-memory database.
+//   3. A 5 s hang watchdog instead of 15 s.
 import { readFileSync } from 'node:fs';
 import { config } from '../../server/src/config.js';
 import { createGameServer } from '../../server/src/server.js';
@@ -59,7 +60,8 @@ setAdmin(db, admin.username, true);
 const games = createDefaultRegistry();
 games.register(frameGameOrThrow(PROBE_SOURCE, 'probe'));
 
-const server = createGameServer({}, { db, games, runGenerator: fakeGenerator });
+// A short hang watchdog (normally 15 s), so the test of a hung big screen is quick.
+const server = createGameServer({ GAME_WATCHDOG_MS: 5000 }, { db, games, runGenerator: fakeGenerator });
 server.httpServer.listen(config.PORT, () => {
   console.log(`[e2e server] listening on http://localhost:${config.PORT}`);
 });
