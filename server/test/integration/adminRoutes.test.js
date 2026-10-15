@@ -5,6 +5,7 @@ import { renamedSource } from '../helpers/frameGames.js';
 import { setAdmin } from '../../src/db/users.js';
 import { GameRegistry } from '../../src/games/registry.js';
 import { signUp, postJson } from '../helpers/accounts.js';
+import { MODELS } from '../../../generator/src/models.js';
 
 // The admin API for AI-generated games and their versions (plan §11 A5, §12e K6), through
 // the real HTTP server.
@@ -54,7 +55,8 @@ test('only admins get in: 401 logged out, 403 for other accounts', async () => {
   assert.equal(ok.status, 200);
   const body = await ok.json();
   assert.equal(body.info.enabled, true);
-  assert.deepEqual(body.info.models.map((m) => m.id), ['qwen3.8:27b']);
+  assert.deepEqual(body.info.models, MODELS);
+  assert.equal(body.info.defaultModel, 'qwen3.8:27b');
   assert.deepEqual(body.games, []);
 });
 

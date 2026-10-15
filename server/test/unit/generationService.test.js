@@ -57,7 +57,7 @@ test('starting checks the input and the switch', () => {
   assert.equal(codeOf(start({ evil: true })), 'INVALID_IDEA');
   assert.equal(codeOf(start(IDEA, 'gpt-5')), 'INVALID_MODEL');
   assert.equal(codeOf(start(IDEA, ['qwen3.8:27b'])), 'INVALID_MODEL');
-  assert.equal(codeOf(start(IDEA, 'gpt-oss:120b')), 'INVALID_MODEL', 'dropped on 2026-10-14');
+  assert.equal(codeOf(start(IDEA, 'gpt-oss:20b')), 'INVALID_MODEL', 'not on the list');
 
   const off = setup({ enabled: false });
   assert.equal(codeOf(() => off.service.start({ ownerUserId: off.admin.id, idea: IDEA })), 'GENERATION_DISABLED');

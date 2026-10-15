@@ -48,7 +48,7 @@ test('design → new draft → edit → build → read it → playtest with phon
   const { page } = admin;
   await page.goto('/admin');
   await expect(page.getByRole('button', { name: 'Write the design' })).toBeDisabled(); // no idea yet
-  await expect(page.getByText('Model: qwen3.8:27b')).toBeVisible(); // one model, so no picker
+  await expect(page.getByRole('radio', { name: /qwen3\.8:27b/ })).toBeChecked(); // several models: a picker, qwen by default
   await generate(page, 'Everyone votes, the most popular answer scores');
 
   // Live progress, then the design to read: shown as formatted text, nothing built yet.
