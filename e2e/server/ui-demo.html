@@ -6,15 +6,20 @@
   gamepad and a drawing pad; the big screen shows a timer, a scoreboard, an ASCII map
   where the gamepad moves your "@", and the last drawing. The big screen also writes what
   it received in a log, so the tests can check each helper end to end.
+  Since §13o: a second map shows a wider world through a camera that follows the first
+  player, with fog of war; a phone's "Countdown" button starts party.ui.countdown on the big
+  screen; and the log proves party.kit is there.
 -->
 <style>
   .host-layout { display: grid; grid-template-columns: 2fr 1fr; gap: 1rem; height: 100%; box-sizing: border-box; padding: 1rem; }
   #map { min-height: 12rem; height: 45vh; }
   #art { max-width: 20rem; }
+  #world { min-height: 8rem; height: 20vh; }
 </style>
 <div id="app"></div>
 <script>
-  const { el, joystick, gamepad, timer, scoreboard, drawPad, drawing, ascii } = party.ui;
+  const { el, joystick, gamepad, timer, scoreboard, drawPad, drawing, ascii, countdown } = party.ui;
+  const kit = party.kit;
 
   party.ready(({ role, me, players }) => {
     const app = document.getElementById('app');
@@ -25,7 +30,7 @@
   function startHost(app, players) {
     const nameOf = (id) => players.find((p) => p.id === id)?.name ?? id;
     const log = el('ul', { 'aria-label': 'Log' });
-    const left = el('div', { class: 'stack' }, el('h1', {}, 'UI Demo'), el('div', { id: 'timer' }), el('div', { id: 'map', class: 'card' }));
+    const left = el('div', { class: 'stack' }, el('h1', {}, 'UI Demo'), el('div', { id: 'timer' }), el('div', { id: 'map', class: 'card' }), el('div', { id: 'world', class: 'card' }));
     const right = el('div', { class: 'stack' }, el('div', { id: 'scores' }), el('div', { id: 'art' }), log);
     app.append(el('div', { class: 'host-layout' }, left, right));
 
@@ -38,8 +43,24 @@
     const spots = new Map(players.map((p, i) => [p.id, { x: 2 + i * 2, y: 3 }]));
     const taps = new Map(players.map((p) => [p.id, 0]));
     const write = (text) => log.append(el('li', {}, text));
+    write(`kit: ${kit.ordinal(3)}, ${kit.rank({ [players[0].id]: 5 }).rankings[0] === players[0].id ? 'ranked' : 'not ranked'}, ${kit.colorOf(players[0].id)}`);
+
+    // A world 40 wide, seen 12 at a time, following the first player; fog until you've been near.
+    const WORLD = ['#'.repeat(40), ...Array.from({ length: 3 }, (_, y) => `#${'.'.repeat(38).replace(/./g, (c, x) => ((x + y) % 7 === 0 ? '$' : c))}#`), '#'.repeat(40)];
+    const world = ascii('#world', { cols: 12, rows: 5, colors: { '$': '#d4a017' }, label: 'World map' });
+    const seen = new Set();
+    function drawWorld() {
+      const first = spots.get(players[0].id);
+      const x = first.x * 2; // moves twice as fast across the wider world
+      for (let dx = -2; dx <= 2; dx++) for (let y = 0; y < 5; y++) seen.add(`${x + dx},${y}`);
+      const cam = kit.camera(x, 12, WORLD[0].length);
+      world.render(WORLD, { camera: { x: cam, y: 0 }, fog: { seen }, cells: [{ x, y: 2, ch: '@', color: kit.colorOf(players[0].id) }] });
+      write(`world camera ${cam}`);
+    }
+
     function draw() {
       map.render(WALLS, { cells: [...spots].map(([id, s]) => ({ x: s.x, y: s.y, ch: '@', color: '#e53935' })) });
+      drawWorld();
       scores.update(players.map((p) => ({ id: p.id, name: p.name, score: taps.get(p.id) })));
     }
     draw();
@@ -57,6 +78,10 @@
         write(`${who} at ${s.x},${s.y}`);
         draw();
       }
+      if (data.countdown) {
+        write(`countdown from ${who}`);
+        countdown(document.body, { endsAt: party.now() + 2_000, onGo: () => write('countdown: GO') });
+      }
       if (data.drawing) {
         art.show(data.drawing);
         write(`drawing ${who}: ${data.drawing.length} strokes`);
@@ -72,6 +97,7 @@
         el('div', { id: 'pad' }),
         el('div', { id: 'drawpad' }),
         el('button', { class: 'big', id: 'send-drawing' }, 'Send drawing'),
+        el('button', { class: 'secondary', onClick: () => party.send({ countdown: true }) }, 'Countdown'),
       ),
     );
     joystick('#stick', { onChange: (x, y) => party.send({ stick: { x, y } }) });

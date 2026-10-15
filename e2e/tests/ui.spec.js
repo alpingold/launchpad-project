@@ -73,3 +73,26 @@ test('drawing pad: draw, send, and the big screen shows it; the timer counts dow
   await expect(seconds).toContainText(/^(59|60)$/);
   await expect(seconds).toContainText(/^5[0-8]$/, { timeout: 5000 });
 });
+
+test('party.kit is in every frame; the countdown counts down to GO; a wider map scrolls, with fog (plan §13o)', async ({ people }) => {
+  const { host, alex, log } = await startDemo(people);
+  await expect(log).toContainText('kit: 3rd, ranked, #e53935'); // ordinal, rank and colorOf, inside the frame
+  await expect(log).toContainText('world camera 0');
+
+  // Step right 8 times with the arrow key: the world camera follows (2 tiles a step, centred).
+  await frame(alex.page).locator('body').click({ position: { x: 5, y: 5 } });
+  for (let i = 0; i < 8; i++) {
+    await alex.page.keyboard.press('ArrowRight');
+    await expect(log).toContainText(`Alex at ${3 + i},3`);
+  }
+  await expect(log).toContainText('world camera 14');
+  expect(await hasInk(frame(host.page).getByRole('img', { name: 'World map' }))).toBe(true);
+
+  // The countdown: numbers, then GO!, then it's gone; onGo ran.
+  await frame(alex.page).getByRole('button', { name: 'Countdown' }).click();
+  const big = frame(host.page).locator('.pu-countdown');
+  await expect(big).toHaveText(/^[12]$/);
+  await expect(big).toHaveText('GO!', { timeout: 4000 });
+  await expect(log).toContainText('countdown: GO');
+  await expect(big).toHaveCount(0);
+});

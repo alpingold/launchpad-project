@@ -12,7 +12,8 @@
 //   party.ui.scoreboard(el, { title, me })      .update([{ id, name, score, color }])
 //   party.ui.drawPad(el, { colors })            .strokes(), .clear(), .undo(), .setEnabled()
 //   party.ui.drawing(el, strokes)               shows strokes from a drawPad
-//   party.ui.ascii(el, { cols, rows, colors })  .render(lines, { colors, cells }): text-character art
+//   party.ui.ascii(el, { cols, rows, colors })  .render(lines, { colors, cells, camera, fog }): text-character art
+//   party.ui.countdown(el, { endsAt, onGo })    a big 3, 2, 1, GO! over everything
 //
 // Every helper takes an element or a CSS selector, and returns an object to control it.
 
@@ -456,6 +457,11 @@ window.__partyUi = function createPartyUi(party) {
    *   map.render(['#######', '#@  $ #', '#######'], { cells: [{ x: 1, y: 1, ch: '@', color: 'red' }] })
    * `colors` (here or per render) gives a colour per character; `cells` puts characters on
    * top at given spots (players, monsters…). Anything else uses the text colour.
+   * A world bigger than cols × rows: pass `camera: { x, y }`, the top-left tile to show (see
+   * party.kit.camera). Lines and cells stay in WORLD positions.
+   * Fog of war: `fog: { seen, char = '?', color }`. seen is a Set or array of "x,y" strings, or
+   * a function (x, y) → true; unseen tiles show `char`, and cells there are hidden (unless the
+   * cell has `always: true`).
    */
   function ascii(target, { cols = 40, rows = 20, colors = {}, background, label = 'Game map' } = {}) {
     const root = mount(target, 'ascii');
@@ -495,17 +501,68 @@ window.__partyUi = function createPartyUi(party) {
         g.fillStyle = color ?? palette[ch] ?? text;
         g.fillText(ch, ox + (x + 0.5) * cw, oy + (y + 0.55) * cell);
       };
-      const covered = new Set((opts.cells ?? []).map((c) => `${c.x},${c.y}`));
-      lines.slice(0, rows).forEach((line, y) => {
-        [...String(line)].slice(0, cols).forEach((ch, x) => {
-          if (!covered.has(`${x},${y}`)) put(x, y, ch);
-        });
-      });
-      for (const c of opts.cells ?? []) put(c.x, c.y, String(c.ch)[0] ?? ' ', c.color);
+      const cam = { x: Math.round(opts.camera?.x ?? 0), y: Math.round(opts.camera?.y ?? 0) };
+      const fog = opts.fog;
+      const seenSet = fog && (fog.seen instanceof Set ? fog.seen : Array.isArray(fog.seen) ? new Set(fog.seen) : null);
+      const seen = !fog ? () => true : typeof fog.seen === 'function' ? fog.seen : (x, y) => Boolean(seenSet?.has(`${x},${y}`));
+      const fogChar = String(fog?.char ?? '?')[0];
+      const fogColor = fog?.color ?? (styles.getPropertyValue('--muted').trim() || '#888');
+      const cells = (opts.cells ?? []).filter((c) => c.always || seen(c.x, c.y));
+      const covered = new Set(cells.map((c) => `${c.x},${c.y}`));
+      for (let y = 0; y < rows; y++) {
+        const line = [...String(lines[y + cam.y] ?? '')];
+        for (let x = 0; x < cols; x++) {
+          const wx = x + cam.x;
+          const wy = y + cam.y;
+          if (covered.has(`${wx},${wy}`)) continue;
+          if (!seen(wx, wy)) put(x, y, fogChar, fogColor);
+          else put(x, y, line[wx] ?? ' ');
+        }
+      }
+      for (const c of cells) put(c.x - cam.x, c.y - cam.y, String(c.ch)[0] ?? ' ', c.color);
     }
     new ResizeObserver(() => render(last.lines, last.opts)).observe(canvas);
     return { render, destroy: () => canvas.remove() };
   }
 
-  return Object.freeze({ el, joystick, gamepad, timer, scoreboard, drawPad, drawing, ascii, INK: Object.freeze({ ...INK }) });
+  // ---- Countdown --------------------------------------------------------------------------
+  /**
+   * A big "3, 2, 1, GO!" over the element (or the whole page), counting down to `endsAt`
+   * (SERVER time: party.now() + ms). It shows GO! for `goMs`, then removes itself.
+   * onGo runs once, at zero. Returns { destroy() }.
+   */
+  function countdown(target = document.body, { endsAt, onGo, goText = 'GO!', goMs = 800 } = {}) {
+    const root = mount(target, 'countdown');
+    const node = el('div', { class: 'pu-countdown', role: 'status', 'aria-live': 'assertive' });
+    root.append(node);
+    let frame = 0;
+    let wentAt = null;
+    function tick() {
+      const left = endsAt - party.now();
+      if (left > 0) {
+        node.textContent = String(Math.ceil(left / 1000));
+      } else {
+        if (wentAt === null) {
+          wentAt = Date.now();
+          node.textContent = goText;
+          node.classList.add('pu-go');
+          onGo?.();
+        }
+        if (Date.now() - wentAt >= goMs) {
+          node.remove();
+          return;
+        }
+      }
+      frame = requestAnimationFrame(tick);
+    }
+    tick();
+    return {
+      destroy() {
+        cancelAnimationFrame(frame);
+        node.remove();
+      },
+    };
+  }
+
+  return Object.freeze({ el, joystick, gamepad, timer, scoreboard, drawPad, drawing, ascii, countdown, INK: Object.freeze({ ...INK }) });
 };

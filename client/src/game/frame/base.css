@@ -262,6 +262,25 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* party.ui.countdown: a big 3, 2, 1, GO! over everything (clicks pass through it). */
+:where(.pu-countdown) {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  z-index: 10;
+  pointer-events: none;
+  font-size: min(30vw, 30vh);
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+  text-shadow: 0 0.04em 0.1em rgb(0 0 0 / 0.35);
+}
+
+:where(.pu-countdown.pu-go) {
+  color: var(--good);
+}
+
 :where(.pu-scoreboard) {
   width: 100%;
   border-collapse: collapse;
