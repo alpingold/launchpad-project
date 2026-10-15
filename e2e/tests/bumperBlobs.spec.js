@@ -34,3 +34,23 @@ test('steer with the joystick, fall off the ice, lose three rounds; the last blo
   await expect(host.page.getByText('Alex won the last game!')).toBeVisible();
   await blake.page.mouse.up();
 });
+
+test('the big screen reloads mid-game and Bumper Blobs carries on, wins kept', async ({ people }) => {
+  const host = await people.host();
+  const alex = await people.player(host.code, 'Alex');
+  const blake = await people.player(host.code, 'Blake');
+  await host.page.getByRole('button', { name: 'Start game' }).click();
+
+  // Blake slides off once: Alex has a round.
+  const pad = await frame(blake.page).getByLabel('Joystick: drag to steer').boundingBox();
+  await blake.page.mouse.move(pad.x + pad.width / 2, pad.y + pad.height / 2);
+  await blake.page.mouse.down();
+  await blake.page.mouse.move(pad.x + pad.width, pad.y + pad.height / 2, { steps: 3 });
+  await expect(frame(alex.page).getByText('Rounds won: 1 of 3')).toBeVisible({ timeout: 15_000 });
+  await blake.page.mouse.up();
+
+  await host.page.reload();
+  await expect(frame(alex.page).getByRole('status')).toHaveText('Round 2 of 3: get ready!');
+  await expect(frame(alex.page).getByText('Rounds won: 1 of 3')).toBeVisible();
+  await expect(host.page.getByText(/stopped/)).toHaveCount(0);
+});

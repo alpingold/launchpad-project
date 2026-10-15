@@ -13,6 +13,8 @@
      show with party.setState;
    - each phone (role "player") is a joystick plus a Dash button, sending its direction to
      the big screen with party.send about 12 times a second.
+  The referee saves the round and everyone's wins (party.save) at every change of phase, so
+  if the big screen reloads, the game carries on: a round that was cut off starts again.
   The server only passes the messages along. Nothing here was possible with the old kit.
 -->
 <style>
@@ -62,14 +64,14 @@
   const ROUNDS = 3;
   const DASH_COOLDOWN_MS = 1600;
 
-  party.ready(({ role }) => {
+  party.ready(({ role, restored }) => {
     document.body.className = role;
-    if (role === 'host') startReferee();
+    if (role === 'host') startReferee(restored);
     else startController();
   });
 
   // ---- The big screen: referee + arena ---------------------------------------------------
-  function startReferee() {
+  function startReferee(restored) {
     const ARENA = 100; // world units: the ice's starting radius
     const BLOB = 8.5; // blob radius
     const ACCEL = 170; // units/s² at full joystick
@@ -142,6 +144,14 @@
       phase = next;
       phaseAt = now;
       tellPhones();
+      // Enough to carry on after a reload (positions aren't worth saving: a cut-off round restarts).
+      party.save({ round, phase, wins: Object.fromEntries(blobs.map((b) => [b.id, b.wins])) });
+    }
+
+    function finalBanner() {
+      const best = Math.max(...blobs.map((b) => b.wins));
+      const champs = blobs.filter((b) => b.wins === best);
+      return champs.length === 1 ? `${champs[0].name} wins Bumper Blobs!` : `It's a tie: ${champs.map((b) => b.name).join(' & ')}!`;
     }
 
     party.on('event', (from, data) => {
@@ -240,9 +250,7 @@
           placeBlobs();
           setPhase('countdown', now);
         } else {
-          const best = Math.max(...blobs.map((b) => b.wins));
-          const champs = blobs.filter((b) => b.wins === best);
-          banner = champs.length === 1 ? `${champs[0].name} wins Bumper Blobs!` : `It's a tie: ${champs.map((b) => b.name).join(' & ')}!`;
+          banner = finalBanner();
           setPhase('final', now);
         }
       } else if (phase === 'final' && elapsed >= FINAL_MS) {
@@ -401,7 +409,20 @@
     }
 
     placeBlobs();
-    setPhase('countdown', performance.now());
+    if (restored) {
+      // The big screen reloaded: pick up from the last save.
+      for (const b of blobs) b.wins = Number(restored.wins?.[b.id]) || 0;
+      round = restored.round;
+      if (restored.phase === 'roundOver' && round < ROUNDS) round += 1; // that round was finished
+      if (restored.phase === 'final' || (restored.phase === 'roundOver' && restored.round >= ROUNDS)) {
+        banner = finalBanner();
+        setPhase('final', performance.now());
+      } else {
+        setPhase('countdown', performance.now());
+      }
+    } else {
+      setPhase('countdown', performance.now());
+    }
     requestAnimationFrame(tick);
   }
 
