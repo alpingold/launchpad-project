@@ -131,6 +131,7 @@ export async function playtest(source, opts = {}) {
   const startedAt = Date.now();
   let lastAlive = 0;
   let stopping = false;
+  let stopWatchdog = () => {};
   let hung = false;
 
   const relay = new FrameRelay({
@@ -300,8 +301,8 @@ export async function playtest(source, opts = {}) {
   async function load(screen) {
     screen.ready = false;
     screen.queue = [];
-    await screen.page.goto(`${ORIGIN}/harness.html`);
-    await screen.page.evaluate((doc) => window.__start(doc), srcdoc);
+    await screen.page.goto(`${ORIGIN}/harness.html`, { timeout: LOAD_TIMEOUT_MS });
+    await withTimeout(screen.page.evaluate((doc) => window.__start(doc), srcdoc), LOAD_TIMEOUT_MS);
   }
 
   /** The game's frame on a screen (the harness page's only child frame). */
@@ -327,17 +328,21 @@ export async function playtest(source, opts = {}) {
       { at: 0.5, run: () => takeShots() },
       { at: 0.6, run: () => reloadHost() },
     ];
+    // The hang watchdog runs on its own timer: steps below may wait on a frozen page (other
+    // pages can share its process), and must not keep it from noticing.
+    const watchdog = setInterval(() => {
+      if (hung || !lastAlive || !screens.get('host').ready || Date.now() - lastAlive <= HANG_MS) return;
+      hung = true;
+      findings.add({ rule: 'hang', screen: 'big screen', message: `The big screen stopped responding for ${HANG_MS / 1000} s (an endless loop?). On the site, the game is stopped and the big screen's tab freezes.` });
+    }, 250);
+    stopWatchdog = () => clearInterval(watchdog);
     const bots = [...screens.values()].filter((s) => s.role === 'player').map((s) => runBot(s));
     let checkedFirstWord = false;
     let checkedBlank = false;
     while (Date.now() < endAt && !summary.ended && !hung) {
       await sleep(200);
       const elapsed = (Date.now() - startedAt) / (seconds * 1000);
-      while (timeline.length && elapsed >= timeline[0].at) await timeline.shift().run();
-      if (lastAlive && Date.now() - lastAlive > HANG_MS && screens.get('host').ready) {
-        hung = true;
-        findings.add({ rule: 'hang', screen: 'big screen', message: `The big screen stopped responding for ${HANG_MS / 1000} s (an endless loop?). On the site, the game is stopped and the big screen's tab freezes.` });
-      }
+      while (timeline.length && elapsed >= timeline[0].at && !hung) await timeline.shift().run();
       if (!checkedFirstWord && Date.now() - startedAt > FIRST_WORD_MS) {
         checkedFirstWord = true;
         for (const s of screens.values()) {
@@ -357,6 +362,7 @@ export async function playtest(source, opts = {}) {
     await Promise.race([Promise.allSettled(bots), sleep(2000)]);
     if (!summary.ended && !hung) onStep(`playtest: still running after ${seconds} s (fine for long games)`);
   } finally {
+    stopWatchdog();
     stopping = true;
     relay.dispose();
     // A hung page can't be closed politely: give it a moment, then kill the browser.
@@ -373,7 +379,7 @@ export async function playtest(source, opts = {}) {
 
   async function reloadPhone() {
     const screen = screens.get(players.at(-1).id);
-    if (!screen || summary.ended) return;
+    if (!screen || summary.ended || hung) return;
     onStep(`playtest: ${screen.label} reloads`);
     screen.connected = false;
     toGame(screens.get('host'), { type: 'players', players: playerList() });
@@ -529,7 +535,11 @@ async function launchChromium(headed) {
   }
   const { chromium } = await import('playwright-core');
   // /dev/shm is small (or missing) in containers: Chromium uses /tmp instead.
-  return chromium.launch({ headless: !headed, args: ['--disable-dev-shm-usage'] });
+  // The OpenShell sandbox forbids user namespaces, which Chromium's process launcher (the
+  // "zygote") and GPU process need: without them it crashes on the first page. So no
+  // zygote (pages still get their own processes) and no GPU. Chromium's own sandbox is off,
+  // as Playwright always does; the OpenShell sandbox is the wall around all of it.
+  return chromium.launch({ headless: !headed, args: ['--disable-dev-shm-usage', '--no-zygote', '--disable-gpu'] });
 }
 
 function readAssets() {

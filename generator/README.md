@@ -59,7 +59,15 @@ Three steps, one report (the same shape the admin page shows):
 **It runs the game.** On your machine, use it on files you wrote or chose; generated games
 are checked inside the sandbox. Locally it uses the Chromium the browser tests installed
 (`npx playwright install chromium` in `e2e/`); the image installs its own under
-`/app/ms-playwright` (about 1.2 GB on disk). To try the image without OpenShell:
+`/app/ms-playwright` (about 1.2 GB on disk). In the sandbox Chromium runs with
+`--no-zygote --disable-gpu`, because OpenShell forbids the user namespaces they need.
+
+**WSL: don't use `networkingMode=mirrored`.** It puts a seccomp listener on every process in
+WSL, and OpenShell's supervisor needs its own (the kernel allows one), so every sandbox fails
+with "seccomp notification probe: notification launcher disappeared". To reach the dev
+server from a phone, install Tailscale inside WSL instead.
+
+To try the image without OpenShell:
 
 ```bash
 docker run --rm --network none -v "$PWD/game.html:/tmp/game.html:ro" boilergames-generator:local \
