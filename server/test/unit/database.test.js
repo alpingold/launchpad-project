@@ -24,7 +24,7 @@ function tempDir(t) {
 test('a new database gets every table and the latest version', () => {
   const db = openDatabase(':memory:');
   assert.equal(db.pragma('user_version', { simple: true }), LATEST_VERSION);
-  assert.deepEqual(tables(db), ['game_versions', 'generated_games', 'sessions', 'users']);
+  assert.deepEqual(tables(db), ['build_attempts', 'game_versions', 'generated_games', 'sessions', 'users']);
 });
 
 test('an existing pre-migration database (like the one from M7) is upgraded, keeping its data, with a backup', (t) => {
@@ -40,7 +40,7 @@ test('an existing pre-migration database (like the one from M7) is upgraded, kee
   const db = openDatabase(file);
   assert.equal(db.pragma('user_version', { simple: true }), LATEST_VERSION);
   assert.deepEqual(listUsers(db), [{ id: 1, username: 'alpingold', isAdmin: false, createdAt: 1 }]);
-  assert.deepEqual(tables(db), ['game_versions', 'generated_games', 'sessions', 'users']);
+  assert.deepEqual(tables(db), ['build_attempts', 'game_versions', 'generated_games', 'sessions', 'users']);
   db.close();
 
   // The copy made before migrating is the old database, untouched.
@@ -106,7 +106,7 @@ test('migration 5 (F5): versions keep every field, and can now be designing or w
      VALUES ('g-old', 1, 'an idea', NULL, '- x', 'qwen3.8:27b', 'ready', 'Old', 'An old game', 'code', 'sha', '{"ok":true}', NULL, 3, 4)`,
   ).run();
 
-  assert.deepEqual(migrate(db), [5]);
+  assert.deepEqual(migrate(db, { migrations: MIGRATIONS.filter((m) => m.version <= 5) }), [5]);
   const [v1] = getGeneratedGame(db, 'g-old').versions;
   assert.deepEqual(
     [v1.status, v1.name, v1.description, v1.source, v1.sourceSha256, v1.report, v1.changelog, v1.createdAt, v1.design, v1.drafts],

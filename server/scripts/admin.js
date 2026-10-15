@@ -21,6 +21,7 @@ import {
   deleteGeneratedGame,
   gameStatus,
   mainVersion,
+  listBuildAttempts,
 } from '../src/db/generatedGames.js';
 import { frameGameReport, describeProblem } from '../src/games/frameGame.js';
 import { datasetRecords, toJsonLines } from '../src/generation/dataset.js';
@@ -62,7 +63,7 @@ switch (command) {
   case 'export-data': {
     const [file] = positional;
     if (!file) done(HELP, false);
-    const records = datasetRecords(listGeneratedGames(db));
+    const records = datasetRecords(listGeneratedGames(db), { attemptsOf: (id) => listBuildAttempts(db, id) });
     const out = path.resolve(process.env.INIT_CWD || process.cwd(), file);
     await writeFile(out, toJsonLines(records));
     done(`Wrote ${records.length} version${records.length === 1 ? '' : 's'} to ${out}`);

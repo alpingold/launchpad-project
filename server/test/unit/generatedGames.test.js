@@ -17,6 +17,8 @@ import {
   designFailed,
   startBuild,
   deleteVersion,
+  saveBuildAttempts,
+  listBuildAttempts,
   deleteGeneratedGame,
   gameStatus,
   mainVersion,
@@ -241,4 +243,29 @@ test('designs: drafts pile up, a failed draft falls back to the last one, buildi
   const two = addVersion(db, id, { request: 'a tiny fix', basedOn: 1, status: 'generating' });
   deleteVersion(db, id, two);
   assert.deepEqual(getGeneratedGame(db, id).versions.map((x) => x.version), [1]);
+});
+
+test('build attempts: numbered per build, read back by version, deleted with their version', () => {
+  const { db, admin } = setup();
+  const { id } = createGeneratedGame(db, { ownerUserId: admin.id, prompt: 'a tapping game' });
+  const usage = { prompt_tokens: 100, completion_tokens: 50 };
+  const first = saveBuildAttempts(db, id, 1, [
+    { attempt: 1, ok: false, source: 'bad', report: { ok: false, problems: ['no game info'] }, seconds: 30, usage },
+    { attempt: 2, ok: false, source: null, report: { ok: false, problems: ['no game file'] }, seconds: 20, usage: null },
+    { ok: true, source: 'skipped: no attempt number' },
+  ], { now: 5 });
+  const second = saveBuildAttempts(db, id, 1, [{ attempt: 1, ok: true, source: 'good', report: { ok: true, problems: [] }, seconds: 40, usage }]);
+  assert.deepEqual([first, second], [1, 2]);
+
+  const attempts = listBuildAttempts(db, id).get(1);
+  assert.deepEqual(attempts.map((a) => [a.build, a.attempt, a.ok, a.source]), [[1, 1, false, 'bad'], [1, 2, false, null], [2, 1, true, 'good']]);
+  assert.deepEqual([attempts[0].report, attempts[0].seconds, attempts[0].promptTokens, attempts[0].completionTokens, attempts[0].createdAt], [{ ok: false, problems: ['no game info'] }, 30, 100, 50, 5]);
+  assert.equal(attempts[1].promptTokens, null);
+
+  addVersion(db, id, { request: 'a tiny fix', basedOn: 1, status: 'generating' });
+  saveBuildAttempts(db, id, 2, [{ attempt: 1, ok: true, source: 'v2' }]);
+  deleteVersion(db, id, 2);
+  assert.equal(listBuildAttempts(db, id).has(2), false, 'gone with its version');
+  deleteGeneratedGame(db, id);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM build_attempts').get().n, 0, 'gone with the game');
 });

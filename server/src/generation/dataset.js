@@ -8,20 +8,24 @@
 //   design                  the design (or change plan) the code was built from
 //   source, checks          the code, and whether it passed the checks (and which rules failed)
 //   outcome                 how far the admin took it: failed, built, playtested, published
+//   attempts                every build attempt: its code and which check rules it failed,
+//                           so "this broke like this, and was fixed like this" can be learned
 //
 // Left out on purpose: who owns the game (no account ids or names), and the playtest's
-// screenshots (large, and not text). Not recorded yet, so not here: failed build attempts
-// (only the last one is kept), and how the game did with real players.
+// screenshots (large, and not text). Not recorded yet, so not here: how the game did with
+// real players.
 
 /** @typedef {import('../db/generatedGames.js').GeneratedGame} GeneratedGame */
 
 /**
  * @param {GeneratedGame[]} games
+ * @param {{ attemptsOf?: (gameId: string) => Map<number, import('../db/generatedGames.js').BuildAttempt[]> }} [opts]
  * @returns {object[]} one record per version, oldest game and version first
  */
-export function datasetRecords(games) {
+export function datasetRecords(games, { attemptsOf = () => new Map() } = {}) {
   const records = [];
   for (const game of [...games].sort((a, b) => a.createdAt - b.createdAt)) {
+    const attempts = attemptsOf(game.id);
     for (const v of game.versions) {
       records.push({
         gameId: game.id,
@@ -43,6 +47,15 @@ export function datasetRecords(games) {
           warnings: ruleCounts(v.report.warnings),
         },
         outcome: outcome(game, v),
+        attempts: (attempts.get(v.version) ?? []).map((a) => ({
+          build: a.build,
+          attempt: a.attempt,
+          ok: a.ok,
+          problems: ruleCounts(a.report?.problems),
+          source: a.source,
+          seconds: a.seconds,
+          tokens: { prompt: a.promptTokens, completion: a.completionTokens },
+        })),
         createdAt: v.createdAt,
       });
     }

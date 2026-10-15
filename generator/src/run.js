@@ -19,6 +19,8 @@
 // (how far a reply has streamed in, every ~15 s). The result is one JSON line on stdout:
 //   design: { ok, model, design, attempts, error? }
 //   build:  { ok, model, source, report, changelog, attempts, error? }
+//           Each build attempt keeps its code and check report (without screenshots, which
+//           only the final report has), so a version's history can be read and studied later.
 
 import { pathToFileURL } from 'node:url';
 import { chat } from './llm.js';
@@ -139,7 +141,8 @@ async function build(job, model, { chatFn = chat, check = checkGame, onStep = ()
     // The list of changes comes with the first answer that has code (fixes don't repeat it).
     if (change && source && result.changelog === null) result.changelog = extractChangelog(reply.content);
     if (!source) {
-      result.attempts.push({ attempt, seconds: reply.seconds, ok: false, problems: 1, usage: reply.usage });
+      const report = { ok: false, problems: ['The reply had no game file.'], warnings: [] };
+      result.attempts.push({ attempt, seconds: reply.seconds, ok: false, problems: 1, usage: reply.usage, source: null, report });
       messages = [...prompt, { role: 'assistant', content: reply.content }, { role: 'user', content: NO_CODE_MESSAGE }];
       continue;
     }
@@ -148,7 +151,7 @@ async function build(job, model, { chatFn = chat, check = checkGame, onStep = ()
     const report = await checkWithSize(source, check, onStep);
     result.source = source;
     result.report = report;
-    result.attempts.push({ attempt, seconds: reply.seconds, ok: report.ok, problems: report.problems.length, usage: reply.usage });
+    result.attempts.push({ attempt, seconds: reply.seconds, ok: report.ok, problems: report.problems.length, usage: reply.usage, source, report: withoutScreenshots(report) });
     if (report.ok) {
       onStep(`attempt ${attempt}/${maxAttempts}: passed`);
       return { ...result, ok: true };
@@ -158,6 +161,13 @@ async function build(job, model, { chatFn = chat, check = checkGame, onStep = ()
     messages = [...prompt, { role: 'assistant', content: `\`\`\`html\n${source}\`\`\`` }, { role: 'user', content: fixMessage(formatReport(report)) }];
   }
   return { ...result, error: `no passing game after ${maxAttempts} attempts` };
+}
+
+/** A report without the playtest's screenshots (only the final report keeps them: they're large). */
+function withoutScreenshots(report) {
+  if (!report.playtest?.screenshots) return report;
+  const { screenshots, ...playtest } = report.playtest;
+  return { ...report, playtest };
 }
 
 /** "thinking: 1,200 tokens, writing: 3,400" */

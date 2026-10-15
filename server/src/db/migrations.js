@@ -131,6 +131,31 @@ export const MIGRATIONS = [
       ALTER TABLE game_versions_new RENAME TO game_versions;
     `,
   },
+  {
+    version: 6,
+    description: 'every build attempt is kept (plan §13n)',
+    sql: `
+      -- One row per attempt at building a version: the code the model wrote and what the
+      -- checks found. A version's own source and report are its LAST attempt; the earlier
+      -- ones show how it got there (and are the "broken, then fixed" data of plan §13n).
+      -- build: 1 for the first "Build it", 2 if it was built again after failing, and so on.
+      CREATE TABLE build_attempts (
+        game_id           TEXT    NOT NULL,
+        version           INTEGER NOT NULL,
+        build             INTEGER NOT NULL,
+        attempt           INTEGER NOT NULL,
+        ok                INTEGER NOT NULL,   -- 1: passed every check
+        source            TEXT,               -- NULL if the reply had no game file
+        report_json       TEXT,               -- the checks' report (without screenshots)
+        seconds           INTEGER,            -- how long the model took
+        prompt_tokens     INTEGER,
+        completion_tokens INTEGER,
+        created_at        INTEGER NOT NULL,
+        PRIMARY KEY (game_id, version, build, attempt),
+        FOREIGN KEY (game_id, version) REFERENCES game_versions(game_id, version) ON DELETE CASCADE
+      );
+    `,
+  },
 ];
 
 /** The version a fully up-to-date database has. */

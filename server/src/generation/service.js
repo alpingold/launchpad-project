@@ -32,6 +32,7 @@ import {
   designFailed,
   startBuild,
   deleteVersion,
+  saveBuildAttempts,
   BUSY_STATUSES,
 } from '../db/generatedGames.js';
 import { liveGameId, registerVersion } from '../games/generated.js';
@@ -282,6 +283,8 @@ export class GenerationService {
       }
       return;
     }
+    // Every attempt of this build, passing or not, is kept (plan §13n).
+    if (Array.isArray(result.attempts) && result.attempts.length > 0) saveBuildAttempts(this.db, id, version.version, result.attempts);
     const changelog = result.changelog ?? null;
     if (result.ok && result.source) {
       const { name, description } = result.report?.game ?? {};

@@ -2,7 +2,7 @@ import express from 'express';
 import { currentUser } from '../auth/currentUser.js';
 import { requireJsonPosts } from './requireJson.js';
 import { GenerationError } from '../generation/service.js';
-import { gameStatus, mainVersion } from '../db/generatedGames.js';
+import { gameStatus, mainVersion, listBuildAttempts } from '../db/generatedGames.js';
 import { changedLines } from '../generation/lineDiff.js';
 
 /**
@@ -67,32 +67,40 @@ export function createAdminRouter({ db, generation }) {
   };
 
   /** The detail view: every version, with its code and test report as plain text/data, and what changed. */
-  const detail = (game) => ({
-    ...summary(game),
-    versions: game.versions.map((v) => {
-      const base = v.basedOn === null ? null : game.versions.find((b) => b.version === v.basedOn);
-      return {
-        version: v.version,
-        status: v.status,
-        request: v.request,
-        basedOn: v.basedOn,
-        changelog: v.changelog,
-        model: v.model,
-        design: v.design,
-        drafts: v.drafts,
-        designFeedback: v.designFeedback,
-        name: v.name,
-        description: v.description,
-        error: v.error,
-        source: v.source,
-        report: v.report,
-        testsPassed: v.report ? v.report.ok === true : null,
-        // Changed lines compared with the version it was made from (null: v1, no code yet, or too big).
-        changes: base?.source && v.source ? changedLines(base.source, v.source) : null,
-        createdAt: v.createdAt,
-      };
-    }),
-  });
+  const detail = (game) => {
+    const attempts = listBuildAttempts(db, game.id);
+    return {
+      ...summary(game),
+      versions: game.versions.map((v) => {
+        const base = v.basedOn === null ? null : game.versions.find((b) => b.version === v.basedOn);
+        return {
+          version: v.version,
+          status: v.status,
+          request: v.request,
+          basedOn: v.basedOn,
+          changelog: v.changelog,
+          model: v.model,
+          design: v.design,
+          drafts: v.drafts,
+          designFeedback: v.designFeedback,
+          name: v.name,
+          description: v.description,
+          error: v.error,
+          source: v.source,
+          report: v.report,
+          testsPassed: v.report ? v.report.ok === true : null,
+          // Changed lines compared with the version it was made from (null: v1, no code yet, or too big).
+          changes: base?.source && v.source ? changedLines(base.source, v.source) : null,
+          // Every build attempt (plan §13n), each with what changed since the attempt before.
+          attempts: (attempts.get(v.version) ?? []).map((a, i, all) => {
+            const before = i > 0 && all[i - 1].build === a.build ? all[i - 1] : null;
+            return { ...a, changes: before?.source && a.source ? changedLines(before.source, a.source) : null };
+          }),
+          createdAt: v.createdAt,
+        };
+      }),
+    };
+  };
 
   /** Runs a handler; a GenerationError becomes its HTTP status and code. */
   const handle = (fn) => async (req, res, next) => {

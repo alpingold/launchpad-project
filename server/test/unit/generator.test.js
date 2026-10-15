@@ -254,6 +254,10 @@ test('build job: write → check → fix until it passes; the report goes back t
   assert.equal(result.ok, true);
   assert.equal(checks, 2);
   assert.deepEqual(result.attempts.map((a) => a.ok), [false, false, true]);
+  // Every attempt keeps its code and report (for the version's history).
+  assert.match(result.attempts[0].source, /fetch\("\/x"\)/);
+  assert.equal(result.attempts[0].report.problems[0].rule, 'network');
+  assert.deepEqual([result.attempts[1].source, result.attempts[1].report.problems], [null, ['The reply had no game file.']]);
   // Each request carries the prompt plus only the latest attempt (the context is 65K tokens).
   assert.deepEqual(model.calls.map((c) => c.length), [2, 4, 4]);
   assert.equal(model.calls[2][2].content, 'no code, sorry', 'the second attempt, not the first');

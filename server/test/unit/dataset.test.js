@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { openDatabase } from '../../src/db/database.js';
 import { createUser } from '../../src/db/users.js';
-import { createGeneratedGame, addVersion, saveDraft, saveVersionSource, markVersionFailed, setLiveVersions, listGeneratedGames } from '../../src/db/generatedGames.js';
+import { createGeneratedGame, addVersion, saveDraft, saveVersionSource, markVersionFailed, setLiveVersions, listGeneratedGames, saveBuildAttempts, listBuildAttempts } from '../../src/db/generatedGames.js';
 import { datasetRecords, toJsonLines } from '../../src/generation/dataset.js';
 
 // The game library as data (plan §13n): one record per version.
@@ -25,7 +25,16 @@ test('every version becomes a record: drafts with feedback, design, code, checks
   markVersionFailed(db, id, 3, 'no passing game', { source: '<bad>', report: { ok: false, problems: ['no game info', { rule: 'csp', message: 'y' }], warnings: [] } });
   setLiveVersions(db, id, { publishedVersion: 2 });
 
-  const records = datasetRecords(listGeneratedGames(db));
+  saveBuildAttempts(db, id, 1, [
+    { attempt: 1, ok: false, source: '<broken>', report: { ok: false, problems: [{ rule: 'error', message: 'threw' }] }, seconds: 30, usage: { prompt_tokens: 9, completion_tokens: 8 } },
+    { attempt: 2, ok: true, source: '<game>', report: { ok: true, problems: [] }, seconds: 20 },
+  ]);
+  const records = datasetRecords(listGeneratedGames(db), { attemptsOf: (gameId) => listBuildAttempts(db, gameId) });
+  assert.deepEqual(records[0].attempts, [
+    { build: 1, attempt: 1, ok: false, problems: { error: 1 }, source: '<broken>', seconds: 30, tokens: { prompt: 9, completion: 8 } },
+    { build: 1, attempt: 2, ok: true, problems: {}, source: '<game>', seconds: 20, tokens: { prompt: null, completion: null } },
+  ]);
+  assert.deepEqual(records[1].attempts, []);
   assert.deepEqual(records.map((r) => [r.version, r.kind, r.outcome]), [
     [1, 'new', 'built-then-changed'],
     [2, 'small-fix', 'published'],

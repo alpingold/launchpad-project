@@ -89,10 +89,23 @@ test('the whole flow: design → new draft → edit → build → playtest (only
   const build = await post(`/api/admin/generations/${game.id}/versions/1/build`, {}, admin);
   assert.equal(build.status, 202);
   assert.equal((await build.json()).game.status, 'generating');
-  finishGeneration({ ok: true, source: GOOD_SOURCE, report: { ok: true, problems: [], game: { name: 'Majority Rules', description: 'Vote' } } });
+  const firstTry = GOOD_SOURCE.replace('</script>', '</script>\n<!-- first try -->');
+  finishGeneration({
+    ok: true,
+    source: GOOD_SOURCE,
+    report: { ok: true, problems: [], game: { name: 'Majority Rules', description: 'Vote' } },
+    attempts: [
+      { attempt: 1, ok: false, source: firstTry, report: { ok: false, problems: ['bad'] }, seconds: 30, usage: { prompt_tokens: 9, completion_tokens: 8 } },
+      { attempt: 2, ok: true, source: GOOD_SOURCE, report: { ok: true, problems: [] }, seconds: 20, usage: null },
+    ],
+  });
   await server.generation.current;
 
   detail = await detailOf();
+  // Both build attempts, the second with what changed since the first.
+  const [try1, try2] = detail.versions[0].attempts;
+  assert.deepEqual([try1.attempt, try1.ok, try1.report.problems, try1.promptTokens, try1.changes], [1, false, ['bad'], 9, null]);
+  assert.deepEqual([try2.attempt, try2.ok, try2.changes.added, try2.changes.removed], [2, true, 0, 1]);
   assert.equal(detail.status, 'review');
   assert.equal(detail.name, 'Majority Rules');
   assert.equal(detail.testsPassed, true);

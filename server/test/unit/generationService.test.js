@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { openDatabase } from '../../src/db/database.js';
 import { createUser } from '../../src/db/users.js';
-import { createGeneratedGame, getGeneratedGame, gameStatus, saveDraft, startRedraft } from '../../src/db/generatedGames.js';
+import { createGeneratedGame, getGeneratedGame, gameStatus, saveDraft, startRedraft, listBuildAttempts } from '../../src/db/generatedGames.js';
 import { GameRegistry } from '../../src/games/registry.js';
 import { GenerationService, MAX_QUEUED } from '../../src/generation/service.js';
 import { renamedSource } from '../helpers/frameGames.js';
@@ -431,4 +431,20 @@ test('small fixes skip the plan; the newest version can be discarded while it ha
   assert.equal(gameStatus(service.get(id)), 'review');
   service.requestChanges({ id, request: 'Now something else' }); // no longer blocked
   assert.equal(service.get(id).versions.at(-1).version, 3);
+});
+
+test('every build attempt is kept, passing or not, as one build per "Build it" (plan §13n)', async () => {
+  const { service, admin, calls, db } = setup();
+  const { id } = service.start({ ownerUserId: admin.id, idea: IDEA });
+  calls[0].finish(DESIGNED);
+  await service.current;
+  service.build({ id, version: 1 });
+  const failedAttempt = { attempt: 1, ok: false, source: 'bad', report: { ok: false, problems: ['x'] }, seconds: 30, usage: null };
+  calls[1].finish({ ok: false, error: 'no passing game after 1 attempts', attempts: [failedAttempt] });
+  await service.current;
+  service.build({ id, version: 1 });
+  calls[2].finish({ ...PASSED, attempts: [failedAttempt, { attempt: 2, ok: true, source: GOOD_SOURCE, report: PASSED.report, seconds: 40, usage: null }] });
+  await service.current;
+  const attempts = listBuildAttempts(db, id).get(1);
+  assert.deepEqual(attempts.map((a) => [a.build, a.attempt, a.ok]), [[1, 1, false], [2, 1, false], [2, 2, true]]);
 });
