@@ -5,8 +5,8 @@ test('home page explains the site and lists the games', async ({ page }) => {
   await expect(page).toHaveTitle('BoilerGames');
   await expect(page.getByRole('heading', { name: 'BoilerGames', level: 1 })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'How it works' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Probe' })).toBeVisible();
-  await expect(page.locator('.game-cards li', { hasText: 'Probe' })).toContainText('1–12 players');
+  await expect(page.getByRole('heading', { name: 'Bumper Blobs' })).toBeVisible();
+  await expect(page.locator('.game-cards li', { hasText: 'Bumper Blobs' })).toContainText('2–12 players');
 });
 
 test('the join box sends you to the join page with the code filled in', async ({ page }) => {
@@ -59,7 +59,7 @@ test('the home page fits a phone screen without sideways scrolling', async ({ br
   const context = await browser.newContext({ ...devices['Pixel 7'] });
   const page = await context.newPage();
   await page.goto('/');
-  await expect(page.getByRole('heading', { name: 'Probe' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Bumper Blobs' })).toBeVisible();
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   expect(overflow).toBeLessThanOrEqual(0);
   await context.close();

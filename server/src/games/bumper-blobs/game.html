@@ -1,0 +1,505 @@
+<script type="application/json" id="game-info">
+  {
+    "name": "Bumper Blobs",
+    "description": "Steer your blob with your phone and bump everyone else off the ice. Last blob standing wins the round.",
+    "minPlayers": 2,
+    "maxPlayers": 12
+  }
+</script>
+<!--
+  BUMPER BLOBS: the first frame game (plan §13g). One file, two roles:
+   - the big screen (role "host") is the referee: it runs the physics at 60 frames a
+     second on a <canvas>, decides who fell in and who won, and tells each phone what to
+     show with party.setState;
+   - each phone (role "player") is a joystick plus a Dash button, sending its direction to
+     the big screen with party.send about 12 times a second.
+  The server only passes the messages along. Nothing here was possible with the old kit.
+-->
+<style>
+  body.host { background: #06182b; overflow: hidden; }
+  body.host canvas { display: block; width: 100vw; height: 100vh; }
+
+  body.player { overflow: hidden; user-select: none; -webkit-user-select: none; }
+  body.player .phone { display: flex; flex-direction: column; align-items: center; gap: 0.75rem; height: 100%; padding: 0.75rem 1rem 1rem; box-sizing: border-box; }
+  .badge { display: flex; align-items: center; gap: 0.6rem; font-size: 1.25rem; font-weight: 800; }
+  .dot { width: 1.6rem; height: 1.6rem; border-radius: 50%; border: 3px solid rgba(0, 0, 0, 0.25); }
+  .status { margin: 0; min-height: 2.6em; text-align: center; font-size: 1.05rem; color: var(--muted); }
+  .wins { margin: 0; font-weight: 700; }
+  .pad { position: relative; flex: 1; width: 100%; max-width: 22rem; max-height: 22rem; aspect-ratio: 1; border-radius: 50%;
+    background: radial-gradient(circle, var(--surface) 0%, var(--surface) 55%, rgba(127, 127, 160, 0.25) 100%);
+    border: 3px solid rgba(127, 127, 160, 0.45); touch-action: none; }
+  .pad.off { opacity: 0.4; }
+  .knob { position: absolute; left: 50%; top: 50%; width: 34%; height: 34%; margin: -17% 0 0 -17%; border-radius: 50%;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3); pointer-events: none; }
+  .dash { width: 100%; max-width: 22rem; padding: 1rem; font-size: 1.4rem; font-weight: 800; border: 0; border-radius: 1rem;
+    background: var(--accent); color: var(--on-accent); touch-action: manipulation; }
+  .dash:disabled { opacity: 0.4; }
+  .dash.cooling { animation: cool 1.6s linear; }
+  @keyframes cool { from { opacity: 0.4; } to { opacity: 1; } }
+</style>
+
+<canvas id="arena" hidden></canvas>
+
+<div class="phone" id="phone" hidden>
+  <div class="badge"><span class="dot" id="dot"></span><span id="you">You</span></div>
+  <p class="status" id="status" role="status">Get ready…</p>
+  <div class="pad off" id="pad" aria-label="Joystick: drag to steer">
+    <div class="knob" id="knob"></div>
+  </div>
+  <button class="dash" id="dash" disabled>Dash!</button>
+  <p class="wins" id="wins"></p>
+</div>
+
+<script>
+  'use strict';
+
+  // ---- Shared ---------------------------------------------------------------------------
+  const COLORS = [
+    ['#ff5a5f', 'Red'], ['#ffb400', 'Yellow'], ['#3ec300', 'Green'], ['#00a6ed', 'Blue'],
+    ['#a259ff', 'Purple'], ['#ff7eb6', 'Pink'], ['#00c2a8', 'Teal'], ['#ff8c42', 'Orange'],
+    ['#8f9bff', 'Lavender'], ['#c0ca33', 'Lime'], ['#a1887f', 'Brown'], ['#f4f4f4', 'White'],
+  ];
+  const ROUNDS = 3;
+  const DASH_COOLDOWN_MS = 1600;
+
+  party.ready(({ role }) => {
+    document.body.className = role;
+    if (role === 'host') startReferee();
+    else startController();
+  });
+
+  // ---- The big screen: referee + arena ---------------------------------------------------
+  function startReferee() {
+    const ARENA = 100; // world units: the ice's starting radius
+    const BLOB = 8.5; // blob radius
+    const ACCEL = 170; // units/s² at full joystick
+    const MAX_SPEED = 150;
+    const GLIDE = 0.5; // speed kept after 1 s with no input (it's ice)
+    const DASH = 115; // instant speed boost
+    const BOUNCE = 1.15; // bumps are a little livelier than a fair collision
+    const COUNTDOWN_MS = 3000;
+    const ROUND_OVER_MS = 3000;
+    const FINAL_MS = 5000;
+    const MELT_AFTER_MS = 20000; // then the ice shrinks, so every round ends
+    const MELT_SPEED = 2.5; // units/s
+    const FALL_MS = 600;
+
+    const canvas = document.getElementById('arena');
+    canvas.hidden = false;
+    const g = canvas.getContext('2d');
+
+    const blobs = party.players.map((p, i) => ({
+      id: p.id,
+      name: p.name,
+      color: COLORS[i % COLORS.length][0],
+      colorName: COLORS[i % COLORS.length][1],
+      x: 0, y: 0, vx: 0, vy: 0,
+      inX: 0, inY: 0, // the joystick: -1..1 each, length ≤ 1
+      alive: true,
+      fellAt: 0,
+      dashAt: -Infinity,
+      wins: 0,
+    }));
+    const byId = new Map(blobs.map((b) => [b.id, b]));
+
+    let phase = 'countdown'; // countdown → play → roundOver → (next round | final)
+    let phaseAt = performance.now();
+    let round = 1;
+    let radius = ARENA;
+    let banner = '';
+    let roundWinner = null;
+
+    function placeBlobs() {
+      // Evenly around a circle, the first player on the left.
+      blobs.forEach((b, i) => {
+        const angle = Math.PI + (i * 2 * Math.PI) / blobs.length;
+        Object.assign(b, { x: Math.cos(angle) * ARENA * 0.55, y: Math.sin(angle) * ARENA * 0.55, vx: 0, vy: 0, alive: true, fellAt: 0, dashAt: -Infinity });
+      });
+      radius = ARENA;
+    }
+
+    function tellPhones() {
+      for (const b of blobs) {
+        let text;
+        if (phase === 'countdown') text = `Round ${round} of ${ROUNDS}: get ready!`;
+        else if (phase === 'play') text = b.alive ? 'Push the others off the ice!' : 'You fell in! Watch the rest of the round.';
+        else if (phase === 'roundOver') text = roundWinner ? (roundWinner === b ? 'You win the round!' : `${roundWinner.name} wins the round.`) : 'Nobody wins this round.';
+        else text = banner;
+        party.setState(b.id, {
+          phase,
+          canMove: (phase === 'countdown' || phase === 'play') && b.alive,
+          color: b.color,
+          colorName: b.colorName,
+          round,
+          rounds: ROUNDS,
+          wins: b.wins,
+          text,
+        });
+      }
+    }
+
+    function setPhase(next, now) {
+      phase = next;
+      phaseAt = now;
+      tellPhones();
+    }
+
+    party.on('event', (from, data) => {
+      const b = byId.get(from);
+      if (!b || data === null || typeof data !== 'object') return;
+      const now = performance.now();
+      if (data.dash === true) {
+        if (phase !== 'play' || !b.alive || now - b.dashAt < DASH_COOLDOWN_MS) return;
+        // Dash where the joystick points, or straight ahead if it's centred.
+        let dx = b.inX, dy = b.inY;
+        let len = Math.hypot(dx, dy);
+        if (len < 0.1) { dx = b.vx; dy = b.vy; len = Math.hypot(dx, dy); }
+        if (len < 0.01) return;
+        b.vx += (dx / len) * DASH;
+        b.vy += (dy / len) * DASH;
+        b.dashAt = now;
+        return;
+      }
+      let x = Number(data.x), y = Number(data.y);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+      const len = Math.hypot(x, y);
+      if (len > 1) { x /= len; y /= len; }
+      b.inX = x;
+      b.inY = y;
+    });
+    party.on('left', (id) => {
+      const b = byId.get(id);
+      if (b) { b.inX = 0; b.inY = 0; } // its blob drifts until they're back
+    });
+
+    function physics(dt, now) {
+      if (phase !== 'play') return;
+      const elapsed = now - phaseAt;
+      if (elapsed > MELT_AFTER_MS) radius = Math.max(0, radius - MELT_SPEED * dt);
+
+      for (const b of blobs) {
+        if (b.alive) {
+          b.vx += b.inX * ACCEL * dt;
+          b.vy += b.inY * ACCEL * dt;
+        }
+        const glide = Math.pow(GLIDE, dt);
+        b.vx *= glide;
+        b.vy *= glide;
+        const speed = Math.hypot(b.vx, b.vy);
+        if (speed > MAX_SPEED) { b.vx *= MAX_SPEED / speed; b.vy *= MAX_SPEED / speed; }
+        b.x += b.vx * dt;
+        b.y += b.vy * dt;
+      }
+
+      // Bumps: blobs on the ice push each other apart and trade speed along the line between them.
+      const live = blobs.filter((b) => b.alive);
+      for (let i = 0; i < live.length; i++) {
+        for (let j = i + 1; j < live.length; j++) {
+          const a = live[i], c = live[j];
+          let nx = c.x - a.x, ny = c.y - a.y;
+          const dist = Math.hypot(nx, ny);
+          if (dist >= BLOB * 2 || dist === 0) continue;
+          nx /= dist; ny /= dist;
+          const overlap = BLOB * 2 - dist;
+          a.x -= nx * overlap / 2; a.y -= ny * overlap / 2;
+          c.x += nx * overlap / 2; c.y += ny * overlap / 2;
+          const closing = (a.vx - c.vx) * nx + (a.vy - c.vy) * ny;
+          if (closing <= 0) continue; // already moving apart
+          const push = closing * BOUNCE;
+          a.vx -= nx * push; a.vy -= ny * push;
+          c.vx += nx * push; c.vy += ny * push;
+        }
+      }
+
+      // Off the edge: in the water.
+      let fell = false;
+      for (const b of live) {
+        if (Math.hypot(b.x, b.y) > radius) {
+          b.alive = false; // its joystick stays as it is: a thumb held down still steers next round
+          b.fellAt = now;
+          fell = true;
+        }
+      }
+      if (!fell) return;
+      const standing = blobs.filter((b) => b.alive);
+      if (standing.length <= 1) {
+        roundWinner = standing[0] ?? null; // nobody: the last blobs fell in together
+        if (roundWinner) roundWinner.wins += 1;
+        setPhase('roundOver', now);
+      } else {
+        tellPhones(); // the fallen phones change their status
+      }
+    }
+
+    function advance(now) {
+      const elapsed = now - phaseAt;
+      if (phase === 'countdown' && elapsed >= COUNTDOWN_MS) setPhase('play', now);
+      else if (phase === 'roundOver' && elapsed >= ROUND_OVER_MS) {
+        if (round < ROUNDS) {
+          round += 1;
+          placeBlobs();
+          setPhase('countdown', now);
+        } else {
+          const best = Math.max(...blobs.map((b) => b.wins));
+          const champs = blobs.filter((b) => b.wins === best);
+          banner = champs.length === 1 ? `${champs[0].name} wins Bumper Blobs!` : `It's a tie: ${champs.map((b) => b.name).join(' & ')}!`;
+          setPhase('final', now);
+        }
+      } else if (phase === 'final' && elapsed >= FINAL_MS) {
+        phase = 'ended';
+        const ranked = [...blobs].sort((a, b) => b.wins - a.wins);
+        party.end({ rankings: ranked.map((b) => b.id), scores: Object.fromEntries(blobs.map((b) => [b.id, b.wins])) });
+      }
+    }
+
+    // ---- Drawing ----
+    function draw(now) {
+      const dpr = window.devicePixelRatio || 1;
+      const w = canvas.clientWidth, h = canvas.clientHeight;
+      if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
+        canvas.width = Math.round(w * dpr);
+        canvas.height = Math.round(h * dpr);
+      }
+      g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const water = g.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, Math.max(w, h) / 1.4);
+      water.addColorStop(0, '#0d3a63');
+      water.addColorStop(1, '#06182b');
+      g.fillStyle = water;
+      g.fillRect(0, 0, w, h);
+
+      const scale = Math.min(w, h * 0.92) / (ARENA * 2.3);
+      const cx = w / 2, cy = h / 2 + h * 0.03;
+      const at = (x, y) => [cx + x * scale, cy + y * scale];
+
+      // Where the ice used to be, once it starts melting.
+      if (radius < ARENA) {
+        g.setLineDash([8, 10]);
+        g.strokeStyle = 'rgba(190, 227, 255, 0.25)';
+        g.lineWidth = 2;
+        g.beginPath();
+        g.arc(cx, cy, ARENA * scale, 0, Math.PI * 2);
+        g.stroke();
+        g.setLineDash([]);
+      }
+      // The ice.
+      const ice = g.createRadialGradient(cx - radius * scale * 0.3, cy - radius * scale * 0.3, 0, cx, cy, radius * scale);
+      ice.addColorStop(0, '#f4fbff');
+      ice.addColorStop(1, '#b9def5');
+      g.fillStyle = ice;
+      g.beginPath();
+      g.arc(cx, cy, Math.max(0, radius * scale), 0, Math.PI * 2);
+      g.fill();
+      g.lineWidth = 5;
+      g.strokeStyle = radius < ARENA && Math.floor(now / 300) % 2 ? '#ff8a8a' : '#ffffff';
+      g.stroke();
+
+      // Blobs: the fallen ones shrink into the water, then the ones on the ice on top.
+      const order = [...blobs].sort((a, b) => Number(a.alive) - Number(b.alive));
+      for (const b of order) {
+        let size = 1, alpha = 1;
+        if (!b.alive) {
+          const t = Math.min(1, (now - b.fellAt) / FALL_MS);
+          size = 1 - t;
+          alpha = 1 - t;
+          if (t >= 1) continue;
+        }
+        const [x, y] = at(b.x, b.y);
+        const r = BLOB * scale * size;
+        g.globalAlpha = alpha;
+        if (now - b.dashAt < 250) { // a quick trail after a dash
+          g.fillStyle = b.color + '55';
+          g.beginPath();
+          g.arc(x - b.vx * scale * 0.05, y - b.vy * scale * 0.05, r * 0.9, 0, Math.PI * 2);
+          g.fill();
+        }
+        g.fillStyle = 'rgba(0, 0, 0, 0.18)';
+        g.beginPath();
+        g.ellipse(x, y + r * 0.85, r * 0.9, r * 0.35, 0, 0, Math.PI * 2);
+        g.fill();
+        g.fillStyle = b.color;
+        g.beginPath();
+        g.arc(x, y, r, 0, Math.PI * 2);
+        g.fill();
+        g.lineWidth = Math.max(1, r * 0.12);
+        g.strokeStyle = 'rgba(0, 0, 0, 0.3)';
+        g.stroke();
+        // Eyes look where it's heading.
+        const look = Math.hypot(b.vx, b.vy) > 5 ? Math.atan2(b.vy, b.vx) : Math.PI / 2;
+        for (const side of [-1, 1]) {
+          const ex = x + Math.cos(look + side * 0.5) * r * 0.45, ey = y + Math.sin(look + side * 0.5) * r * 0.45 - r * 0.1;
+          g.fillStyle = '#fff';
+          g.beginPath();
+          g.arc(ex, ey, r * 0.24, 0, Math.PI * 2);
+          g.fill();
+          g.fillStyle = '#1a1a2e';
+          g.beginPath();
+          g.arc(ex + Math.cos(look) * r * 0.09, ey + Math.sin(look) * r * 0.09, r * 0.12, 0, Math.PI * 2);
+          g.fill();
+        }
+        // Name under the blob (drawn as text on the canvas: never HTML).
+        g.font = `700 ${Math.max(12, scale * 6)}px system-ui, sans-serif`;
+        g.textAlign = 'center';
+        g.textBaseline = 'top';
+        g.lineWidth = 4;
+        g.strokeStyle = 'rgba(6, 24, 43, 0.85)';
+        g.strokeText(b.name, x, y + r * 1.25);
+        g.fillStyle = '#fff';
+        g.fillText(b.name, x, y + r * 1.25);
+        g.globalAlpha = 1;
+      }
+
+      // Round and scores.
+      const pad = Math.max(12, w * 0.015);
+      const small = Math.max(14, Math.min(w, h) * 0.028);
+      g.font = `800 ${small * 1.2}px system-ui, sans-serif`;
+      g.textAlign = 'left';
+      g.textBaseline = 'top';
+      g.fillStyle = '#ffffff';
+      g.fillText(`Round ${round} of ${ROUNDS}`, pad, pad);
+      g.font = `700 ${small}px system-ui, sans-serif`;
+      g.textAlign = 'right';
+      blobs.forEach((b, i) => {
+        const y = pad + i * small * 1.35;
+        g.fillStyle = b.alive || phase !== 'play' ? '#ffffff' : 'rgba(255, 255, 255, 0.45)';
+        g.fillText(`${b.name}  ${'●'.repeat(b.wins)}${'○'.repeat(Math.max(0, ROUNDS - b.wins))}`, w - pad - small * 1.3, y);
+        g.fillStyle = b.color;
+        g.beginPath();
+        g.arc(w - pad - small * 0.5, y + small * 0.55, small * 0.42, 0, Math.PI * 2);
+        g.fill();
+      });
+
+      // The big message in the middle.
+      let big = '';
+      const elapsed = now - phaseAt;
+      if (phase === 'countdown') big = String(Math.ceil((COUNTDOWN_MS - elapsed) / 1000));
+      else if (phase === 'play' && elapsed < 700) big = 'GO!';
+      else if (phase === 'roundOver') big = roundWinner ? `${roundWinner.name} wins the round!` : 'Nobody wins this round!';
+      else if (phase === 'final' || phase === 'ended') big = banner;
+      if (big) {
+        const size = Math.min(w / Math.max(4, big.length * 0.62), h * 0.16);
+        g.font = `900 ${size}px system-ui, sans-serif`;
+        g.textAlign = 'center';
+        g.textBaseline = 'middle';
+        g.lineWidth = size * 0.12;
+        g.strokeStyle = '#06182b';
+        g.strokeText(big, w / 2, h / 2);
+        g.fillStyle = '#ffd84d';
+        g.fillText(big, w / 2, h / 2);
+      }
+    }
+
+    let last = performance.now();
+    function tick(now) {
+      const dt = Math.min(0.05, (now - last) / 1000); // a slow frame can't teleport blobs
+      last = now;
+      if (phase !== 'ended') {
+        physics(dt, now);
+        advance(now);
+      }
+      draw(now);
+      requestAnimationFrame(tick);
+    }
+
+    placeBlobs();
+    setPhase('countdown', performance.now());
+    requestAnimationFrame(tick);
+  }
+
+  // ---- A phone: joystick + dash ----------------------------------------------------------
+  function startController() {
+    document.getElementById('phone').hidden = false;
+    const pad = document.getElementById('pad');
+    const knob = document.getElementById('knob');
+    const dash = document.getElementById('dash');
+    const SEND_EVERY_MS = 80;
+
+    let canMove = false;
+    let canDash = false;
+    let stick = { x: 0, y: 0 }; // where the thumb is: -1..1 each
+    let sent = { x: 0, y: 0 };
+    let lastSentAt = 0;
+    let dragging = null; // the pointer id holding the stick
+
+    party.on('state', (s) => {
+      document.getElementById('dot').style.background = s.color;
+      knob.style.background = s.color;
+      document.getElementById('you').textContent = `You're the ${s.colorName} blob`;
+      document.getElementById('status').textContent = s.text;
+      document.getElementById('wins').textContent = `Rounds won: ${s.wins} of ${s.rounds}`;
+      canMove = s.canMove;
+      canDash = canMove && s.phase === 'play';
+      pad.classList.toggle('off', !canMove);
+      if (!dash.classList.contains('cooling')) dash.disabled = !canDash;
+    });
+
+    function setStick(x, y) {
+      const len = Math.hypot(x, y);
+      if (len > 1) { x /= len; y /= len; }
+      stick = { x, y };
+      knob.style.transform = `translate(${x * 95}%, ${y * 95}%)`; // the knob stays inside the pad
+      maybeSend();
+    }
+
+    // At most ~12 sends a second, and only when the direction really changed.
+    function maybeSend(force = false) {
+      const now = Date.now();
+      const changed = Math.abs(stick.x - sent.x) > 0.04 || Math.abs(stick.y - sent.y) > 0.04 || (stick.x === 0 && stick.y === 0 && (sent.x !== 0 || sent.y !== 0));
+      if (!changed) return;
+      if (!force && now - lastSentAt < SEND_EVERY_MS) return;
+      sent = { x: Math.round(stick.x * 100) / 100, y: Math.round(stick.y * 100) / 100 };
+      lastSentAt = now;
+      party.send(sent);
+    }
+    setInterval(() => maybeSend(), SEND_EVERY_MS); // catches the last move of a quick flick
+
+    function fromPointer(event) {
+      const rect = pad.getBoundingClientRect();
+      const reach = rect.width * 0.4;
+      setStick((event.clientX - (rect.left + rect.width / 2)) / reach, (event.clientY - (rect.top + rect.height / 2)) / reach);
+    }
+    pad.addEventListener('pointerdown', (event) => {
+      dragging = event.pointerId;
+      pad.setPointerCapture(event.pointerId);
+      fromPointer(event);
+    });
+    pad.addEventListener('pointermove', (event) => {
+      if (event.pointerId === dragging) fromPointer(event);
+    });
+    const release = (event) => {
+      if (event.pointerId !== dragging) return;
+      dragging = null;
+      setStick(0, 0);
+      maybeSend(true);
+    };
+    pad.addEventListener('pointerup', release);
+    pad.addEventListener('pointercancel', release);
+
+    function doDash() {
+      if (dash.disabled) return;
+      party.send({ dash: true });
+      dash.disabled = true;
+      dash.classList.add('cooling');
+      setTimeout(() => {
+        dash.classList.remove('cooling');
+        dash.disabled = !canDash;
+      }, DASH_COOLDOWN_MS);
+    }
+    dash.addEventListener('click', doDash);
+
+    // A keyboard works too (arrows or WASD, space to dash): handy on a laptop.
+    const keys = new Set();
+    const KEY_DIRS = { ArrowLeft: [-1, 0], a: [-1, 0], ArrowRight: [1, 0], d: [1, 0], ArrowUp: [0, -1], w: [0, -1], ArrowDown: [0, 1], s: [0, 1] };
+    function fromKeys() {
+      let x = 0, y = 0;
+      for (const k of keys) { x += KEY_DIRS[k][0]; y += KEY_DIRS[k][1]; }
+      setStick(x, y);
+    }
+    window.addEventListener('keydown', (event) => {
+      if (event.key === ' ') { event.preventDefault(); doDash(); return; }
+      if (KEY_DIRS[event.key] && !keys.has(event.key)) { keys.add(event.key); fromKeys(); }
+    });
+    window.addEventListener('keyup', (event) => {
+      if (keys.delete(event.key)) fromKeys();
+    });
+  }
+</script>

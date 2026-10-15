@@ -97,4 +97,7 @@ test('get does not find built-in object properties', () => {
 
 test('the default registry offers the official games, each read from its game.html', () => {
   assert.deepEqual(createDefaultRegistry().list().map((g) => g.id), OFFICIAL_GAMES);
+  const blobs = createDefaultRegistry().get('bumper-blobs');
+  assert.deepEqual([blobs.name, blobs.minPlayers, blobs.maxPlayers], ['Bumper Blobs', 2, 12]);
+  assert.match(blobs.source, /party\.ready/);
 });

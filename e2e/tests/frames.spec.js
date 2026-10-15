@@ -71,6 +71,7 @@ test('the host can stop a game, and a big-screen reload stops it too (F0)', asyn
   await expect(alex.page.getByRole('heading', { name: "You're in!" })).toBeVisible();
   await expect(host.page.getByRole('button', { name: 'Start game' })).toBeVisible();
 
+  await host.page.getByRole('combobox', { name: 'Game' }).selectOption('probe'); // the picker starts over
   await host.page.getByRole('button', { name: 'Start game' }).click();
   await expect(frame(alex.page).getByRole('heading', { name: 'Phone Alex' })).toBeVisible();
   await host.page.reload();

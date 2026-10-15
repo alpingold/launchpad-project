@@ -260,7 +260,7 @@ body {
 }
 
 .game-frame-host {
-  height: min(78vh, 56rem);
+  height: calc(100vh - 12rem); /* room for the room label and the Stop/End buttons below */
   min-height: 22rem;
 }
 

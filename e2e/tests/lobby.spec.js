@@ -125,12 +125,14 @@ test('host "End room" closes it for everyone', async ({ people }) => {
   await expect(host.page.locator('.room-code')).not.toHaveText(host.code);
 });
 
-test('host sees the game picker; Start is disabled until someone joins', async ({ people }) => {
+test('host sees the game picker; Start is disabled until enough players join', async ({ people }) => {
   const host = await people.host();
-  await expect(host.page.getByRole('combobox', { name: 'Game' })).toHaveValue('probe');
-  await expect(host.page.getByText('Needs 1–12 players.')).toBeVisible();
+  await expect(host.page.getByRole('combobox', { name: 'Game' })).toHaveValue('bumper-blobs');
+  await expect(host.page.getByText('Needs 2–12 players.')).toBeVisible();
   await expect(host.page.getByRole('button', { name: 'Start game' })).toBeDisabled();
 
   await people.player(host.code, 'Alex');
+  await expect(host.page.getByRole('button', { name: 'Start game' })).toBeDisabled();
+  await people.player(host.code, 'Blake');
   await expect(host.page.getByRole('button', { name: 'Start game' })).toBeEnabled();
 });
