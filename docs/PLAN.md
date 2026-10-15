@@ -1103,6 +1103,19 @@ The two ASCII games also stress-test the SDK for genres that aren't party rounds
 | **F5 Two-step generator** ✅ _built 2026-10-15 (live test with the real model pending): `generator/spec/GAME_SPEC.md` (the rulebook: rules the checks enforce, phones and big screen, the party SDK, party.ui, base styles), `DESIGN.md` (fixed headings, incl. Template and Closest example) and designs of the three official games. `generator/src/run.js` runs one step per sandbox job: **design** (one call, a retry if headings are missing; a redraft sends the last draft and your feedback) or **build** (rulebook + the template and closest example the design names, the example WITH its design; then write → checkGame → fix, up to 4 attempts, 15 s playtests, 150 KB limit). Changes: a short **plan** first (What changes / What stays the same / Risks), then the build; **"Small fix: skip the plan"** decided as a checkbox. Server: migration 5 (statuses `designing`, `design_ready`; columns `design`, `drafts_json`, `design_feedback`), redesign / edit / build / discard routes; a failed build keeps its design to change or build again; a restart sends a cut-off redraft back to its last draft. Admin page: the design as formatted text (`Markdown.jsx`, React elements only), Build it, Edit it myself, Ask the AI for a new draft, earlier drafts. `/kit` is back as the guide (`GET /api/kit` sends the same spec files the AI reads). `npm run generate` is two-step in the terminal. Generation is switched on again_ | Design step (13i), design drafts and edits on the admin page, "Build it"; spec rulebook, SDK reference, templates and examples in the prompt; change requests as plan → build; generation switched back on; `/kit` comes back as the SDK docs | Idea → read the design → ask for a change → Build it → a frame game that passes and is fun (try a platformer and an RPG idea) |
 | **Decide** | Rebase onto `main` (this becomes the plan) or drop the branch | |
 
+### 13m. Risks and open questions
+
+- **The big screen is the referee.** A slow or busy host laptop slows the game for everyone, and browsers slow down timers in background tabs, so the big screen tab must stay in front.
+- **Latency:** phone → server → big screen is one hop more than block games. On the same Wi-Fi that's tens of milliseconds. Bumper Blobs will show whether it's noticeable.
+- **AI-written UI** is more code to get wrong and more to review. F4 (testing in a real browser) matters more than the harness did.
+- **Phones:** canvas games on cheap phones, battery, and audio (browsers only play sound after a tap).
+- **Long games** (an RPG) make a big-screen refresh more painful, so F1's save/restore matters more.
+- **Bigger designs, bigger files.** An RPG is more code than a party round. Keep an eye on the file-size cap, the prompt size and qwen's time per attempt.
+- **Q15 (decided in F1): sticky state is enough.** A phone is a controller. Its `state` from the big screen is what it should show, and it comes back after a reload; anything else on the phone is the game's own business.
+- **Q16:** keep a way to run the old block games (e.g. as a frame game that draws blocks), or let them go for good? Decide at the merge.
+- **Q17:** let players join a game that's already running (drop-in for RPGs)? D7 says no for now.
+- **Q18:** save a game's progress between game nights (an RPG campaign)? Would need storage per game; out of scope for now.
+
 ### 13n. Future: the game library as AI data (idea, 2026-10-15)
 
 **What the live F5 test showed:** both live designs copied their closest example closely (the
@@ -1133,19 +1146,6 @@ Roughly in order of effort:
 
 **Before any of this:** users' games are their work; using them for training needs a clear
 note in the terms (especially from A7 on, when other hosts generate games).
-
-### 13m. Risks and open questions
-
-- **The big screen is the referee.** A slow or busy host laptop slows the game for everyone, and browsers slow down timers in background tabs, so the big screen tab must stay in front.
-- **Latency:** phone → server → big screen is one hop more than block games. On the same Wi-Fi that's tens of milliseconds. Bumper Blobs will show whether it's noticeable.
-- **AI-written UI** is more code to get wrong and more to review. F4 (testing in a real browser) matters more than the harness did.
-- **Phones:** canvas games on cheap phones, battery, and audio (browsers only play sound after a tap).
-- **Long games** (an RPG) make a big-screen refresh more painful, so F1's save/restore matters more.
-- **Bigger designs, bigger files.** An RPG is more code than a party round. Keep an eye on the file-size cap, the prompt size and qwen's time per attempt.
-- **Q15 (decided in F1): sticky state is enough.** A phone is a controller. Its `state` from the big screen is what it should show, and it comes back after a reload; anything else on the phone is the game's own business.
-- **Q16:** keep a way to run the old block games (e.g. as a frame game that draws blocks), or let them go for good? Decide at the merge.
-- **Q17:** let players join a game that's already running (drop-in for RPGs)? D7 says no for now.
-- **Q18:** save a game's progress between game nights (an RPG campaign)? Would need storage per game; out of scope for now.
 
 ---
 
