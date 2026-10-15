@@ -1,0 +1,92 @@
+<script type="application/json" id="game-info">
+  { "name": "Probe", "description": "Test-only: pings, state, players, and tries every way out of its frame.", "minPlayers": 1, "maxPlayers": 12 }
+</script>
+<!--
+  A test-only frame game (plan §13) for the browser tests. It uses every part of the
+  `party` SDK, and on every screen it tries each way out of its sandbox, listing what
+  happened under "Walls". Every line should end in "blocked".
+-->
+<h1 id="role"></h1>
+<section aria-label="Walls"><h2>Walls</h2><ul id="walls"></ul></section>
+<p id="count"></p>
+<p id="last-message"></p>
+<ul id="log" aria-label="Log"></ul>
+<p id="buttons" hidden>
+  <button id="ping">Ping</button>
+  <button id="win">Win</button>
+</p>
+<script>
+  const $ = (id) => document.getElementById(id);
+  const line = (list, text) => {
+    const li = document.createElement('li');
+    li.textContent = text;
+    $(list).append(li);
+  };
+
+  // --- The walls: each of these must fail inside the sandbox ---------------------------
+  function wall(name, attempt) {
+    try {
+      const result = attempt();
+      if (result && typeof result.then === 'function') {
+        result.then((value) => line('walls', `${name}: OPEN (${String(value).slice(0, 40)})`), () => line('walls', `${name}: blocked`));
+      } else {
+        line('walls', `${name}: OPEN (${String(result).slice(0, 40)})`);
+      }
+    } catch {
+      line('walls', `${name}: blocked`);
+    }
+  }
+  wall('cookie', () => document.cookie);
+  wall('localStorage', () => localStorage.getItem('x'));
+  wall('sessionStorage', () => sessionStorage.getItem('player') ?? sessionStorage.getItem('host'));
+  wall('parent page', () => window.parent.document.title);
+  wall('fetch', () => fetch('/api/me').then((r) => r.status));
+  wall('outside script', () => new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/lodash@4.17.21/lodash.min.js';
+    s.onload = () => resolve('loaded');
+    s.onerror = reject;
+    document.head.append(s);
+  }));
+  wall('eval', () => eval('1 + 1'));
+  wall('websocket', () => new Promise((resolve, reject) => {
+    const ws = new WebSocket(`ws://${location.host || 'localhost'}/ws`);
+    ws.onopen = () => resolve('connected');
+    ws.onerror = reject;
+  }));
+  wall('redirect the page', () => {
+    window.top.location.href = '/?escaped';
+    return 'navigated';
+  });
+
+  // --- The game ----------------------------------------------------------------------------
+  party.ready(({ role, me, players }) => {
+    $('role').textContent = role === 'host' ? 'Big screen' : `Phone ${players.find((p) => p.id === me).name}`;
+
+    if (role === 'host') {
+      const nameOf = (id) => party.players.find((p) => p.id === id)?.name ?? id;
+      let events = 0;
+      const pings = {};
+      $('count').textContent = 'Events: 0';
+      party.on('event', (from, data) => {
+        events += 1;
+        $('count').textContent = `Events: ${events}`;
+        line('log', `${nameOf(from)}: ${JSON.stringify(data)}`);
+        if (data === 'ping') {
+          party.setState(from, { pings: (pings[from] = (pings[from] ?? 0) + 1) });
+          party.sendAll(`${nameOf(from)} pinged`);
+        }
+        if (data === 'win') party.end({ rankings: [from], scores: { [from]: 1 } });
+      });
+      party.on('left', (id) => line('log', `left: ${nameOf(id)}`));
+      party.on('back', (id) => line('log', `back: ${nameOf(id)}`));
+    } else {
+      $('buttons').hidden = false;
+      $('count').textContent = 'Pings: 0';
+      $('ping').onclick = () => party.send('ping');
+      $('win').onclick = () => party.send('win');
+      party.on('state', (state) => ($('count').textContent = `Pings: ${state.pings}`));
+      party.on('message', (data) => ($('last-message').textContent = data));
+    }
+  });
+</script>

@@ -2,7 +2,7 @@ import { test, expect } from './helpers.js';
 import { ADMIN } from '../server/accounts.js';
 
 // The admin page for AI-made games (plan §11, A6). The test server's generator is a fake
-// (e2e/server/testServer.js): it takes ~2 s, writes a renamed copy of Majority Rules
+// (e2e/server/testServer.js): it takes ~2 s, writes a renamed copy of the Probe frame game
 // ("Robot Majority"), or a broken game when the idea contains "broken".
 test.setTimeout(60_000);
 const GENERATED = { timeout: 20_000 }; // other tests' jobs may be in the queue first
@@ -47,8 +47,8 @@ test('generate → read it → playtest with phones → publish → ask for chan
   await expect(detail(page).getByText('asking qwen3.8:27b')).toBeVisible(GENERATED);
   await expect(detail(page).getByText('Ready for review')).toBeVisible(GENERATED);
   await expect(detail(page).getByRole('heading', { name: 'Robot Majority' })).toBeVisible();
-  await expect(detail(page).getByText(/Passed every check: .* 18 games played by bots/)).toBeVisible();
-  await expect(detail(page).locator('pre')).toContainText('contractVersion: 3'); // the code, as text
+  await expect(detail(page).getByText(/Passed every check: the game info/)).toBeVisible();
+  await expect(detail(page).locator('pre')).toContainText('id="game-info"'); // the code, as text
   const gameId = (await detail(page).getByText(/^g-[a-z0-9]{8}$/).textContent()).trim();
 
   // Playtest v1: in the admin's own game picker (as "-v1"), and nobody else's.
@@ -66,7 +66,7 @@ test('generate → read it → playtest with phones → publish → ask for chan
   await hostPage.getByRole('combobox', { name: 'Game' }).selectOption(`${gameId}-v1`);
   await expect(hostPage.locator('.game-picker')).toContainText('AI-made · v1 playtest, only you');
   await hostPage.getByRole('button', { name: 'Start game' }).click();
-  await expect(alex.page.locator('.choice-options button').first()).toBeVisible();
+  await expect(alex.page.frameLocator('iframe.game-frame').getByRole('button', { name: 'Ping' })).toBeVisible();
 
   // Publish: every host can pick it now, with the AI-made badge.
   await detail(page).getByRole('button', { name: 'Publish v1' }).click();
@@ -86,8 +86,8 @@ test('generate → read it → playtest with phones → publish → ask for chan
   await expect(v2.locator('p', { hasText: 'Changed from v1:' })).toContainText('Rename it to Robot Majority 2, please');
   await expect(v2.getByText('Renamed it to Robot Majority 2')).toBeVisible();
   await expect(v2.locator('.gen-diff summary')).toHaveText('Changed lines since v1: +1 −1');
-  await expect(v2.locator('.diff-del')).toContainText("name: 'Robot Majority',");
-  await expect(v2.locator('.diff-add')).toContainText("name: 'Robot Majority 2',");
+  await expect(v2.locator('.diff-del')).toContainText('"name": "Robot Majority",');
+  await expect(v2.locator('.diff-add')).toContainText('"name": "Robot Majority 2",');
 
   // Playtest v2: the admin gets both versions; other hosts keep v1.
   await v2.getByRole('button', { name: 'Playtest v2' }).click();
@@ -126,10 +126,10 @@ test('a failed game shows why, with its test report and code', async ({ browser 
   await expect(detail(page).getByText('Failed', { exact: true }).first()).toBeVisible(GENERATED);
   await expect(detail(page).getByText('no passing game after 1 attempt')).toBeVisible();
   await expect(detail(page).getByText(/The tests found \d+ problems?:/)).toBeVisible();
-  await expect(detail(page).getByText(/createGame/).first()).toBeVisible();
+  await expect(detail(page).getByText(/no game info/).first()).toBeVisible();
   await expect(detail(page).getByRole('button', { name: /Playtest/ })).toHaveCount(0); // only Delete
   await expect(detail(page).getByLabel('Ask for changes')).toHaveCount(0); // nothing that passed to change
   await detail(page).getByText(/^Code \(/).click();
-  await expect(detail(page).locator('pre')).toContainText("id: 'oops'");
+  await expect(detail(page).locator('pre')).toContainText('Oops, no game info.');
   await admin.context.close();
 });

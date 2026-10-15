@@ -1,11 +1,13 @@
 // The server the browser tests run against: the real server (same code as
 // server/src/index.js), with two test-only differences, so nothing test-related lives in
 // the app itself:
-//   0. Test-only games that use every input block and widget (inputGame.js, widgetGame.js).
+//   0. A test-only frame game, Probe (probe.html): pings, state, players, and it tries every
+//      way out of its sandboxed frame.
 //   1. A FAKE generator instead of the OpenShell sandbox + GenAI Studio. The tests don't
 //      need Docker, an API key or the network, and a game takes ~2 s instead of minutes.
-//      A change request renames the game to "Robot Majority 2".
-//      It still sends progress steps and runs the real harness on the code it returns.
+//      It writes a renamed Probe ("Robot Majority"); a change request renames it to
+//      "Robot Majority 2". It still sends progress steps, and checks the game file the
+//      same way the real one will.
 //   2. An admin account (accounts.js) in the throwaway in-memory database.
 import { readFileSync } from 'node:fs';
 import { config } from '../../server/src/config.js';
@@ -14,21 +16,15 @@ import { openDatabase } from '../../server/src/db/database.js';
 import { createUser, setAdmin } from '../../server/src/db/users.js';
 import { hashPassword } from '../../server/src/auth/passwords.js';
 import { createDefaultRegistry } from '../../server/src/games/index.js';
-import { checkGameSource } from '../../server/src/games/harness/check.js';
+import { frameGameOrThrow, frameGameReport } from '../../server/src/games/frameGame.js';
 import { ADMIN } from './accounts.js';
-import inputGame from './inputGame.js';
-import widgetGame from './widgetGame.js';
 
-/**
- * What the fake "AI" writes: the official Majority Rules game (it passes every check),
- * renamed so the tests can tell it apart from the real one.
- */
-const GOOD_SOURCE = readFileSync(new URL('../../server/src/games/majority-rules/index.js', import.meta.url), 'utf8').replace(
-  "name: 'Majority Rules'",
-  "name: 'Robot Majority'",
-);
-/** What it writes when the idea contains "broken": a game with no createGame. */
-const BROKEN_SOURCE = "export default { contractVersion: 3, id: 'oops', name: 'Oops' };\n";
+const PROBE_SOURCE = readFileSync(new URL('./probe.html', import.meta.url), 'utf8');
+
+/** What the fake "AI" writes: the Probe game, renamed so the tests can tell it apart. */
+const GOOD_SOURCE = PROBE_SOURCE.replace('"name": "Probe"', '"name": "Robot Majority"');
+/** What it writes when the idea contains "broken": a page with no game info. */
+const BROKEN_SOURCE = '<p>Oops, no game info.</p>\n';
 
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -44,10 +40,10 @@ async function fakeGenerator(job, { onStep }) {
   const source = broken
     ? BROKEN_SOURCE
     : job.change
-      ? job.change.source.replace(/name: '[^']*'/, "name: 'Robot Majority 2'")
+      ? job.change.source.replace(/"name": "[^"]*"/, '"name": "Robot Majority 2"')
       : GOOD_SOURCE;
   const changelog = job.change ? '- Renamed it to Robot Majority 2' : null;
-  const report = await checkGameSource(source);
+  const report = frameGameReport(source);
   if (!report.ok) {
     onStep(`attempt 1/4: ${report.problems.length} problem(s)`);
     return { ok: false, model: job.model, source, report, changelog, error: 'no passing game after 1 attempt' };
@@ -61,8 +57,7 @@ const admin = createUser(db, ADMIN.username, await hashPassword(ADMIN.password))
 setAdmin(db, admin.username, true);
 
 const games = createDefaultRegistry();
-games.register(inputGame);
-games.register(widgetGame);
+games.register(frameGameOrThrow(PROBE_SOURCE, 'probe'));
 
 const server = createGameServer({}, { db, games, runGenerator: fakeGenerator });
 server.httpServer.listen(config.PORT, () => {

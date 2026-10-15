@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { connectSocket } from '../net/socket.js';
 import { loadSession, saveSession, clearSession } from '../net/storage.js';
 import PlayerList from '../components/PlayerList.jsx';
-import GameScreen from '../game/GameScreen.jsx';
+import GameFrame from '../game/GameFrame.jsx';
 import LastGameResults from '../game/LastGameResults.jsx';
 import { useGameMessages } from '../game/useGameMessages.js';
 import { usePageTitle } from '../usePageTitle.js';
@@ -53,7 +53,7 @@ export default function Join() {
         }
       },
       onMessage(msg) {
-        if (handleGameMessage(msg)) return; // game:started / game:message / game:ended
+        if (handleGameMessage(msg)) return; // game:started / game:message / game:state / game:ended
         switch (msg.type) {
           case 'room:joined':
             saveSession(SESSION_KEY, { code: msg.code, token: msg.token });
@@ -133,20 +133,25 @@ export default function Join() {
       </p>
     );
 
-    // During a game the phone screen is the game's latest screen; taps go back as game:action.
+    // During a game the phone is the game's controller: its iframe, which sends events to
+    // the big screen's game through the server.
     if (room?.phase === 'in_game') {
       return (
         <main className="page join join-game">
           {banner}
           {hostAway}
-          <GameScreen
-            screen={game.screen}
-            screenKey={game.screenKey}
-            players={room.players}
-            youId={me.playerId}
-            clockOffset={game.clockOffset}
-            onAction={(action, input) => socketRef.current.send({ type: 'game:action', action, input })}
-          />
+          {game.run ? (
+            <GameFrame
+              key={game.run.runId}
+              run={game.run}
+              role="player"
+              me={me.playerId}
+              roomPlayers={room.players}
+              send={(msg) => socketRef.current.send(msg)}
+            />
+          ) : (
+            <p className="muted">Loading the game…</p>
+          )}
           <p className="muted small">
             {me.name} · room <span className="mono">{me.code}</span>
           </p>

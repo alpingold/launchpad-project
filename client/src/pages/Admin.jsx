@@ -101,8 +101,9 @@ function AdminPanel() {
     <main className="page admin">
       <h1>AI games</h1>
       <p className="muted">
-        Describe a game; the AI writes it and tests it in a sandbox. Nothing runs on this server until you read the
-        code and press Playtest. The AI builds screens from the blocks in the <a href="/kit">game kit</a>.
+        Describe a game; the AI writes it and tests it in a sandbox. A game is a web page that runs in a locked-down frame
+        on the big screen and the phones, never on this server. Nobody can play it until you read the code and press
+        Playtest.
       </p>
       {loadError && (
         <p className="error" role="alert">
@@ -546,14 +547,10 @@ function Progress({ progress }) {
   );
 }
 
-/** The harness's test report: a pass line, or the problems it found. */
+/** A version's test report: a pass line, or the problems it found. */
 function Report({ report }) {
   if (report.ok) {
-    return (
-      <p className="gen-report-ok">
-        ✓ Passed every check: lint, the game contract, and {report.runs?.length ?? 0} games played by bots.
-      </p>
-    );
+    return <p className="gen-report-ok">✓ Passed every check: {report.checked ?? 'the game file'}.</p>;
   }
   return (
     <div className="gen-report">
@@ -565,7 +562,7 @@ function Report({ report }) {
       <ol>
         {report.problems.map((p, i) => (
           <li key={i}>
-            {p.message}
+            {typeof p === 'string' ? p : p.message}
             {p.where && <span className="muted small"> (first seen with {p.where})</span>}
           </li>
         ))}

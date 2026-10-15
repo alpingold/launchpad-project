@@ -3,7 +3,7 @@ import { connectSocket } from '../net/socket.js';
 import { loadSession, saveSession, clearSession } from '../net/storage.js';
 import PlayerList from '../components/PlayerList.jsx';
 import GamePicker from '../components/GamePicker.jsx';
-import GameScreen from '../game/GameScreen.jsx';
+import GameFrame from '../game/GameFrame.jsx';
 import LastGameResults from '../game/LastGameResults.jsx';
 import { useGameMessages } from '../game/useGameMessages.js';
 import { usePageTitle } from '../usePageTitle.js';
@@ -52,7 +52,7 @@ function HostRoom({ user }) {
   const [ended, setEnded] = useState(null); // why the room ended, or null while it's alive
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState(null); // short message, e.g. why a game couldn't start
-  const [game, handleGameMessage] = useGameMessages();
+  const [game, handleGameMessage, runRef] = useGameMessages();
   const socketRef = useRef(null);
   const endedRef = useRef(false); // readable inside socket callbacks without re-subscribing
 
@@ -72,7 +72,16 @@ function HostRoom({ user }) {
         else socket.send({ type: 'host:create_room' });
       },
       onMessage(msg) {
-        handleGameMessage(msg); // game:started / game:message / game:ended
+        // Back after a reload in the middle of a game: the big screen's game (the referee)
+        // ran in the old page and its state is gone, so stop it. If only the connection
+        // blipped, this page still runs the game (same runId) and simply carries on.
+        // (Saving and restoring the big screen's game comes in F1, plan §13l.)
+        if (msg.type === 'game:started' && msg.resumed && runRef.current?.runId !== msg.runId) {
+          socket.send({ type: 'host:stop_game' });
+          setNotice('This page reloaded during a game, so the game was stopped.');
+          return;
+        }
+        handleGameMessage(msg); // game:started / game:event / game:ended
         switch (msg.type) {
           case 'room:created':
             saveSession(SESSION_KEY, { code: msg.code, hostToken: msg.hostToken });
@@ -85,9 +94,6 @@ function HostRoom({ user }) {
             break;
           case 'game:started':
             setNotice(null);
-            break;
-          case 'game:ended':
-            if (msg.results.error) setNotice('The game hit a problem and was stopped.');
             break;
           case 'error':
             if (msg.requestType === 'host:resume') end('expired');
@@ -115,6 +121,10 @@ function HostRoom({ user }) {
 
   function startGame(gameId) {
     socketRef.current.send({ type: 'host:start_game', gameId });
+  }
+
+  function stopGame() {
+    if (window.confirm('Stop the game? Nobody wins.')) socketRef.current.send({ type: 'host:stop_game' });
   }
 
   function kick(player) {
@@ -163,14 +173,32 @@ function HostRoom({ user }) {
     </p>
   );
 
-  // During a game the big screen is the game: just a small room label above it.
+  // During a game the big screen is the game: its iframe, with a small room label above it.
+  // The game's page is the referee: it runs the rules, and the server passes messages.
   if (room.phase === 'in_game') {
     return (
       <main className="page host host-game">
         {banner}
         <p className="host-label">Room {room.code}</p>
-        <GameScreen screen={game.screen} screenKey={game.screenKey} players={room.players} clockOffset={game.clockOffset} />
-        {endRoomButton}
+        {game.run ? (
+          <GameFrame
+            key={game.run.runId}
+            run={game.run}
+            role="host"
+            roomPlayers={room.players}
+            send={(msg) => socketRef.current.send(msg)}
+          />
+        ) : (
+          <p className="muted">Stopping the game…</p>
+        )}
+        <p className="host-game-buttons">
+          <button type="button" className="secondary-button" onClick={stopGame} disabled={!connected}>
+            Stop game
+          </button>
+          <button type="button" className="secondary-button" onClick={endRoom} disabled={!connected}>
+            End room
+          </button>
+        </p>
       </main>
     );
   }
