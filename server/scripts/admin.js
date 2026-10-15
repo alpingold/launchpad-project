@@ -8,7 +8,7 @@
 // generated games from the database.
 
 import path from 'node:path';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { config } from '../src/config.js';
 import { openDatabase } from '../src/db/database.js';
 import { setAdmin, listUsers, findUserForLogin } from '../src/db/users.js';
@@ -23,6 +23,7 @@ import {
   mainVersion,
 } from '../src/db/generatedGames.js';
 import { frameGameReport, describeProblem } from '../src/games/frameGame.js';
+import { datasetRecords, toJsonLines } from '../src/generation/dataset.js';
 
 const HELP = `Usage: npm run admin -- <command>
 
@@ -37,6 +38,8 @@ const HELP = `Usage: npm run admin -- <command>
                                         choose which version everyone gets (published), or only
                                         its owner (playtest); "none" takes it down
   delete-game <game id>                 the game and all its versions
+  export-data <file.jsonl>              every version of every AI game as JSON Lines (plan §13n):
+                                        idea, design drafts with feedback, code, checks, outcome
 
 Database: ${config.DB_PATH}`;
 
@@ -56,6 +59,15 @@ const done = (message, ok = true) => {
 const restartNote = '(restart the server to load the change)';
 
 switch (command) {
+  case 'export-data': {
+    const [file] = positional;
+    if (!file) done(HELP, false);
+    const records = datasetRecords(listGeneratedGames(db));
+    const out = path.resolve(process.env.INIT_CWD || process.cwd(), file);
+    await writeFile(out, toJsonLines(records));
+    done(`Wrote ${records.length} version${records.length === 1 ? '' : 's'} to ${out}`);
+    break;
+  }
   case 'users': {
     const users = listUsers(db);
     done(users.map((u) => `${u.id}\t${u.username}${u.isAdmin ? '\t(admin)' : ''}`).join('\n') || 'No accounts yet.');
