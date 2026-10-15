@@ -117,7 +117,7 @@ function AdminPanel() {
         Describe a game. The AI writes a short design first: read it, ask for changes or edit it, then press Build it. The
         AI then writes the game and checks it in a sandbox, playing it in a hidden browser. A game is a web page that runs
         in a locked-down frame on the big screen and the phones, never on this server. Nobody can play it until you read
-        the code and press Playtest.
+        the code and press Playtest. The AI follows the <a href="/kit">game kit</a> guide.
       </p>
       {loadError && (
         <p className="error" role="alert">

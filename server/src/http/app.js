@@ -5,6 +5,7 @@ import { openDatabase } from '../db/database.js';
 import { createAuthRouter } from './authRoutes.js';
 import { currentUser } from '../auth/currentUser.js';
 import { createAdminRouter } from './adminRoutes.js';
+import { kitGuide } from '../games/kitGuide.js';
 
 /**
  * Builds the Express app (HTTP routes only).
@@ -37,6 +38,11 @@ export function createApp({ games = new GameRegistry(), db = openDatabase(':memo
   app.get('/api/games', (req, res) => {
     const user = currentUser(db, req.headers.cookie).user;
     res.json({ games: games.list({ userId: user?.id ?? null }) });
+  });
+
+  // The game kit guide (/kit): how frame games work, the same text the AI reads.
+  app.get('/api/kit', (_req, res) => {
+    res.json(kitGuide());
   });
 
   // Sign up, log in, log out, who am I.

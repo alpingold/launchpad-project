@@ -881,3 +881,17 @@ code {
   align-items: center;
   gap: 0.4rem;
 }
+
+/* The game kit guide (/kit, F5). */
+.kit-section {
+  margin-top: 1rem;
+  overflow-wrap: anywhere;
+}
+
+.kit-section pre {
+  overflow-x: auto;
+  padding: 0.75rem;
+  border-radius: 8px;
+  background: var(--bg);
+  font-size: 0.85rem;
+}

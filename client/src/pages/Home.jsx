@@ -127,7 +127,8 @@ export default function Home() {
           ))}
         </ul>
         <p className="muted small">
-          More games, including a Mario Party-style board game, are on the way.
+          More games, including a Mario Party-style board game, are on the way. Curious how games are made? See the{' '}
+          <a href="/kit">game kit</a>.
         </p>
       </section>
     </main>

@@ -47,3 +47,12 @@ test('oversized JSON body is rejected', async () => {
   assert.equal(res.status, 413);
   assert.deepEqual(await res.json(), { error: 'BAD_REQUEST' });
 });
+
+test('GET /api/kit returns the game kit guide: the same text the AI reads', async () => {
+  const res = await fetch(`${baseUrl}/api/kit`);
+  assert.equal(res.status, 200);
+  const { sections } = await res.json();
+  assert.deepEqual(sections.map((s) => [s.id, s.title]), [['games', 'How games work'], ['designs', 'Writing a design']]);
+  assert.match(sections[0].markdown, /^# How a BoilerGames game works/);
+  assert.match(sections[1].markdown, /^# Writing a game design/);
+});
