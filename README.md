@@ -123,7 +123,13 @@ The file starts with its info, which is the only part the server reads:
 - **Its Content-Security-Policy** blocks all network access, outside scripts and `eval`.
 - **A browser test proves it:** `e2e/tests/frames.spec.js` tries nine ways out on both screens.
 
-**The first game is Bumper Blobs:** phones are joysticks, and the big screen is an ice arena.
+**The games:**
+- **Bumper Blobs:** phones are joysticks, and the big screen is an ice arena.
+- **Tower Dash:** an ASCII platformer race over three levels.
+- **Dungeon Party:** a co-op ASCII RPG. Vote on doors, fight turn by turn, slay the dragon.
+
+**Starter templates** for the AI generator are in `generator/templates/`: party rounds,
+real-time and turn-based. Each is a tiny game that already handles the hard parts.
 
 ## AI-made games
 
