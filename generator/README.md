@@ -6,6 +6,9 @@
 > a design step you approve before any code is written, in milestone F5 (docs/PLAN.md §13i).
 > `src/llm.js`, `src/extract.js`, `src/models.js`, the Dockerfile and the OpenShell setup
 > below stay. The block version of everything is on `main`.
+>
+> **New in F4: the game checker** (`src/check/`), which the F5 loop will use for each attempt.
+> See "Checking a game" below.
 
 The code here runs **inside an OpenShell sandbox**, never on the game server. It asks a
 model on Purdue GenAI Studio to write a game, then tests the new code with simulated
@@ -20,12 +23,47 @@ generator/
   src/llm.js                    GenAI Studio chat API (plain fetch, retries on rate limits)
   src/extract.js                pulls the code out of the model's reply
   src/models.js                 the allowed models
+  src/check/checkGame.js        F4: game info + static check + browser playtest → one report
+  src/check/playtest.js         F4: plays the game in headless Chromium with simulated phones
+  src/check/cli.js              F4: `npm run check-game -- <file>`
+  test/                         F4: the checker on broken games (`npm run test:check`)
   spec/GAME_SPEC.md             the game contract, written for the model
   Dockerfile                    the sandbox image (+ Dockerfile.dockerignore, an allow-list)
   openshell/genai-studio.yaml   provider profile: how the sandbox uses the API key without seeing it
   openshell/policy.yaml         sandbox policy: which files it may read/write (network comes from the provider)
   spike/                        A0 test image: proves the sandbox setup works (5 checks)
   out/                          results of `npm run generate` (not in git)
+```
+
+## Checking a game (F4)
+
+```bash
+npm run check-game -- <game.html> [--players 3] [--seconds 20] [--shots <folder>] [--headed]
+```
+
+Three steps, one report (the same shape the admin page shows):
+
+1. **Game info**: the JSON block at the top (`server/src/games/frameGame.js`).
+2. **Static check** (`server/src/games/staticCheck.js`): reads the file without running it and
+   points at lines that use the network, leave the frame (`location`, links, forms), run code
+   from text, use storage or pop-ups, or load outside files. It skips strings and comments.
+   This catches a model's habits; the sandbox and CSP are the real wall.
+3. **Browser playtest** (`src/check/playtest.js`): headless Chromium, one page for the big
+   screen and one per phone, each with the game in the same sandboxed iframe and CSP as the
+   site, connected through the server's own `FrameRelay`. Bots tap buttons, drag, type and
+   press keys; one phone and then the big screen reload mid-game. It reports errors (with
+   the game's line), CSP violation reports (the game *tried* to reach something), requests,
+   leaving the frame, a hung or blank screen, phones that never hear from the big screen,
+   messages or results the server would refuse, and takes screenshots.
+
+**It runs the game.** On your machine, use it on files you wrote or chose; generated games
+are checked inside the sandbox. Locally it uses the Chromium the browser tests installed
+(`npx playwright install chromium` in `e2e/`); the image installs its own under
+`/app/ms-playwright` (about 1.2 GB on disk). To try the image without OpenShell:
+
+```bash
+docker run --rm --network none -v "$PWD/game.html:/tmp/game.html:ro" boilergames-generator:local \
+  node /app/generator/src/check/cli.js /tmp/game.html
 ```
 
 ## Generating a game

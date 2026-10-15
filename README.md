@@ -23,6 +23,14 @@ Some networks (e.g. campus Wi-Fi) block device-to-device traffic; a phone hotspo
 ```sh
 npm test                # server unit + integration tests (Node's built-in test runner)
 npm run test:e2e        # browser tests: real Chromium pages against the real client + server
+npm run test:check      # the game checker on broken test games (uses the e2e tests' Chromium)
+```
+
+To check one frame game file (game info, static check, and 20 s of play in a headless
+browser with simulated phones; it RUNS the game, so use it on files you wrote or chose):
+
+```sh
+npm run check-game -- server/src/games/tower-dash/game.html --shots /tmp/shots
 ```
 
 The browser tests (`e2e/`) start their own server on :3100 and client on :5174 with 2-second
