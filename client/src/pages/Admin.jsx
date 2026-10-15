@@ -552,6 +552,7 @@ function Version({ version: v, open, live, busy, info, canDiscard, onPlaytest, o
           </div>
         )}
         {v.report && <Report report={v.report} />}
+        {v.attempts?.length > 0 && <Attempts attempts={v.attempts} />}
         {v.changes && <ChangedLines changes={v.changes} basedOn={v.basedOn} />}
         {v.source && (
           <details className="gen-source" open={v.status === 'ready' && !live && !v.changes}>
@@ -568,11 +569,11 @@ function Version({ version: v, open, live, busy, info, canDiscard, onPlaytest, o
 }
 
 /** The changed lines compared with the version it was made from, git-diff style. */
-function ChangedLines({ changes, basedOn }) {
+function ChangedLines({ changes, basedOn, label = `Changed lines since v${basedOn}`, open = true }) {
   return (
-    <details className="gen-source gen-diff" open>
+    <details className="gen-source gen-diff" open={open}>
       <summary>
-        Changed lines since v{basedOn}: <span className="diff-add-count">+{changes.added}</span>{' '}
+        {label}: <span className="diff-add-count">+{changes.added}</span>{' '}
         <span className="diff-del-count">−{changes.removed}</span>
       </summary>
       {changes.hunks.length === 0 && <p className="muted small">No lines changed.</p>}
@@ -590,6 +591,51 @@ function ChangedLines({ changes, basedOn }) {
           ))}
         </pre>
       ))}
+    </details>
+  );
+}
+
+/**
+ * How a version was built (plan §13n): every attempt, what the checks found in it, and what
+ * the model changed to fix it. The last passing attempt is the version's own code.
+ */
+function Attempts({ attempts }) {
+  const builds = new Set(attempts.map((a) => a.build)).size;
+  const failed = attempts.filter((a) => !a.ok).length;
+  const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+  return (
+    <details className="gen-source gen-attempts">
+      <summary>
+        How it was built: {plural(attempts.length, 'attempt')}
+        {failed > 0 && ` (${failed} failed)`}
+        {builds > 1 && `, in ${builds} builds`}
+      </summary>
+      <ol className="gen-attempt-list">
+        {attempts.map((a) => {
+          const name = builds > 1 ? `Build ${a.build}, attempt ${a.attempt}` : `Attempt ${a.attempt}`;
+          const problems = a.report?.problems ?? [];
+          const tokens = a.promptTokens ? ` · ${a.promptTokens.toLocaleString()} tokens in, ${(a.completionTokens ?? 0).toLocaleString()} out` : '';
+          return (
+            <li key={`${a.build}-${a.attempt}`} aria-label={name}>
+              <p>
+                <strong>{name}</strong>: {a.ok ? '✓ passed' : plural(problems.length, 'problem')}
+                <span className="muted small">
+                  {a.seconds !== null && ` · ${a.seconds} s`}
+                  {tokens}
+                </span>
+              </p>
+              {!a.ok && problems.length > 0 && <Findings items={problems} />}
+              {a.changes && <ChangedLines changes={a.changes} label={`Changed lines since attempt ${a.attempt - 1}`} open={false} />}
+              {a.source && (
+                <details className="gen-source">
+                  <summary>Code ({a.source.split('\n').length} lines)</summary>
+                  <SourceCode source={a.source} report={a.report} />
+                </details>
+              )}
+            </li>
+          );
+        })}
+      </ol>
     </details>
   );
 }

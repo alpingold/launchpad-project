@@ -88,12 +88,16 @@ async function fakeGenerator(job, { onStep }) {
       : GOOD_SOURCE;
   const changelog = job.change ? '- Renamed it to Robot Majority 2' : null;
   const report = withFakePlaytest(frameGameReport(source));
+  const attempt = (n, code, checks) => ({ attempt: n, ok: checks.ok, problems: checks.problems.length, seconds: 30, usage: { prompt_tokens: 12000, completion_tokens: 9000 }, source: code, report: checks });
   if (!report.ok) {
     onStep(`attempt 1/4: ${report.problems.length} problem(s)`);
-    return { ok: false, model: job.model, source, report, changelog, error: 'no passing game after 1 attempt' };
+    return { ok: false, model: job.model, source, report, changelog, error: 'no passing game after 1 attempt', attempts: [attempt(1, source, report)] };
   }
-  onStep('attempt 1/4: passed');
-  return { ok: true, model: job.model, source, report, changelog };
+  // A good game "needed" two attempts: the first reached for the network (plan §13n keeps both).
+  const firstTry = source.replace("party.ready(", "fetch('https://example.com/x'); party.ready(");
+  onStep('attempt 1/4: 1 problem(s)');
+  onStep('attempt 2/4: passed');
+  return { ok: true, model: job.model, source, report, changelog, attempts: [attempt(1, firstTry, frameGameReport(firstTry)), attempt(2, source, report)] };
 }
 
 const db = openDatabase(config.DB_PATH);

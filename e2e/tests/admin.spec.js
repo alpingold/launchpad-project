@@ -86,7 +86,14 @@ test('design → new draft → edit → build → read it → playtest with phon
   await expect(detail(page).getByRole('img', { name: 'A phone during the playtest' })).toBeVisible();
   await expect(detail(page).getByText('Worth a look')).toBeVisible();
   await expect(detail(page).getByText(/never called party\.save/)).toBeVisible();
-  await expect(detail(page).locator('pre')).toContainText('id="game-info"'); // the code, as text
+  // How it was built: both attempts, the first with its problem and what changed to fix it (plan §13n).
+  await v1.getByText('How it was built: 2 attempts (1 failed)').click();
+  const try1 = v1.getByRole('listitem', { name: 'Attempt 1' });
+  await expect(try1).toContainText('1 problem');
+  await expect(try1.locator('.gen-findings')).toContainText('fetch is blocked in a game');
+  await expect(v1.getByRole('listitem', { name: 'Attempt 2' })).toContainText('✓ passed');
+  await expect(v1.getByRole('listitem', { name: 'Attempt 2' }).locator('.gen-diff summary')).toHaveText('Changed lines since attempt 1: +1 −1');
+  await expect(v1.locator('pre.gen-code').last()).toContainText('id="game-info"'); // the version's code, as text
   const gameId = (await detail(page).getByText(/^g-[a-z0-9]{8}$/).textContent()).trim();
 
   // Playtest v1: in the admin's own game picker (as "-v1"), and nobody else's.
@@ -127,9 +134,10 @@ test('design → new draft → edit → build → read it → playtest with phon
   await expect(v2.getByText('Passed the checks')).toBeVisible(GENERATED);
   await expect(v2.locator('p', { hasText: 'Changed from v1:' })).toContainText('Rename it to Robot Majority 2, please');
   await expect(v2.getByText('Renamed it to Robot Majority 2')).toBeVisible();
-  await expect(v2.locator('.gen-diff summary')).toHaveText('Changed lines since v1: +1 −1');
-  await expect(v2.locator('.diff-del')).toContainText('"name": "Robot Majority",');
-  await expect(v2.locator('.diff-add')).toContainText('"name": "Robot Majority 2",');
+  const sinceV1 = v2.locator('.gen-diff').filter({ hasText: 'Changed lines since v1' }); // (each attempt has its own diff too)
+  await expect(sinceV1.locator('summary')).toHaveText('Changed lines since v1: +1 −1');
+  await expect(sinceV1.locator('.diff-del')).toContainText('"name": "Robot Majority",');
+  await expect(sinceV1.locator('.diff-add')).toContainText('"name": "Robot Majority 2",');
 
   // Playtest v2: the admin gets both versions; other hosts keep v1.
   await v2.getByRole('button', { name: 'Playtest v2' }).click();
@@ -171,13 +179,14 @@ test('a failed game shows why, with its test report and code, and can be built a
   await expect(detail(page).getByText('no passing game after 1 attempt')).toBeVisible();
   await expect(detail(page).getByText(/The checks found \d+ problems?/)).toBeVisible();
   // The static check's finding, with its line; the line is marked in the code.
-  const finding = detail(page).locator('.gen-findings li', { hasText: 'fetch is blocked in a game' });
+  const finding = detail(page).locator('.gen-report .gen-findings li', { hasText: 'fetch is blocked in a game' }); // (also listed under its attempt)
   await expect(finding).toContainText('line 5');
   await expect(finding.locator('.gen-finding-code')).toHaveText("party.ready(() => fetch('https://example.com/scores'));");
   await expect(detail(page).getByRole('button', { name: /Playtest/ })).toHaveCount(0); // only Delete
   await expect(detail(page).getByLabel('Ask for changes')).toHaveCount(0); // nothing that passed to change
-  await detail(page).getByText(/^Code \(/).click();
-  await expect(detail(page).locator('pre .code-line.flagged')).toHaveAttribute('data-line', '5');
+  const code = detail(page).locator('.gen-version > details > details.gen-source').filter({ hasText: /^Code \(/ }).last(); // the version's code, not an attempt's
+  await code.locator('summary').click();
+  await expect(code.locator('pre .code-line.flagged')).toHaveAttribute('data-line', '5');
   await admin.context.close();
 });
 

@@ -1209,11 +1209,14 @@ note in the terms (especially from A7 on, when other hosts generate games).
   smaller machine).
 - **The data, today:** `npm run admin -- export-data <file.jsonl>` writes one record per
   version (idea or request, design drafts with feedback and who wrote them, the design, the
-  code, check results by rule, and how far it got). **Gaps to close before it's training
-  data:** failed build attempts aren't stored (only the last; they're the "broken → fixed"
-  pairs), nothing records how a game did with real players, and the library is tiny.
+  code, check results by rule, how far it got, and every build attempt). **Gaps to close
+  before it's training data:** nothing records how a game did with real players, and the
+  library is tiny.
 
-**Suggested order:** (a) store every build attempt with its report; (b) record games played,
+**Suggested order:** (a) ✅ _done 2026-10-15: store every build attempt with its report
+(table `build_attempts`, migration 6; "How it was built" on the admin page; in export-data;
+chosen over a git repo per game, which would split each game between the database and the
+file system); (b) record games played,
 finished vs stopped, and a thumbs up/down after a game; (c) the model-as-librarian retrieval
 once there are ~10 published games; (d) revisit fine-tuning at a few hundred games, with a
 lab's help.
