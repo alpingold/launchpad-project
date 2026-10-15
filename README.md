@@ -100,6 +100,11 @@ A game talks to BoilerGames only through the `party` SDK
     `party.ready`'s `restored`
   - `party.end({ rankings, scores })`
 
+Games also get **`party.ui`**, ready-made pieces styled like the rest of the site in both
+themes: `joystick`, `gamepad` (hold buttons like ◀ ▶ Jump), `timer`, `scoreboard`, `drawPad` /
+`drawing`, and `ascii` (a coloured grid of text characters, for ASCII-art games). There's also
+`el` (builds elements safely), plus a base style for headings, buttons and inputs.
+
 If a game hangs the big screen (which freezes that whole tab), the server notices that the
 page has gone quiet and stops the game after 15 s. A game that loads another page into its
 frame is removed.
