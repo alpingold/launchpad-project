@@ -40,7 +40,8 @@ Useful while writing tests: `npm --prefix e2e run test:headed` (watch the browse
 
 ## Game art
 
-Games show pictures by **asset id** (e.g. `go-sign`), never by URL. The library lives in
+Games can draw their own art (on a canvas, or with text characters), and can also show
+approved pictures by **asset id** (e.g. `go-sign`) with `party.asset(id)`. The library lives in
 `client/public/game-assets/`:
 
 - `manifest.json` lists every asset: `id`, `file`, `alt` (description for screen readers), `tags`, `credit`.
@@ -48,7 +49,7 @@ Games show pictures by **asset id** (e.g. `go-sign`), never by URL. The library 
   background works well), put it in the folder, and change that entry's `file`. Keep the `id`,
   and games pick it up without code changes.
 - To add new art: add the file and a new manifest entry. `npm test` checks that every entry's
-  file exists and that games only use ids that are in the manifest.
+  file exists. A game's security policy only lets it load pictures from this folder.
 
 ## Accounts
 
@@ -68,11 +69,48 @@ Hosting needs an account; players join as guests with just a room code.
   npm run admin -- users                 # list accounts
   npm run admin -- grant <username>      # make an account an admin (can generate games)
   npm run admin -- games                 # list AI-generated games, their versions, and what's live
-  npm run admin -- import-game <file> --owner <username>   # store a game (must pass check-game)
+  npm run admin -- import-game <file> --owner <username>   # store a game file (its game info must be valid)
   npm run admin -- set-live <game id> published|playtest <version|none>
   ```
   Game changes take effect when the server restarts. A `playtest` version shows up only in its
   owner's game picker; the `published` version shows up for every host.
+
+## Games are web pages (frame games)
+
+> **Branch `iframe-games`** (plan §13). On `main`, games are built from the game kit's blocks instead.
+
+Each game is **one HTML file** (`server/src/games/<id>/game.html`). The same page runs on the
+big screen and on every phone, each in a **sandboxed iframe**:
+
+- **The big screen is the referee.** Its copy of the game runs the rules, timers and scores,
+  and draws the big picture.
+- **Phones are controllers.** They draw whatever controls the game needs and send events to the
+  big screen.
+- **The server only passes messages along** (`server/src/games/FrameRelay.js`), checking who
+  sent them, who they're for and how big they are. It never runs game code.
+
+A game talks to BoilerGames only through the `party` SDK
+(`client/src/game/frame/sdk.js`):
+- `party.ready(fn)`, `party.on(…)` and `party.now()` work on every screen.
+- Phones have `party.send(data)`.
+- The big screen has `party.sendTo` / `party.sendAll`, `party.setState(player, state)` (kept
+  and resent after a phone reloads), and `party.end({ rankings, scores })`.
+
+The file starts with its info, which is the only part the server reads:
+
+```html
+<script type="application/json" id="game-info">
+  { "name": "Bumper Blobs", "description": "…", "minPlayers": 2, "maxPlayers": 12 }
+</script>
+```
+
+**The walls:**
+- **The iframe sandbox** (`sandbox="allow-scripts"`) means a game can't read the page, the login
+  cookie or the room tokens, and can't redirect the page.
+- **Its Content-Security-Policy** blocks all network access, outside scripts and `eval`.
+- **A browser test proves it:** `e2e/tests/frames.spec.js` tries nine ways out on both screens.
+
+**The first game is Bumper Blobs:** phones are joysticks, and the big screen is an ice arena.
 
 ## AI-made games
 
@@ -92,8 +130,8 @@ GENERATION_ENABLED=1 npm run dev:server
 ```
 
 On the admin page you type an idea and watch its progress. Jobs run one at a time. A
-finished game waits for review with its test report and code (shown as text; the browser
-never runs it). **Playtest** makes a version startable by you alone, **Publish** makes it
+finished game waits for review with its test report and code (shown as text; the admin
+page never runs it). **Playtest** makes a version startable by you alone, **Publish** makes it
 available to every host, and **Unpublish** takes it away. All of these apply immediately,
 without a restart. Hosts see an **AI-made** badge on these games.
 
@@ -104,21 +142,7 @@ of changes and the **changed lines**. You can playtest a new version while every
 playing the published one, then publish it; rolling back means playtesting an older version
 and publishing it.
 
-Games draw everything with the **game kit**: screens built from blocks (text, images, timers,
-bars, buttons, choices, layouts), input blocks (text boxes, multi-picks, sliders, rankings) and
-widgets that run on the phone (reaction timer, button mashing, timing bar, tap targets, drawing
-pad). All of them are defined in `server/src/games/kit/blocks.js`, and the **`/kit` page**
-shows every one live. Three official games (Reaction Race, Sketch & Guess, Fill the Blank)
-double as the examples the AI learns from.
-
-Every game, hand-made or generated, can be checked with the **game test harness**:
-
-```sh
-npm run check-game -- server/src/games/reaction-race/index.js
-```
-
-It lints the code for rule-breaking (`Math.random`, `Date`, `async`, imports, …), checks the
-GameModule, then plays 18 quick games with bot players on a simulated clock (different player
-counts; eager, sloppy, and quiet players) and reports anything that went wrong, with a hint on
-how to fix it. It runs the game's code in a separate, time- and memory-limited process. Only run
-it on code you trust, or inside the generator's sandbox for code nobody has read yet.
+**On this branch, generating is switched off** until the generator writes frame games, with a
+design step you approve before any code is written (plan §13i, milestone F5). The admin page,
+versions, changed lines, playtest and publish all work. Games can be added with
+`npm run admin -- import-game`.

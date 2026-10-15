@@ -1,6 +1,6 @@
 # BoilerGames: Implementation Plan (MVP lobby + extension structure)
 
-> **Status (2026-10-14):** M0–M7 done. AI game generation A0–A6 done. **Now: the game dev kit, contract v3 (§12, milestones K1–K6)**, because AI-made games were too simple with 5 fixed screens. K1–K6 are done. **On branch `iframe-games`: frame games (§13), F0 spike next**; on `main`, next is deploying (M8). A7 (bring your own key) waits on RCAC's answer. This file is the living plan: decisions and changes are recorded here as they happen, so `git log docs/PLAN.md` shows how it evolved.
+> **Status (2026-10-14):** M0–M7 done. AI game generation A0–A6 done. **Now: the game dev kit, contract v3 (§12, milestones K1–K6)**, because AI-made games were too simple with 5 fixed screens. K1–K6 are done. **On branch `iframe-games`: frame games (§13); F0 done (2026-10-15), F1 next**; on `main`, next is deploying (M8). A7 (bring your own key) waits on RCAC's answer. This file is the living plan: decisions and changes are recorded here as they happen, so `git log docs/PLAN.md` shows how it evolved.
 
 _Site renamed from "LaunchPad Party" to **BoilerGames** on 2026-10-11 (built for the Purdue LaunchPad club; the club name stays where it refers to the club)._
 
@@ -955,7 +955,7 @@ Every walls-in measure is something the **browser** enforces, not our code:
 | Message | From → to | Server checks |
 |---|---|---|
 | `game:started { gameId, players, source }` | server → everyone | — (now includes the game file) |
-| `game:event { data }` | phone → server → big screen as `{ from, data }` | in a game; JSON; ≤ 8 KB; rate limit |
+| `game:event { data }` | phone → server → big screen as `{ from, data }` | in a game; JSON; ≤ 24 KB (a drawing fits); rate limit |
 | `game:send { to, data }` | big screen → one phone or all | sender is the host; `to` is a real player id or `all`; ≤ 32 KB |
 | `game:state { to, state }` | big screen → phone(s), remembered | same; the latest per phone is replayed on reconnect |
 | `game:end { rankings, scores? }` | big screen → server → everyone as `game:ended` | the same checks as `endGame` today |
@@ -1063,8 +1063,8 @@ The two ASCII games also stress-test the SDK for genres that aren't party rounds
 
 | M | Goal | You can run / review |
 |---|---|---|
-| **F0 Spike** | Remove the block games (13k); `FrameRelay` + the new messages; `GameFrame.jsx` (srcdoc wrapper, CSP, message checks); the `party` SDK basics; Bumper Blobs; tests: relay unit tests, and e2e tests that play a round and prove the walls (the iframe can't read the cookie or storage, `fetch` is blocked) | Play Bumper Blobs on the big screen with 2+ real phones (Tailscale works). **Go/no-go:** does it feel smooth, and is it worth the cost? |
-| **F1 Robustness** | Sticky state replay on reconnect; big screen save/restore; heartbeat (hung frame → game ends); frame navigation → game ends (13e); the host's "Stop game" button; tune rate limits | Refresh a phone and the big screen mid-game; a deliberately broken or redirecting game ends cleanly |
+| **F0 Spike** ✅ _done 2026-10-15: `server/src/games/frameGame.js` (reads only the game-info JSON) and `FrameRelay.js`; `client/src/game/GameFrame.jsx` (srcdoc, sandbox, message checks, a client-side rate limit matching the server's), `frame/frameDocument.js` (CSP) and `frame/sdk.js`; **Bumper Blobs** (joystick + Dash + arrow keys; shrinking ice; best of 3). The host's **Stop game** button came forward from F1. A big-screen reload stops the game. A browser test tries nine ways out of the sandbox on both screens (all blocked; with `allow-same-origin` a game could read the host token). The generator is switched off with a clear reason; stored block games are skipped at startup. Changes from the plan: phone events may be up to 24 KB (not 8); `host:start_game` no longer takes options_ | Remove the block games (13k); `FrameRelay` + the new messages; `GameFrame.jsx` (srcdoc wrapper, CSP, message checks); the `party` SDK basics; Bumper Blobs; tests: relay unit tests, and e2e tests that play a round and prove the walls (the iframe can't read the cookie or storage, `fetch` is blocked) | Play Bumper Blobs on the big screen with 2+ real phones (Tailscale works). **Go/no-go:** does it feel smooth, and is it worth the cost? |
+| **F1 Robustness** | Big screen save/restore; heartbeat (hung frame → game ends); frame navigation → game ends (13e); tune rate limits. (Sticky state replay and the Stop game button were done in F0.) | Refresh a phone and the big screen mid-game; a deliberately broken or redirecting game ends cleanly |
 | **F2 Look and feel + helpers** | The kit as a library inside frames: base stylesheet (colour tokens, buttons, dark mode from `party.theme`), joystick, D-pad, timer, scoreboard, drawing pad, ASCII grid renderer | A plain game looks right in both themes; Bumper Blobs uses the shared joystick |
 | **F3 Example games + templates** | The ASCII platformer and the ASCII RPG (13j); starter templates (party rounds, real-time, turn-based adventure) taken from the three games | Play both with phones; each template runs as a tiny working game |
 | **F4 Checking games** | Static check plus a **headless-browser** playtest with simulated phones, CSP violation reports and screenshots; screenshots and flags on the admin page. Needs Chromium in the generator image (ask before adding Playwright there) | `npm run check-game game.html` passes the three examples; broken fixtures (network, navigation, throws, blank screen) fail clearly |
