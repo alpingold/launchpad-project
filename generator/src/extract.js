@@ -1,18 +1,53 @@
+// Pulling what we need out of a model's reply (plan §13i, F5): a game file from the build
+// step, a design from the design step, and the list of changes from a change request.
+//
+// Models wrap code in ``` fences and sometimes add explanations around it, or (some
+// "thinking" models) a <think>...</think> section first. Thinking is always removed first.
+
+const withoutThinking = (reply) => String(reply ?? '').replace(/<think>[\s\S]*?<\/think>/g, '');
+const GAME_INFO = /<script\b[^>]*id=["']game-info["']/i;
+
 /**
- * Pulls the game's code out of a model's reply.
- *
- * Models wrap code in ```js fences and sometimes add explanations around it, or (some
- * "thinking" models) a <think>...</think> section first. We take the longest fenced code
- * block after removing any thinking. If there's no fence at all but the reply looks like
- * a module, we take the whole reply.
+ * The game file in a reply: the longest fenced block that has the game-info block (```html,
+ * or any other fence), or, with no fences, the reply itself from the game-info block on.
  * @param {string} reply
- * @returns {string | null} the code, or null if there's none
+ * @returns {string | null} the file, or null if there's none
  */
-export function extractCode(reply) {
-  const text = String(reply ?? '').replace(/<think>[\s\S]*?<\/think>/g, '');
-  const blocks = [...text.matchAll(/```[ \t]*(?:js|javascript|mjs)?[ \t]*\r?\n([\s\S]*?)```/g)].map((m) => m[1]);
+export function extractGameFile(reply) {
+  const text = withoutThinking(reply);
+  const blocks = [...text.matchAll(/```[ \t]*[\w-]*[ \t]*\r?\n([\s\S]*?)```/g)].map((m) => m[1]).filter((b) => GAME_INFO.test(b));
   if (blocks.length > 0) return blocks.sort((a, b) => b.length - a.length)[0].trim() + '\n';
-  return /export\s+default/.test(text) ? text.trim() + '\n' : null;
+  const start = text.search(GAME_INFO);
+  return start === -1 ? null : text.slice(start).trim() + '\n';
+}
+
+/** The longest design we keep (about 3× the length we ask for). */
+export const MAX_DESIGN_LENGTH = 12_000;
+
+/**
+ * The design (or change plan) in a reply: Markdown from its first `# ` heading on. Models
+ * sometimes put it in a ```markdown fence; that's unwrapped. Chatter before the heading is
+ * dropped.
+ * @param {string} reply
+ * @returns {string | null}
+ */
+export function extractDesign(reply) {
+  let text = withoutThinking(reply).trim();
+  const fenced = /```[ \t]*(?:markdown|md)?[ \t]*\r?\n([\s\S]*?)```/.exec(text);
+  if (fenced && /^#\s/m.test(fenced[1])) text = fenced[1];
+  const start = text.search(/^#\s+\S/m);
+  if (start === -1) return null;
+  return text.slice(start).trim().slice(0, MAX_DESIGN_LENGTH) + '\n';
+}
+
+/**
+ * The headings from `required` that a design is missing (compared without case).
+ * @param {string} design
+ * @param {string[]} required  e.g. ['Genre and feel', 'Players', ...]
+ */
+export function missingHeadings(design, required) {
+  const present = new Set([...String(design).matchAll(/^##\s+(.+?)\s*$/gm)].map((m) => m[1].toLowerCase()));
+  return required.filter((h) => !present.has(h.toLowerCase()));
 }
 
 /** At most this many change lines are kept, each at most this long. */

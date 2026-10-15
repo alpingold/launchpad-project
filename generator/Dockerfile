@@ -2,9 +2,10 @@
 #   docker build -f generator/Dockerfile -t boilergames-generator:local .
 #
 # Only what the generator needs is copied in (see Dockerfile.dockerignore, an allow-list):
-# the generator and its game checker, the server's game code it reuses (game info, static
-# check, FrameRelay, protocol checks), the frame document and SDK the site puts around a
-# game, and the art library. Everything is read-only at runtime (generator/openshell/policy.yaml).
+# the generator, its rulebook, designs and templates, its game checker, the server's game
+# code it reuses (game info, static check, FrameRelay, protocol checks, the example games),
+# the frame document and SDK the site puts around a game, and the art library. Everything
+# is read-only at runtime (generator/openshell/policy.yaml).
 FROM node:24-bookworm-slim
 
 WORKDIR /app
@@ -25,6 +26,8 @@ COPY server/src server/src
 COPY client/src/game/frame client/src/game/frame
 COPY client/public/game-assets client/public/game-assets
 COPY generator/src generator/src
+COPY generator/spec generator/spec
+COPY generator/templates generator/templates
 
 # OpenShell refuses images that run as root; the node image ships a "node" user.
 USER node

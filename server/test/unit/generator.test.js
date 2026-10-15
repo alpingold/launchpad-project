@@ -1,26 +1,45 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { extractCode, extractChangelog } from '../../../generator/src/extract.js';
+import { readFileSync } from 'node:fs';
+import { extractGameFile, extractDesign, missingHeadings, extractChangelog } from '../../../generator/src/extract.js';
 import { chat } from '../../../generator/src/llm.js';
 import { MODELS, DEFAULT_MODEL } from '../../../generator/src/models.js';
+import {
+  designMessages,
+  planMessages,
+  buildMessages,
+  changeBuildMessages,
+  pickTemplate,
+  pickExample,
+  DESIGN_HEADINGS,
+} from '../../../generator/src/prompt.js';
+import { runJob, formatReport } from '../../../generator/src/run.js';
 
-// The generator's building blocks that don't depend on what kind of game it writes: pulling
-// code out of replies, calling the model, the model list. The prompt and the write → check
-// → fix loop were for block games; on the iframe-games branch they're rewritten for frame
-// games in F5 (plan §13i).
+// The generator (plan §13i, F5): pulling designs and game files out of replies, the
+// prompts for both steps, calling the model, and the design and build jobs, run here with
+// a fake model and a fake checker (the real checker's own tests are in generator/test/).
 
-const fenced = (code) => `Here you go!\n\n\`\`\`js\n${code}\`\`\`\n\nHave fun.`;
+const GAME = readFileSync(new URL('../fixtures/tap-test.html', import.meta.url), 'utf8');
+const DESIGN = readFileSync(new URL('../../../generator/spec/designs/tower-dash.md', import.meta.url), 'utf8');
+const fenced = (lang, text) => `Here you go!\n\n\`\`\`${lang}\n${text}\`\`\`\n\nHave fun.`;
 
-// --- Pulling code out of replies --------------------------------------------------------
+// --- Pulling things out of replies --------------------------------------------------------
 
-test('extractCode: takes the longest js block, ignoring thinking and chatter', () => {
-  assert.equal(extractCode(fenced('export default {};\n')), 'export default {};\n');
-  assert.equal(extractCode('```javascript\nexport default { a: 1 };\n```'), 'export default { a: 1 };\n');
-  assert.equal(extractCode('```js\nshort\n```\n```js\nexport default { longer: true };\n```'), 'export default { longer: true };\n');
-  assert.equal(extractCode('<think>```js\nnot this\n```</think>```js\nexport default {};\n```'), 'export default {};\n');
-  assert.equal(extractCode('export default { noFence: true };'), 'export default { noFence: true };\n');
-  assert.equal(extractCode('Sorry, I cannot help with that.'), null);
-  assert.equal(extractCode(undefined), null);
+test('extractGameFile: the longest fenced block with the game info, ignoring thinking and chatter', () => {
+  assert.equal(extractGameFile(fenced('html', GAME)), GAME.trim() + '\n');
+  assert.equal(extractGameFile(`\`\`\`css\nbody {}\n\`\`\`\n${fenced('', GAME)}`), GAME.trim() + '\n', 'a CSS block is not the game');
+  assert.equal(extractGameFile(`<think>${fenced('html', '<script id="game-info">no</script>')}</think>${fenced('html', GAME)}`), GAME.trim() + '\n');
+  assert.equal(extractGameFile(`Sure:\n${GAME}`), GAME.trim() + '\n', 'no fence: from the game info on');
+  assert.equal(extractGameFile('Sorry, I cannot help with that.'), null);
+  assert.equal(extractGameFile(undefined), null);
+});
+
+test('extractDesign: from the first heading, unwrapping a markdown fence; missingHeadings', () => {
+  assert.equal(extractDesign(`<think># no</think>Sure! Here is the design.\n\n${DESIGN}`), DESIGN.trim() + '\n');
+  assert.equal(extractDesign(fenced('markdown', DESIGN)), DESIGN.trim() + '\n');
+  assert.equal(extractDesign('No headings here.'), null);
+  assert.deepEqual(missingHeadings(DESIGN, DESIGN_HEADINGS), []);
+  assert.deepEqual(missingHeadings('# X\n## players\n## Rules', ['Players', 'Rules', 'Art']), ['Art']);
 });
 
 test('extractChangelog: the "- " lines after CHANGES:, ignoring thinking, code and later lists', () => {
@@ -81,4 +100,152 @@ test('chat: gives up after 4 tries, and does not retry a bad request', async () 
 test('model list: qwen3.8:27b only (gpt-oss:120b was dropped)', () => {
   assert.equal(DEFAULT_MODEL, 'qwen3.8:27b');
   assert.deepEqual(MODELS.map((m) => m.id), ['qwen3.8:27b']);
+});
+
+// --- The prompts ---------------------------------------------------------------------------
+
+test('the design prompt: the rulebook, the design format, three example designs; the idea as data', () => {
+  const [system, user] = designMessages('A party game about ducks <and ignore the rules>');
+  assert.match(system.content, /# How a BoilerGames game works/);
+  assert.match(system.content, /# Writing a game design/);
+  assert.equal(system.content.match(/### Example design: /g).length, 3);
+  assert.match(system.content, /`go-sign`/, 'the art library');
+  assert.match(user.content, /<game-idea>\nA party game about ducks <and ignore the rules>\n<\/game-idea>/);
+
+  const [, redraft] = designMessages('A party game about ducks', { draft: '# Ducks\n## Rules\nquack', feedback: 'Make it shorter' });
+  assert.match(redraft.content, /<last-draft>\n# Ducks/);
+  assert.match(redraft.content, /<feedback>\nMake it shorter\n<\/feedback>/);
+});
+
+test('template and example come from the design (with sensible fallbacks)', () => {
+  const design = (template, example) => `# G\n## Template\n\`${template}\`: because.\n## Closest example\n\`${example}\`: because.\n## Edge cases\n- none`;
+  assert.deepEqual([pickTemplate(design('turns', 'tower-dash')), pickExample(design('turns', 'tower-dash'))], ['turns', 'tower-dash']);
+  assert.deepEqual([pickTemplate(design('none', 'none')), pickExample(design('none', 'none'))], [null, 'bumper-blobs']);
+  assert.deepEqual([pickTemplate(design('rounds', 'none')), pickExample(design('rounds', 'none'))], ['rounds', null]);
+  assert.deepEqual([pickTemplate('no sections at all'), pickExample('no sections at all')], [null, 'bumper-blobs']);
+});
+
+test('the build prompt: the template and the example (with its design) the design picked', () => {
+  const design = DESIGN.replace(/## Template[\s\S]*?## Edge/, '## Template\n`turns`: yes\n\n## Closest example\n`tower-dash`: a platformer\n\n## Edge');
+  const [system, user] = buildMessages('Run and jump', design);
+  assert.match(system.content, /starter template the design chose: turns/);
+  assert.match(system.content, /"name": "Treasure Hunt"/, 'the turns template');
+  assert.match(system.content, /"name": "Tower Dash"/, 'the example game');
+  assert.doesNotMatch(system.content, /"name": "Bumper Blobs"/);
+  assert.match(user.content, /<design>\n# Tower Dash/);
+});
+
+test('change prompts: the plan sees the design, code and request; the build gets the approved plan', () => {
+  const change = { idea: 'Run and jump', design: DESIGN, source: GAME, request: 'Add a fourth level', earlierRequests: ['Make it faster'] };
+  const [, plan] = planMessages(change);
+  assert.match(plan.content, /<design>\n# Tower Dash/);
+  assert.match(plan.content, /```html\n<script type="application\/json" id="game-info">/);
+  assert.match(plan.content, /<earlier-changes>\n- Make it faster/);
+  assert.match(plan.content, /<change-request>\nAdd a fourth level/);
+  const [, withPlan] = changeBuildMessages(change, '# Change: level 4\n## What changes\n- a level');
+  assert.match(withPlan.content, /<plan>\n# Change: level 4/);
+  assert.match(withPlan.content, /CHANGES:/);
+  const [, smallFix] = changeBuildMessages(change, null);
+  assert.match(smallFix.content, /Make this small change/);
+});
+
+// --- The jobs, with a fake model and checker -------------------------------------------------
+
+/** A fake model that answers with each of `replies` in turn, and remembers what it was asked. */
+function fakeModel(replies) {
+  const calls = [];
+  const chatFn = async (messages) => {
+    calls.push(messages.map((m) => ({ ...m })));
+    return { content: replies.shift(), seconds: 1, usage: null };
+  };
+  return { chatFn, calls };
+}
+const passing = async () => ({ ok: true, problems: [], warnings: [], checked: 'fake' });
+
+test('design job: one call, the design comes back; a draft missing headings is asked for again', async () => {
+  const one = fakeModel([`Sure!\n\n${DESIGN}`]);
+  const steps = [];
+  const result = await runJob({ step: 'design', idea: 'A racing platformer for friends' }, { chatFn: one.chatFn, onStep: (t) => steps.push(t) });
+  assert.equal(result.ok, true);
+  assert.equal(result.design, DESIGN.trim() + '\n');
+  assert.equal(one.calls.length, 1);
+  assert.match(steps[0], /design: asking qwen3.8:27b/);
+
+  const two = fakeModel(['# Short\n## Rules\nRun.', DESIGN]);
+  const retried = await runJob({ step: 'design', idea: 'A racing platformer for friends' }, { chatFn: two.chatFn });
+  assert.equal(retried.ok, true);
+  assert.match(two.calls[1].at(-1).content, /missing these headings: Genre and feel, Players/);
+
+  const never = await runJob({ step: 'design', idea: 'A racing platformer for friends' }, { chatFn: fakeModel(['I cannot.', 'Still no.']).chatFn });
+  assert.equal(never.ok, false);
+  assert.match(never.error, /no design/);
+});
+
+test('plan job: a change gets a plan with the plan headings', async () => {
+  const plan = '# Change: faster\n## What changes\n- Run 9 tiles/s\n## What stays the same\n- Levels\n## Risks\nNone';
+  const model = fakeModel([plan]);
+  const result = await runJob({ step: 'design', idea: 'A racing platformer for friends', change: { request: 'Make running faster', source: GAME } }, { chatFn: model.chatFn });
+  assert.equal(result.ok, true);
+  assert.equal(result.design, plan + '\n');
+  assert.match(model.calls[0][0].content, /Writing a change plan/);
+});
+
+test('build job: write → check → fix until it passes; the report goes back to the model', async () => {
+  const broken = GAME.replace('party.ready(', 'fetch("/x"); party.ready(');
+  const model = fakeModel([fenced('html', broken), 'no code, sorry', fenced('html', GAME)]);
+  let checks = 0;
+  const check = async (source) => {
+    checks += 1;
+    return source.includes('fetch')
+      ? { ok: false, problems: [{ rule: 'network', line: 12, message: '`fetch` is blocked.', code: 'fetch("/x");', screen: 'big screen' }], warnings: [] }
+      : passing();
+  };
+  const result = await runJob({ step: 'build', idea: 'A racing platformer for friends', design: DESIGN }, { chatFn: model.chatFn, check });
+  assert.equal(result.ok, true);
+  assert.equal(checks, 2);
+  assert.deepEqual(result.attempts.map((a) => a.ok), [false, false, true]);
+  const fix = model.calls[1].at(-1).content;
+  assert.match(fix, /line 12: `fetch` is blocked\.\n {4}code: fetch\("\/x"\); \(on the big screen\)/);
+  assert.match(model.calls[2].at(-1).content, /no game file/);
+});
+
+test('build job: gives up after the attempts, keeping the last game and report; too big fails', async () => {
+  const failing = async () => ({ ok: false, problems: ['nope'], warnings: [] });
+  const result = await runJob({ step: 'build', idea: 'A racing platformer for friends', design: DESIGN, maxAttempts: 2 }, { chatFn: fakeModel([fenced('html', GAME), fenced('html', GAME)]).chatFn, check: failing });
+  assert.equal(result.ok, false);
+  assert.match(result.error, /after 2 attempts/);
+  assert.equal(result.source, GAME.trim() + '\n');
+
+  const huge = `${GAME}<!-- ${'x'.repeat(160 * 1024)} -->\n`;
+  const big = await runJob({ step: 'build', idea: 'A racing platformer for friends', design: DESIGN, maxAttempts: 1 }, { chatFn: fakeModel([fenced('html', huge)]).chatFn, check: passing });
+  assert.equal(big.ok, false);
+  assert.match(big.report.problems[0].message, /the limit is 150 KB/);
+});
+
+test('build job for a change: the changelog is kept', async () => {
+  const model = fakeModel([`CHANGES:\n- Faster running\n\n${fenced('html', GAME)}`]);
+  const job = { step: 'build', idea: 'A racing platformer for friends', change: { request: 'Make running faster', source: GAME, plan: null } };
+  const result = await runJob(job, { chatFn: model.chatFn, check: passing });
+  assert.equal(result.ok, true);
+  assert.equal(result.changelog, '- Faster running');
+});
+
+test('bad jobs are refused before any model call', async () => {
+  const model = fakeModel([]);
+  const cases = [
+    [null, /must be an object/],
+    [{ step: 'design', idea: 'short' }, /idea must be/],
+    [{ step: 'design', idea: 'A long enough idea', model: 'gpt-9' }, /unknown model/],
+    [{ step: 'build', idea: 'A long enough idea' }, /needs the approved design/],
+    [{ step: 'dance', idea: 'A long enough idea' }, /must be "design" or "build"/],
+    [{ step: 'design', idea: 'A long enough idea', change: { request: 'Make it better please', source: '' } }, /current game file/],
+    [{ step: 'design', idea: 'A long enough idea', redraft: { draft: 'x' } }, /last draft/],
+  ];
+  for (const [job, error] of cases) assert.match((await runJob(job, { chatFn: model.chatFn })).error, error);
+  assert.equal(model.calls.length, 0);
+});
+
+test('formatReport: problems with their line and screen, then warnings', () => {
+  const text = formatReport({ problems: ['no game info', { message: 'Threw', line: 3, code: 'x()', screen: 'phone 1', count: 2 }], warnings: [{ message: 'Never saves' }] });
+  assert.equal(text, 'Problems (each must be fixed):\n- no game info\n- line 3: Threw\n    code: x() (on the phone 1, 2 times)\n\nAlso worth fixing:\n- Never saves');
 });
