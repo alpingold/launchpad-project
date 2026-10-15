@@ -13,9 +13,12 @@ import { RoomError } from '../rooms/RoomError.js';
  * only passes their messages along, checking each one:
  *
  *   phone ──game:event──▶ big screen        "I pressed jump" (any small JSON)
- *   big screen ──game:send──▶ phone(s)      a one-off message ("you were hit!")
- *   big screen ──game:state──▶ phone(s)     what the phone should show now; the LATEST one
- *                                           is kept and sent again when the phone reconnects
+ *   big screen ──game:batch──▶ phone(s)     in one message, in order:
+ *       { to, data }   a one-off message ("you were hit!")
+ *       { to, state }  what the phone should show now; the LATEST one is kept and sent
+ *                      again when the phone reconnects
+ *     plus `save`: a snapshot of the big screen's game, kept to hand back if that page
+ *     reloads (F1). Only the big screen ever gets it back: it may hold secrets (answers).
  *   big screen ──game:end──▶ everyone       the results, checked like endGame always was
  *
  * The data inside is the game's business. The relay checks who sent it, who it's for, its
@@ -42,11 +45,18 @@ export class FrameRelay {
     this.runId = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
     /** @type {Map<string, unknown>} the latest state the big screen gave each phone */
     this.lastStates = new Map();
+    /** The big screen's latest save (party.save), or none yet. */
+    this.snapshot = undefined;
   }
 
-  /** What a page needs to show this game: sent to everyone at the start, and on reconnect. */
-  startInfo() {
-    return { gameId: this.game.id, runId: this.runId, players: this.players, source: this.game.source };
+  /**
+   * What a page needs to show this game: sent to everyone at the start, and on reconnect.
+   * @param {{ withSnapshot?: boolean }} [opts]  true only for the big screen coming back
+   */
+  startInfo({ withSnapshot = false } = {}) {
+    const info = { gameId: this.game.id, runId: this.runId, players: this.players, source: this.game.source };
+    if (withSnapshot && this.snapshot !== undefined) info.snapshot = this.snapshot;
+    return info;
   }
 
   /** game:event from a phone: passed to the big screen with who sent it. */
@@ -56,19 +66,26 @@ export class FrameRelay {
     this.deliver({ to: 'host' }, { type: 'game:event', from: playerId, data });
   }
 
-  /** game:send from the big screen: a one-off message to one phone or all of them. */
-  hostSend(to, data) {
+  /**
+   * game:batch from the big screen. Every target is checked first, so a bad batch delivers
+   * nothing; then each item goes out in order. States are remembered per phone.
+   * @param {({ to: string, data: unknown } | { to: string, state: unknown })[]} items
+   * @param {unknown} [save]  a snapshot to keep for a reload (undefined: no change)
+   */
+  hostBatch(items, save) {
     if (this.ended) return;
-    for (const playerId of this.targets(to)) this.deliver({ to: 'player', playerId }, { type: 'game:message', data });
-  }
-
-  /** game:state from the big screen: remembered per phone, then delivered. */
-  hostState(to, state) {
-    if (this.ended) return;
-    for (const playerId of this.targets(to)) {
-      this.lastStates.set(playerId, state);
-      this.deliver({ to: 'player', playerId }, { type: 'game:state', state });
+    const routed = items.map((item) => ({ item, playerIds: this.targets(item.to) }));
+    for (const { item, playerIds } of routed) {
+      for (const playerId of playerIds) {
+        if ('state' in item) {
+          this.lastStates.set(playerId, item.state);
+          this.deliver({ to: 'player', playerId }, { type: 'game:state', state: item.state });
+        } else {
+          this.deliver({ to: 'player', playerId }, { type: 'game:message', data: item.data });
+        }
+      }
     }
+    if (save !== undefined) this.snapshot = save;
   }
 
   /** A phone is back (refresh, new connection): give it its latest state again. */
@@ -83,15 +100,19 @@ export class FrameRelay {
     this.finish(this.checkResults(results));
   }
 
-  /** The host stopped the game (or the big screen can't carry on): ends with no winner. */
-  stop() {
-    this.finish({ stopped: true });
+  /**
+   * The game ends with no winner: the host stopped it, or the big screen can't carry on.
+   * @param {'host' | 'reload' | 'unresponsive'} [why]
+   */
+  stop(why = 'host') {
+    this.finish({ stopped: why });
   }
 
   /** Forgets the game without reporting results (the room closed). Safe to call twice. */
   dispose() {
     this.ended = true;
     this.lastStates.clear();
+    this.snapshot = undefined;
   }
 
   // --- Internals ------------------------------------------------------------------

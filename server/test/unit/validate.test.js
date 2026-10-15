@@ -78,9 +78,13 @@ test('invalid fields report the type and field name', () => {
     [{ type: 'host:kick', playerId: 'alex' }, 'playerId'],
     [{ type: 'host:start_game', gameId: 'Mario Board!' }, 'gameId'],
     [{ type: 'game:event' }, 'data'], // missing (null is fine: it's JSON)
-    [{ type: 'game:send', to: 'everyone', data: 1 }, 'to'],
-    [{ type: 'game:send', to: 'all' }, 'data'],
-    [{ type: 'game:state', to: 'p_3f9a' }, 'state'],
+    [{ type: 'game:batch' }, 'items'],
+    [{ type: 'game:batch', items: [{ to: 'everyone', data: 1 }] }, 'items'],
+    [{ type: 'game:batch', items: [{ to: 'all' }] }, 'items'], // neither data nor state
+    [{ type: 'game:batch', items: [{ to: 'all', data: 1, state: 2 }] }, 'items'], // both
+    [{ type: 'game:batch', items: Array(101).fill({ to: 'all', data: 1 }) }, 'items'],
+    [{ type: 'game:alive', paused: 'yes' }, 'paused'],
+    [{ type: 'host:stop_game', reason: 'bored' }, 'reason'],
     [{ type: 'game:end' }, 'rankings'],
     [{ type: 'game:end', rankings: ['alex'] }, 'rankings'],
     [{ type: 'game:end', rankings: Array(13).fill('p_3f9a') }, 'rankings'],
@@ -105,12 +109,15 @@ test('accepts every message type with valid fields', () => {
     { type: 'host:kick', playerId: 'p_3f9a' },
     { type: 'host:start_game', gameId: 'reaction-race' },
     { type: 'host:stop_game' },
+    { type: 'host:stop_game', reason: 'reload' },
+    { type: 'game:alive' },
+    { type: 'game:alive', paused: true },
     // Frame games' data can be any JSON value: only the game itself understands it (plan §13f).
     { type: 'game:event', data: { jump: true } },
     { type: 'game:event', data: null },
-    { type: 'game:send', to: 'all', data: 'Round 2!' },
-    { type: 'game:send', to: 'p_3f9a', data: [1, 2] },
-    { type: 'game:state', to: 'p_3f9a', state: { color: 'red' } },
+    { type: 'game:batch', items: [{ to: 'all', data: 'Round 2!' }, { to: 'p_3f9a', state: { color: 'red' } }] },
+    { type: 'game:batch', items: [], save: { round: 2 } },
+    { type: 'game:batch', items: [{ to: 'p_3f9a', data: null }], save: null },
     { type: 'game:end', rankings: ['p_3f9a', 'p_b2c4'] },
     { type: 'game:end', rankings: [], scores: { p_3f9a: 2 } },
   ];

@@ -74,6 +74,31 @@ function readTarget(value) {
   return value === 'all' ? value : readPlayerId(value);
 }
 
+/**
+ * game:batch's items, in order: { to, data } is a one-off message, { to, state } sets what
+ * that phone (or every phone) shows now. Exactly one of data/state.
+ */
+function readBatchItems(value) {
+  if (!Array.isArray(value) || value.length > config.GAME_BATCH_MAX_ITEMS) return INVALID;
+  const items = [];
+  for (const item of value) {
+    if (!isPlainObject(item) || readTarget(item.to) === INVALID) return INVALID;
+    const hasData = item.data !== undefined;
+    if (hasData === (item.state !== undefined)) return INVALID;
+    items.push(hasData ? { to: item.to, data: item.data } : { to: item.to, state: item.state });
+  }
+  return items;
+}
+
+/** host:stop_game's reason: the host pressed Stop, or the big screen reloaded with no save. */
+function readStopReason(value) {
+  return value === 'host' || value === 'reload' ? value : INVALID;
+}
+
+function readOptionalBoolean(value) {
+  return value === undefined || typeof value === 'boolean' ? value : INVALID;
+}
+
 /** game:end's rankings: player ids, best first (FrameRelay checks they're in the game). */
 function readRankings(value) {
   if (!Array.isArray(value) || value.length > config.MAX_PLAYERS) return INVALID;
@@ -96,11 +121,11 @@ const SCHEMAS = {
   [CLIENT.ROOM_LEAVE]: {},
   [CLIENT.HOST_KICK]: { playerId: readPlayerId },
   [CLIENT.HOST_START_GAME]: { gameId: readGameId },
-  [CLIENT.HOST_STOP_GAME]: {},
+  [CLIENT.HOST_STOP_GAME]: { reason: optional(readStopReason) },
   [CLIENT.GAME_EVENT]: { data: readJson },
-  [CLIENT.GAME_SEND]: { to: readTarget, data: readJson },
-  [CLIENT.GAME_STATE]: { to: readTarget, state: readJson },
+  [CLIENT.GAME_BATCH]: { items: readBatchItems, save: optional(readJson) },
   [CLIENT.GAME_END]: { rankings: readRankings, scores: optional(readPlainObject) },
+  [CLIENT.GAME_ALIVE]: { paused: readOptionalBoolean },
 };
 
 /**

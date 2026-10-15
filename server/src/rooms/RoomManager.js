@@ -42,6 +42,7 @@ export class RoomManager {
    * @param {number} [deps.playerGraceMs]
    * @param {number} [deps.roomIdleMs]
    * @param {GameRegistry} [deps.games]  games that can be started (empty by default)
+   * @param {number} [deps.gameWatchdogMs]  stop a game whose big screen stops answering for this long
    */
   constructor({
     send,
@@ -52,6 +53,7 @@ export class RoomManager {
     playerGraceMs = config.PLAYER_GRACE_MS,
     roomIdleMs = config.ROOM_IDLE_MS,
     games = new GameRegistry(),
+    gameWatchdogMs = config.GAME_WATCHDOG_MS,
   }) {
     this.send = send;
     this.randomInt = randomInt;
@@ -61,6 +63,7 @@ export class RoomManager {
     this.playerGraceMs = playerGraceMs;
     this.roomIdleMs = roomIdleMs;
     this.games = games;
+    this.gameWatchdogMs = gameWatchdogMs;
 
     /** @type {Map<string, Room>} every live room, by code */
     this.rooms = new Map();
@@ -273,11 +276,15 @@ export class RoomManager {
     // referee, phones as controllers (plan §13b). Who's connected comes from room:state.
     this.broadcast(room, this.gameStartedMessage(relay));
     this.broadcastState(room);
+    this.armWatchdog(room);
   }
 
-  /** host:stop_game — the host ends the game early, with no winner. */
-  stopGameByHost(hostConnId) {
-    this.hostGame(hostConnId).stop();
+  /**
+   * host:stop_game — the host ends the game early, with no winner.
+   * @param {'host' | 'reload'} [why]  'reload': the big screen reloaded and had no save to restore
+   */
+  stopGameByHost(hostConnId, why = 'host') {
+    this.hostGame(hostConnId).stop(why);
   }
 
   /** game:event — a phone's event for the big screen's game. */
@@ -290,14 +297,21 @@ export class RoomManager {
     room.game.playerEvent(membership.playerId, data);
   }
 
-  /** game:send — the big screen's one-off message for one phone or all. */
-  handleHostGameSend(hostConnId, to, data) {
-    this.hostGame(hostConnId).hostSend(to, data);
+  /** game:batch — the big screen's messages and states for phones, and maybe a save. */
+  handleHostGameBatch(hostConnId, items, save) {
+    this.hostGame(hostConnId).hostBatch(items, save);
   }
 
-  /** game:state — the big screen sets what one phone (or all) should show now. */
-  handleHostGameState(hostConnId, to, state) {
-    this.hostGame(hostConnId).hostState(to, state);
+  /**
+   * game:alive — the big screen's game is still answering: reset the hang watchdog.
+   * `paused`: the big screen's tab is in the background (its timers slow right down), so
+   * stop watching until it's back.
+   */
+  handleHostGameAlive(hostConnId, { paused = false } = {}) {
+    const room = this.rooms.get(this.members.get(hostConnId)?.code);
+    this.hostGame(hostConnId);
+    if (paused) this.disarmWatchdog(room);
+    else this.armWatchdog(room);
   }
 
   /** game:end — the big screen's game is over. */
@@ -324,6 +338,7 @@ export class RoomManager {
     if (membership.role === 'host') {
       room.host.connId = null;
       room.host.graceTimer = setTimeout(() => this.closeRoom(room, 'host_timeout'), this.hostGraceMs);
+      this.disarmWatchdog(room); // a missing big screen isn't a hung one: the grace period covers it
     } else {
       const player = room.players.get(membership.playerId);
       player.connId = null;
@@ -383,10 +398,13 @@ export class RoomManager {
 
     this.send(connId, { type: SERVER.ROOM_CREATED, code: room.code, hostToken: room.host.token });
     this.broadcastState(room); // everyone sees hostConnected: true again
-    // Mid-game: tell the page. If it still has the game running (the connection only
-    // blipped) it carries on; if it reloaded, the game's state is gone, and the page stops
-    // the game (F0; saving and restoring the big screen comes in F1, plan §13l).
-    if (room.game) this.send(connId, this.gameStartedMessage(room.game, { resumed: true }));
+    // Mid-game: tell the page, with the game's latest save. If it still runs the game (the
+    // connection only blipped) it carries on; if it reloaded, it restores the save, or stops
+    // the game if there's none (plan §13f, F1).
+    if (room.game) {
+      this.send(connId, this.gameStartedMessage(room.game, { resumed: true, withSnapshot: true }));
+      this.armWatchdog(room);
+    }
     return room;
   }
 
@@ -414,10 +432,30 @@ export class RoomManager {
    * game:started: which game, its file and players. serverNow lets pages correct for their
    * clock being off, so timers agree across screens.
    * @param {FrameRelay} relay
-   * @param {{ resumed?: boolean }} [opts]  true when sent to someone reconnecting mid-game
+   * @param {{ resumed?: boolean, withSnapshot?: boolean }} [opts]
+   *   resumed: sent to someone reconnecting mid-game; withSnapshot: the big screen's save (host only)
    */
-  gameStartedMessage(relay, { resumed = false } = {}) {
-    return { type: SERVER.GAME_STARTED, ...relay.startInfo(), resumed, serverNow: this.now() };
+  gameStartedMessage(relay, { resumed = false, withSnapshot = false } = {}) {
+    return { type: SERVER.GAME_STARTED, ...relay.startInfo({ withSnapshot }), resumed, serverNow: this.now() };
+  }
+
+  /**
+   * (Re)starts the hang watchdog: if the big screen doesn't say its game is alive within
+   * gameWatchdogMs, the game is stopped (plan §13e: a hung game freezes the big screen's
+   * whole tab, so only the server can notice).
+   */
+  armWatchdog(room) {
+    this.disarmWatchdog(room);
+    const relay = room.game;
+    room.gameWatchdog = setTimeout(() => {
+      room.gameWatchdog = null;
+      if (room.game === relay) relay.stop('unresponsive');
+    }, this.gameWatchdogMs);
+  }
+
+  disarmWatchdog(room) {
+    if (room.gameWatchdog) clearTimeout(room.gameWatchdog);
+    room.gameWatchdog = null;
   }
 
   /**
@@ -433,6 +471,7 @@ export class RoomManager {
   /** The game finished (or crashed): report results and go back to the lobby. */
   handleGameEnd(room, relay, results) {
     if (room.game !== relay) return; // an old game; the room has moved on
+    this.disarmWatchdog(room);
     room.game = null;
     room.gameId = null;
     room.phase = 'lobby';
@@ -448,6 +487,7 @@ export class RoomManager {
 
   /** Stops a running game without results (the room is closing). */
   stopGame(room) {
+    this.disarmWatchdog(room);
     room.game?.dispose();
     room.game = null;
   }

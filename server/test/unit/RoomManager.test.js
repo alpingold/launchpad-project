@@ -434,12 +434,14 @@ test('a phone event goes to the big screen only, with who sent it', (t) => {
   assert.equal(inbox('c2').filter((m) => m.type === 'game:event').length, 0, 'phones never see each other');
 });
 
-test('the big screen messages one phone or all of them; state is kept and replayed on reconnect', (t) => {
+test('a big-screen batch messages one phone or all of them, in order; state is kept and replayed on reconnect', (t) => {
   const { rooms, ofType, code, alex, blake } = gameLobby(t);
   rooms.startGame('host', 'tap-test');
-  rooms.handleHostGameSend('host', 'all', 'ready?');
-  rooms.handleHostGameSend('host', blake.id, { hit: true });
-  rooms.handleHostGameState('host', alex.id, { color: 'red', taps: 1 });
+  rooms.handleHostGameBatch('host', [
+    { to: 'all', data: 'ready?' },
+    { to: blake.id, data: { hit: true } },
+    { to: alex.id, state: { color: 'red', taps: 1 } },
+  ]);
 
   assert.deepEqual(ofType('c1', 'game:message').map((m) => m.data), ['ready?']);
   assert.deepEqual(ofType('c2', 'game:message').map((m) => m.data), ['ready?', { hit: true }]);
@@ -448,7 +450,7 @@ test('the big screen messages one phone or all of them; state is kept and replay
 
   // Alex's phone reloads: it gets the game again (resumed), then its latest state.
   rooms.handleDisconnect('c1');
-  rooms.handleHostGameState('host', alex.id, { color: 'red', taps: 2 }); // missed while away
+  rooms.handleHostGameBatch('host', [{ to: alex.id, state: { color: 'red', taps: 2 } }]); // missed while away
   rooms.resumePlayer('c1b', code, alex.token);
   const back = ofType('c1b', 'game:started')[0];
   assert.equal(back.resumed, true);
@@ -456,22 +458,23 @@ test('the big screen messages one phone or all of them; state is kept and replay
   assert.deepEqual(ofType('c1b', 'game:state').map((m) => m.state), [{ color: 'red', taps: 2 }]);
 });
 
-test('big-screen messages to someone not in the game are refused', (t) => {
-  const { rooms } = gameLobby(t);
+test('a batch with anyone not in the game is refused whole: nothing is delivered', (t) => {
+  const { rooms, ofType, alex } = gameLobby(t);
   rooms.startGame('host', 'tap-test');
-  assert.throws(() => rooms.handleHostGameSend('host', 'p_nobody', 1), isRoomError('PLAYER_NOT_FOUND'));
-  assert.throws(() => rooms.handleHostGameState('host', 'p_nobody', 1), isRoomError('PLAYER_NOT_FOUND'));
+  const batch = [{ to: alex.id, data: 'first' }, { to: 'p_nobody', state: 1 }];
+  assert.throws(() => rooms.handleHostGameBatch('host', batch), isRoomError('PLAYER_NOT_FOUND'));
+  assert.deepEqual(ofType('c1', 'game:message'), []);
 });
 
 test('who may send what: phones send events, only the host sends to phones, all only during a game', (t) => {
   const { rooms, alex } = gameLobby(t);
   assert.throws(() => rooms.handleGameEvent('c1', 1), isRoomError('WRONG_PHASE'), 'no game yet');
-  assert.throws(() => rooms.handleHostGameSend('host', 'all', 1), isRoomError('WRONG_PHASE'));
+  assert.throws(() => rooms.handleHostGameBatch('host', [{ to: 'all', data: 1 }]), isRoomError('WRONG_PHASE'));
   assert.throws(() => rooms.stopGameByHost('host'), isRoomError('WRONG_PHASE'));
   rooms.startGame('host', 'tap-test');
   assert.throws(() => rooms.handleGameEvent('host', 1), isRoomError('WRONG_PHASE'), 'the host is not a phone');
-  assert.throws(() => rooms.handleHostGameSend('c1', 'all', 1), isRoomError('NOT_HOST'));
-  assert.throws(() => rooms.handleHostGameState('c1', alex.id, 1), isRoomError('NOT_HOST'));
+  assert.throws(() => rooms.handleHostGameBatch('c1', [{ to: alex.id, state: 1 }]), isRoomError('NOT_HOST'));
+  assert.throws(() => rooms.handleHostGameAlive('c1'), isRoomError('NOT_HOST'));
   assert.throws(() => rooms.handleHostGameEnd('c1', { rankings: [] }), isRoomError('NOT_HOST'));
   assert.throws(() => rooms.stopGameByHost('c1'), isRoomError('NOT_HOST'));
 });
@@ -519,7 +522,7 @@ test('the host can stop a game: it ends with no winner', (t) => {
   rooms.startGame('host', 'tap-test');
   rooms.stopGameByHost('host');
   assert.equal(room.phase, 'lobby');
-  assert.deepEqual(ofType('c1', 'game:ended'), [{ type: 'game:ended', results: { stopped: true } }]);
+  assert.deepEqual(ofType('c1', 'game:ended'), [{ type: 'game:ended', results: { stopped: 'host' } }]);
 });
 
 test('nobody can join during a game', (t) => {
@@ -539,6 +542,66 @@ test('the big screen reconnecting mid-game is told the game is running (resumed)
   assert.equal(started.runId, runId, 'same game: a page that still runs it carries on');
 });
 
+test('the big screen saves its game; only the big screen gets the save back, when it returns', (t) => {
+  const { rooms, inbox, code, room, alex } = gameLobby(t);
+  rooms.startGame('host', 'tap-test');
+  rooms.handleHostGameBatch('host', [], { round: 2, secret: 'the answer' });
+  rooms.handleHostGameBatch('host', [{ to: alex.id, data: 'x' }]); // no save: keeps the last one
+
+  rooms.handleDisconnect('host');
+  rooms.resumeHost('host2', code, room.host.token);
+  assert.deepEqual(inbox('host2').find((m) => m.type === 'game:started').snapshot, { round: 2, secret: 'the answer' });
+
+  rooms.handleDisconnect('c1');
+  rooms.resumePlayer('c1b', code, alex.token);
+  assert.equal('snapshot' in inbox('c1b').find((m) => m.type === 'game:started'), false, 'phones never get it');
+  assert.equal('snapshot' in inbox('host')[0], false, 'nor does anyone at the start');
+});
+
+test('a big screen that reloads with no save stops the game, with the reason', (t) => {
+  const { rooms, ofType } = gameLobby(t);
+  rooms.startGame('host', 'tap-test');
+  rooms.stopGameByHost('host', 'reload');
+  assert.deepEqual(ofType('c1', 'game:ended').at(-1).results, { stopped: 'reload' });
+});
+
+test('the hang watchdog: no game:alive from the big screen for too long stops the game', (t) => {
+  const { rooms, room, ofType, tick } = gameLobby(t);
+  rooms.startGame('host', 'tap-test');
+  tick(config.GAME_WATCHDOG_MS - 1000);
+  rooms.handleHostGameAlive('host'); // still answering: the clock starts again
+  tick(config.GAME_WATCHDOG_MS - 1);
+  assert.equal(room.phase, 'in_game');
+  tick(1);
+  assert.equal(room.phase, 'lobby');
+  assert.deepEqual(ofType('c1', 'game:ended').at(-1).results, { stopped: 'unresponsive' });
+});
+
+test('the watchdog waits while the big screen is in the background or disconnected', (t) => {
+  const { rooms, room, code, tick } = gameLobby(t);
+  rooms.startGame('host', 'tap-test');
+  rooms.handleHostGameAlive('host', { paused: true }); // tab hidden: timers there slow right down
+  tick(10 * config.GAME_WATCHDOG_MS);
+  assert.equal(room.phase, 'in_game');
+  rooms.handleHostGameAlive('host'); // visible again
+  rooms.handleDisconnect('host'); // a missing big screen is the grace period's business
+  tick(config.HOST_GRACE_MS - 1000);
+  assert.equal(room.phase, 'in_game');
+  rooms.resumeHost('host2', code, room.host.token); // back: watched again, with time to load
+  tick(config.GAME_WATCHDOG_MS);
+  assert.equal(room.phase, 'lobby');
+});
+
+test('the watchdog stops with the game', (t) => {
+  const { rooms, room, sent, tick, blake } = gameLobby(t);
+  rooms.startGame('host', 'tap-test');
+  rooms.handleHostGameEnd('host', { rankings: [blake.id] });
+  const before = sent.length;
+  tick(2 * config.GAME_WATCHDOG_MS);
+  assert.equal(sent.length, before);
+  assert.equal(room.gameWatchdog, null);
+});
+
 test('every game gets a new runId, so a page can tell a new game from the one it shows', (t) => {
   const { rooms, ofType } = gameLobby(t);
   rooms.startGame('host', 'tap-test');
@@ -552,7 +615,10 @@ test('players who drop mid-game keep their spot, then get a grace period once th
   const { rooms, room, alex, blake, tick } = gameLobby(t);
   rooms.startGame('host', 'tap-test');
   rooms.handleDisconnect('c1');
-  tick(10 * 60_000);
+  for (let i = 0; i < 60; i++) {
+    tick(10_000);
+    rooms.handleHostGameAlive('host'); // the big screen is fine; Alex is just away
+  }
   assert.ok(room.players.has(alex.id), 'kept during the game');
 
   rooms.handleHostGameEnd('host', { rankings: [blake.id] });
@@ -585,7 +651,7 @@ test('game messages to a disconnected player are dropped, not errors', (t) => {
   const { rooms, inbox, alex } = gameLobby(t);
   rooms.handleDisconnect('c1');
   rooms.startGame('host', 'tap-test');
-  assert.doesNotThrow(() => rooms.handleHostGameSend('host', alex.id, 'hi'));
+  assert.doesNotThrow(() => rooms.handleHostGameBatch('host', [{ to: alex.id, data: 'hi' }]));
   assert.equal(inbox('c1').length, 0);
 });
 

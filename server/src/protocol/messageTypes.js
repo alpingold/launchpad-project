@@ -14,9 +14,11 @@ export const CLIENT = Object.freeze({
   HOST_STOP_GAME: 'host:stop_game',
   // Frame games (plan §13f): the server only passes these along.
   GAME_EVENT: 'game:event', // phone → big screen
-  GAME_SEND: 'game:send', // big screen → one phone or all: a one-off message
-  GAME_STATE: 'game:state', // big screen → one phone or all: what to show now (kept for reconnects)
+  // big screen → phones, in one message per batch (F1): one-off messages and states (what to
+  // show now, kept for reconnects), plus an optional save of the game for a reload
+  GAME_BATCH: 'game:batch',
   GAME_END: 'game:end', // big screen: the game is over, with results
+  GAME_ALIVE: 'game:alive', // big screen: its game is still answering (the hang watchdog, F1)
 });
 
 /** Messages the server sends to browsers. */

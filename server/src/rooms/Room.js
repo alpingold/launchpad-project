@@ -37,6 +37,7 @@ export class Room {
     this.players = new Map();
     this.maxPlayers = config.MAX_PLAYERS;
     this.game = null; // FrameRelay while a game is running
+    this.gameWatchdog = null; // stops the game if the big screen stops answering (F1)
     this.gameId = null;
 
     this.createdAt = now;

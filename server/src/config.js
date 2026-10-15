@@ -93,6 +93,15 @@ export const config = {
   // are capped by WS_MAX_PAYLOAD_BYTES.
   GAME_EVENT_MAX_BYTES: 24 * 1024,
 
+  // How many messages one game:batch may carry (the SDK sends at most ~20 batches a second).
+  GAME_BATCH_MAX_ITEMS: 100,
+
+  // The hang watchdog (plan §13e, F1): a game stuck in an endless loop freezes the whole
+  // big-screen tab (the iframe shares its thread), so the page can't notice. Instead the
+  // page sends game:alive every ~2 s while its game's SDK still ticks; if none arrives for
+  // this long, the server stops the game and the phones go back to the lobby.
+  GAME_WATCHDOG_MS: 15_000,
+
   // The art library's list of assets (lives with the client, which serves the files).
   // The generator's sandbox image has it somewhere else, hence the override.
   ASSET_MANIFEST_PATH:

@@ -35,11 +35,11 @@ export function createRouter(rooms) {
     [CLIENT.ROOM_LEAVE]: { sender: 'member', run: (conn) => rooms.leaveRoom(conn.id) },
     [CLIENT.HOST_KICK]: { sender: 'host', run: (conn, msg) => rooms.kickPlayer(conn.id, msg.playerId) },
     [CLIENT.HOST_START_GAME]: { sender: 'host', run: (conn, msg) => rooms.startGame(conn.id, msg.gameId) },
-    [CLIENT.HOST_STOP_GAME]: { sender: 'host', run: (conn) => rooms.stopGameByHost(conn.id) },
+    [CLIENT.HOST_STOP_GAME]: { sender: 'host', run: (conn, msg) => rooms.stopGameByHost(conn.id, msg.reason) },
     // Frame games (plan §13f): phones talk to the big screen, the big screen to phones.
     [CLIENT.GAME_EVENT]: { sender: 'player', run: (conn, msg) => rooms.handleGameEvent(conn.id, msg.data) },
-    [CLIENT.GAME_SEND]: { sender: 'host', run: (conn, msg) => rooms.handleHostGameSend(conn.id, msg.to, msg.data) },
-    [CLIENT.GAME_STATE]: { sender: 'host', run: (conn, msg) => rooms.handleHostGameState(conn.id, msg.to, msg.state) },
+    [CLIENT.GAME_BATCH]: { sender: 'host', run: (conn, msg) => rooms.handleHostGameBatch(conn.id, msg.items, msg.save) },
+    [CLIENT.GAME_ALIVE]: { sender: 'host', run: (conn, msg) => rooms.handleHostGameAlive(conn.id, { paused: msg.paused }) },
     [CLIENT.GAME_END]: {
       sender: 'host',
       run: (conn, msg) => rooms.handleHostGameEnd(conn.id, { rankings: msg.rankings, scores: msg.scores }),

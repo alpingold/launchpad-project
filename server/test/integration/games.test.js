@@ -72,7 +72,7 @@ test('a whole game over real sockets: start, events both ways, results, back to 
   assert.equal(event.data, 'tap');
 
   // The big screen's game answers that phone, then ends the game.
-  host.send({ type: 'game:state', to: playerId, state: { taps: 1 } });
+  host.send({ type: 'game:batch', items: [{ to: playerId, state: { taps: 1 } }] });
   assert.deepEqual((await nextOfType(alex, 'game:state')).state, { taps: 1 });
   host.send({ type: 'game:end', rankings: [playerId], scores: { [playerId]: 1 } });
 
@@ -94,7 +94,7 @@ test('a phone cannot send to other phones or end the game', async () => {
   host.send({ type: 'host:start_game', gameId: 'tap-test' });
   await nextOfType(alex, 'game:started');
 
-  alex.send({ type: 'game:send', to: 'all', data: 'spam' });
+  alex.send({ type: 'game:batch', items: [{ to: 'all', data: 'spam' }] });
   assert.equal((await nextOfType(alex, 'error')).code, 'NOT_HOST');
   alex.send({ type: 'game:end', rankings: [] });
   assert.equal((await nextOfType(alex, 'error')).code, 'NOT_HOST');

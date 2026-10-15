@@ -45,6 +45,7 @@ export function createGameServer(overrides = {}, { games = createDefaultRegistry
     hostGraceMs: cfg.HOST_GRACE_MS,
     playerGraceMs: cfg.PLAYER_GRACE_MS,
     roomIdleMs: cfg.ROOM_IDLE_MS,
+    gameWatchdogMs: cfg.GAME_WATCHDOG_MS,
     games,
   });
 
