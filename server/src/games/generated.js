@@ -1,5 +1,5 @@
 import { listLiveVersions, sha256 } from '../db/generatedGames.js';
-import { loadGameSource } from './loadSource.js';
+import { frameGameOrThrow } from './frameGame.js';
 
 /**
  * The id a live version of a generated game runs under:
@@ -12,9 +12,10 @@ export function liveGameId(gameId, as, version) {
 }
 
 /**
- * Checks one version's code and adds it to the registry under its live id.
- * Throws (with a readable message) if the code was changed since it was tested, or if it
- * doesn't load as a valid game.
+ * Checks one version's game file and adds it to the registry under its live id.
+ * Throws (with a readable message) if the file was changed since it was reviewed, or if
+ * its game info is invalid (e.g. a block game from before frame games: plan §13).
+ * The file itself is never run on the server.
  * @param {import('./registry.js').GameRegistry} registry
  * @param {import('../db/generatedGames.js').GeneratedGame} game
  * @param {import('../db/generatedGames.js').GameVersion} version
@@ -26,9 +27,9 @@ export async function registerVersion(registry, game, version, as, { replace = f
     throw new Error("its code doesn't match the code that was reviewed");
   }
   const id = liveGameId(game.id, as, version.version);
-  const mod = await loadGameSource(version.source, `${id}.js`);
+  const frameGame = frameGameOrThrow(version.source, id);
   const meta = { source: 'generated', status: as, ownerUserId: game.ownerUserId, version: version.version };
-  registry.register({ ...mod, id }, meta, { replace });
+  registry.register(frameGame, meta, { replace });
   return id;
 }
 
@@ -40,10 +41,11 @@ export async function registerVersion(registry, game, version, as, { replace = f
  * never allowed to stop the server: official games and every other room keep working.
  *  - Its code must still match the fingerprint saved when it was generated and reviewed,
  *    so code edited directly in the database is not run.
- *  - It must load and pass validateGameModule (e.g. after a contract version change).
+ *  - Its game info must be valid. Block games made before frame games (plan §13) fail
+ *    here and are skipped, not deleted: main can still run them from the same database.
  *
- * A game runs under its database id (see liveGameId), whatever id its own code declares,
- * so a generated game can never take over an official game's id.
+ * A game runs under its database id (see liveGameId), so a generated game can never take
+ * over an official game's id.
  *
  * @param {import('better-sqlite3').Database} db
  * @param {import('./registry.js').GameRegistry} registry

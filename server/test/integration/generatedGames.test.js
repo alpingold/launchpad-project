@@ -1,7 +1,7 @@
 import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,7 +10,7 @@ import { GameRegistry } from '../../src/games/registry.js';
 import { setAdmin } from '../../src/db/users.js';
 import { openClient } from '../helpers/wsClient.js';
 import { signUp } from '../helpers/accounts.js';
-import countGame from '../fixtures/countGame.js';
+import { tapGame } from '../helpers/frameGames.js';
 
 // Generated games and the admin role, through the real server (plan §11, A3).
 
@@ -21,7 +21,7 @@ let registry;
 
 beforeEach(async () => {
   registry = new GameRegistry();
-  registry.register(countGame);
+  registry.register(tapGame());
   server = createGameServer({}, { games: registry });
   await new Promise((resolve) => server.httpServer.listen(0, resolve));
   const { port } = server.httpServer.address();
@@ -64,11 +64,11 @@ test('a playtest game is listed and startable only for the account that generate
   const ownerCookie = await signUp(baseUrl, 'owner');
   const otherCookie = await signUp(baseUrl, 'other');
   const ownerId = (await me(ownerCookie)).id;
-  registry.register({ ...countGame, id: 'g-playtest1' }, { source: 'generated', status: 'playtest', ownerUserId: ownerId });
+  registry.register(tapGame('g-playtest1'), { source: 'generated', status: 'playtest', ownerUserId: ownerId });
 
-  assert.deepEqual(await gameIds(ownerCookie), ['count-game', 'g-playtest1']);
-  assert.deepEqual(await gameIds(otherCookie), ['count-game']);
-  assert.deepEqual(await gameIds(null), ['count-game']);
+  assert.deepEqual(await gameIds(ownerCookie), ['tap-test', 'g-playtest1']);
+  assert.deepEqual(await gameIds(otherCookie), ['tap-test']);
+  assert.deepEqual(await gameIds(null), ['tap-test']);
 
   // Another host can't start it even knowing its id.
   const other = await hostWithPlayer(otherCookie);
@@ -84,16 +84,16 @@ test('a playtest game is listed and startable only for the account that generate
 });
 
 test('a published generated game is for everyone', async () => {
-  registry.register({ ...countGame, id: 'g-public1' }, { source: 'generated', status: 'published', ownerUserId: 999 });
+  registry.register(tapGame('g-public1'), { source: 'generated', status: 'published', ownerUserId: 999 });
   const cookie = await signUp(baseUrl);
-  assert.deepEqual(await gameIds(cookie), ['count-game', 'g-public1']);
+  assert.deepEqual(await gameIds(cookie), ['tap-test', 'g-public1']);
   const games = (await (await fetch(`${baseUrl}/api/games`)).json()).games;
   assert.deepEqual([games[1].source, games[1].status], ['generated', 'published']);
 });
 
 // --- The admin script, run as a real command against a throwaway database -----------
 
-test('npm run admin: grant, import a game (only if it passes the harness), list, choose live versions', (t) => {
+test('npm run admin: grant, import a game (only if its game info is valid), list, choose live versions', (t) => {
   const dir = mkdtempSync(path.join(tmpdir(), 'boilergames-admin-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const script = fileURLToPath(new URL('../../scripts/admin.js', import.meta.url));
@@ -118,16 +118,18 @@ test('npm run admin: grant, import a game (only if it passes the harness), list,
   assert.match(admin('users').stdout, /alpingold\t\(admin\)/);
   assert.equal(admin('grant', 'nobody').status, 1);
 
-  const broken = admin('import-game', fileURLToPath(new URL('../fixtures/harness/bad-screen.js', import.meta.url)), '--owner', 'alpingold');
+  const blockGame = path.join(dir, 'old-block-game.js');
+  writeFileSync(blockGame, 'export default { contractVersion: 3 };\n');
+  const broken = admin('import-game', blockGame, '--owner', 'alpingold');
   assert.equal(broken.status, 1);
-  assert.match(broken.stdout, /Not imported/);
+  assert.match(broken.stdout, /Not imported: fix these first:\n - no game info/);
 
-  const good = admin('import-game', fileURLToPath(new URL('../../src/games/reaction-race/index.js', import.meta.url)), '--owner', 'alpingold');
+  const good = admin('import-game', fileURLToPath(new URL('../fixtures/tap-test.html', import.meta.url)), '--owner', 'alpingold');
   assert.equal(good.status, 0, good.stdout + good.stderr);
   const id = /Imported as (g-[a-z2-9]+) \(playtest/.exec(good.stdout)?.[1];
   assert.ok(id, good.stdout);
 
-  assert.match(admin('games').stdout, new RegExp(`${id}\\tReaction Race\\tby alpingold\\tplaytest v1\\t\\[v1 ready\\]`));
+  assert.match(admin('games').stdout, new RegExp(`${id}\\tTap Test\\tby alpingold\\tplaytest v1\\t\\[v1 ready\\]`));
   assert.match(admin('set-live', id, 'published', '1').stdout, /published version is now v1/);
   assert.match(admin('games').stdout, /\tpublished v1\t/, 'publishing the playtest version ends its playtest');
   assert.equal(admin('set-live', id, 'playtest', '1').status, 1, 'already published');

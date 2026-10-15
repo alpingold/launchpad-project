@@ -77,10 +77,14 @@ test('invalid fields report the type and field name', () => {
     [{ type: 'host:resume', code: 'BXKT' }, 'hostToken'],
     [{ type: 'host:kick', playerId: 'alex' }, 'playerId'],
     [{ type: 'host:start_game', gameId: 'Mario Board!' }, 'gameId'],
-    [{ type: 'host:start_game', gameId: 'board', options: [1] }, 'options'],
-    [{ type: 'game:action' }, 'action'],
-    [{ type: 'game:action', action: 'jump' }, 'action'],
-    [{ type: 'game:action', action: null }, 'action'],
+    [{ type: 'game:event' }, 'data'], // missing (null is fine: it's JSON)
+    [{ type: 'game:send', to: 'everyone', data: 1 }, 'to'],
+    [{ type: 'game:send', to: 'all' }, 'data'],
+    [{ type: 'game:state', to: 'p_3f9a' }, 'state'],
+    [{ type: 'game:end' }, 'rankings'],
+    [{ type: 'game:end', rankings: ['alex'] }, 'rankings'],
+    [{ type: 'game:end', rankings: Array(13).fill('p_3f9a') }, 'rankings'],
+    [{ type: 'game:end', rankings: [], scores: [1] }, 'scores'],
   ];
   for (const [value, field] of cases) {
     assert.deepEqual(
@@ -100,12 +104,15 @@ test('accepts every message type with valid fields', () => {
     { type: 'room:leave' },
     { type: 'host:kick', playerId: 'p_3f9a' },
     { type: 'host:start_game', gameId: 'reaction-race' },
-    { type: 'host:start_game', gameId: 'reaction-race', options: { rounds: 3 } },
-    { type: 'game:action', action: { tap: true } },
-    // `input` can be any JSON value: the game runner checks it against the player's screen.
-    { type: 'game:action', action: { say: true }, input: 'Hello' },
-    { type: 'game:action', action: { order: true }, input: [2, 0, 1] },
-    { type: 'game:action', action: { slide: true }, input: 0 },
+    { type: 'host:stop_game' },
+    // Frame games' data can be any JSON value: only the game itself understands it (plan §13f).
+    { type: 'game:event', data: { jump: true } },
+    { type: 'game:event', data: null },
+    { type: 'game:send', to: 'all', data: 'Round 2!' },
+    { type: 'game:send', to: 'p_3f9a', data: [1, 2] },
+    { type: 'game:state', to: 'p_3f9a', state: { color: 'red' } },
+    { type: 'game:end', rankings: ['p_3f9a', 'p_b2c4'] },
+    { type: 'game:end', rankings: [], scores: { p_3f9a: 2 } },
   ];
   for (const value of valid) {
     assert.deepEqual(parse(value), { ok: true, msg: value }, JSON.stringify(value));

@@ -1,4 +1,4 @@
-import { validateGameModule } from './contract.js';
+import { validateFrameGame } from './frameGame.js';
 
 /**
  * Where a registered game came from, and who may see it.
@@ -19,25 +19,25 @@ import { validateGameModule } from './contract.js';
  */
 export class GameRegistry {
   constructor() {
-    /** @type {Map<string, { game: import('./contract.js').GameModule, meta: GameMeta }>} */
+    /** @type {Map<string, { game: import('./frameGame.js').FrameGame, meta: GameMeta }>} */
     this.entries = new Map();
   }
 
   /**
-   * Adds a game. Throws if it breaks the contract or its id is already used, so a bad game
+   * Adds a game. Throws if its info is invalid or its id is already used, so a bad game
    * stops the server at startup instead of failing halfway through a party.
-   * @param {import('./contract.js').GameModule} mod
+   * @param {import('./frameGame.js').FrameGame} game
    * @param {Partial<GameMeta>} [meta]  defaults to an official game
    * @param {{ replace?: boolean }} [opts]  replace: swap out a game already using this id
    *   (a newly published version); the old one stays if the new one is invalid
    */
-  register(mod, { source = 'official', status = null, ownerUserId = null, version = null } = {}, { replace = false } = {}) {
-    const problems = validateGameModule(mod);
+  register(game, { source = 'official', status = null, ownerUserId = null, version = null } = {}, { replace = false } = {}) {
+    const problems = validateFrameGame(game);
     if (problems.length > 0) {
-      throw new Error(`Game "${mod?.id}" does not follow the game contract:\n - ${problems.join('\n - ')}`);
+      throw new Error(`Game "${game?.id}" can't be registered:\n - ${problems.join('\n - ')}`);
     }
-    if (this.entries.has(mod.id) && !replace) throw new Error(`A game with id "${mod.id}" is already registered`);
-    this.entries.set(mod.id, { game: mod, meta: { source, status, ownerUserId, version } });
+    if (this.entries.has(game.id) && !replace) throw new Error(`A game with id "${game.id}" is already registered`);
+    this.entries.set(game.id, { game, meta: { source, status, ownerUserId, version } });
   }
 
   /** Removes a game (e.g. a generated game that was rejected). @returns {boolean} */
@@ -49,7 +49,7 @@ export class GameRegistry {
    * A game, if this user may start it.
    * @param {string} id
    * @param {{ userId?: number | null }} [viewer]  the logged-in host, if any
-   * @returns {import('./contract.js').GameModule | undefined}
+   * @returns {import('./frameGame.js').FrameGame | undefined}
    */
   get(id, { userId = null } = {}) {
     const entry = this.entries.get(id);
@@ -57,7 +57,7 @@ export class GameRegistry {
   }
 
   /**
-   * Public info for the host's game picker (no functions), only the games this user may see.
+   * Public info for the host's game picker (not the game files), only the games this user may see.
    * @param {{ userId?: number | null }} [viewer]
    */
   list({ userId = null } = {}) {

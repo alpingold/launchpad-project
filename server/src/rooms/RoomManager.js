@@ -7,7 +7,7 @@ import { generateRoomCode } from './roomCode.js';
 import { newToken, newPlayerId, tokensEqual } from './tokens.js';
 import { validateName } from './names.js';
 import { GameRegistry } from '../games/registry.js';
-import { GameRunner } from '../games/GameRunner.js';
+import { FrameRelay } from '../games/FrameRelay.js';
 
 /**
  * @typedef {Object} Membership   what a connection is doing right now
@@ -196,7 +196,11 @@ export class RoomManager {
 
     this.send(connId, { type: SERVER.ROOM_JOINED, code, playerId: player.id, token: player.token, name: player.name });
     this.broadcastState(room);
-    room.game?.playerReconnected(player.id); // the runner re-sends this phone's latest screen
+    if (room.game) {
+      // Mid-game: the phone needs the game again (its page may have reloaded), then its latest state.
+      this.send(connId, this.gameStartedMessage(room.game, { resumed: true }));
+      room.game.replayState(player.id);
+    }
     return player;
   }
 
@@ -239,7 +243,7 @@ export class RoomManager {
    * Players who are disconnected but still within their grace period are included:
    * from now on their spot is kept until the game ends (decision D6).
    */
-  startGame(hostConnId, gameId, options = {}) {
+  startGame(hostConnId, gameId) {
     const membership = this.members.get(hostConnId);
     if (membership?.role !== 'host') throw new RoomError('NOT_HOST');
     const room = this.rooms.get(membership.code);
@@ -257,35 +261,48 @@ export class RoomManager {
     room.phase = 'in_game';
     room.gameId = gameId;
     room.lastActivityAt = this.now();
-    const runner = new GameRunner({
+    const relay = new FrameRelay({
       game,
       players: players.map((p) => ({ id: p.id, name: p.name })),
-      options,
-      deliver: (target, screen) => this.deliverGameMessage(room, target, screen),
-      onEnd: (results) => this.handleGameEnd(room, runner, results),
-      now: () => this.now(), // same clock as serverNow, so ctx.now() countdowns line up
+      deliver: (target, msg) => this.deliverGameMessage(room, target, msg),
+      onEnd: (results) => this.handleGameEnd(room, relay, results),
     });
-    room.game = runner;
+    room.game = relay;
 
-    // Tell everyone a game is starting BEFORE the game sends its first screens.
-    this.broadcast(room, { type: SERVER.GAME_STARTED, gameId, players: runner.players });
+    // Every page gets the game's file and starts it in an iframe: the big screen as the
+    // referee, phones as controllers (plan §13b). Who's connected comes from room:state.
+    this.broadcast(room, this.gameStartedMessage(relay));
     this.broadcastState(room);
-    runner.start(); // may end immediately if the game is broken; handleGameEnd copes
-
-    // The game should know who isn't here right now.
-    for (const player of players) {
-      if (!player.connected) room.game?.playerDisconnected(player.id);
-    }
   }
 
-  /** game:action — passes a player's action (and input) to the running game, which checks it. */
-  handleGameAction(connId, action, input) {
+  /** host:stop_game — the host ends the game early, with no winner. */
+  stopGameByHost(hostConnId) {
+    this.hostGame(hostConnId).stop();
+  }
+
+  /** game:event — a phone's event for the big screen's game. */
+  handleGameEvent(connId, data) {
     const membership = this.members.get(connId);
     if (membership?.role !== 'player') throw new RoomError('WRONG_PHASE');
     const room = this.rooms.get(membership.code);
     if (room.phase !== 'in_game' || !room.game) throw new RoomError('WRONG_PHASE');
     room.lastActivityAt = this.now();
-    room.game.handleAction(membership.playerId, action, input);
+    room.game.playerEvent(membership.playerId, data);
+  }
+
+  /** game:send — the big screen's one-off message for one phone or all. */
+  handleHostGameSend(hostConnId, to, data) {
+    this.hostGame(hostConnId).hostSend(to, data);
+  }
+
+  /** game:state — the big screen sets what one phone (or all) should show now. */
+  handleHostGameState(hostConnId, to, state) {
+    this.hostGame(hostConnId).hostState(to, state);
+  }
+
+  /** game:end — the big screen's game is over. */
+  handleHostGameEnd(hostConnId, results) {
+    this.hostGame(hostConnId).hostEnd(results);
   }
 
   // --- Connection events ------------------------------------------------------
@@ -315,8 +332,7 @@ export class RoomManager {
       // During a game, the spot is kept until the game ends (decision D6).
       if (room.phase === 'lobby') this.startPlayerGraceTimer(room, player);
     }
-    this.broadcastState(room); // others see "disconnected" right away
-    if (membership.role === 'player') room.game?.playerDisconnected(membership.playerId);
+    this.broadcastState(room); // others see "disconnected" right away (the big screen's game too)
   }
 
   /**
@@ -367,7 +383,10 @@ export class RoomManager {
 
     this.send(connId, { type: SERVER.ROOM_CREATED, code: room.code, hostToken: room.host.token });
     this.broadcastState(room); // everyone sees hostConnected: true again
-    room.game?.hostReconnected(); // the runner re-sends the big screen's latest screen
+    // Mid-game: tell the page. If it still has the game running (the connection only
+    // blipped) it carries on; if it reloaded, the game's state is gone, and the page stops
+    // the game (F0; saving and restoring the big screen comes in F1, plan §13l).
+    if (room.game) this.send(connId, this.gameStartedMessage(room.game, { resumed: true }));
     return room;
   }
 
@@ -381,27 +400,39 @@ export class RoomManager {
     this.broadcast(room, { type: SERVER.ROOM_STATE, ...room.toPublicState() });
   }
 
+  /** The running game of the room this host is in (for the big screen's game messages). */
+  hostGame(hostConnId) {
+    const membership = this.members.get(hostConnId);
+    if (membership?.role !== 'host') throw new RoomError('NOT_HOST');
+    const room = this.rooms.get(membership.code);
+    if (room.phase !== 'in_game' || !room.game) throw new RoomError('WRONG_PHASE');
+    room.lastActivityAt = this.now();
+    return room.game;
+  }
+
   /**
-   * Delivers a screen from the game (already checked by GameRunner).
-   * Messages to someone who is disconnected are simply dropped; the runner remembers
-   * the latest screen for each phone and the big screen, and re-sends it when they reconnect.
-   * @param {import('../games/GameRunner.js').Target} target
+   * game:started: which game, its file and players. serverNow lets pages correct for their
+   * clock being off, so timers agree across screens.
+   * @param {FrameRelay} relay
+   * @param {{ resumed?: boolean }} [opts]  true when sent to someone reconnecting mid-game
    */
-  deliverGameMessage(room, target, screen) {
-    // serverNow lets clients correct for their clock being off when showing countdowns.
-    const msg = { type: SERVER.GAME_MESSAGE, payload: screen, serverNow: this.now() };
-    if (target.to === 'all') this.broadcast(room, msg);
-    else if (target.to === 'host') {
-      if (room.host.connId) this.send(room.host.connId, msg);
-    } else {
-      const connId = room.players.get(target.playerId)?.connId;
-      if (connId) this.send(connId, msg);
-    }
+  gameStartedMessage(relay, { resumed = false } = {}) {
+    return { type: SERVER.GAME_STARTED, ...relay.startInfo(), resumed, serverNow: this.now() };
+  }
+
+  /**
+   * Delivers a game message from the relay. Messages to someone who is disconnected are
+   * dropped; the relay keeps each phone's latest state and replays it when they're back.
+   * @param {import('../games/FrameRelay.js').Target} target
+   */
+  deliverGameMessage(room, target, msg) {
+    const connId = target.to === 'host' ? room.host.connId : room.players.get(target.playerId)?.connId;
+    if (connId) this.send(connId, { ...msg, serverNow: this.now() });
   }
 
   /** The game finished (or crashed): report results and go back to the lobby. */
-  handleGameEnd(room, runner, results) {
-    if (room.game !== runner) return; // an old game; the room has moved on
+  handleGameEnd(room, relay, results) {
+    if (room.game !== relay) return; // an old game; the room has moved on
     room.game = null;
     room.gameId = null;
     room.phase = 'lobby';
@@ -453,8 +484,7 @@ export class RoomManager {
     this.cancelTimer(player);
     room.players.delete(playerId);
     room.lastActivityAt = this.now();
-    // Left or kicked mid-game: the game hears the same as a disconnect (they won't come back).
-    room.game?.playerDisconnected(playerId);
+    // Mid-game, the big screen's game sees them gone from the next room:state.
   }
 
   /**

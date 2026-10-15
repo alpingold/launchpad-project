@@ -34,11 +34,16 @@ export function createRouter(rooms) {
     [CLIENT.PLAYER_RESUME]: { sender: 'outsider', run: (conn, msg) => rooms.resumePlayer(conn.id, msg.code, msg.token) },
     [CLIENT.ROOM_LEAVE]: { sender: 'member', run: (conn) => rooms.leaveRoom(conn.id) },
     [CLIENT.HOST_KICK]: { sender: 'host', run: (conn, msg) => rooms.kickPlayer(conn.id, msg.playerId) },
-    [CLIENT.HOST_START_GAME]: {
+    [CLIENT.HOST_START_GAME]: { sender: 'host', run: (conn, msg) => rooms.startGame(conn.id, msg.gameId) },
+    [CLIENT.HOST_STOP_GAME]: { sender: 'host', run: (conn) => rooms.stopGameByHost(conn.id) },
+    // Frame games (plan §13f): phones talk to the big screen, the big screen to phones.
+    [CLIENT.GAME_EVENT]: { sender: 'player', run: (conn, msg) => rooms.handleGameEvent(conn.id, msg.data) },
+    [CLIENT.GAME_SEND]: { sender: 'host', run: (conn, msg) => rooms.handleHostGameSend(conn.id, msg.to, msg.data) },
+    [CLIENT.GAME_STATE]: { sender: 'host', run: (conn, msg) => rooms.handleHostGameState(conn.id, msg.to, msg.state) },
+    [CLIENT.GAME_END]: {
       sender: 'host',
-      run: (conn, msg) => rooms.startGame(conn.id, msg.gameId, msg.options ?? {}),
+      run: (conn, msg) => rooms.handleHostGameEnd(conn.id, { rankings: msg.rankings, scores: msg.scores }),
     },
-    [CLIENT.GAME_ACTION]: { sender: 'player', run: (conn, msg) => rooms.handleGameAction(conn.id, msg.action, msg.input) },
   };
 
   /** Returns an error code if this connection may not send this kind of message, else null. */

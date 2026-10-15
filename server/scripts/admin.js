@@ -22,7 +22,7 @@ import {
   gameStatus,
   mainVersion,
 } from '../src/db/generatedGames.js';
-import { checkGameFile, formatReport } from '../src/games/harness/index.js';
+import { frameGameReport } from '../src/games/frameGame.js';
 
 const HELP = `Usage: npm run admin -- <command>
 
@@ -32,7 +32,7 @@ const HELP = `Usage: npm run admin -- <command>
   games                                 list AI-generated games and their versions
   import-game <file> --owner <username> [--status playtest|review]
                                         store a game file as a new generated game (its version 1;
-                                        default: playtest). It must pass the test harness first.
+                                        default: playtest). Its game info must be valid first.
   set-live <game id> published|playtest <version|none>
                                         choose which version everyone gets (published), or only
                                         its owner (playtest); "none" takes it down
@@ -92,11 +92,10 @@ switch (command) {
     if (!['playtest', 'review'].includes(status)) done('--status must be playtest or review.', false);
 
     const fullPath = path.resolve(process.env.INIT_CWD || process.cwd(), file);
-    const report = await checkGameFile(fullPath);
-    console.log(formatReport(report, file));
-    if (!report.ok) done('Not imported: fix the problems above first.', false);
-
     const source = await readFile(fullPath, 'utf8');
+    const report = frameGameReport(source);
+    if (!report.ok) done(`Not imported: fix these first:\n - ${report.problems.join('\n - ')}`, false);
+
     const game = createGeneratedGame(db, { ownerUserId: owner.id, prompt: `imported by hand from ${path.basename(file)}` });
     saveVersionSource(db, game.id, 1, { source, report, ...report.game });
     if (status === 'playtest') setLiveVersions(db, game.id, { playtestVersion: 1 });

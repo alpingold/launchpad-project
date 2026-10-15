@@ -11,7 +11,12 @@ export const CLIENT = Object.freeze({
   ROOM_LEAVE: 'room:leave',
   HOST_KICK: 'host:kick',
   HOST_START_GAME: 'host:start_game',
-  GAME_ACTION: 'game:action',
+  HOST_STOP_GAME: 'host:stop_game',
+  // Frame games (plan §13f): the server only passes these along.
+  GAME_EVENT: 'game:event', // phone → big screen
+  GAME_SEND: 'game:send', // big screen → one phone or all: a one-off message
+  GAME_STATE: 'game:state', // big screen → one phone or all: what to show now (kept for reconnects)
+  GAME_END: 'game:end', // big screen: the game is over, with results
 });
 
 /** Messages the server sends to browsers. */
@@ -21,7 +26,9 @@ export const SERVER = Object.freeze({
   ROOM_STATE: 'room:state',
   ROOM_CLOSED: 'room:closed',
   ERROR: 'error',
-  GAME_STARTED: 'game:started',
-  GAME_MESSAGE: 'game:message',
+  GAME_STARTED: 'game:started', // everyone: which game, its file, the players
+  GAME_EVENT: 'game:event', // to the big screen: { from, data } from a phone
+  GAME_MESSAGE: 'game:message', // to a phone: { data } from the big screen
+  GAME_STATE: 'game:state', // to a phone: { state } from the big screen
   GAME_ENDED: 'game:ended',
 });

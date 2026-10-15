@@ -16,9 +16,9 @@ export const config = {
   // URL path clients connect to (ws://host/ws). Upgrades on any other path are refused.
   WS_PATH: '/ws',
 
-  // Largest single message (in bytes) a client may send. The biggest real one is a
-  // drawing from a drawPad (at most 1500 points, about 10–15 KB); everything else is a
-  // few hundred bytes. `ws` closes the socket with code 1009 if this is exceeded.
+  // Largest single message (in bytes) a client may send. Most are a few hundred bytes;
+  // the big ones are frame games' (a drawing, or the big screen's state for a phone).
+  // `ws` closes the socket with code 1009 if this is exceeded.
   WS_MAX_PAYLOAD_BYTES: 32 * 1024,
 
   // How often we ping every socket. A socket that hasn't answered the previous
@@ -84,17 +84,17 @@ export const config = {
 
   // --- Games ---
 
-  // Largest single screen a game may send (JSON size). Most are under 1 KB; the big one
-  // is a gallery of drawings: one drawing is at most 18 KB, so 12 of them need about
-  // 220 KB. This stops a buggy (or generated) game from flooding phones with huge payloads.
-  GAME_MAX_PAYLOAD_BYTES: 256 * 1024,
+  // Largest game file (plan §13c). It's sent to every phone when a game starts, so it
+  // should stay small; a hand-made game is ~20–40 KB. (The AI's rulebook will ask for less.)
+  FRAME_GAME_MAX_BYTES: 512 * 1024,
 
-  // Longest delay a game may ask for with ctx.setTimeout.
-  GAME_MAX_TIMER_MS: 10 * 60 * 1000,
+  // Largest event a phone may send to the big screen (JSON size). Controls are tiny
+  // ("jump", a joystick direction); a drawing is ~15 KB. The big screen's own messages
+  // are capped by WS_MAX_PAYLOAD_BYTES.
+  GAME_EVENT_MAX_BYTES: 24 * 1024,
 
   // The art library's list of assets (lives with the client, which serves the files).
-  // The game test harness checks that games only use ids from it. The generator's
-  // sandbox image has it somewhere else, hence the override.
+  // The generator's sandbox image has it somewhere else, hence the override.
   ASSET_MANIFEST_PATH:
     process.env.ASSET_MANIFEST_PATH ||
     fileURLToPath(new URL('../../client/public/game-assets/manifest.json', import.meta.url)),

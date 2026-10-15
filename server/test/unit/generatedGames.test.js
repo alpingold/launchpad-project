@@ -1,6 +1,5 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { openDatabase } from '../../src/db/database.js';
 import { createUser } from '../../src/db/users.js';
 import {
@@ -20,18 +19,17 @@ import {
 } from '../../src/db/generatedGames.js';
 import { GameRegistry } from '../../src/games/registry.js';
 import { loadGeneratedGames } from '../../src/games/generated.js';
-import countGame from '../fixtures/countGame.js';
+import { tapGame, TAP_SOURCE } from '../helpers/frameGames.js';
 
 // AI-generated games and their versions, stored in the database (plan §11 A3, §12e K6).
 
-const COUNT_GAME_SOURCE = readFileSync(new URL('../fixtures/countGame.js', import.meta.url), 'utf8');
 
 function setup() {
   const db = openDatabase(':memory:');
   const admin = createUser(db, 'admin', 'scrypt$x');
   const other = createUser(db, 'other', 'scrypt$x');
   /** Stores a game whose version 1 passed, live as `live` ('published', 'playtest' or null). */
-  const store = (live = null, source = COUNT_GAME_SOURCE, ownerUserId = admin.id) => {
+  const store = (live = null, source = TAP_SOURCE, ownerUserId = admin.id) => {
     const game = createGeneratedGame(db, { ownerUserId, prompt: 'a tapping game', model: 'qwen3.8:27b' });
     saveVersionSource(db, game.id, 1, { source, report: { ok: true }, name: 'Count to Three', description: 'Tap!' });
     if (live) setLiveVersions(db, game.id, live === 'published' ? { publishedVersion: 1 } : { playtestVersion: 1 });
@@ -87,7 +85,7 @@ test('live versions: published and playtest, chosen separately; null takes one d
   const { db, store } = setup();
   const id = store();
   addVersion(db, id, { request: 'a change', basedOn: 1 });
-  saveVersionSource(db, id, 2, { source: COUNT_GAME_SOURCE, report: { ok: true }, name: 'Count v2' });
+  saveVersionSource(db, id, 2, { source: TAP_SOURCE, report: { ok: true }, name: 'Count v2' });
 
   assert.equal(setLiveVersions(db, id, { publishedVersion: 1 }), true);
   assert.equal(setLiveVersions(db, id, { playtestVersion: 2 }), true);
@@ -114,7 +112,7 @@ test('only ready live versions with code are loadable; deleting a game deletes i
 
 test('deleting an account deletes its generated games', () => {
   const { db, other, store } = setup();
-  store('published', COUNT_GAME_SOURCE, other.id);
+  store('published', TAP_SOURCE, other.id);
   db.prepare('DELETE FROM users WHERE id = ?').run(other.id);
   assert.deepEqual(listGeneratedGames(db), []);
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM game_versions').get().n, 0);
@@ -124,14 +122,14 @@ test('deleting an account deletes its generated games', () => {
 
 test('registry: official and published games are for everyone, playtest only for its owner', () => {
   const registry = new GameRegistry();
-  registry.register(countGame);
-  registry.register({ ...countGame, id: 'g-playtest' }, { source: 'generated', status: 'playtest', ownerUserId: 1 });
-  registry.register({ ...countGame, id: 'g-published' }, { source: 'generated', status: 'published', ownerUserId: 1 });
+  registry.register(tapGame());
+  registry.register(tapGame('g-playtest'), { source: 'generated', status: 'playtest', ownerUserId: 1 });
+  registry.register(tapGame('g-published'), { source: 'generated', status: 'published', ownerUserId: 1 });
 
   const ids = (viewer) => registry.list(viewer).map((g) => g.id);
-  assert.deepEqual(ids({ userId: 1 }), ['count-game', 'g-playtest', 'g-published']);
-  assert.deepEqual(ids({ userId: 2 }), ['count-game', 'g-published']);
-  assert.deepEqual(ids({}), ['count-game', 'g-published']);
+  assert.deepEqual(ids({ userId: 1 }), ['tap-test', 'g-playtest', 'g-published']);
+  assert.deepEqual(ids({ userId: 2 }), ['tap-test', 'g-published']);
+  assert.deepEqual(ids({}), ['tap-test', 'g-published']);
 
   assert.ok(registry.get('g-playtest', { userId: 1 }));
   assert.equal(registry.get('g-playtest', { userId: 2 }), undefined);
@@ -142,10 +140,10 @@ test('registry: official and published games are for everyone, playtest only for
   assert.equal('status' in listed[0], false);
   assert.deepEqual([listed[1].source, listed[1].status], ['generated', 'playtest']);
 
-  assert.throws(() => registry.register({ ...countGame, id: 'g-published' }), /already registered/);
-  registry.register({ ...countGame, id: 'g-published', name: 'Newer' }, { source: 'generated', status: 'published', ownerUserId: 1 }, { replace: true });
+  assert.throws(() => registry.register(tapGame('g-published')), /already registered/);
+  registry.register(tapGame('g-published', { name: 'Newer' }), { source: 'generated', status: 'published', ownerUserId: 1 }, { replace: true });
   assert.equal(registry.get('g-published').name, 'Newer', 'a newly published version replaces the old one');
-  assert.throws(() => registry.register({ id: 'g-published' }, {}, { replace: true }), /does not follow the game contract/);
+  assert.throws(() => registry.register({ id: 'g-published' }, {}, { replace: true }), /can't be registered/);
   assert.equal(registry.get('g-published').name, 'Newer', 'an invalid replacement changes nothing');
   assert.equal(registry.unregister('g-playtest'), true);
   assert.equal(registry.get('g-playtest', { userId: 1 }), undefined);
@@ -159,7 +157,7 @@ test('loadGeneratedGames: live versions load under their ids (published: g-…, 
   const publishedId = store('published');
   store(); // not live: never loaded
   addVersion(db, publishedId, { request: 'a change', basedOn: 1 });
-  saveVersionSource(db, publishedId, 2, { source: COUNT_GAME_SOURCE, report: { ok: true }, name: 'Count v2' });
+  saveVersionSource(db, publishedId, 2, { source: TAP_SOURCE, report: { ok: true }, name: 'Count v2' });
   setLiveVersions(db, publishedId, { playtestVersion: 2 });
 
   const registry = new GameRegistry();
@@ -168,9 +166,9 @@ test('loadGeneratedGames: live versions load under their ids (published: g-…, 
   assert.deepEqual(result.skipped, []);
 
   const game = registry.get(`${playtestId}-v1`, { userId: admin.id });
-  assert.equal(game.id, `${playtestId}-v1`, 'runs under its database id, not the "count-game" id its code declares');
-  assert.equal(game.name, 'Count to Three');
-  assert.equal(typeof game.createGame, 'function');
+  assert.equal(game.id, `${playtestId}-v1`, 'runs under its database id');
+  assert.equal(game.name, 'Tap Test', 'from the game info in its file');
+  assert.equal(game.source, TAP_SOURCE, 'the file, to send to browsers (never run on the server)');
   assert.equal(registry.get(`${publishedId}-v2`, { userId: 99 }), undefined, 'playtest: only its owner');
   assert.ok(registry.get(publishedId, { userId: 99 }), 'published: everyone');
   const byId = (a, b) => a[0].localeCompare(b[0]);
@@ -188,8 +186,8 @@ test('loadGeneratedGames: tampered or broken versions are skipped with a warning
   const { db, store } = setup();
   const tampered = store('published');
   db.prepare("UPDATE game_versions SET source = source || '\n// sneaky edit' WHERE game_id = ?").run(tampered);
-  const broken = store('published', 'export default { id: 1 };');
-  const syntax = store('published', 'export default {');
+  const blockGame = store('published', 'export default { contractVersion: 3, id: 1 };'); // from before frame games
+  const badInfo = store('published', '<script type="application/json" id="game-info">{ "name": </script>');
   const good = store('published');
 
   const warnings = [];
@@ -199,7 +197,7 @@ test('loadGeneratedGames: tampered or broken versions are skipped with a warning
   assert.deepEqual(result.loaded, [good]);
   const reasons = Object.fromEntries(result.skipped.map((s) => [s.id, s.reason]));
   assert.match(reasons[tampered], /doesn't match the code that was reviewed/);
-  assert.match(reasons[broken], /does not follow the game contract/);
-  assert.match(reasons[syntax], /SyntaxError|Unexpected end of input/);
+  assert.match(reasons[blockGame], /no game info/);
+  assert.match(reasons[badInfo], /isn't valid JSON/);
   assert.equal(warnings.length, 3);
 });

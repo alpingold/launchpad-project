@@ -1,19 +1,19 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { openDatabase } from '../../src/db/database.js';
 import { createUser } from '../../src/db/users.js';
 import { createGeneratedGame, getGeneratedGame, gameStatus } from '../../src/db/generatedGames.js';
 import { GameRegistry } from '../../src/games/registry.js';
 import { GenerationService, MAX_QUEUED } from '../../src/generation/service.js';
+import { renamedSource } from '../helpers/frameGames.js';
 
 // The generation queue, versions and going live (plan §11 A5, §12e K6). A fake generator
 // stands in for the OpenShell sandbox; each call waits until the test lets it finish.
 
-const GOOD_SOURCE = readFileSync(new URL('../../src/games/majority-rules/index.js', import.meta.url), 'utf8');
+const GOOD_SOURCE = renamedSource('Majority Rules');
 const PASSED = { ok: true, model: 'qwen3.8:27b', source: GOOD_SOURCE, report: { ok: true, problems: [], game: { name: 'Majority Rules', description: 'Vote!' } }, attempts: [] };
 const IDEA = 'Everyone votes; the most popular answer wins';
-const CHANGED_SOURCE = GOOD_SOURCE.replace("name: 'Majority Rules'", "name: 'Majority Rules 2'");
+const CHANGED_SOURCE = renamedSource('Majority Rules 2');
 const CHANGED = { ...PASSED, source: CHANGED_SOURCE, changelog: '- Renamed it', report: { ...PASSED.report, game: { name: 'Majority Rules 2', description: 'Vote!' } } };
 
 /** A fake generator: each call stays "running" until finish(result) is called for it. */

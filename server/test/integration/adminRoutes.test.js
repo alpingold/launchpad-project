@@ -1,7 +1,7 @@
 import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { createGameServer } from '../../src/server.js';
+import { renamedSource } from '../helpers/frameGames.js';
 import { setAdmin } from '../../src/db/users.js';
 import { GameRegistry } from '../../src/games/registry.js';
 import { signUp, postJson } from '../helpers/accounts.js';
@@ -10,7 +10,7 @@ import { signUp, postJson } from '../helpers/accounts.js';
 // the real HTTP server.
 // A fake generator stands in for the OpenShell sandbox.
 
-const GOOD_SOURCE = readFileSync(new URL('../../src/games/majority-rules/index.js', import.meta.url), 'utf8');
+const GOOD_SOURCE = renamedSource('Majority Rules');
 const IDEA = 'Everyone votes; the most popular answer wins';
 
 let server;
@@ -97,7 +97,7 @@ test('the whole flow: generate → playtest (only for me) → publish → ask fo
   const asked = await post(`/api/admin/generations/${game.id}/versions`, { request: 'Call it Majority Rules 2' }, admin);
   assert.equal(asked.status, 202);
   assert.equal((await asked.json()).game.versions[1].status, 'generating');
-  const v2Source = GOOD_SOURCE.replace("name: 'Majority Rules'", "name: 'Majority Rules 2'");
+  const v2Source = renamedSource('Majority Rules 2');
   finishGeneration({ ok: true, source: v2Source, changelog: '- Renamed it', report: { ok: true, problems: [], game: { name: 'Majority Rules 2', description: 'Vote' } } });
   await server.generation.current;
   detail = await detailOf();

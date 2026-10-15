@@ -30,6 +30,9 @@ export const ERRORS = Object.freeze({
   GAME_NOT_FOUND: 'That game does not exist.',
   WRONG_PLAYER_COUNT: 'This game needs a different number of players.',
   WRONG_PHASE: 'You cannot do that right now.',
+  // Frame games (plan §13f)
+  GAME_DATA_TOO_BIG: 'That game message is too big.',
+  INVALID_RESULTS: 'The game ended with results that are not valid.',
 
   // Accounts (M7)
   NOT_AUTHENTICATED: 'You must be logged in to host a room.',

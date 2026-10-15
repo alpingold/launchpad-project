@@ -61,11 +61,23 @@ function readPlainObject(value) {
 }
 
 /**
- * Any JSON value (it's already parsed). Used for game:action's `input`, which the game's
- * runner checks against the block on the player's screen. Size is capped by max payload.
+ * Any JSON value except "missing" (it's already parsed). Used for frame games' data, which
+ * only the game itself understands (plan §13f). Size is capped by the max payload, and
+ * phones' events by a smaller limit in FrameRelay.
  */
 function readJson(value) {
-  return value;
+  return value === undefined ? INVALID : value;
+}
+
+/** Who a big-screen message is for: one player, or 'all' players. */
+function readTarget(value) {
+  return value === 'all' ? value : readPlayerId(value);
+}
+
+/** game:end's rankings: player ids, best first (FrameRelay checks they're in the game). */
+function readRankings(value) {
+  if (!Array.isArray(value) || value.length > config.MAX_PLAYERS) return INVALID;
+  return value.every((id) => readPlayerId(id) !== INVALID) ? [...value] : INVALID;
 }
 
 /** Wraps a reader so a missing field is allowed (and simply left out of the result). */
@@ -83,8 +95,12 @@ const SCHEMAS = {
   [CLIENT.PLAYER_RESUME]: { code: readRoomCode, token: readToken },
   [CLIENT.ROOM_LEAVE]: {},
   [CLIENT.HOST_KICK]: { playerId: readPlayerId },
-  [CLIENT.HOST_START_GAME]: { gameId: readGameId, options: optional(readPlainObject) },
-  [CLIENT.GAME_ACTION]: { action: readPlainObject, input: optional(readJson) },
+  [CLIENT.HOST_START_GAME]: { gameId: readGameId },
+  [CLIENT.HOST_STOP_GAME]: {},
+  [CLIENT.GAME_EVENT]: { data: readJson },
+  [CLIENT.GAME_SEND]: { to: readTarget, data: readJson },
+  [CLIENT.GAME_STATE]: { to: readTarget, state: readJson },
+  [CLIENT.GAME_END]: { rankings: readRankings, scores: optional(readPlainObject) },
 };
 
 /**

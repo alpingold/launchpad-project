@@ -4,16 +4,16 @@ import { createGameServer } from '../../src/server.js';
 import { GameRegistry } from '../../src/games/registry.js';
 import { openClient } from '../helpers/wsClient.js';
 import { signUp } from '../helpers/accounts.js';
-import countGame from '../fixtures/countGame.js';
+import { tapGame } from '../helpers/frameGames.js';
 
-// A full server that offers only the test count game, over real sockets.
+// A full server that offers only the tap test game, over real sockets.
 let server;
 let baseUrl;
 let wsUrl;
 
 beforeEach(async () => {
   const games = new GameRegistry();
-  games.register(countGame);
+  games.register(tapGame());
   server = createGameServer({}, { games });
   await new Promise((resolve) => server.httpServer.listen(0, resolve));
   const { port } = server.httpServer.address();
@@ -40,9 +40,9 @@ test('GET /api/games lists the games for the host picker', async () => {
   assert.deepEqual(await res.json(), {
     games: [
       {
-        id: 'count-game',
-        name: 'Count to Three',
-        description: 'First to tap the button enough times wins.',
+        id: 'tap-test',
+        name: 'Tap Test',
+        description: 'First to 3 taps wins. Test-only.',
         minPlayers: 1,
         maxPlayers: 12,
         source: 'official',
@@ -51,7 +51,7 @@ test('GET /api/games lists the games for the host picker', async () => {
   });
 });
 
-test('a whole game over real sockets: start, tap, results, back to the lobby', async () => {
+test('a whole game over real sockets: start, events both ways, results, back to the lobby', async () => {
   const host = await openHost();
   host.send({ type: 'host:create_room' });
   const { code } = await host.next();
@@ -60,20 +60,44 @@ test('a whole game over real sockets: start, tap, results, back to the lobby', a
   alex.send({ type: 'player:join', code, name: 'Alex' });
   const { playerId } = await nextOfType(alex, 'room:joined');
 
-  host.send({ type: 'host:start_game', gameId: 'count-game', options: { target: 2 } });
-  assert.equal((await nextOfType(alex, 'game:started')).gameId, 'count-game');
-  assert.deepEqual((await nextOfType(alex, 'game:message')).payload, {
-    blocks: [{ type: 'button', label: 'Tap!', action: { tap: true } }],
-  });
+  host.send({ type: 'host:start_game', gameId: 'tap-test' });
+  const started = await nextOfType(alex, 'game:started');
+  assert.equal(started.gameId, 'tap-test');
+  assert.match(started.source, /id="game-info"/, 'the phone gets the game file');
 
-  // The phone sends back the action that came with the button.
-  alex.send({ type: 'game:action', action: { tap: true } });
-  alex.send({ type: 'game:action', action: { tap: true } });
+  // The phone's game sends an event; the server passes it to the big screen's game.
+  alex.send({ type: 'game:event', data: 'tap' });
+  const event = await nextOfType(host, 'game:event');
+  assert.equal(event.from, playerId);
+  assert.equal(event.data, 'tap');
 
-  const ended = await nextOfType(host, 'game:ended');
-  assert.deepEqual(ended.results, { rankings: [playerId], scores: { [playerId]: 2 } });
+  // The big screen's game answers that phone, then ends the game.
+  host.send({ type: 'game:state', to: playerId, state: { taps: 1 } });
+  assert.deepEqual((await nextOfType(alex, 'game:state')).state, { taps: 1 });
+  host.send({ type: 'game:end', rankings: [playerId], scores: { [playerId]: 1 } });
+
+  const ended = await nextOfType(alex, 'game:ended');
+  assert.deepEqual(ended.results, { rankings: [playerId], scores: { [playerId]: 1 } });
   // game:ended is followed by the lobby room:state.
-  assert.equal((await nextOfType(host, 'room:state')).phase, 'lobby');
+  assert.equal((await nextOfType(alex, 'room:state')).phase, 'lobby');
+  host.close();
+  alex.close();
+});
+
+test('a phone cannot send to other phones or end the game', async () => {
+  const host = await openHost();
+  host.send({ type: 'host:create_room' });
+  const { code } = await host.next();
+  const alex = await openClient(wsUrl);
+  alex.send({ type: 'player:join', code, name: 'Alex' });
+  await nextOfType(alex, 'room:joined');
+  host.send({ type: 'host:start_game', gameId: 'tap-test' });
+  await nextOfType(alex, 'game:started');
+
+  alex.send({ type: 'game:send', to: 'all', data: 'spam' });
+  assert.equal((await nextOfType(alex, 'error')).code, 'NOT_HOST');
+  alex.send({ type: 'game:end', rankings: [] });
+  assert.equal((await nextOfType(alex, 'error')).code, 'NOT_HOST');
   host.close();
   alex.close();
 });
@@ -86,7 +110,7 @@ test('only the host may start a game; players get NOT_HOST', async () => {
   alex.send({ type: 'player:join', code, name: 'Alex' });
   await nextOfType(alex, 'room:joined');
 
-  alex.send({ type: 'host:start_game', gameId: 'count-game' });
+  alex.send({ type: 'host:start_game', gameId: 'tap-test' });
   const err = await nextOfType(alex, 'error');
   assert.equal(err.code, 'NOT_HOST');
   host.close();

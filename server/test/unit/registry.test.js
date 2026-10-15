@@ -1,47 +1,76 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { GameRegistry } from '../../src/games/registry.js';
-import { validateGameModule } from '../../src/games/contract.js';
-import { createDefaultRegistry } from '../../src/games/index.js';
-import countGame from '../fixtures/countGame.js';
+import { readFrameGame, validateFrameGame, frameGameReport } from '../../src/games/frameGame.js';
+import { createDefaultRegistry, OFFICIAL_GAMES } from '../../src/games/index.js';
+import { config } from '../../src/config.js';
+import { tapGame, TAP_SOURCE } from '../helpers/frameGames.js';
 
-const valid = () => ({ ...countGame });
+// Frame game files (plan §13c) and the registry that offers them.
 
-test('the count game fixture follows the contract', () => {
-  assert.deepEqual(validateGameModule(countGame), []);
+/** A game file with this info block (as raw text, so broken JSON can be tested too). */
+const withInfo = (infoText) => TAP_SOURCE.replace(/(id="game-info">)[\s\S]*?(<\/script>)/, `$1${infoText}$2`);
+
+test('readFrameGame: reads the info block with JSON.parse; the id comes from outside the file', () => {
+  const result = readFrameGame(TAP_SOURCE, 'my-id');
+  assert.equal(result.ok, true);
+  assert.deepEqual(
+    { ...result.game, source: undefined },
+    { id: 'my-id', name: 'Tap Test', description: 'First to 3 taps wins. Test-only.', minPlayers: 1, maxPlayers: 12, source: undefined },
+  );
+  assert.equal(result.game.source, TAP_SOURCE, 'the whole file is kept, to send to browsers');
 });
 
-test('validateGameModule reports each broken rule', () => {
+test('readFrameGame: the attributes may come in either order', () => {
+  const swapped = TAP_SOURCE.replace('<script type="application/json" id="game-info">', "<script id='game-info' type='application/json'>");
+  assert.equal(readFrameGame(swapped, 'x').ok, true);
+});
+
+test('readFrameGame reports each problem readably', () => {
   const cases = [
-    [null, /must be an object/],
-    [{ ...valid(), contractVersion: undefined }, /contractVersion must be 3/],
-    [{ ...valid(), contractVersion: 1 }, /contractVersion must be 3/],
-    [{ ...valid(), id: 'Count Game' }, /id must be/],
-    [{ ...valid(), id: '' }, /id must be/],
-    [{ ...valid(), name: '' }, /name must be/],
-    [{ ...valid(), description: 5 }, /description must be/],
-    [{ ...valid(), minPlayers: 0 }, /minPlayers must be/],
-    [{ ...valid(), minPlayers: 1.5 }, /minPlayers must be/],
-    [{ ...valid(), maxPlayers: 13 }, /maxPlayers must be an integer of at most 12/],
-    [{ ...valid(), minPlayers: 4, maxPlayers: 2 }, /maxPlayers must be at least minPlayers/],
-    [{ ...valid(), createGame: 'nope' }, /createGame must be a function/],
+    [42, /must be text/],
+    ['<p>no info</p>', /no game info/],
+    [withInfo('{ name: oops }'), /isn't valid JSON/],
+    [withInfo('[1, 2]'), /must be a JSON object/],
+    [withInfo('{ "name": "A", "description": "", "minPlayers": 1, "maxPlayers": 2, "id": "evil" }'), /unknown field "id"/],
+    [withInfo('{ "name": "", "description": "", "minPlayers": 1, "maxPlayers": 2 }'), /name must be/],
+    [withInfo('{ "name": "A", "description": 5, "minPlayers": 1, "maxPlayers": 2 }'), /description must be/],
+    [withInfo('{ "name": "A", "description": "", "minPlayers": 0, "maxPlayers": 2 }'), /minPlayers must be/],
+    [withInfo('{ "name": "A", "description": "", "minPlayers": 1, "maxPlayers": 13 }'), /maxPlayers must be an integer of at most 12/],
+    [withInfo('{ "name": "A", "description": "", "minPlayers": 4, "maxPlayers": 2 }'), /maxPlayers must be at least minPlayers/],
+    [TAP_SOURCE + ' '.repeat(config.FRAME_GAME_MAX_BYTES), /the limit is/],
   ];
-  for (const [mod, pattern] of cases) {
-    const problems = validateGameModule(mod);
-    assert.ok(problems.some((p) => pattern.test(p)), `${JSON.stringify(mod?.id)}: ${problems.join('; ')}`);
+  for (const [source, pattern] of cases) {
+    const result = readFrameGame(source, 'x');
+    assert.equal(result.ok, false);
+    assert.ok(result.problems.some((p) => pattern.test(p)), `${pattern}: ${result.problems.join('; ')}`);
   }
+  assert.deepEqual(readFrameGame(TAP_SOURCE, 'Bad Id').problems, ['id must be 1–40 lowercase letters, digits, or dashes']);
 });
 
-test('register + get + list', () => {
+test('frameGameReport: the shape versions store and the admin page shows', () => {
+  assert.deepEqual(frameGameReport(TAP_SOURCE), {
+    ok: true,
+    problems: [],
+    checked: 'the game info (checks in a real browser come in F4)',
+    game: { name: 'Tap Test', description: 'First to 3 taps wins. Test-only.' },
+  });
+  const bad = frameGameReport('export default {}; // a block game');
+  assert.equal(bad.ok, false);
+  assert.match(bad.problems[0], /no game info/);
+});
+
+test('register + get + list (list leaves out the game files)', () => {
   const registry = new GameRegistry();
-  registry.register(countGame);
-  assert.equal(registry.get('count-game'), countGame);
+  const game = tapGame();
+  registry.register(game);
+  assert.equal(registry.get('tap-test'), game);
   assert.equal(registry.get('nope'), undefined);
   assert.deepEqual(registry.list(), [
     {
-      id: 'count-game',
-      name: 'Count to Three',
-      description: 'First to tap the button enough times wins.',
+      id: 'tap-test',
+      name: 'Tap Test',
+      description: 'First to 3 taps wins. Test-only.',
       minPlayers: 1,
       maxPlayers: 12,
       source: 'official',
@@ -51,20 +80,21 @@ test('register + get + list', () => {
 
 test('register refuses invalid games with a readable message', () => {
   const registry = new GameRegistry();
-  assert.throws(() => registry.register({ ...valid(), maxPlayers: 50 }), /does not follow the game contract:\n - maxPlayers/);
+  assert.throws(() => registry.register(tapGame('tap-test', { maxPlayers: 50 })), /can't be registered:\n - maxPlayers/);
+  assert.deepEqual(validateFrameGame(null), ['a game must be an object']);
   assert.equal(registry.list().length, 0);
 });
 
 test('register refuses duplicate ids', () => {
   const registry = new GameRegistry();
-  registry.register(countGame);
-  assert.throws(() => registry.register(valid()), /already registered/);
+  registry.register(tapGame());
+  assert.throws(() => registry.register(tapGame()), /already registered/);
 });
 
 test('get does not find built-in object properties', () => {
   assert.equal(new GameRegistry().get('constructor'), undefined);
 });
 
-test('the default registry offers the official games', () => {
-  assert.deepEqual(createDefaultRegistry().list().map((g) => g.id), ['reaction-race', 'majority-rules', 'sketch-guess', 'fill-the-blank']);
+test('the default registry offers the official games, each read from its game.html', () => {
+  assert.deepEqual(createDefaultRegistry().list().map((g) => g.id), OFFICIAL_GAMES);
 });

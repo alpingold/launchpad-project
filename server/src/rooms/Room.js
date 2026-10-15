@@ -36,7 +36,7 @@ export class Room {
     /** @type {Map<string, Player>} keyed by player id; a Map keeps join order */
     this.players = new Map();
     this.maxPlayers = config.MAX_PLAYERS;
-    this.game = null; // GameRunner while a game is running
+    this.game = null; // FrameRelay while a game is running
     this.gameId = null;
 
     this.createdAt = now;

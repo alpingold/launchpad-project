@@ -1,0 +1,27 @@
+<script type="application/json" id="game-info">
+  { "name": "Tap Test", "description": "First to 3 taps wins. Test-only.", "minPlayers": 1, "maxPlayers": 12 }
+</script>
+<!--
+  A tiny frame game for the server's tests (plan §13c). The server only reads the info
+  above; this page itself only ever runs in a browser.
+-->
+<button id="tap" hidden>Tap!</button>
+<p id="score"></p>
+<script>
+  party.ready(({ role, players }) => {
+    if (role === 'host') {
+      const taps = Object.fromEntries(players.map((p) => [p.id, 0]));
+      party.on('event', (from, data) => {
+        if (data !== 'tap' || !(from in taps)) return;
+        taps[from] += 1;
+        party.setState(from, { taps: taps[from] });
+        if (taps[from] === 3) party.end({ rankings: [from], scores: taps });
+      });
+    } else {
+      const button = document.getElementById('tap');
+      button.hidden = false;
+      button.onclick = () => party.send('tap');
+      party.on('state', (s) => (document.getElementById('score').textContent = `${s.taps} taps`));
+    }
+  });
+</script>
