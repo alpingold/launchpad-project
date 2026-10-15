@@ -1,0 +1,392 @@
+<script type="application/json" id="game-info">
+  {
+    "name": "Tower Dash",
+    "description": "An ASCII platformer race: run, jump over spikes, grab coins and reach the exit first. Three levels.",
+    "minPlayers": 1,
+    "maxPlayers": 8
+  }
+</script>
+<!--
+  TOWER DASH: an example frame game (plan §13j). The art is text characters, drawn with
+  party.ui.ascii:
+     #  wall            =  platform (jump up through it, land on top)
+     ^  spikes          $  coin          >  the exit          S  where everyone starts
+  Each player is the first letter of their name, in their colour.
+
+  The big screen is the referee: it runs the physics 60 times a second and draws the level.
+  Phones are party.ui.gamepad controllers (◀ ▶ Jump), sending what's held whenever it changes.
+  Points per level: 5, 3, 2 for the first three to reach the exit, 1 for anyone else who
+  makes it, plus 1 per coin.
+-->
+<style>
+  .board { display: grid; grid-template-columns: 1fr 17rem; gap: 1rem; height: 100%; box-sizing: border-box; padding: 0.75rem 1rem; }
+  .level { display: flex; flex-direction: column; gap: 0.5rem; min-height: 0; }
+  .level h1 { margin: 0; }
+  #map { flex: 1; min-height: 0; background: #10101a; border-radius: var(--radius); }
+  .banner { font-size: 1.6rem; font-weight: 800; color: var(--gold); min-height: 1.4em; margin: 0; }
+  .phone-me { font-size: 1.4rem; font-weight: 800; display: flex; align-items: center; gap: 0.6rem; justify-content: center; }
+  .letter { display: inline-grid; place-items: center; width: 2.4rem; height: 2.4rem; border-radius: 0.5rem; background: #10101a; font-family: var(--mono); font-size: 1.6rem; }
+</style>
+
+<div id="app"></div>
+
+<script>
+  'use strict';
+
+  const LEVELS = [
+    {
+      name: 'Warm-up run',
+      map: [
+        '################################################',
+        '#                                              #',
+        '#                                              #',
+        '#                     $  $  $                  #',
+        '#                    =========                 #',
+        '#                                              #',
+        '#          $                          $        #',
+        '#        =====                      =====      #',
+        '#                                              #',
+        '# S                                         >  #',
+        '################################################',
+      ],
+    },
+    {
+      name: 'Spike pits',
+      map: [
+        '################################################',
+        '#                                              #',
+        '#                                    $         #',
+        '#                       $          =====       #',
+        '#                     =====                    #',
+        '#           $                                  #',
+        '#         =====                                #',
+        '#                                              #',
+        '#                                              #',
+        '# S                                         >  #',
+        '#######^^^#######^^^^#######^^^^########^^######',
+      ],
+    },
+    {
+      name: 'The tower',
+      map: [
+        '################################################',
+        '#                                              #',
+        '#  >                                    $      #',
+        '#=====                               =====     #',
+        '#      ===                                     #',
+        '#          ===      $          ===             #',
+        '#             ===  ===     ===                 #',
+        '#                                    ===   $   #',
+        '#                    ===          ==      ===  #',
+        '#                ==         ===                #',
+        '# S       ===                         ^^^      #',
+        '################################################',
+      ],
+    },
+  ];
+
+  // ---- The physics (pure: no page, no party: easy to test on its own) ----------------------
+  // Positions are in tiles; x is the left edge, y is the FEET (bottom) of a player.
+  const RUN = 7; // tiles/s
+  const GRAVITY = 45; // tiles/s²
+  const JUMP = 15.5; // tiles/s upwards: about 2.6 tiles high, about 4.8 tiles across
+  const WIDTH = 0.7;
+  const HEIGHT = 0.9;
+  const COYOTE = 0.1; // s: you can still jump just after running off an edge
+  const MAX_FALL = 30;
+
+  function createLevel(map) {
+    const grid = map.map((row) => [...row]);
+    let start = { x: 1, y: grid.length - 1 };
+    let exit = null;
+    grid.forEach((row, y) => row.forEach((ch, x) => {
+      if (ch === 'S') { start = { x, y: y + 1 }; row[x] = ' '; }
+      if (ch === '>') exit = { x, y };
+    }));
+    const at = (x, y) => (y < 0 || y >= grid.length || x < 0 || x >= grid[0].length ? '#' : grid[y][x]);
+    return { grid, start, exit, at, cols: grid[0].length, rows: grid.length };
+  }
+
+  /** Moves one runner by dt seconds. input: { left, right, jump }. Returns what it touched. */
+  function stepRunner(level, r, input, dt) {
+    r.vx = ((input.right ? 1 : 0) - (input.left ? 1 : 0)) * RUN;
+    r.sinceGround += dt;
+    if (input.jump && r.sinceGround <= COYOTE && !r.jumping) {
+      r.vy = -JUMP;
+      r.jumping = true;
+      r.sinceGround = Infinity;
+    }
+    if (!input.jump) r.jumping = false; // let go to jump again
+    r.vy = Math.min(MAX_FALL, r.vy + GRAVITY * dt);
+
+    // Across: only walls stop you.
+    r.x += r.vx * dt;
+    const top = Math.floor(r.y - HEIGHT + 0.001);
+    const bottom = Math.floor(r.y - 0.001);
+    for (let ty = top; ty <= bottom; ty++) {
+      if (r.vx > 0 && level.at(Math.floor(r.x + WIDTH), ty) === '#') r.x = Math.floor(r.x + WIDTH) - WIDTH;
+      if (r.vx < 0 && level.at(Math.floor(r.x), ty) === '#') r.x = Math.floor(r.x) + 1;
+    }
+
+    // Up and down: walls everywhere; platforms only when landing on them from above.
+    const before = r.y;
+    r.y += r.vy * dt;
+    const left = Math.floor(r.x + 0.001);
+    const right = Math.floor(r.x + WIDTH - 0.001);
+    if (r.vy > 0) {
+      const ty = Math.floor(r.y);
+      for (let tx = left; tx <= right; tx++) {
+        const ch = level.at(tx, ty);
+        if (ch === '#' || (ch === '=' && before <= ty + 0.001)) {
+          r.y = ty;
+          r.vy = 0;
+          r.sinceGround = 0;
+          break;
+        }
+      }
+    } else if (r.vy < 0) {
+      const ty = Math.floor(r.y - HEIGHT);
+      for (let tx = left; tx <= right; tx++) {
+        if (level.at(tx, ty) === '#') {
+          r.y = ty + 1 + HEIGHT;
+          r.vy = 0;
+          break;
+        }
+      }
+    }
+
+    // What the runner's body overlaps now.
+    const touched = [];
+    for (let ty = Math.floor(r.y - HEIGHT); ty <= Math.floor(r.y - 0.001); ty++) {
+      for (let tx = Math.floor(r.x); tx <= Math.floor(r.x + WIDTH - 0.001); tx++) {
+        const ch = level.at(tx, ty);
+        if (ch === '^' || ch === '$' || ch === '>') touched.push({ ch, x: tx, y: ty });
+      }
+    }
+    if (r.y > level.rows + 2) touched.push({ ch: 'fell' });
+    return touched;
+  }
+  // ---- end of the physics ------------------------------------------------------------------
+
+  const COLORS = ['#ff5a5f', '#ffb400', '#3ec300', '#00a6ed', '#c77dff', '#ff7eb6', '#00c2a8', '#ff8c42'];
+  const PLACE_POINTS = [5, 3, 2];
+  const LEVEL_SECONDS = 120;
+  const AFTER_FIRST_SECONDS = 30; // once someone's out, the rest have this long
+  const BETWEEN_MS = 4000;
+  const FINAL_MS = 6000;
+  const ordinal = (n) => `${n}${['th', 'st', 'nd', 'rd'][(n % 100 > 10 && n % 100 < 14) || n % 10 > 3 ? 0 : n % 10]}`;
+
+  party.ready(({ role, me, restored }) => {
+    if (role === 'host') startReferee(restored);
+    else startController(me);
+  });
+
+  // ---- The big screen ---------------------------------------------------------------------
+  function startReferee(restored) {
+    const { el, ascii, scoreboard, timer } = party.ui;
+    const app = document.getElementById('app');
+    const title = el('h1', {}, '');
+    const banner = el('p', { class: 'banner', role: 'status' }, '');
+    const timerSlot = el('div');
+    app.append(
+      el('div', { class: 'board' },
+        el('div', { class: 'level' }, title, timerSlot, el('div', { id: 'map' }), banner),
+        el('div', { class: 'stack' }, el('div', { id: 'scores' }), el('p', { class: 'muted' }, '◀ ▶ to run, Jump to jump. Reach the > first!')),
+      ),
+    );
+    const map = ascii('#map', { cols: 48, rows: 12, colors: { '#': '#8d6e63', '=': '#9e9e9e', '^': '#ff5252', '$': '#ffd84d', '>': '#69f0ae' } });
+    const scores = scoreboard('#scores', { title: 'Points' });
+
+    const runners = party.players.map((p, i) => ({
+      id: p.id,
+      name: p.name,
+      letter: (p.name.trim()[0] || '?').toUpperCase(),
+      color: COLORS[i % COLORS.length],
+      input: { left: false, right: false, jump: false },
+      total: 0,
+    }));
+    const byId = new Map(runners.map((r) => [r.id, r]));
+
+    let levelIndex = 0;
+    let level = null;
+    let phase = 'play'; // play → levelOver → (next level | final) → ended
+    let phaseAt = 0;
+    let finishOrder = [];
+    let firstFinishAt = null;
+    let clock = null;
+
+    function startLevel(index, now) {
+      levelIndex = index;
+      level = createLevel(LEVELS[index].map);
+      finishOrder = [];
+      firstFinishAt = null;
+      for (const r of runners) {
+        Object.assign(r, { x: level.start.x + 0.15, y: level.start.y, vx: 0, vy: 0, sinceGround: 0, jumping: false, finished: false, coins: 0, ouches: 0, flashUntil: 0 });
+      }
+      title.textContent = `Level ${index + 1} of ${LEVELS.length}: ${LEVELS[index].name}`;
+      banner.textContent = '';
+      clock?.destroy();
+      clock = timer(timerSlot, { endsAt: party.now() + LEVEL_SECONDS * 1000, label: 'Time left in this level' });
+      setPhase('play', now);
+    }
+
+    function setPhase(next, now) {
+      phase = next;
+      phaseAt = now;
+      party.save({ levelIndex, phase, totals: Object.fromEntries(runners.map((r) => [r.id, r.total])) });
+      tellPhones(true);
+      drawScores();
+    }
+
+    let lastToldAt = 0;
+    function tellPhones(force) {
+      const now = performance.now();
+      if (!force && now - lastToldAt < 250) return; // a few times a second is plenty
+      lastToldAt = now;
+      for (const r of runners) {
+        let text;
+        if (phase === 'play') {
+          if (r.finished) text = `You finished ${ordinal(finishOrder.indexOf(r) + 1)}! Waiting for the others…`;
+          else if (now < r.flashUntil) text = 'Ouch! Back to the start.';
+          else text = `Level ${levelIndex + 1}: run to the > !`;
+        } else if (phase === 'levelOver') text = banner.textContent;
+        else text = banner.textContent;
+        party.setState(r.id, {
+          phase,
+          letter: r.letter,
+          color: r.color,
+          text,
+          coins: r.coins,
+          total: r.total,
+          away: level?.exit && !r.finished ? Math.max(0, Math.round(Math.abs(level.exit.x - r.x))) : 0,
+          canMove: phase === 'play' && !r.finished,
+        });
+      }
+    }
+
+    function drawScores() {
+      scores.update(runners.map((r) => ({ id: r.id, name: r.name, score: r.total, color: r.color })));
+    }
+
+    party.on('event', (from, data) => {
+      const r = byId.get(from);
+      if (!r || !data || typeof data.pad !== 'object' || data.pad === null) return;
+      r.input = { left: data.pad.left === true, right: data.pad.right === true, jump: data.pad.jump === true };
+    });
+    party.on('left', (id) => {
+      const r = byId.get(id);
+      if (r) r.input = { left: false, right: false, jump: false };
+    });
+
+    function endLevel(now) {
+      finishOrder.forEach((r, i) => (r.total += PLACE_POINTS[i] ?? 1));
+      for (const r of runners) r.total += r.coins;
+      const winner = finishOrder[0];
+      banner.textContent = winner ? `${winner.name} wins the level!` : 'Time! Nobody made it out.';
+      clock?.stop();
+      setPhase('levelOver', now);
+    }
+
+    function update(dt, now) {
+      if (phase !== 'play') return;
+      for (const r of runners) {
+        if (r.finished) continue;
+        for (const hit of stepRunner(level, r, r.input, dt)) {
+          if (hit.ch === '^' || hit.ch === 'fell') {
+            Object.assign(r, { x: level.start.x + 0.15, y: level.start.y, vx: 0, vy: 0, sinceGround: 0, flashUntil: now + 1200 });
+            r.ouches += 1;
+            tellPhones(true);
+            break;
+          }
+          if (hit.ch === '$') {
+            level.grid[hit.y][hit.x] = ' ';
+            r.coins += 1;
+          }
+          if (hit.ch === '>' && !r.finished) {
+            r.finished = true;
+            finishOrder.push(r);
+            firstFinishAt ??= now;
+            banner.textContent = `${r.name} made it out ${ordinal(finishOrder.length)}!`;
+            tellPhones(true);
+          }
+        }
+      }
+      const elapsed = (now - phaseAt) / 1000;
+      const everyoneOut = runners.every((r) => r.finished);
+      if (everyoneOut || elapsed > LEVEL_SECONDS || (firstFinishAt && now - firstFinishAt > AFTER_FIRST_SECONDS * 1000)) endLevel(now);
+      else tellPhones(false);
+    }
+
+    function advance(now) {
+      if (phase === 'levelOver' && now - phaseAt > BETWEEN_MS) {
+        if (levelIndex + 1 < LEVELS.length) startLevel(levelIndex + 1, now);
+        else {
+          const best = Math.max(...runners.map((r) => r.total));
+          const champs = runners.filter((r) => r.total === best);
+          banner.textContent = champs.length === 1 ? `${champs[0].name} wins Tower Dash!` : `It's a tie: ${champs.map((r) => r.name).join(' & ')}!`;
+          setPhase('final', now);
+        }
+      } else if (phase === 'final' && now - phaseAt > FINAL_MS) {
+        phase = 'ended';
+        const ranked = [...runners].sort((a, b) => b.total - a.total);
+        party.end({ rankings: ranked.map((r) => r.id), scores: Object.fromEntries(runners.map((r) => [r.id, r.total])) });
+      }
+    }
+
+    function draw(now) {
+      const lines = level.grid.map((row) => row.join(''));
+      const cells = runners
+        .filter((r) => !r.finished && !(now < r.flashUntil && Math.floor(now / 120) % 2)) // blink after an ouch
+        .map((r) => ({ x: Math.floor(r.x + WIDTH / 2), y: Math.floor(r.y - HEIGHT / 2), ch: r.letter, color: r.color }));
+      map.render(lines, { cells });
+    }
+
+    let last = performance.now();
+    function tick(now) {
+      const dt = Math.min(1 / 30, (now - last) / 1000);
+      last = now;
+      if (phase !== 'ended') {
+        // Small fixed steps, so a fast fall can't pass through a platform.
+        const steps = Math.ceil(dt / (1 / 120));
+        for (let i = 0; i < steps; i++) update(dt / steps, now);
+        advance(now);
+      }
+      draw(now);
+      requestAnimationFrame(tick);
+    }
+
+    if (restored) {
+      for (const r of runners) r.total = Number(restored.totals?.[r.id]) || 0;
+      // A cut-off level starts again; after a finished one, the next.
+      const next = restored.phase === 'play' ? restored.levelIndex : restored.levelIndex + 1;
+      startLevel(Math.min(next, LEVELS.length - 1), performance.now());
+    } else {
+      startLevel(0, performance.now());
+    }
+    requestAnimationFrame(tick);
+  }
+
+  // ---- A phone ------------------------------------------------------------------------------
+  function startController() {
+    const { el, gamepad } = party.ui;
+    const letter = el('span', { class: 'letter' }, '?');
+    const status = el('p', { class: 'center', role: 'status' }, 'Get ready…');
+    const info = el('p', { class: 'muted center' }, '');
+    const padSlot = el('div', { class: 'grow', style: { display: 'flex', alignItems: 'flex-end' } });
+    document.getElementById('app').append(
+      el('div', { class: 'screen' }, el('div', { class: 'phone-me' }, letter, el('span', {}, 'is you')), status, info, padSlot),
+    );
+    const pad = gamepad(padSlot, {
+      dpad: 'horizontal',
+      buttons: [{ id: 'jump', label: 'Jump' }],
+      onChange: (state) => party.send({ pad: state }),
+    });
+
+    party.on('state', (s) => {
+      letter.textContent = s.letter;
+      letter.style.color = s.color;
+      status.textContent = s.text;
+      info.textContent = s.phase === 'play' && s.canMove ? `Coins: ${s.coins} · Exit: ${s.away} tiles away · Points: ${s.total}` : `Points: ${s.total}`;
+    });
+  }
+</script>
