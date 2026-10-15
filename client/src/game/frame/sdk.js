@@ -44,7 +44,7 @@
   // without going over the server's rate limit. A newer state for a phone replaces an older
   // one still waiting; messages are all kept, in order.
   var BATCH_EVERY_MS = 50;
-  var BATCH_MAX_BYTES = 28 * 1024; // the platform's limit is 30 KB per message
+  var BATCH_MAX_BYTES = 112 * 1024; // the platform's limit is 120 KB per message
   var pending = []; // [{ to, data } | { to, state }]
   var pendingSave = { has: false, snapshot: undefined };
   var flushTimer = null;

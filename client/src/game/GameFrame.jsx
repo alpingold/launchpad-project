@@ -4,8 +4,8 @@ import { loadManifest } from './assets.js';
 
 // Mirrors the server's limits (config.js), so a game that sends too much hears about it
 // here instead of getting the whole connection closed.
-const PHONE_EVENT_MAX_BYTES = 24 * 1024; // GAME_EVENT_MAX_BYTES
-const HOST_MESSAGE_MAX_BYTES = 30 * 1024; // under WS_MAX_PAYLOAD_BYTES (32 KB) with room for the envelope
+const PHONE_EVENT_MAX_BYTES = 48 * 1024; // GAME_EVENT_MAX_BYTES
+const HOST_MESSAGE_MAX_BYTES = 120 * 1024; // under WS_MAX_PAYLOAD_BYTES (128 KB) with room for the envelope
 const RATE_PER_SEC = 20; // RATE_LIMIT_PER_SEC
 const RATE_BURST = 40; // RATE_LIMIT_BURST
 const ALIVE_EVERY_MS = 2000; // how often the big screen tells the server its game still answers

@@ -96,7 +96,7 @@ test('too many bad messages closes the connection with 1008', async () => {
 
 test('oversized message closes the connection with 1009', async () => {
   const client = await openClient(url);
-  client.send({ type: 'player:join', code: 'BXKT', name: 'x'.repeat(40_000) }); // over the 32 KB limit
+  client.send({ type: 'player:join', code: 'BXKT', name: 'x'.repeat(140_000) }); // over the 128 KB limit
   const { code } = await client.closed;
   assert.equal(code, 1009);
 });

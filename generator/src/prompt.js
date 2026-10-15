@@ -18,10 +18,13 @@ const read = (relative) => readFileSync(new URL(relative, import.meta.url), 'utf
 
 /** Longest idea, change request or feedback we accept (the server checks this too). */
 export const MAX_IDEA_LENGTH = 1000;
-/** Longest current game file we send back to the model with a change. */
-export const MAX_SOURCE_LENGTH = 150_000;
+/**
+ * Longest current game file we send back to the model with a change. (The real ceiling is
+ * the model's context: a 300 KB file is roughly 75–100K tokens.)
+ */
+export const MAX_SOURCE_LENGTH = 300_000;
 /** The size limit the rulebook gives the model (the server's own limit is larger). */
-export const MAX_GAME_BYTES = 150 * 1024;
+export const MAX_GAME_BYTES = 300 * 1024;
 
 /** The headings every design has, in order (generator/spec/DESIGN.md). */
 export const DESIGN_HEADINGS = ['Genre and feel', 'Players', 'Big screen', 'Phones', 'Rules', 'Ending and winner', 'Length', 'Art', 'Template', 'Closest example', 'Edge cases'];

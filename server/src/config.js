@@ -17,9 +17,10 @@ export const config = {
   WS_PATH: '/ws',
 
   // Largest single message (in bytes) a client may send. Most are a few hundred bytes;
-  // the big ones are frame games' (a drawing, or the big screen's state for a phone).
-  // `ws` closes the socket with code 1009 if this is exceeded.
-  WS_MAX_PAYLOAD_BYTES: 32 * 1024,
+  // the big ones are frame games' (a drawing, the big screen's states for phones, or its
+  // party.save snapshot: an RPG's whole state). `ws` closes the socket with code 1009 if
+  // this is exceeded. Raised from 32 KB on 2026-10-15, as games get bigger.
+  WS_MAX_PAYLOAD_BYTES: 128 * 1024,
 
   // How often we ping every socket. A socket that hasn't answered the previous
   // ping by the next tick is considered dead and dropped (so worst case ~2x this).
@@ -84,14 +85,15 @@ export const config = {
 
   // --- Games ---
 
-  // Largest game file (plan §13c). It's sent to every phone when a game starts, so it
-  // should stay small; a hand-made game is ~20–40 KB. (The AI's rulebook will ask for less.)
-  FRAME_GAME_MAX_BYTES: 512 * 1024,
+  // Largest game file (plan §13c). It's sent to every phone when a game starts; a hand-made
+  // game is ~20–40 KB. The AI's rulebook asks for at most 300 KB (generator/src/prompt.js).
+  // Raised from 512 KB on 2026-10-15, as games get bigger.
+  FRAME_GAME_MAX_BYTES: 1024 * 1024,
 
   // Largest event a phone may send to the big screen (JSON size). Controls are tiny
   // ("jump", a joystick direction); a drawing is ~15 KB. The big screen's own messages
-  // are capped by WS_MAX_PAYLOAD_BYTES.
-  GAME_EVENT_MAX_BYTES: 24 * 1024,
+  // are capped by WS_MAX_PAYLOAD_BYTES. Raised from 24 KB on 2026-10-15.
+  GAME_EVENT_MAX_BYTES: 48 * 1024,
 
   // How many messages one game:batch may carry (the SDK sends at most ~20 batches a second).
   GAME_BATCH_MAX_ITEMS: 100,

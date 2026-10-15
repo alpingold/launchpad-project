@@ -1066,6 +1066,13 @@ short). Three ways to steer it:
    `--length` in the terminal), sent to the model as a fixed value, never free text. **Not
    yet: to test later.**
 
+**Size limits raised (2026-10-15), as games will get bigger:** game files 1 MB on the
+server (was 512 KB) and 300 KB in the AI's rulebook (was 150 KB); the current code sent with a
+change request 300K characters; one message from the big screen 120 KB (was 30 KB), so a
+`party.save` snapshot (a whole RPG) can be ~110 KB; the WebSocket cap 128 KB (was 32 KB);
+a phone's event 48 KB (was 24 KB). The real ceiling for changes is the model's context: a
+300 KB game is roughly 75–100K tokens.
+
 ### 13j. Example games (hand-written, also the AI's examples)
 
 | Game | Kind | Big screen | Phones | Players |

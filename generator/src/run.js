@@ -150,7 +150,7 @@ async function build(job, model, { chatFn = chat, check = checkGame, onStep = ()
   return { ...result, error: `no passing game after ${maxAttempts} attempts` };
 }
 
-/** checkGame, plus the generator's own size limit (the rulebook's 150 KB). */
+/** checkGame, plus the generator's own size limit (the rulebook's 300 KB). */
 async function checkWithSize(source, check, onStep) {
   const report = await check(source, { seconds: PLAYTEST_SECONDS, onStep: (text) => onStep(`  ${text}`) });
   const bytes = Buffer.byteLength(source);

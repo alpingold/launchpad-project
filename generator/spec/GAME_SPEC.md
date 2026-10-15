@@ -37,7 +37,7 @@ phases or screens. A game must start, react to its players, and end with `party.
   other fields.
 - It's a fragment that goes inside `<body>`: no `<html>`, `<head>` or `<body>` tags. The
   `party` SDK, its helpers and the base styles are already loaded before your code runs.
-- **At most 150 KB.** Everything is in this one file: no other files exist.
+- **At most 300 KB.** Everything is in this one file: no other files exist.
 
 ## The rules (the checks enforce them)
 
@@ -123,8 +123,9 @@ party.end({ rankings: [playerId, ...], scores: { [playerId]: number } })   // th
   them every 50 ms, so calling `setState` often is fine, but phones may send at most 20
   messages a second: send a joystick's direction when it changes, not every frame
   (`party.ui.joystick` already does this).
-- **Size limits:** a phone's event at most 24 KB; the big screen's messages at most 30 KB
-  together per 50 ms. Keep states small: send what a phone needs, not the whole game.
+- **Size limits:** a phone's event at most 48 KB; each `setState`, `sendTo` or `party.save`
+  from the big screen at most about 110 KB. Keep states small anyway: send each phone what it
+  needs, not the whole game.
 - **`party.end`:** `rankings` lists player ids best first (each at most once, only players
   in this game); `scores` is optional. Show a final screen on the big screen for a few
   seconds first, then call `party.end` (the platform then goes back to the lobby).

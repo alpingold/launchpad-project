@@ -38,7 +38,7 @@ const ASSETS_DIR = path.join(REPO, 'client/public/game-assets');
 
 const HOST_VIEWPORT = { width: 1280, height: 720 };
 const PHONE_VIEWPORT = { width: 390, height: 780 };
-const HOST_MESSAGE_MAX_BYTES = 30 * 1024; // as GameFrame.jsx
+const HOST_MESSAGE_MAX_BYTES = 120 * 1024; // as GameFrame.jsx
 const RATE_PER_SEC = config.RATE_LIMIT_PER_SEC;
 const RATE_BURST = config.RATE_LIMIT_BURST;
 const HANG_MS = 5000; // the big screen ticks every second; 5 s of silence means it's stuck

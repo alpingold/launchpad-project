@@ -216,10 +216,10 @@ test('build job: gives up after the attempts, keeping the last game and report; 
   assert.match(result.error, /after 2 attempts/);
   assert.equal(result.source, GAME.trim() + '\n');
 
-  const huge = `${GAME}<!-- ${'x'.repeat(160 * 1024)} -->\n`;
+  const huge = `${GAME}<!-- ${'x'.repeat(310 * 1024)} -->\n`;
   const big = await runJob({ step: 'build', idea: 'A racing platformer for friends', design: DESIGN, maxAttempts: 1 }, { chatFn: fakeModel([fenced('html', huge)]).chatFn, check: passing });
   assert.equal(big.ok, false);
-  assert.match(big.report.problems[0].message, /the limit is 150 KB/);
+  assert.match(big.report.problems[0].message, /the limit is 300 KB/);
 });
 
 test('build job for a change: the changelog is kept', async () => {
