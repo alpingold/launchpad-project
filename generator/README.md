@@ -1,33 +1,35 @@
 # Game generator (AI-made games)
 
-> **Branch `iframe-games`: switched off.** The prompt, spec and write → check → fix loop
-> (`src/prompt.js`, `src/run.js`, `spec/GAME_SPEC.md`) were for block games and are removed
-> here; `npm run generate` and the admin page say so. They're rewritten for frame games, with
-> a design step you approve before any code is written, in milestone F5 (docs/PLAN.md §13i).
-> `src/llm.js`, `src/extract.js`, `src/models.js`, the Dockerfile and the OpenShell setup
-> below stay. The block version of everything is on `main`.
->
-> **New in F4: the game checker** (`src/check/`), which the F5 loop will use for each attempt.
-> See "Checking a game" below.
+> **Branch `iframe-games`: frame games, designed first (F5, plan §13i).** Every game is
+> made in two steps you approve: the AI writes a short **design**, you read it (ask for a new
+> draft, or edit it), and only **Build it** writes the code, which is checked in the sandbox
+> by the static check and a playtest in a headless browser. Changes work the same way, with
+> a short **plan** first (a small fix may skip it). The block version is on `main`.
 
-The code here runs **inside an OpenShell sandbox**, never on the game server. It asks a
-model on Purdue GenAI Studio to write a game, then tests the new code with simulated
-players, all inside the sandbox (plan §11). If the tests fail, the model gets the list of
-problems and tries again (up to 4 attempts).
+The code here runs **inside an OpenShell sandbox**, never on the game server: that's where
+the GenAI Studio key is, and where freshly written games are played for the first time.
+Each sandbox job is one step (`src/run.js`): a design (or plan, or new draft), or a build.
+A build asks the model for the game file, checks it, and if it fails, sends the model the
+problems (by line and screen) and tries again, up to 4 attempts.
 
 ```
 generator/
-  src/run.js                    the loop: ask the model → run the test harness → fix → ...
-                                (with `change` in the job: rewrite an existing game; see run.js)
-  src/prompt.js                 what the model reads: spec + block reference + 3 example games + art list + the idea
+  src/run.js                    one job: { step: 'design' | 'build', idea, design?, change?, redraft? }
+                                design → a design or change plan; build → write → check → fix
+  src/prompt.js                 what the model reads: design step = rulebook + design format + 3 example
+                                designs + art list + the idea; build step = rulebook + the template and
+                                closest example (with its design) that the design names + the design
   src/llm.js                    GenAI Studio chat API (plain fetch, retries on rate limits)
-  src/extract.js                pulls the code out of the model's reply
+  src/extract.js                pulls the game file, design or list of changes out of a reply
   src/models.js                 the allowed models
   src/check/checkGame.js        F4: game info + static check + browser playtest → one report
   src/check/playtest.js         F4: plays the game in headless Chromium with simulated phones
   src/check/cli.js              F4: `npm run check-game -- <file>`
   test/                         F4: the checker on broken games (`npm run test:check`)
-  spec/GAME_SPEC.md             the game contract, written for the model
+  spec/GAME_SPEC.md             F5: the rulebook: how frame games work, the party SDK, party.ui (also /kit)
+  spec/DESIGN.md                F5: how a design is written: the fixed headings (also /kit)
+  spec/designs/                 F5: designs of the three official games, in that format
+  templates/                    F3: starter templates (rounds, realtime, turns) the build may start from
   Dockerfile                    the sandbox image (+ Dockerfile.dockerignore, an allow-list)
   openshell/genai-studio.yaml   provider profile: how the sandbox uses the API key without seeing it
   openshell/policy.yaml         sandbox policy: which files it may read/write (network comes from the provider)
@@ -76,20 +78,24 @@ docker run --rm --network none -v "$PWD/game.html:/tmp/game.html:ro" boilergames
 
 ## Generating a game
 
-After the one-time setup below, from the repo root:
+The usual way is the admin page (`/admin`, needs `GENERATION_ENABLED=1`). From a terminal,
+after the one-time setup below, from the repo root:
 
 ```bash
 docker build -f generator/Dockerfile -t boilergames-generator:local .   # again after changing the
                                                                         # generator, spec, or game code
-npm run generate -- "Rock paper scissors party: everyone picks at once, 3 rounds"
+npm run generate -- "A racing platformer where everyone shares one level"
 ```
 
-It prints its progress, then saves `game.js` and `result.json` (the test report and every
-attempt) in `generator/out/<time>/`. Nothing is stored or run on the server. **Read the
-code**: the tests catch broken games, not unfair or confusing ones. If you like it:
+It writes the design to `generator/out/<time>/design.md` and shows it. Press Enter to build
+it, type feedback for a new draft, `e` to edit the file yourself, or `q` to stop. The build
+saves `game.html`, `result.json` (the report and every attempt) and the playtest's
+screenshots next to it. `--design <file>` builds from a design you already have; `--yes`
+builds the first design without asking. Nothing is stored or run on the server. **Read the
+code**: the checks catch broken games, not unfair or confusing ones. If you like it:
 
 ```bash
-npm run admin -- import-game generator/out/<time>/game.js --owner <your username>
+npm run admin -- import-game generator/out/<time>/game.html --owner <your username>
 ```
 
 How it runs (`server/src/generation/sandbox.js`): `openshell sandbox create` (a fresh

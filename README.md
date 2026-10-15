@@ -145,8 +145,8 @@ Admins can generate new games with AI (plan §11); later, any host with their ow
 Studio key may too. The generator runs inside an
 OpenShell sandbox using Purdue GenAI Studio; setup steps and model choices are in
 [`generator/README.md`](generator/README.md). The game server itself doesn't need any of this.
-With that set up, `npm run generate -- "<game idea>"` writes a game in the sandbox and saves
-it under `generator/out/` for you to read.
+With that set up, `npm run generate -- "<game idea>"` writes a design, lets you approve it,
+then builds the game in the sandbox and saves it under `generator/out/` for you to read.
 
 Admins do it from the **admin page at `/admin`** (linked from the home page when you're
 logged in as an admin). It uses the server's `/api/admin/generations` API. Generating is off
@@ -156,20 +156,22 @@ unless you start the server with `GENERATION_ENABLED=1`:
 GENERATION_ENABLED=1 npm run dev:server
 ```
 
-On the admin page you type an idea and watch its progress. Jobs run one at a time. A
-finished game waits for review with its test report and code (shown as text; the admin
+On the admin page you type an idea and the AI writes a short **design** first (genre, what
+the big screen and phones show, the rules, how it ends, edge cases). Read it, ask for a new
+draft ("make it 2 rounds") or edit it yourself, then press **Build it** (plan §13i). Jobs run
+one at a time. A finished game waits for review with its check report, the playtest's
+screenshots, and its code (shown as text; the admin
 page never runs it). **Playtest** makes a version startable by you alone, **Publish** makes it
 available to every host, and **Unpublish** takes it away. All of these apply immediately,
 without a restart. Hosts see an **AI-made** badge on these games.
 
 **Asking for changes** (plan §12e) makes a new version of a game: describe what to change
-("rounds are too long; show the scoreboard after each round") and the AI rewrites the game
-from that version's code, tested the same way. Each version shows the request, the AI's list
+("rounds are too long; show the scoreboard after each round"), read the AI's short **plan**
+of the change, and build it; the AI rewrites the game from that version's code, checked the
+same way. Tick **Small fix** to skip the plan. Each version shows the request, the AI's list
 of changes and the **changed lines**. You can playtest a new version while everyone else keeps
 playing the published one, then publish it; rolling back means playtesting an older version
 and publishing it.
 
-**On this branch, generating is switched off** until the generator writes frame games, with a
-design step you approve before any code is written (plan §13i, milestone F5). The admin page,
-versions, changed lines, playtest and publish all work. Games can be added with
-`npm run admin -- import-game`.
+The AI follows the guide at **`/kit`**, which shows the same rulebook it reads
+(`generator/spec/`). Games can also be added by hand with `npm run admin -- import-game`.
