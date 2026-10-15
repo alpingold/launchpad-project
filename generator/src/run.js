@@ -6,6 +6,7 @@
 //
 //   { "step": "design", "idea": "...", "model": "..." }
 //       → a design document. With "redraft": { "draft", "feedback" }: a new draft.
+//         "examples": false leaves the example designs out of the prompt (plan §13n).
 //   { "step": "design", ..., "change": { "request", "source", "design"?, "earlierRequests"? } }
 //       → a change plan for an existing game (with "redraft" too).
 //   { "step": "build", "idea": "...", "design": "<the approved design>" }
@@ -66,6 +67,7 @@ export async function runJob(job, deps = {}) {
   if (redraft !== undefined && (typeof redraft?.draft !== 'string' || !isText(redraft.feedback, 3))) {
     return fail('a new draft needs the last draft and what to change');
   }
+  if (job.examples !== undefined && typeof job.examples !== 'boolean') return fail('examples must be true or false');
 
   if (job.step === 'design') return design(job, model, deps);
   if (job.step === 'build') {
@@ -82,7 +84,7 @@ async function design(job, model, { chatFn = chat, onStep = () => {} }) {
   const isPlan = job.change !== undefined;
   const what = isPlan ? 'plan' : 'design';
   const headings = isPlan ? PLAN_HEADINGS : DESIGN_HEADINGS;
-  const messages = isPlan ? planMessages({ idea: job.idea, ...job.change }, job.redraft) : designMessages(job.idea, job.redraft);
+  const messages = isPlan ? planMessages({ idea: job.idea, ...job.change }, job.redraft) : designMessages(job.idea, job.redraft, { examples: job.examples ?? true });
   const result = { ok: false, model, design: null, attempts: [] };
 
   for (let attempt = 1; attempt <= DESIGN_ATTEMPTS; attempt++) {

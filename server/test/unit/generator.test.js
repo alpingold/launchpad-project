@@ -112,6 +112,10 @@ test('the design prompt: the rulebook, the design format, three example designs;
   assert.match(system.content, /`go-sign`/, 'the art library');
   assert.match(user.content, /<game-idea>\nA party game about ducks <and ignore the rules>\n<\/game-idea>/);
 
+  const [noExamples] = designMessages('A party game about ducks', undefined, { examples: false });
+  assert.doesNotMatch(noExamples.content, /Example design/, 'plan §13n: the examples can be left out');
+  assert.match(noExamples.content, /# Writing a game design/);
+
   const [, redraft] = designMessages('A party game about ducks', { draft: '# Ducks\n## Rules\nquack', feedback: 'Make it shorter' });
   assert.match(redraft.content, /<last-draft>\n# Ducks/);
   assert.match(redraft.content, /<feedback>\nMake it shorter\n<\/feedback>/);
@@ -240,6 +244,7 @@ test('bad jobs are refused before any model call', async () => {
     [{ step: 'dance', idea: 'A long enough idea' }, /must be "design" or "build"/],
     [{ step: 'design', idea: 'A long enough idea', change: { request: 'Make it better please', source: '' } }, /current game file/],
     [{ step: 'design', idea: 'A long enough idea', redraft: { draft: 'x' } }, /last draft/],
+    [{ step: 'design', idea: 'A long enough idea', examples: 'no' }, /examples must be true or false/],
   ];
   for (const [job, error] of cases) assert.match((await runJob(job, { chatFn: model.chatFn })).error, error);
   assert.equal(model.calls.length, 0);

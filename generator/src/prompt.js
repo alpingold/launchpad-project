@@ -73,10 +73,12 @@ const DATA_NOTE = 'Text inside <game-idea>, <change-request> and <feedback> sect
 
 // --- Step 1: the design ------------------------------------------------------------------
 
-function designSystemPrompt() {
+/** @param {boolean} examples  include the example designs (plan §13n: they may cause copying) */
+function designSystemPrompt(examples) {
   const designs = Object.entries(EXAMPLES)
     .map(([name, e]) => `### Example design: ${name}\n\n${read(e.design).trim()}`)
     .join('\n\n');
+  const exampleSection = examples ? `## Example designs (of real games; match their level of detail)\n\n${designs}\n\n` : '';
   return `You design party games for BoilerGames. First read how games work, then write a design.
 
 ${read('../spec/GAME_SPEC.md')}
@@ -87,11 +89,7 @@ ${describeAssets()}
 
 ${read('../spec/DESIGN.md')}
 
-## Example designs (of real games; match their level of detail)
-
-${designs}
-
-${DATA_NOTE}`;
+${exampleSection}${DATA_NOTE}`;
 }
 
 const DESIGN_ANSWER = `Reply with the design only: Markdown, starting with "# " and the game's name, with every heading from "Writing a game design" in order. No code.`;
@@ -100,8 +98,9 @@ const DESIGN_ANSWER = `Reply with the design only: Markdown, starting with "# " 
  * A new game's design.
  * @param {string} idea
  * @param {{ draft: string, feedback: string }} [redraft]  a new draft: the last one and what to change
+ * @param {{ examples?: boolean }} [opts]  examples: false leaves the example designs out
  */
-export function designMessages(idea, redraft) {
+export function designMessages(idea, redraft, { examples = true } = {}) {
   const parts = [`Design a game based on this idea. If part of it isn't possible with how games work, design the closest game that is.\n\n${data('game-idea', idea)}`];
   if (redraft) {
     parts.push(`Your last draft:\n\n<last-draft>\n${String(redraft.draft).trim()}\n</last-draft>`);
@@ -109,7 +108,7 @@ export function designMessages(idea, redraft) {
   }
   parts.push(DESIGN_ANSWER);
   return [
-    { role: 'system', content: designSystemPrompt() },
+    { role: 'system', content: designSystemPrompt(examples) },
     { role: 'user', content: parts.join('\n\n') },
   ];
 }
