@@ -57,6 +57,16 @@ test('starting checks the input and the switch', () => {
   const off = setup({ enabled: false });
   assert.equal(codeOf(() => off.service.start({ ownerUserId: off.admin.id, idea: IDEA })), 'GENERATION_DISABLED');
   assert.equal(off.service.info().enabled, false);
+  assert.match(off.service.info().disabledReason, /GENERATION_ENABLED=1/);
+});
+
+test('on the iframe-games branch, the real sandbox generator is switched off until it makes frame games (F5)', () => {
+  const db = openDatabase(':memory:');
+  const admin = createUser(db, 'admin', 'scrypt$x');
+  const service = new GenerationService({ db, games: new GameRegistry(), enabled: true, log: () => {} });
+  assert.equal(service.info().enabled, false);
+  assert.match(service.info().disabledReason, /frame games/);
+  assert.equal(codeOf(() => service.start({ ownerUserId: admin.id, idea: IDEA })), 'GENERATION_DISABLED');
 });
 
 test('a job runs in the background, shows progress, and ends up as version 1, ready for review', async () => {

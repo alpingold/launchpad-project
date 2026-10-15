@@ -12,7 +12,6 @@ COPY server/package.json server/package.json
 COPY server/src server/src
 COPY generator/package.json generator/package.json
 COPY generator/src generator/src
-COPY generator/spec generator/spec
 # Same relative path as in the repo, so config.js finds it without an environment
 # variable (`openshell sandbox exec` doesn't pass the image's ENV to commands).
 COPY client/public/game-assets/manifest.json client/public/game-assets/manifest.json

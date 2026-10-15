@@ -1,5 +1,12 @@
 # Game generator (AI-made games)
 
+> **Branch `iframe-games`: switched off.** The prompt, spec and write → check → fix loop
+> (`src/prompt.js`, `src/run.js`, `spec/GAME_SPEC.md`) were for block games and are removed
+> here; `npm run generate` and the admin page say so. They're rewritten for frame games, with
+> a design step you approve before any code is written, in milestone F5 (docs/PLAN.md §13i).
+> `src/llm.js`, `src/extract.js`, `src/models.js`, the Dockerfile and the OpenShell setup
+> below stay. The block version of everything is on `main`.
+
 The code here runs **inside an OpenShell sandbox**, never on the game server. It asks a
 model on Purdue GenAI Studio to write a game, then tests the new code with simulated
 players, all inside the sandbox (plan §11). If the tests fail, the model gets the list of

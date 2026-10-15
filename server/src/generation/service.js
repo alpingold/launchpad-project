@@ -45,6 +45,9 @@ export class GenerationError extends Error {
   }
 }
 
+/** Flipped to true in F5, once the generator in the sandbox writes frame games. */
+const SANDBOX_MAKES_FRAME_GAMES = false;
+
 export class GenerationService {
   /**
    * @param {Object} deps
@@ -57,7 +60,16 @@ export class GenerationService {
   constructor({ db, games, enabled, runGenerator = runGeneratorInSandbox, log = (m) => console.log(m) }) {
     this.db = db;
     this.games = games;
-    this.enabled = enabled;
+    // Branch iframe-games: the sandbox's generator was written for block games, which this
+    // server no longer runs. It comes back for frame games in F5 (plan §13i). Until then
+    // only a stand-in generator (the tests' fake) can make games.
+    const sandboxReady = runGenerator !== runGeneratorInSandbox || SANDBOX_MAKES_FRAME_GAMES;
+    this.enabled = Boolean(enabled) && sandboxReady;
+    this.disabledReason = !enabled
+      ? "Generating games isn't set up on this server (start it with GENERATION_ENABLED=1; see generator/README.md)."
+      : sandboxReady
+        ? null
+        : "The AI generator doesn't make frame games yet (plan §13, milestone F5).";
     this.runGenerator = runGenerator;
     this.log = log;
     /** @type {string[]} ids of games with a version waiting to run, oldest first */
@@ -79,13 +91,13 @@ export class GenerationService {
 
   /** What the admin page needs to know before starting anything. */
   info() {
-    return { enabled: this.enabled, models: MODELS, defaultModel: DEFAULT_MODEL, minIdeaLength: MIN_IDEA_LENGTH, maxIdeaLength: MAX_IDEA_LENGTH };
+    return { enabled: this.enabled, disabledReason: this.disabledReason, models: MODELS, defaultModel: DEFAULT_MODEL, minIdeaLength: MIN_IDEA_LENGTH, maxIdeaLength: MAX_IDEA_LENGTH };
   }
 
   /** Refuses new work if generating is off or the queue is full. */
   checkCanQueue() {
     if (!this.enabled) {
-      throw new GenerationError(503, 'GENERATION_DISABLED', "Generating games isn't set up on this server (see generator/README.md).");
+      throw new GenerationError(503, 'GENERATION_DISABLED', this.disabledReason);
     }
     if (this.queue.length + (this.running ? 1 : 0) >= MAX_QUEUED) {
       throw new GenerationError(429, 'QUEUE_FULL', `${MAX_QUEUED} games are already being made. Wait for one to finish.`);

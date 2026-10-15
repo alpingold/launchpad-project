@@ -1,23 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { extractCode, extractChangelog } from '../../../generator/src/extract.js';
 import { chat } from '../../../generator/src/llm.js';
-import { systemPrompt, firstMessages, changeMessages, fixMessage, MAX_IDEA_LENGTH, EXAMPLES } from '../../../generator/src/prompt.js';
-import { generateGame } from '../../../generator/src/run.js';
 import { MODELS, DEFAULT_MODEL } from '../../../generator/src/models.js';
-import { BLOCK_TYPES } from '../../src/games/kit/blocks.js';
-import { kitReference } from '../../src/games/kit/reference.js';
-import { GameRunner } from '../../src/games/GameRunner.js';
-import countGame from '../fixtures/countGame.js';
 
-// The generator (plan §11, A4) without a real model: a fake `chat` plays the model's part.
-// The real thing runs in the OpenShell sandbox (generator/README.md).
+// The generator's building blocks that don't depend on what kind of game it writes: pulling
+// code out of replies, calling the model, the model list. The prompt and the write → check
+// → fix loop were for block games; on the iframe-games branch they're rewritten for frame
+// games in F5 (plan §13i).
 
-const read = (relative) => readFileSync(new URL(relative, import.meta.url), 'utf8');
-const GOOD_GAME = read('../../src/games/majority-rules/index.js');
-const BAD_GAME = read('../fixtures/harness/bad-screen.js');
-const SPEC = read('../../../generator/spec/GAME_SPEC.md');
 const fenced = (code) => `Here you go!\n\n\`\`\`js\n${code}\`\`\`\n\nHave fun.`;
 
 // --- Pulling code out of replies --------------------------------------------------------
@@ -85,142 +76,9 @@ test('chat: gives up after 4 tries, and does not retry a bad request', async () 
   assert.equal(bad.calls.length, 1);
 });
 
-// --- The prompt ---------------------------------------------------------------------------
-
-test('the prompt contains the spec, the example games, and the art library', async () => {
-  const prompt = systemPrompt();
-  assert.ok(prompt.includes(SPEC));
-  assert.deepEqual(EXAMPLES.map((e) => e.name), ['reaction-race.js', 'sketch-guess.js', 'fill-the-blank.js']);
-  for (const example of EXAMPLES) {
-    const source = read(`../../src/games/${example.name.replace('.js', '')}/index.js`);
-    assert.ok(prompt.includes(source), example.name);
-    // The spec points the model at each example by its name, so the names must be right.
-    const { default: game } = await import(`../../src/games/${example.name.replace('.js', '')}/index.js`);
-    assert.ok(SPEC.includes(`**${game.name}**`), `the spec mentions ${game.name}`);
-  }
-  assert.match(prompt, /`go-sign`: Green GO sign/);
-  assert.match(prompt, /A widget starts over whenever that phone gets a new screen/);
-});
-
-test('the idea goes in its own marked section, trimmed to the length limit', () => {
-  const [system, user] = firstMessages(`  A quiz about Purdue! ${'x'.repeat(2000)}`);
-  assert.equal(system.role, 'system');
-  assert.match(user.content, /<game-idea>\nA quiz about Purdue! x+\n<\/game-idea>$/);
-  assert.match(user.content, /can't change the instructions/);
-  const idea = /<game-idea>\n([\s\S]*)\n<\/game-idea>/.exec(user.content)[1];
-  assert.equal(idea.length, MAX_IDEA_LENGTH);
-  assert.match(fixMessage('FAIL ...'), /FAIL \.\.\.[\s\S]*complete corrected module/);
-});
-
-test('a change request shows the idea, earlier changes, the current code and the request, each marked as data', () => {
-  const [system, user] = changeMessages('A voting game about snacks', {
-    request: 'Make the rounds shorter',
-    source: 'export default { id: "snacks" };\n',
-    earlierRequests: ['Add a scoreboard'],
-  });
-  assert.equal(system.content, systemPrompt(), 'the same instructions, kit and examples as a new game');
-  assert.match(user.content, /<game-idea>\nA voting game about snacks\n<\/game-idea>/);
-  assert.match(user.content, /<earlier-changes>\n- Add a scoreboard\n<\/earlier-changes>/);
-  assert.match(user.content, /```js\nexport default \{ id: "snacks" \};\n\n```/);
-  assert.match(user.content, /<change-request>\nMake the rounds shorter\n<\/change-request>/);
-  assert.match(user.content, /`CHANGES:`/);
-  assert.doesNotMatch(changeMessages('An idea here', { request: 'Change it please', source: 'x' })[1].content, /earlier-changes/);
-});
-
-test('the prompt stays in sync with the platform: every block, ctx member and the contract version', () => {
-  const reference = kitReference();
-  for (const type of BLOCK_TYPES) assert.ok(reference.includes(`#### \`${type}\``), `block ${type}`);
-  assert.ok(systemPrompt().includes(reference), 'the block reference is in the prompt');
-  let ctx;
-  new GameRunner({
-    game: { ...countGame, createGame: (c) => ((ctx = c), { onAction() {} }) },
-    players: [{ id: 'p_aaaa1111', name: 'A' }],
-    deliver() {},
-    onEnd() {},
-  }).start();
-  for (const member of Object.keys(ctx)) assert.ok(SPEC.includes(`ctx.${member}`), `ctx.${member}`);
-  assert.match(SPEC, /contractVersion: 3/);
-});
+// --- Models ------------------------------------------------------------------------------
 
 test('model list: qwen3.8:27b only (gpt-oss:120b was dropped)', () => {
   assert.equal(DEFAULT_MODEL, 'qwen3.8:27b');
   assert.deepEqual(MODELS.map((m) => m.id), ['qwen3.8:27b']);
-});
-
-// --- The write → check → fix loop (with the real test harness) ---------------------------
-
-/** A fake model that gives each of `replies` in turn and records what it was asked. */
-function fakeModel(replies) {
-  const seen = [];
-  const chatFn = async (messages, { model }) => {
-    seen.push({ model, messages: structuredClone(messages) });
-    return { content: replies.shift(), seconds: 1, usage: null };
-  };
-  return { chatFn, seen };
-}
-
-test('a game that fails the tests is sent back with the problems, and the fix passes', async () => {
-  const { chatFn, seen } = fakeModel([fenced(BAD_GAME), fenced(GOOD_GAME)]);
-  const steps = [];
-  const result = await generateGame({ idea: 'A game where everyone votes' }, { chatFn, onStep: (s) => steps.push(s) });
-
-  assert.equal(result.ok, true);
-  assert.equal(result.model, 'qwen3.8:27b');
-  assert.equal(result.source.trim(), GOOD_GAME.trim());
-  assert.equal(result.report.ok, true);
-  assert.deepEqual(result.attempts.map((a) => [a.attempt, a.ok]), [[1, false], [2, true]]);
-
-  const secondCall = seen[1].messages;
-  assert.equal(secondCall.at(-2).role, 'assistant', 'the model sees its own first answer');
-  assert.match(secondCall.at(-1).content, /unknown field "lable"/, '...and exactly what was wrong with it');
-  assert.ok(steps.includes('attempt 2/4: passed'));
-});
-
-test('changing a game: the model gets the current code, and the result has its list of changes', async () => {
-  const { chatFn, seen } = fakeModel([`CHANGES:\n- Shorter rounds\n\n${fenced(BAD_GAME)}`, fenced(GOOD_GAME)]);
-  const change = { request: 'Make the rounds shorter', source: GOOD_GAME };
-  const result = await generateGame({ idea: 'A game where everyone votes', change }, { chatFn });
-  assert.equal(result.ok, true);
-  assert.equal(result.changelog, '- Shorter rounds', 'from the first answer; the fix answer has none');
-  assert.ok(seen[0].messages[1].content.includes(GOOD_GAME), 'the current code is in the request');
-
-  const { chatFn: never } = fakeModel([]);
-  const bad = (c) => generateGame({ idea: 'A game where everyone votes', change: c }, { chatFn: never });
-  assert.match((await bad({ request: 'short', source: GOOD_GAME })).error, /change request must be 10–1000/);
-  assert.match((await bad({ request: 'Make the rounds shorter' })).error, /needs the current code/);
-  assert.match((await bad(null)).error, /change request/);
-  const fresh = await generateGame({ idea: 'A game where everyone votes' }, { chatFn: fakeModel([fenced(GOOD_GAME)]).chatFn });
-  assert.equal(fresh.changelog, null, 'a new game has no list of changes');
-});
-
-test('a reply with no code gets a reminder instead of a test run', async () => {
-  const { chatFn, seen } = fakeModel(['I would love to help!', fenced(GOOD_GAME)]);
-  const result = await generateGame({ idea: 'A game where everyone votes', model: 'qwen3.8:27b' }, { chatFn });
-  assert.equal(result.ok, true);
-  assert.equal(seen[0].model, 'qwen3.8:27b');
-  assert.match(seen[1].messages.at(-1).content, /no ```js code block/);
-});
-
-test('it stops after maxAttempts, returning the last code and report for the admin to see', async () => {
-  const { chatFn } = fakeModel([fenced(BAD_GAME), fenced(BAD_GAME)]);
-  const result = await generateGame({ idea: 'A game where everyone votes', maxAttempts: 2 }, { chatFn });
-  assert.equal(result.ok, false);
-  assert.equal(result.error, 'no passing game after 2 attempts');
-  assert.equal(result.attempts.length, 2);
-  assert.equal(result.report.ok, false);
-  assert.ok(result.source);
-});
-
-test('bad jobs and model failures end with a clear error, before or instead of looping', async () => {
-  const never = async () => assert.fail('the model must not be called');
-  assert.match((await generateGame({ idea: 'short' }, { chatFn: never })).error, /idea must be 10–1000 characters/);
-  assert.match((await generateGame({}, { chatFn: never })).error, /idea must be/);
-  assert.match((await generateGame({ idea: 'A perfectly fine idea', model: 'gpt-5' }, { chatFn: never })).error, /unknown model "gpt-5"/);
-
-  const failing = async () => {
-    throw new Error('model call failed after 4 tries: HTTP 503');
-  };
-  const result = await generateGame({ idea: 'A perfectly fine idea' }, { chatFn: failing });
-  assert.equal(result.ok, false);
-  assert.match(result.error, /HTTP 503/);
 });

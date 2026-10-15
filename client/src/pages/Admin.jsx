@@ -188,8 +188,7 @@ function NewGameForm({ info, onStarted }) {
       <h2 id="new-game-heading">Make a game</h2>
       {!info.enabled && (
         <p className="banner" role="status">
-          Generating games isn't set up on this server (start it with GENERATION_ENABLED=1; see generator/README.md).
-          You can still manage the games below.
+          {info.disabledReason} You can still manage the games below.
         </p>
       )}
       <form className="admin-form" onSubmit={handleSubmit}>

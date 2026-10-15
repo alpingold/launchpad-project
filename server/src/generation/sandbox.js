@@ -54,7 +54,7 @@ export function runCommand(bin, args, { input, timeoutMs, onStderrLine = () => {
  * Generates a game in a fresh sandbox.
  * @param {{ idea: string, model?: string, maxAttempts?: number }} job
  * @param {{ onStep?: (text: string) => void, cfg?: typeof config, run?: typeof runCommand }} [deps]
- * @returns {Promise<import('../../../generator/src/run.js').GenerateResult>}
+ * @returns {Promise<object>} the generator's result: { ok, model, source, report, changelog, attempts, error? }
  */
 export async function runGeneratorInSandbox(job, { onStep = () => {}, cfg = config, run = runCommand } = {}) {
   const name = `bg-gen-${randomBytes(4).toString('hex')}`; // OpenShell allows at most 19 characters
