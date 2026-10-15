@@ -8,11 +8,18 @@ import {
   playtestVersion,
   actOnGeneration,
   deleteGeneration,
+  redesignVersion,
+  saveDesign,
+  buildVersion,
+  discardVersion,
 } from '../net/admin.js';
 import { usePageTitle } from '../usePageTitle.js';
+import Markdown from '../components/Markdown.jsx';
 
-// The admin page (plan §11 A6, versions §12e K6): make games with AI, read them, ask for
-// changes (each makes a new version), and choose which version is live. The server does all
+// The admin page (plan §11 A6, versions §12e K6, designs §13i F5): make games with AI. The AI
+// writes a design first; you read it, ask for a new draft or edit it, and click "Build it".
+// Then read the code and the checks, ask for changes (each makes a new version, with a plan
+// first), and choose which version is live. The server does all
 // the checking (admin only, valid input, allowed moves); this page only shows what it says.
 //
 // Progress: while a game is being made, the page asks the server for the list every 2 s.
@@ -23,7 +30,9 @@ const LOGIN_URL = '/login?next=/admin';
 
 /** A game's status, in words (the server works it out from its versions). */
 const STATUS_TEXT = {
-  generating: 'Generating',
+  designing: 'Writing the design',
+  design: 'Design to read',
+  generating: 'Building',
   failed: 'Failed',
   review: 'Ready for review',
   playtest: 'Playtest (only you)',
@@ -32,10 +41,14 @@ const STATUS_TEXT = {
 
 /** A version's status, in words. */
 const VERSION_STATUS_TEXT = {
-  generating: 'Generating',
+  designing: 'Writing the design',
+  design_ready: 'Design ready',
+  generating: 'Building',
   failed: 'Failed',
-  ready: 'Passed the tests',
+  ready: 'Passed the checks',
 };
+/** A change's design is a plan; the words follow. */
+const PLAN_STATUS_TEXT = { ...VERSION_STATUS_TEXT, designing: 'Writing the plan', design_ready: 'Plan ready' };
 
 export default function Admin() {
   usePageTitle('Admin');
@@ -87,8 +100,8 @@ function AdminPanel() {
     refresh();
   }, [refresh]);
 
-  // Keep asking while something is being made, and stop once nothing is.
-  const anyGenerating = games?.some((g) => g.status === 'generating') ?? false;
+  // Keep asking while something is being made (or waits in line), and stop once nothing is.
+  const anyGenerating = games?.some((g) => g.progress !== null || g.status === 'designing' || g.status === 'generating') ?? false;
   useEffect(() => {
     if (!anyGenerating) return undefined;
     const timer = setInterval(refresh, POLL_MS);
@@ -101,9 +114,10 @@ function AdminPanel() {
     <main className="page admin">
       <h1>AI games</h1>
       <p className="muted">
-        Describe a game; the AI writes it and tests it in a sandbox. A game is a web page that runs in a locked-down frame
-        on the big screen and the phones, never on this server. Nobody can play it until you read the code and press
-        Playtest.
+        Describe a game. The AI writes a short design first: read it, ask for changes or edit it, then press Build it. The
+        AI then writes the game and checks it in a sandbox, playing it in a hidden browser. A game is a web page that runs
+        in a locked-down frame on the big screen and the phones, never on this server. Nobody can play it until you read
+        the code and press Playtest.
       </p>
       {loadError && (
         <p className="error" role="alert">
@@ -238,7 +252,7 @@ function NewGameForm({ info, onStarted }) {
           </p>
         )}
         <button type="submit" className="primary-button" disabled={!info.enabled || !fits || busy}>
-          Generate
+          Write the design
         </button>
       </form>
     </section>
@@ -284,7 +298,7 @@ function GameDetail({ summary, info, onChanged, onDeleted }) {
   }
 
   async function remove() {
-    const waiting = summary.status === 'generating';
+    const waiting = summary.progress !== null;
     if (!window.confirm(waiting ? 'Cancel making this game?' : 'Delete this game and all its versions for good?')) return;
     setBusy(true);
     const res = await deleteGeneration(summary.id);
@@ -362,7 +376,7 @@ function GameDetail({ summary, info, onChanged, onDeleted }) {
         )}
         {!running && (
           <button type="button" className="secondary-button danger-button" onClick={remove} disabled={busy}>
-            {summary.status === 'generating' ? 'Cancel' : 'Delete game'}
+            {summary.progress !== null ? 'Cancel' : 'Delete game'}
           </button>
         )}
       </div>
@@ -370,8 +384,8 @@ function GameDetail({ summary, info, onChanged, onDeleted }) {
       {game && (
         <ChangeForm
           game={game}
-          enabled={info.enabled && summary.status !== 'generating'}
-          onAsk={(text, basedOn) => run(() => requestChanges(summary.id, text, basedOn))}
+          enabled={info.enabled && !summary.progress && !game.versions.some((v) => ['designing', 'design_ready', 'generating'].includes(v.status))}
+          onAsk={(text, basedOn, skipDesign) => run(() => requestChanges(summary.id, text, basedOn, skipDesign))}
           info={info}
         />
       )}
@@ -383,8 +397,14 @@ function GameDetail({ summary, info, onChanged, onDeleted }) {
           version={v}
           open={i === 0}
           live={v.version === published ? 'published' : v.version === playtest ? 'playtest' : null}
-          busy={busy}
+          busy={busy || Boolean(summary.progress)}
+          info={info}
+          canDiscard={i === 0 && v.version > 1 && ['design_ready', 'failed'].includes(v.status)}
           onPlaytest={() => run(() => playtestVersion(summary.id, v.version))}
+          onRedesign={(feedback) => run(() => redesignVersion(summary.id, v.version, feedback))}
+          onSaveDesign={(design) => run(() => saveDesign(summary.id, v.version, design))}
+          onBuild={() => run(() => buildVersion(summary.id, v.version))}
+          onDiscard={() => run(() => discardVersion(summary.id, v.version), `Throw away v${v.version}? Its ${v.basedOn === null ? 'design' : 'plan'} and request are deleted.`)}
         />
       ))}
     </section>
@@ -398,13 +418,17 @@ function ChangeForm({ game, enabled, onAsk, info }) {
   const fallback = game.playtestVersion ?? game.publishedVersion ?? ready.at(-1)?.version ?? null;
   const [text, setText] = useState('');
   const [basedOn, setBasedOn] = useState(fallback);
+  const [smallFix, setSmallFix] = useState(false);
   const length = text.trim().length;
   if (ready.length === 0) return null;
   const base = ready.some((v) => v.version === basedOn) ? basedOn : fallback;
 
   async function handleSubmit(event) {
     event.preventDefault();
-    if (await onAsk(text, base)) setText('');
+    if (await onAsk(text, base, smallFix)) {
+      setText('');
+      setSmallFix(false);
+    }
   }
 
   return (
@@ -432,22 +456,30 @@ function ChangeForm({ game, enabled, onAsk, info }) {
             ))}
           </select>
         </label>
+        <label className="gen-small-fix">
+          <input type="checkbox" checked={smallFix} onChange={(e) => setSmallFix(e.target.checked)} disabled={!enabled} /> Small fix: skip
+          the plan
+        </label>
         <button type="submit" className="primary-button" disabled={!enabled || length < info.minIdeaLength}>
-          Make a new version
+          {smallFix ? 'Make the fix' : 'Write a plan'}
         </button>
       </div>
     </form>
   );
 }
 
-/** One version: what was asked, what the AI says it changed, its tests, changed lines and code. */
-function Version({ version: v, open, live, busy, onPlaytest }) {
+/** One version: what was asked, its design or plan, what the AI says it changed, its checks, changed lines and code. */
+function Version({ version: v, open, live, busy, info, canDiscard, onPlaytest, onRedesign, onSaveDesign, onBuild, onDiscard }) {
+  const isPlan = v.basedOn !== null;
+  const statusText = (isPlan ? PLAN_STATUS_TEXT : VERSION_STATUS_TEXT)[v.status];
+  // The design is open to work on while it waits for you, or after a failed build.
+  const designOpen = v.design !== null && (v.status === 'design_ready' || v.status === 'failed');
   return (
     <article className="gen-version" aria-label={`Version ${v.version}`}>
       <details open={open}>
         <summary>
           <strong>v{v.version}</strong> {v.name && <span>{v.name}</span>}{' '}
-          <span className={`status-chip status-${v.status}`}>{VERSION_STATUS_TEXT[v.status]}</span>
+          <span className={`status-chip status-${v.status}`}>{statusText}</span>
           {live && <span className={`status-chip status-${live}`}>{live === 'published' ? 'Published' : 'Playtest'}</span>}
         </summary>
         <p className="small">
@@ -474,6 +506,43 @@ function Version({ version: v, open, live, busy, onPlaytest }) {
           <p className="error">
             <strong>Failed:</strong> {v.error}
           </p>
+        )}
+        {v.status === 'design_ready' && v.error && (
+          <p className="error">
+            <strong>The new draft failed:</strong> {v.error} The last draft is below.
+          </p>
+        )}
+        {v.status === 'designing' && v.designFeedback && (
+          <p className="muted small">
+            Writing a new draft: <q>{v.designFeedback}</q>
+          </p>
+        )}
+        {v.design !== null &&
+          (designOpen ? (
+            <DesignEditor
+              key={v.drafts.length}
+              version={v}
+              isPlan={isPlan}
+              busy={busy}
+              info={info}
+              canDiscard={canDiscard}
+              onRedesign={onRedesign}
+              onSaveDesign={onSaveDesign}
+              onBuild={onBuild}
+              onDiscard={onDiscard}
+            />
+          ) : (
+            <details className="gen-design">
+              <summary>{isPlan ? 'The plan it was built from' : 'The design it was built from'}</summary>
+              <Markdown text={v.design} headingOffset={3} />
+            </details>
+          ))}
+        {canDiscard && !designOpen && (
+          <div className="gen-actions">
+            <button type="button" className="secondary-button danger-button" disabled={busy} onClick={onDiscard}>
+              Discard v{v.version}
+            </button>
+          </div>
         )}
         {v.status === 'ready' && !live && (
           <div className="gen-actions">
@@ -546,6 +615,121 @@ function Progress({ progress }) {
 }
 
 /** A version's test report: a pass line, or the problems it found. */
+/**
+ * A design (or a change's plan) waiting for you: read it, then Build it, ask the AI for a new
+ * draft, or edit it yourself. Earlier drafts are kept below.
+ */
+function DesignEditor({ version: v, isPlan, busy, info, canDiscard, onRedesign, onSaveDesign, onBuild, onDiscard }) {
+  const [feedback, setFeedback] = useState('');
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(v.design);
+  const what = isPlan ? 'plan' : 'design';
+  const feedbackLength = feedback.trim().length;
+
+  return (
+    <div className="gen-design-editor">
+      <p className="banner" role="status">
+        {v.status === 'failed'
+          ? `The build failed. Change the ${what} and build again, or just build again.`
+          : `Read the ${what}. Nothing is built until you press Build it.`}
+      </p>
+      {v.drafts.length > 0 && v.drafts.at(-1).feedback && (
+        <p className="muted small">
+          This draft was written after: <q>{v.drafts.at(-1).feedback}</q>
+        </p>
+      )}
+      {editing ? (
+        <label className="admin-form">
+          Edit the {what} (Markdown)
+          <textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={Math.min(30, draft.split('\n').length + 2)} maxLength={info.maxDesignLength} />
+        </label>
+      ) : (
+        <div className="card gen-design-text" aria-label={`The ${what}`}>
+          <Markdown text={v.design} headingOffset={3} />
+        </div>
+      )}
+      <div className="gen-actions">
+        {editing ? (
+          <>
+            <button
+              type="button"
+              className="primary-button"
+              disabled={busy}
+              onClick={async () => {
+                if (await onSaveDesign(draft)) setEditing(false);
+              }}
+            >
+              Save my edit
+            </button>
+            <button type="button" className="secondary-button" onClick={() => setEditing(false)}>
+              Cancel
+            </button>
+          </>
+        ) : (
+          <>
+            <button type="button" className="primary-button" disabled={busy || !info.enabled} onClick={onBuild}>
+              {v.status === 'failed' ? 'Build it again' : 'Build it'}
+            </button>
+            <button type="button" className="secondary-button" disabled={busy} onClick={() => setEditing(true)}>
+              Edit it myself
+            </button>
+            {canDiscard && (
+              <button type="button" className="secondary-button danger-button" disabled={busy} onClick={onDiscard}>
+                Discard v{v.version}
+              </button>
+            )}
+          </>
+        )}
+      </div>
+      {!editing && (
+        <form
+          className="admin-form gen-change"
+          onSubmit={async (event) => {
+            event.preventDefault();
+            if (await onRedesign(feedback)) setFeedback('');
+          }}
+        >
+          <label>
+            Ask the AI for a new draft
+            <textarea
+              value={feedback}
+              onChange={(e) => setFeedback(e.target.value)}
+              rows={2}
+              maxLength={info.maxIdeaLength}
+              placeholder={isPlan ? 'e.g. Keep the old levels; only add the new one at the end.' : 'e.g. Make it 2 rounds, and let the phones pick a colour.'}
+              disabled={!info.enabled}
+            />
+          </label>
+          <button type="submit" className="secondary-button" disabled={busy || !info.enabled || feedbackLength < info.minFeedbackLength}>
+            Write a new draft
+          </button>
+        </form>
+      )}
+      {v.drafts.length > 1 && (
+        <details className="gen-drafts">
+          <summary>Earlier drafts ({v.drafts.length - 1})</summary>
+          <ol>
+            {v.drafts.slice(0, -1).map((d, i) => (
+              <li key={i}>
+                <p className="muted small">
+                  {d.by === 'admin' ? 'Your edit' : 'By the AI'}
+                  {d.feedback && (
+                    <>
+                      , after: <q>{d.feedback}</q>
+                    </>
+                  )}{' '}
+                  · {formatTime(d.at)}
+                </p>
+                <Markdown text={d.text} headingOffset={4} />
+              </li>
+            ))}
+          </ol>
+        </details>
+      )}
+    </div>
+  );
+}
+
 /** The checks' results (plan §13i, F4): problems, lines worth a look, and the playtest. */
 function Report({ report }) {
   const problems = report.problems ?? [];

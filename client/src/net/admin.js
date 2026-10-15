@@ -31,9 +31,26 @@ export const getGeneration = (id) => request(`${BASE}/${encodeURIComponent(id)}`
 /** → { game } (202: it's queued; the work happens in the background) */
 export const startGeneration = (idea, model) => request(BASE, { method: 'POST', body: { idea, model } });
 
-/** Asks for changes: a new version made from version `basedOn`. → { game } (202: queued) */
-export const requestChanges = (id, changeRequest, basedOn) =>
-  request(`${BASE}/${encodeURIComponent(id)}/versions`, { method: 'POST', body: { request: changeRequest, basedOn } });
+/**
+ * Asks for changes: a new version made from version `basedOn`, starting with a plan (or,
+ * with skipDesign, a small fix straight to code). → { game } (202: queued)
+ */
+export const requestChanges = (id, changeRequest, basedOn, skipDesign = false) =>
+  request(`${BASE}/${encodeURIComponent(id)}/versions`, { method: 'POST', body: { request: changeRequest, basedOn, skipDesign } });
+
+const versionPath = (id, version, action) => `${BASE}/${encodeURIComponent(id)}/versions/${version}/${action}`;
+
+/** A new draft of a version's design (or plan), with what to change. → { game } (202: queued) */
+export const redesignVersion = (id, version, feedback) => request(versionPath(id, version, 'redesign'), { method: 'POST', body: { feedback } });
+
+/** Saves your own edit of a version's design as a new draft. → { game } */
+export const saveDesign = (id, version, design) => request(versionPath(id, version, 'design'), { method: 'POST', body: { design } });
+
+/** "Build it": writes the code from the version's design. → { game } (202: queued) */
+export const buildVersion = (id, version) => request(versionPath(id, version, 'build'), { method: 'POST', body: {} });
+
+/** Throws away the newest version while it has no passing code. → { game } */
+export const discardVersion = (id, version) => request(versionPath(id, version, 'discard'), { method: 'POST', body: {} });
 
 /** Only you can start this version (next to the published one, if any). → { game } */
 export const playtestVersion = (id, version) =>

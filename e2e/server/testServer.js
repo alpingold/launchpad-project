@@ -58,10 +58,24 @@ function withFakePlaytest(report) {
 
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/** A design the fake "AI" writes, in the real format's shape (shortened). */
+function fakeDesign(job) {
+  if (job.change) {
+    return `# Change: ${job.change.request}\n\n## What changes\n- ${job.redraft ? `Revised: ${job.redraft.feedback}` : 'The name'}\n\n## What stays the same\n- The rules\n\n## Risks\nNone\n`;
+  }
+  const rounds = job.redraft ? `Revised: ${job.redraft.feedback}` : '3 rounds of 20 s.';
+  return `# Robot Majority\n\n## Genre and feel\nA quick party vote.\n\n## Rules\n1. Everyone picks a number.\n2. ${rounds}\n\n## Template\n\`rounds\`: everyone answers at once.\n`;
+}
+
 /** Same inputs and result shape as the real runGeneratorInSandbox (server/src/generation/sandbox.js). */
 async function fakeGenerator(job, { onStep }) {
   onStep('starting the sandbox');
   await pause(500);
+  if (job.step === 'design') {
+    onStep(`${job.change ? 'plan' : 'design'}: asking ${job.model}`);
+    await pause(1000);
+    return { ok: true, model: job.model, design: fakeDesign(job), attempts: [] };
+  }
   onStep(`attempt 1/4: asking ${job.model}`);
   await pause(1000);
   onStep('attempt 1/4: testing the game');

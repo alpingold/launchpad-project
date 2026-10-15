@@ -18,11 +18,18 @@ async function adminPage(browser) {
   return { context, page };
 }
 
-/** Types an idea (unique, so parallel tests don't mix up their games) and presses Generate. */
+/** Types an idea (unique, so parallel tests don't mix up their games) and asks for its design. */
 async function generate(page, idea) {
   await page.goto('/admin');
   await page.getByLabel('Game idea').fill(`${idea} (${test.info().testId}-${Date.now()})`);
-  await page.getByRole('button', { name: 'Generate' }).click();
+  await page.getByRole('button', { name: 'Write the design' }).click();
+}
+
+/** Waits for the design (or plan) to be ready, then presses Build it. */
+async function buildWhenDesigned(page, version = 1) {
+  const v = detail(page).getByRole('article', { name: `Version ${version}` });
+  await expect(v.getByRole('button', { name: 'Build it' })).toBeVisible(GENERATED);
+  await v.getByRole('button', { name: 'Build it' }).click();
 }
 
 const detail = (page) => page.locator('.gen-detail');
@@ -36,17 +43,42 @@ test('only admins get in', async ({ page, people }) => {
   await expect(host.page.getByRole('heading', { name: 'Admins only' })).toBeVisible();
 });
 
-test('generate → read it → playtest with phones → publish → ask for changes → playtest v2 next to v1 → publish → delete', async ({ browser, people }) => {
+test('design → new draft → edit → build → read it → playtest with phones → publish → change (plan, build) → playtest v2 next to v1 → publish → delete', async ({ browser, people }) => {
   const admin = await adminPage(browser);
   const { page } = admin;
   await page.goto('/admin');
-  await expect(page.getByRole('button', { name: 'Generate' })).toBeDisabled(); // no idea yet
+  await expect(page.getByRole('button', { name: 'Write the design' })).toBeDisabled(); // no idea yet
   await expect(page.getByText('Model: qwen3.8:27b')).toBeVisible(); // one model, so no picker
   await generate(page, 'Everyone votes, the most popular answer scores');
 
-  // Live progress, then version 1 is ready for review.
-  await expect(detail(page).getByText('asking qwen3.8:27b')).toBeVisible(GENERATED);
+  // Live progress, then the design to read: shown as formatted text, nothing built yet.
+  await expect(detail(page).getByText('design: asking qwen3.8:27b')).toBeVisible(GENERATED);
+  const v1 = detail(page).getByRole('article', { name: 'Version 1' });
+  await expect(v1.getByText('Design ready')).toBeVisible(GENERATED);
+  const design = v1.getByLabel('The design');
+  await expect(design.getByRole('heading', { name: 'Robot Majority' })).toBeVisible();
+  await expect(design.getByRole('heading', { name: 'Rules' })).toBeVisible();
+  await expect(design).toContainText('3 rounds of 20 s.');
+
+  // Ask for a new draft: the AI's next draft follows the feedback; the old one is kept.
+  await v1.getByLabel('Ask the AI for a new draft').fill('Make it 2 rounds');
+  await v1.getByRole('button', { name: 'Write a new draft' }).click();
+  await expect(v1.getByLabel('The design')).toContainText('Revised: Make it 2 rounds', GENERATED);
+  await expect(v1.getByText(/This draft was written after:\s*Make it 2 rounds/)).toBeVisible();
+  await expect(v1.locator('.gen-drafts summary')).toHaveText('Earlier drafts (1)');
+
+  // Edit it by hand, then build.
+  await v1.getByRole('button', { name: 'Edit it myself' }).click();
+  const editor = v1.getByLabel('Edit the design (Markdown)');
+  await editor.fill((await editor.inputValue()).replace('Revised: Make it 2 rounds', '2 rounds of 30 s, edited by hand.'));
+  await v1.getByRole('button', { name: 'Save my edit' }).click();
+  await expect(v1.getByLabel('The design')).toContainText('2 rounds of 30 s, edited by hand.');
+  await expect(v1.locator('.gen-drafts summary')).toHaveText('Earlier drafts (2)');
+  await v1.getByRole('button', { name: 'Build it' }).click();
+
+  // Version 1 is built and ready for review; the design it was built from is kept.
   await expect(detail(page).getByText('Ready for review')).toBeVisible(GENERATED);
+  await expect(v1.getByText('The design it was built from')).toBeVisible();
   await expect(detail(page).getByRole('heading', { name: 'Robot Majority' })).toBeVisible();
   await expect(detail(page).getByText(/Passed every check: the game info, the static check, and 20 s of play/)).toBeVisible();
   // The playtest's screenshots and the lines worth a look (F4).
@@ -84,11 +116,15 @@ test('generate → read it → playtest with phones → publish → ask for chan
   await otherHost.page.goto('/host'); // back before the room's host grace period runs out
   await expect(otherHost.page.locator('.room-code')).toHaveText(/^[A-Z]{4}$/);
 
-  // Ask for changes: version 2, with the AI's list of changes and the changed lines.
+  // Ask for changes: version 2's plan first, then built, with the AI's list of changes and the changed lines.
   await detail(page).getByLabel('Ask for changes').fill('Rename it to Robot Majority 2, please');
-  await detail(page).getByRole('button', { name: 'Make a new version' }).click();
+  await detail(page).getByRole('button', { name: 'Write a plan' }).click();
   const v2 = detail(page).getByRole('article', { name: 'Version 2' });
-  await expect(v2.getByText('Passed the tests')).toBeVisible(GENERATED);
+  await expect(v2.getByText('Plan ready')).toBeVisible(GENERATED);
+  await expect(v2.getByLabel('The plan')).toContainText('Change: Rename it to Robot Majority 2, please');
+  await expect(detail(page).getByLabel('Ask for changes')).toBeDisabled(); // one change at a time
+  await buildWhenDesigned(page, 2);
+  await expect(v2.getByText('Passed the checks')).toBeVisible(GENERATED);
   await expect(v2.locator('p', { hasText: 'Changed from v1:' })).toContainText('Rename it to Robot Majority 2, please');
   await expect(v2.getByText('Renamed it to Robot Majority 2')).toBeVisible();
   await expect(v2.locator('.gen-diff summary')).toHaveText('Changed lines since v1: +1 −1');
@@ -124,12 +160,14 @@ test('generate → read it → playtest with phones → publish → ask for chan
   await admin.context.close();
 });
 
-test('a failed game shows why, with its test report and code', async ({ browser }) => {
+test('a failed game shows why, with its test report and code, and can be built again', async ({ browser }) => {
   const admin = await adminPage(browser);
   const { page } = admin;
   await generate(page, 'A broken game about nothing at all');
+  await buildWhenDesigned(page);
 
   await expect(detail(page).getByText('Failed', { exact: true }).first()).toBeVisible(GENERATED);
+  await expect(detail(page).getByRole('button', { name: 'Build it again' })).toBeVisible(); // the design stays
   await expect(detail(page).getByText('no passing game after 1 attempt')).toBeVisible();
   await expect(detail(page).getByText(/The checks found \d+ problems?/)).toBeVisible();
   // The static check's finding, with its line; the line is marked in the code.
@@ -140,5 +178,29 @@ test('a failed game shows why, with its test report and code', async ({ browser 
   await expect(detail(page).getByLabel('Ask for changes')).toHaveCount(0); // nothing that passed to change
   await detail(page).getByText(/^Code \(/).click();
   await expect(detail(page).locator('pre .code-line.flagged')).toHaveAttribute('data-line', '5');
+  await admin.context.close();
+});
+
+test('a small fix skips the plan; an unwanted plan can be discarded', async ({ browser }) => {
+  const admin = await adminPage(browser);
+  const { page } = admin;
+  await generate(page, 'A quick voting game for testing fixes');
+  await buildWhenDesigned(page);
+  await expect(detail(page).getByText('Ready for review')).toBeVisible(GENERATED);
+
+  await detail(page).getByLabel('Ask for changes').fill('Fix the title, please');
+  await detail(page).getByLabel('Small fix: skip the plan').check();
+  await detail(page).getByRole('button', { name: 'Make the fix' }).click();
+  const v2 = detail(page).getByRole('article', { name: 'Version 2' });
+  await expect(v2.getByText('Passed the checks')).toBeVisible(GENERATED);
+  await expect(v2.getByText(/The plan it was built from/)).toHaveCount(0);
+
+  await detail(page).getByLabel('Ask for changes').fill('Something we will not want after all');
+  await detail(page).getByRole('button', { name: 'Write a plan' }).click();
+  const v3 = detail(page).getByRole('article', { name: 'Version 3' });
+  await expect(v3.getByText('Plan ready')).toBeVisible(GENERATED);
+  await v3.getByRole('button', { name: 'Discard v3' }).click();
+  await expect(v3).toHaveCount(0);
+  await expect(detail(page).getByLabel('Ask for changes')).toBeEnabled();
   await admin.context.close();
 });

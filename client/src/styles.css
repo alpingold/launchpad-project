@@ -836,3 +836,48 @@ code {
   font-family: ui-monospace, monospace;
   overflow-wrap: anywhere;
 }
+
+/* Designs (plan §13i, F5): shown as formatted text, edited as Markdown. */
+.gen-design-text {
+  max-height: 32rem;
+  overflow: auto;
+}
+
+.markdown > :first-child {
+  margin-top: 0;
+}
+
+.markdown h4,
+.markdown h5,
+.markdown h6 {
+  margin: 0.9rem 0 0.3rem;
+}
+
+.markdown h4 {
+  font-size: 1.2rem;
+}
+
+.markdown h5 {
+  font-size: 1.02rem;
+}
+
+.markdown ul,
+.markdown ol {
+  padding-left: 1.4rem;
+}
+
+.gen-design-editor textarea {
+  font-family: var(--mono, monospace);
+  font-size: 0.9rem;
+}
+
+.gen-drafts > ol > li {
+  border-top: 1px solid var(--border);
+  padding-top: 0.5rem;
+}
+
+.gen-small-fix {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
