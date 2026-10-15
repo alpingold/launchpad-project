@@ -1103,6 +1103,37 @@ The two ASCII games also stress-test the SDK for genres that aren't party rounds
 | **F5 Two-step generator** ✅ _built 2026-10-15 (live test with the real model pending): `generator/spec/GAME_SPEC.md` (the rulebook: rules the checks enforce, phones and big screen, the party SDK, party.ui, base styles), `DESIGN.md` (fixed headings, incl. Template and Closest example) and designs of the three official games. `generator/src/run.js` runs one step per sandbox job: **design** (one call, a retry if headings are missing; a redraft sends the last draft and your feedback) or **build** (rulebook + the template and closest example the design names, the example WITH its design; then write → checkGame → fix, up to 4 attempts, 15 s playtests, 150 KB limit). Changes: a short **plan** first (What changes / What stays the same / Risks), then the build; **"Small fix: skip the plan"** decided as a checkbox. Server: migration 5 (statuses `designing`, `design_ready`; columns `design`, `drafts_json`, `design_feedback`), redesign / edit / build / discard routes; a failed build keeps its design to change or build again; a restart sends a cut-off redraft back to its last draft. Admin page: the design as formatted text (`Markdown.jsx`, React elements only), Build it, Edit it myself, Ask the AI for a new draft, earlier drafts. `/kit` is back as the guide (`GET /api/kit` sends the same spec files the AI reads). `npm run generate` is two-step in the terminal. Generation is switched on again_ | Design step (13i), design drafts and edits on the admin page, "Build it"; spec rulebook, SDK reference, templates and examples in the prompt; change requests as plan → build; generation switched back on; `/kit` comes back as the SDK docs | Idea → read the design → ask for a change → Build it → a frame game that passes and is fun (try a platformer and an RPG idea) |
 | **Decide** | Rebase onto `main` (this becomes the plan) or drop the branch | |
 
+### 13n. Future: the game library as AI data (idea, 2026-10-15)
+
+**What the live F5 test showed:** both live designs copied their closest example closely (the
+platformer took Tower Dash's 48-tile scale and physics; the RPG took Dungeon Party's four
+classes, 30 s turns and Defend-on-timeout). On `main`, examples were the biggest lever on
+*working code* (§11g, §12j). So the two steps may want different things:
+- **Design step:** example designs mostly cause copying; the design format already teaches
+  the structure. Candidate: no example designs (maybe one short sample from a game unlike
+  any we'd want copied). Cheap to measure: the same 4–5 ideas with and without (~40 s each).
+- **Build step:** examples teach the SDK, saving and reloads. Removing them probably means
+  more failed attempts; measure later (each build ~10 min).
+
+**The longer idea: every game made becomes data.** We already keep the idea, every design
+draft *with the admin's feedback*, the approved design, every code attempt with its check
+report, the playtest results, and the admin's choices (playtest, publish, reject, fixes).
+Roughly in order of effort:
+1. **Collect more signal:** how often each game is played, finished vs stopped by the host,
+   and maybe a thumbs up/down in the lobby after a game.
+2. **Retrieval (soon, no training):** pick the examples for each job from the library of
+   *published* games, by similarity to the idea (tags first; embeddings if GenAI Studio
+   offers an embedding model), instead of a fixed three. More variety, less copying.
+3. **Fine-tuning an open model (later):** train a small adapter (LoRA) on accepted
+   idea → design and design → code pairs; the drafts with feedback are preference data
+   ("this draft, changed like this, was better"). Needs hundreds of good games and GPU
+   time (Purdue RCAC's clusters may allow it), and a place to run the result: GenAI Studio
+   only serves its own models.
+4. **Training a model from scratch:** not realistic for a club project; not planned.
+
+**Before any of this:** users' games are their work; using them for training needs a clear
+note in the terms (especially from A7 on, when other hosts generate games).
+
 ### 13m. Risks and open questions
 
 - **The big screen is the referee.** A slow or busy host laptop slows the game for everyone, and browsers slow down timers in background tabs, so the big screen tab must stay in front.
