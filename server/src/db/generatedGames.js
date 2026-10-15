@@ -43,7 +43,7 @@ export const BUSY_STATUSES = Object.freeze(['designing', 'generating']);
  * @property {string | null} description
  * @property {string | null} source
  * @property {string | null} sourceSha256
- * @property {object | null} report
+ * @property {import('../games/frameGame.js').CheckReport | null} report
  * @property {string | null} error
  * @property {number} createdAt
  * @property {number} updatedAt
@@ -172,7 +172,8 @@ export function startRedraft(db, gameId, version, feedback, { now = Date.now() }
  * history, and the version waits for the admin ("design_ready").
  * @param {{ text: string, by: 'ai' | 'admin', feedback?: string | null, now?: number }} draft
  */
-export function saveDraft(db, gameId, version, { text, by, feedback = null, now = Date.now() }) {
+export function saveDraft(db, gameId, version, draft) {
+  const { text, by, feedback = null, now = Date.now() } = draft;
   db.transaction(() => {
     const row = db.prepare('SELECT drafts_json FROM game_versions WHERE game_id = ? AND version = ?').get(gameId, version);
     if (!row) return;
@@ -261,7 +262,7 @@ export function markVersionFailed(db, gameId, version, error, { source = null, r
  * @property {number} attempt    1–4 within that build
  * @property {boolean} ok
  * @property {string | null} source
- * @property {object | null} report
+ * @property {import('../games/frameGame.js').CheckReport | null} report   without screenshots
  * @property {number | null} seconds
  * @property {number | null} promptTokens
  * @property {number | null} completionTokens
@@ -271,7 +272,8 @@ export function markVersionFailed(db, gameId, version, error, { source = null, r
 /**
  * Saves the attempts of one build of a version (as the generator returned them), as the
  * next build number. Attempts without an attempt number are skipped.
- * @param {{ attempt: number, ok: boolean, source?: string | null, report?: object | null, seconds?: number, usage?: object | null }[]} attempts
+ * @param {{ attempt: number, ok: boolean, source?: string | null, report?: object | null, seconds?: number,
+ *   usage?: { prompt_tokens?: number, completion_tokens?: number } | null }[]} attempts
  * @returns {number} the build number
  */
 export function saveBuildAttempts(db, gameId, version, attempts, { now = Date.now() } = {}) {
@@ -338,7 +340,8 @@ export function listBusyVersions(db) {
  * @param {{ publishedVersion?: number | null, playtestVersion?: number | null, now?: number }} live
  * @returns {boolean} false if there's no such game
  */
-export function setLiveVersions(db, gameId, { publishedVersion, playtestVersion, now = Date.now() }) {
+export function setLiveVersions(db, gameId, live) {
+  const { publishedVersion, playtestVersion, now = Date.now() } = live;
   const game = db.prepare('SELECT * FROM generated_games WHERE id = ?').get(gameId);
   if (!game) return false;
   db.prepare('UPDATE generated_games SET published_version = ?, playtest_version = ?, updated_at = ? WHERE id = ?').run(

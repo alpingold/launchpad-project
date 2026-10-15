@@ -1249,6 +1249,18 @@ never cut off (the old 5-minute limit cut off two healthy replies in the live te
 admin page shows how far a reply has got ("thinking 1,150 tokens, writing 1,463"). A whole
 sandbox job keeps a last-resort limit of 60 minutes (was 20).
 
+
+**TypeScript, decided 2026-10-15: not now.** A trial run of TypeScript's checker over our JSDoc
+(lenient mode, in a scratch folder: nothing added to the project) found **no bugs a player
+could hit**, but about 20 places where the JSDoc had drifted from the code as features were
+added (the sandbox job still documented as before F5, `onStep`'s arguments, the report
+without its playtest, the client's user without `isAdmin`, JSDoc naming parameters that
+don't exist so the checker ignored it). Those were fixed by hand. The rest (~80) is loose
+typing (`@param {object} msg`) and checker limits on plain JavaScript, not drift. If we want
+the checker later: `typescript` as a dev dependency, `// @ts-check` file by file starting with
+the protocol, FrameRelay and the database layer, and `npm run typecheck`. Full TypeScript, and
+an ORM (whose main benefit is typed queries), wait until then.
+
 ---
 
 ## Verification (how to confirm the plan worked once built)

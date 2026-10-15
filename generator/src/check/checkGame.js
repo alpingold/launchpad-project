@@ -18,6 +18,7 @@ import { playtest } from './playtest.js';
  * @param {string} source  the game file
  * @param {Parameters<typeof playtest>[1] & { browser?: boolean }} [opts]
  *   browser: false skips the playtest (steps 1–2 only)
+ * @returns {Promise<import('../../../server/src/games/frameGame.js').CheckReport>}
  */
 export async function checkGame(source, opts = {}) {
   const report = frameGameReport(source);

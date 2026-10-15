@@ -15,14 +15,19 @@ async function postJson(path, body) {
   return { ok: res.ok, status: res.status, ...data };
 }
 
-/** @returns {Promise<{ ok: boolean, user?: {id: number, username: string}, error?: string, message?: string }>} */
+/**
+ * A logged-in account, as GET /api/me and the login routes return it.
+ * @typedef {{ id: number, username: string, isAdmin: boolean }} User
+ */
+
+/** @returns {Promise<{ ok: boolean, user?: User, error?: string, message?: string }>} */
 export const signUp = (username, password) => postJson('/api/signup', { username, password });
 export const logIn = (username, password) => postJson('/api/login', { username, password });
 export const logOut = () => postJson('/api/logout', {});
 
 /**
  * Who is logged in. `undefined` while checking, then the user or null.
- * @returns {{id: number, username: string} | null | undefined}
+ * @returns {User | null | undefined}
  */
 export function useCurrentUser() {
   const [user, setUser] = useState(undefined);

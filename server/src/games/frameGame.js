@@ -112,7 +112,35 @@ export function frameGameOrThrow(source, id) {
 /**
  * A problem found in a game file: a plain sentence (the game info), or a finding from the
  * static check or the browser playtest, which may point at a line.
- * @typedef {string | { message: string, rule?: string, line?: number, code?: string }} Problem
+ * @typedef {string | { message: string, rule?: string, line?: number, code?: string, screen?: string, count?: number }} Problem
+ */
+
+/**
+ * What the browser playtest saw (generator/src/check/playtest.js), in a report.
+ * @typedef {Object} PlaytestSummary
+ * @property {number} players            simulated phones
+ * @property {number} seconds            how long it played
+ * @property {number} eventsFromPhones
+ * @property {number} updatesToPhones
+ * @property {number} saves              party.save calls
+ * @property {boolean} ended             it called party.end
+ * @property {object | null} results     what it passed to party.end
+ * @property {number | null} endedAfterSeconds
+ * @property {string[]} reloads          which screens were reloaded
+ * @property {number} screensLoaded
+ * @property {{ host?: string, phone?: string }} [screenshots]  JPEG data: URLs (only on a version's final report)
+ */
+
+/**
+ * A game file's check report, as versions and build attempts store it. The server's own
+ * (frameGameReport) has no playtest; the generator's (checkGame) adds one.
+ * @typedef {Object} CheckReport
+ * @property {boolean} ok
+ * @property {Problem[]} problems
+ * @property {Problem[]} warnings
+ * @property {string} checked             what was checked, in words
+ * @property {{ name: string, description: string }} [game]
+ * @property {PlaytestSummary} [playtest]
  */
 
 /**
@@ -120,7 +148,7 @@ export function frameGameOrThrow(source, id) {
  * shows: the game info and the static check (staticCheck.js). Errors fail it; warnings
  * are lines to look at in review. The browser playtest (F4) runs in the generator's
  * sandbox, never on the server, and adds its own results to the report there.
- * @returns {{ ok: boolean, problems: Problem[], warnings: Problem[], checked: string, game?: { name: string, description: string } }}
+ * @returns {CheckReport}
  */
 export function frameGameReport(source) {
   const result = readFrameGame(source, 'game');

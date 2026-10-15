@@ -43,6 +43,46 @@ import { DEFAULT_MODEL, isAllowedModel } from './models.js';
 import { checkGame } from './check/checkGame.js';
 import { describeProblem } from '../../server/src/games/frameGame.js';
 
+/**
+ * One job: one step (see the top of this file). Comes from the server, so it's checked.
+ * @typedef {Object} GeneratorJob
+ * @property {'design' | 'build'} step
+ * @property {string} idea
+ * @property {string} [model]
+ * @property {string} [design]            build: the approved design (a new game)
+ * @property {{ request: string, source: string, design?: string | null, earlierRequests?: string[], plan?: string | null }} [change]
+ *   a change to an existing game; build: `plan` is the approved plan (null: a small fix)
+ * @property {{ draft: string, feedback: string }} [redraft]  design: a new draft of `draft`
+ * @property {boolean} [examples]         design: add the example designs (off by default)
+ * @property {number} [maxAttempts]       build
+ */
+
+/**
+ * One build attempt, as the result lists it.
+ * @typedef {{ attempt: number, ok: boolean, problems: number, seconds: number,
+ *   usage: { prompt_tokens?: number, completion_tokens?: number } | null,
+ *   source?: string | null, report?: import('../../server/src/games/frameGame.js').CheckReport }} AttemptResult
+ */
+
+/**
+ * What a job returns (also what the server reads back from the sandbox).
+ * @typedef {Object} GeneratorResult
+ * @property {boolean} ok
+ * @property {string | null} model
+ * @property {AttemptResult[]} attempts
+ * @property {string | null} [design]     design step
+ * @property {string} [warning]           design step: e.g. a heading is missing
+ * @property {string | null} [source]     build step: the last game file (passing or not)
+ * @property {import('../../server/src/games/frameGame.js').CheckReport | null} [report]
+ * @property {string | null} [changelog]  build step for a change: the model's list of changes
+ * @property {string} [error]             why it stopped, if not ok
+ */
+
+/**
+ * Progress: `replace` updates the last step instead of adding one (a streaming reply).
+ * @typedef {(text: string, opts?: { replace?: boolean }) => void} OnStep
+ */
+
 export const DEFAULT_MAX_ATTEMPTS = 4;
 /** A design missing headings gets one more try. */
 const DESIGN_ATTEMPTS = 2;
@@ -51,8 +91,9 @@ export const PLAYTEST_SECONDS = 15;
 
 /**
  * Runs one job. Everything outside is passed in, so tests can use a fake model and checker.
- * @param {object} job  see the top of this file (untrusted: checked here)
- * @param {{ chatFn?: typeof chat, check?: typeof checkGame, onStep?: (text: string) => void }} [deps]
+ * @param {GeneratorJob} job  untrusted: checked here
+ * @param {{ chatFn?: typeof chat, check?: typeof checkGame, onStep?: OnStep }} [deps]
+ * @returns {Promise<GeneratorResult>}
  */
 export async function runJob(job, deps = {}) {
   const model = job?.model ?? DEFAULT_MODEL;
@@ -83,7 +124,13 @@ export async function runJob(job, deps = {}) {
 
 const isText = (value, min) => typeof value === 'string' && value.trim().length >= min && value.length <= MAX_IDEA_LENGTH;
 
-/** Step 1: a design (or a change plan). One model call, plus one retry if headings are missing. */
+/**
+ * Step 1: a design (or a change plan). One model call, plus one retry if headings are missing.
+ * @param {GeneratorJob} job
+ * @param {string} model
+ * @param {{ chatFn?: typeof chat, onStep?: OnStep }} deps
+ * @returns {Promise<GeneratorResult>}
+ */
 async function design(job, model, { chatFn = chat, onStep = () => {} }) {
   const isPlan = job.change !== undefined;
   const what = isPlan ? 'plan' : 'design';
@@ -116,7 +163,13 @@ async function design(job, model, { chatFn = chat, onStep = () => {} }) {
   return { ...result, error: `the model wrote no ${what}` };
 }
 
-/** Step 2: the game file, through the check → fix loop. */
+/**
+ * Step 2: the game file, through the check → fix loop.
+ * @param {GeneratorJob} job
+ * @param {string} model
+ * @param {{ chatFn?: typeof chat, check?: typeof checkGame, onStep?: OnStep }} deps
+ * @returns {Promise<GeneratorResult>}
+ */
 async function build(job, model, { chatFn = chat, check = checkGame, onStep = () => {} }) {
   const maxAttempts = job.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
   const { change } = job;
@@ -173,7 +226,12 @@ function withoutScreenshots(report) {
 /** "thinking: 1,200 tokens, writing: 3,400" */
 const progressText = ({ thinking, writing }) => `thinking ${thinking.toLocaleString('en-US')} tokens, writing ${writing.toLocaleString('en-US')}`;
 
-/** checkGame, plus the generator's own size limit (the rulebook's 100 KB). */
+/**
+ * checkGame, plus the generator's own size limit (the rulebook's 100 KB).
+ * @param {string} source
+ * @param {typeof checkGame} check
+ * @param {OnStep} onStep
+ */
 async function checkWithSize(source, check, onStep) {
   const report = await check(source, { seconds: PLAYTEST_SECONDS, onStep: (text) => onStep(`  ${text}`) });
   const bytes = Buffer.byteLength(source);

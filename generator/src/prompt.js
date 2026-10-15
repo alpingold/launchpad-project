@@ -102,6 +102,7 @@ const DESIGN_ANSWER = `Reply with the design only: Markdown, starting with "# " 
  * @param {string} idea
  * @param {{ draft: string, feedback: string }} [redraft]  a new draft: the last one and what to change
  * @param {{ examples?: boolean }} [opts]  examples: true adds the example designs (off by default: §13n)
+ * @returns {import('./llm.js').Message[]}
  */
 export function designMessages(idea, redraft, { examples = false } = {}) {
   const parts = [`Design a game based on this idea. If part of it isn't possible with how games work, design the closest game that is.\n\n${data('game-idea', idea)}`];
@@ -136,6 +137,7 @@ What could go wrong or play worse, and how you'll avoid it (or "None").`;
  * A change request's plan: what will change and why, before any code.
  * @param {{ idea: string, design?: string | null, source: string, request: string, earlierRequests?: string[] }} change
  * @param {{ draft: string, feedback: string }} [redraft]
+ * @returns {import('./llm.js').Message[]}
  */
 export function planMessages(change, redraft) {
   const parts = [currentGame(change), `The change asked for now:\n\n${data('change-request', change.request)}`];
@@ -150,7 +152,10 @@ export function planMessages(change, redraft) {
   ];
 }
 
-/** The game as it is now: its idea, earlier changes, design (if it has one) and code. */
+/**
+ * The game as it is now: its idea, earlier changes, design (if it has one) and code.
+ * @param {{ idea: string, design?: string | null, source: string, earlierRequests?: string[] }} game
+ */
 function currentGame({ idea, design, source, earlierRequests = [] }) {
   const earlier = earlierRequests.map((r) => `- ${String(r).trim().slice(0, MAX_IDEA_LENGTH)}`).join('\n');
   return [
@@ -206,6 +211,7 @@ const BUILD_ANSWER = `Reply with the complete game file in ONE \`\`\`html code b
  * Building a new game from its approved design.
  * @param {string} idea
  * @param {string} design
+ * @returns {import('./llm.js').Message[]}
  */
 export function buildMessages(idea, design) {
   return [
@@ -221,6 +227,7 @@ export function buildMessages(idea, design) {
  * Building a change from its approved plan (or, for a small fix, from the request alone).
  * @param {{ idea: string, design?: string | null, source: string, request: string, earlierRequests?: string[] }} change
  * @param {string | null} plan
+ * @returns {import('./llm.js').Message[]}
  */
 export function changeBuildMessages(change, plan) {
   const task = plan

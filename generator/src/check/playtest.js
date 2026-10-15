@@ -77,6 +77,24 @@ const INIT_SCRIPT = `(() => {
 })();`;
 
 /**
+ * One simulated screen: the big screen or a phone, each its own browser page.
+ * @typedef {Object} Screen
+ * @property {string} key                  'host' or the player's id
+ * @property {'host' | 'player'} role
+ * @property {string | null} me            the player's id (null on the big screen)
+ * @property {string} label                'big screen' or 'phone 2', for findings
+ * @property {import('playwright-core').Page} page
+ * @property {boolean} ready               the SDK has loaded and got its 'init'
+ * @property {object[]} queue              messages for the game, held until it's ready
+ * @property {boolean} connected           false while this phone "reloads"
+ * @property {unknown} restored            the big screen's last save, given back after a reload
+ * @property {number | null} heardAt       when this phone first heard from the big screen
+ * @property {number | null} loadedAt
+ * @property {number} tokens               the rate limit's token bucket, as GameFrame.jsx
+ * @property {number} refilledAt
+ */
+
+/**
  * @typedef {Object} PlaytestFinding
  * @property {string} rule     csp | error | network | navigation | hang | blank | silent | refused | results | load
  * @property {string} message
@@ -96,7 +114,7 @@ const INIT_SCRIPT = `(() => {
  * @param {boolean} [opts.headed]   show the browser windows (for watching locally)
  * @param {(text: string) => void} [opts.onStep]
  * @param {() => Promise<import('playwright-core').Browser>} [opts.launch]  tests may pass their own
- * @returns {Promise<{ problems: PlaytestFinding[], warnings: PlaytestFinding[], summary: object, screenshots: { host?: Buffer, phone?: Buffer } }>}
+ * @returns {Promise<{ problems: PlaytestFinding[], warnings: PlaytestFinding[], summary: import('../../../server/src/games/frameGame.js').PlaytestSummary, screenshots: { host?: Buffer, phone?: Buffer } }>}
  */
 export async function playtest(source, opts = {}) {
   const seconds = opts.seconds ?? 20;
@@ -135,7 +153,7 @@ export async function playtest(source, opts = {}) {
   let hung = false;
 
   const relay = new FrameRelay({
-    game: { id: 'game', source },
+    game: { id: 'game', name: 'game', description: '', minPlayers: 1, maxPlayers: 12, source }, // only the source is used here
     players,
     deliver: (target, msg) => {
       const screen = target.to === 'host' ? screens.get('host') : screens.get(target.playerId);
@@ -275,7 +293,7 @@ export async function playtest(source, opts = {}) {
   async function openScreen(key, role, me, label, viewport) {
     const page = await context.newPage();
     await page.setViewportSize(viewport);
-    /** @typedef {typeof screen} Screen */
+    /** @type {Screen} */
     const screen = { key, role, me, label, page, ready: false, queue: [], connected: true, restored: undefined, heardAt: null, loadedAt: null, tokens: RATE_BURST, refilledAt: Date.now() };
     screens.set(key, screen);
     page.on('pageerror', (error) => {

@@ -3,7 +3,8 @@ import { useEffect, useState } from 'react';
 /**
  * The games this server offers, from GET /api/games.
  * @returns {{id: string, name: string, description: string, minPlayers: number, maxPlayers: number,
- *   source: 'official' | 'generated', status?: 'playtest' | 'published'}[] | null}
+ *   source: 'official' | 'generated', status?: 'playtest' | 'published', version?: number}[] | null}
+ *   status and version: AI-generated games only (server/src/games/registry.js list())
  *   null while loading; an empty list if the request failed
  */
 export function useGames() {

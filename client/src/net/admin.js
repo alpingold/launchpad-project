@@ -6,6 +6,9 @@ const BASE = '/api/admin/generations';
 /**
  * Sends a request and returns the JSON body plus `ok`/`status`. Never throws: a network
  * failure comes back as { ok: false, message }, so the page can just show the message.
+ * @param {string} path
+ * @param {{ method?: string, body?: unknown }} [opts]  body: sent as JSON
+ * @returns {Promise<{ ok: boolean, status: number, [field: string]: any }>}
  */
 async function request(path, { method = 'GET', body } = {}) {
   try {

@@ -24,7 +24,7 @@ import { currentUser } from './auth/currentUser.js';
  * @param {import('./games/registry.js').GameRegistry} [deps.games]  tests pass their own games
  * @param {import('better-sqlite3').Database} [deps.db]  index.js passes the real database file;
  *   tests leave it out and get a fresh in-memory database
- * @param {Function} [deps.runGenerator]  tests pass a fake instead of the real OpenShell sandbox
+ * @param {typeof import('./generation/sandbox.js').runGeneratorInSandbox} [deps.runGenerator]  tests pass a fake instead of the real OpenShell sandbox
  */
 export function createGameServer(overrides = {}, { games = createDefaultRegistry(), db, runGenerator } = {}) {
   const cfg = { ...config, ...overrides };

@@ -1,6 +1,13 @@
 import { useCallback, useRef, useState } from 'react';
 
 /**
+ * A message from the server for the running game, with this device's clock offset added.
+ * @typedef {{ type: 'game:event' | 'game:message' | 'game:state', from?: string, data?: unknown, state?: unknown, clockOffset: number }} GameMessage
+ *   game:event (to the big screen): `from` and `data`; game:message (to a phone): `data`;
+ *   game:state (to a phone): `state`
+ */
+
+/**
  * One running frame game, as this page knows it (from game:started).
  * @typedef {Object} GameRun
  * @property {string} gameId
@@ -9,7 +16,7 @@ import { useCallback, useRef, useState } from 'react';
  * @property {{ id: string, name: string }[]} players  everyone in the game
  * @property {number} clockOffset  server time minus this device's time, at the start
  * @property {unknown} [restored]  the big screen's latest save, when this page came back mid-game
- * @property {{ push: (msg: object) => void, listen: (fn: (msg: object) => void) => () => void }} channel
+ * @property {{ push: (msg: GameMessage) => void, listen: (fn: (msg: GameMessage) => void) => () => void }} channel
  *   the server's messages for the game, kept until GameFrame listens
  */
 

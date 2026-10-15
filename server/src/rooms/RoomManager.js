@@ -94,9 +94,11 @@ export class RoomManager {
    * put back into THAT room instead (new tab, other laptop, lost the page). The old tab is
    * told "replaced". To get a fresh room, the host ends the old one first.
    *
+   * @param {string} connId
    * @param {{ userId?: number | null }} [owner]  the logged-in account (the router requires one)
    */
-  createRoom(connId, { userId = null } = {}) {
+  createRoom(connId, owner = {}) {
+    const { userId = null } = owner;
     // The router already checks this; repeating it here keeps RoomManager safe on its own.
     if (this.members.has(connId)) throw new RoomError('ALREADY_IN_ROOM');
 

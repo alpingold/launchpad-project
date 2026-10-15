@@ -569,6 +569,12 @@ function Version({ version: v, open, live, busy, info, canDiscard, onPlaytest, o
 }
 
 /** The changed lines compared with the version it was made from, git-diff style. */
+/**
+ * Changed lines between two files (server/src/generation/lineDiff.js's changedLines).
+ * @param {{ changes: { added: number, removed: number, hunks: { type: 'same' | 'add' | 'del', text: string, oldLine?: number, newLine?: number }[][] },
+ *   basedOn?: number, label?: string, open?: boolean }} props
+ *   basedOn: the version compared with (for the default label); label replaces that label
+ */
 function ChangedLines({ changes, basedOn, label = `Changed lines since v${basedOn}`, open = true }) {
   return (
     <details className="gen-source gen-diff" open={open}>
