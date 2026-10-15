@@ -11,8 +11,8 @@
    - the big screen (role "host") is the referee: it runs the physics at 60 frames a
      second on a <canvas>, decides who fell in and who won, and tells each phone what to
      show with party.setState;
-   - each phone (role "player") is a joystick plus a Dash button, sending its direction to
-     the big screen with party.send about 12 times a second.
+   - each phone (role "player") is a joystick (party.ui.joystick) plus a Dash button,
+     sending its direction to the big screen with party.send about 12 times a second.
   The referee saves the round and everyone's wins (party.save) at every change of phase, so
   if the big screen reloads, the game carries on: a round that was cut off starts again.
   The server only passes the messages along. Nothing here was possible with the old kit.
@@ -27,15 +27,8 @@
   .dot { width: 1.6rem; height: 1.6rem; border-radius: 50%; border: 3px solid rgba(0, 0, 0, 0.25); }
   .status { margin: 0; min-height: 2.6em; text-align: center; font-size: 1.05rem; color: var(--muted); }
   .wins { margin: 0; font-weight: 700; }
-  .pad { position: relative; flex: 1; width: 100%; max-width: 22rem; max-height: 22rem; aspect-ratio: 1; border-radius: 50%;
-    background: radial-gradient(circle, var(--surface) 0%, var(--surface) 55%, rgba(127, 127, 160, 0.25) 100%);
-    border: 3px solid rgba(127, 127, 160, 0.45); touch-action: none; }
-  .pad.off { opacity: 0.4; }
-  .knob { position: absolute; left: 50%; top: 50%; width: 34%; height: 34%; margin: -17% 0 0 -17%; border-radius: 50%;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3); pointer-events: none; }
-  .dash { width: 100%; max-width: 22rem; padding: 1rem; font-size: 1.4rem; font-weight: 800; border: 0; border-radius: 1rem;
-    background: var(--accent); color: var(--on-accent); touch-action: manipulation; }
-  .dash:disabled { opacity: 0.4; }
+  .stick { width: 100%; max-width: 22rem; }
+  .dash { max-width: 22rem; }
   .dash.cooling { animation: cool 1.6s linear; }
   @keyframes cool { from { opacity: 0.4; } to { opacity: 1; } }
 </style>
@@ -45,10 +38,8 @@
 <div class="phone" id="phone" hidden>
   <div class="badge"><span class="dot" id="dot"></span><span id="you">You</span></div>
   <p class="status" id="status" role="status">Get ready…</p>
-  <div class="pad off" id="pad" aria-label="Joystick: drag to steer">
-    <div class="knob" id="knob"></div>
-  </div>
-  <button class="dash" id="dash" disabled>Dash!</button>
+  <div class="stick" id="stick"></div>
+  <button class="dash big" id="dash" disabled>Dash!</button>
   <p class="wins" id="wins"></p>
 </div>
 
@@ -429,71 +420,23 @@
   // ---- A phone: joystick + dash ----------------------------------------------------------
   function startController() {
     document.getElementById('phone').hidden = false;
-    const pad = document.getElementById('pad');
-    const knob = document.getElementById('knob');
     const dash = document.getElementById('dash');
-    const SEND_EVERY_MS = 80;
-
-    let canMove = false;
     let canDash = false;
-    let stick = { x: 0, y: 0 }; // where the thumb is: -1..1 each
-    let sent = { x: 0, y: 0 };
-    let lastSentAt = 0;
-    let dragging = null; // the pointer id holding the stick
+
+    // The shared joystick (party.ui): sends the direction ~12 times a second at most, only
+    // when it changes, and arrow keys/WASD work too. It stays live between rounds, so a
+    // thumb held down keeps steering; the big screen ignores blobs that are in the water.
+    const stick = party.ui.joystick('#stick', { onChange: (x, y) => party.send({ x, y }) });
 
     party.on('state', (s) => {
       document.getElementById('dot').style.background = s.color;
-      knob.style.background = s.color;
+      stick.setColor(s.color);
       document.getElementById('you').textContent = `You're the ${s.colorName} blob`;
       document.getElementById('status').textContent = s.text;
       document.getElementById('wins').textContent = `Rounds won: ${s.wins} of ${s.rounds}`;
-      canMove = s.canMove;
-      canDash = canMove && s.phase === 'play';
-      pad.classList.toggle('off', !canMove);
+      canDash = s.canMove && s.phase === 'play';
       if (!dash.classList.contains('cooling')) dash.disabled = !canDash;
     });
-
-    function setStick(x, y) {
-      const len = Math.hypot(x, y);
-      if (len > 1) { x /= len; y /= len; }
-      stick = { x, y };
-      knob.style.transform = `translate(${x * 95}%, ${y * 95}%)`; // the knob stays inside the pad
-      maybeSend();
-    }
-
-    // At most ~12 sends a second, and only when the direction really changed.
-    function maybeSend(force = false) {
-      const now = Date.now();
-      const changed = Math.abs(stick.x - sent.x) > 0.04 || Math.abs(stick.y - sent.y) > 0.04 || (stick.x === 0 && stick.y === 0 && (sent.x !== 0 || sent.y !== 0));
-      if (!changed) return;
-      if (!force && now - lastSentAt < SEND_EVERY_MS) return;
-      sent = { x: Math.round(stick.x * 100) / 100, y: Math.round(stick.y * 100) / 100 };
-      lastSentAt = now;
-      party.send(sent);
-    }
-    setInterval(() => maybeSend(), SEND_EVERY_MS); // catches the last move of a quick flick
-
-    function fromPointer(event) {
-      const rect = pad.getBoundingClientRect();
-      const reach = rect.width * 0.4;
-      setStick((event.clientX - (rect.left + rect.width / 2)) / reach, (event.clientY - (rect.top + rect.height / 2)) / reach);
-    }
-    pad.addEventListener('pointerdown', (event) => {
-      dragging = event.pointerId;
-      pad.setPointerCapture(event.pointerId);
-      fromPointer(event);
-    });
-    pad.addEventListener('pointermove', (event) => {
-      if (event.pointerId === dragging) fromPointer(event);
-    });
-    const release = (event) => {
-      if (event.pointerId !== dragging) return;
-      dragging = null;
-      setStick(0, 0);
-      maybeSend(true);
-    };
-    pad.addEventListener('pointerup', release);
-    pad.addEventListener('pointercancel', release);
 
     function doDash() {
       if (dash.disabled) return;
@@ -506,21 +449,10 @@
       }, DASH_COOLDOWN_MS);
     }
     dash.addEventListener('click', doDash);
-
-    // A keyboard works too (arrows or WASD, space to dash): handy on a laptop.
-    const keys = new Set();
-    const KEY_DIRS = { ArrowLeft: [-1, 0], a: [-1, 0], ArrowRight: [1, 0], d: [1, 0], ArrowUp: [0, -1], w: [0, -1], ArrowDown: [0, 1], s: [0, 1] };
-    function fromKeys() {
-      let x = 0, y = 0;
-      for (const k of keys) { x += KEY_DIRS[k][0]; y += KEY_DIRS[k][1]; }
-      setStick(x, y);
-    }
     window.addEventListener('keydown', (event) => {
-      if (event.key === ' ') { event.preventDefault(); doDash(); return; }
-      if (KEY_DIRS[event.key] && !keys.has(event.key)) { keys.add(event.key); fromKeys(); }
-    });
-    window.addEventListener('keyup', (event) => {
-      if (keys.delete(event.key)) fromKeys();
+      if (event.key !== ' ') return;
+      event.preventDefault();
+      doDash();
     });
   }
 </script>
