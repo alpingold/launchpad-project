@@ -490,9 +490,7 @@ function Version({ version: v, open, live, busy, onPlaytest }) {
               Code ({v.source.split('\n').length} lines){v.status === 'ready' && !live && !v.changes && ': read it before playtesting'}
             </summary>
             {/* Shown as text only. The browser never runs it. */}
-            <pre>
-              <code>{v.source}</code>
-            </pre>
+            <SourceCode source={v.source} report={v.report} />
           </details>
         )}
       </details>
@@ -548,26 +546,111 @@ function Progress({ progress }) {
 }
 
 /** A version's test report: a pass line, or the problems it found. */
+/** The checks' results (plan §13i, F4): problems, lines worth a look, and the playtest. */
 function Report({ report }) {
-  if (report.ok) {
-    return <p className="gen-report-ok">✓ Passed every check: {report.checked ?? 'the game file'}.</p>;
-  }
+  const problems = report.problems ?? [];
+  const warnings = report.warnings ?? [];
   return (
     <div className="gen-report">
-      <p>
-        <strong>
-          The tests found {report.problems.length} problem{report.problems.length === 1 ? '' : 's'}:
-        </strong>
-      </p>
-      <ol>
-        {report.problems.map((p, i) => (
-          <li key={i}>
-            {typeof p === 'string' ? p : p.message}
-            {p.where && <span className="muted small"> (first seen with {p.where})</span>}
-          </li>
-        ))}
-      </ol>
+      {report.ok ? (
+        <p className="gen-report-ok">✓ Passed every check: {report.checked ?? 'the game file'}.</p>
+      ) : (
+        <p>
+          <strong>
+            The checks found {problems.length} problem{problems.length === 1 ? '' : 's'}
+          </strong>
+          {report.checked && <span className="muted small"> (checked {report.checked})</span>}:
+        </p>
+      )}
+      {problems.length > 0 && <Findings items={problems} />}
+      {warnings.length > 0 && (
+        <>
+          <p className="small">
+            <strong>Worth a look</strong> (these don't fail it):
+          </p>
+          <Findings items={warnings} />
+        </>
+      )}
+      {report.playtest && <PlaytestResult playtest={report.playtest} />}
     </div>
+  );
+}
+
+/** A list of findings: a sentence, or { message, screen?, line?, code?, count?, where? }. */
+function Findings({ items }) {
+  return (
+    <ol className="gen-findings">
+      {items.map((f, i) => {
+        if (typeof f === 'string') return <li key={i}>{withCode(f)}</li>;
+        const about = [f.screen, f.line && f.code ? `line ${f.line}` : null, f.count > 1 ? `${f.count} times` : null].filter(Boolean);
+        return (
+          <li key={i}>
+            {withCode(f.message)}
+            {about.length > 0 && <span className="muted small"> ({about.join(' · ')})</span>}
+            {f.where && <span className="muted small"> (first seen with {f.where})</span>}
+            {f.code && <code className="gen-finding-code">{f.code}</code>}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+/** Text with `code` in backticks, as React elements (never as HTML). */
+function withCode(text) {
+  return String(text)
+    .split('`')
+    .map((part, i) => (i % 2 === 1 ? <code key={i}>{part}</code> : part));
+}
+
+/** What happened in the headless-browser playtest, with its screenshots. */
+function PlaytestResult({ playtest: t }) {
+  return (
+    <div className="gen-playtest">
+      <p className="small">
+        In the playtest, {t.players} simulated phone{t.players === 1 ? '' : 's'} sent {t.eventsFromPhones} events and the big screen sent{' '}
+        {t.updatesToPhones} updates. {t.ended ? `The game ended after ${t.endedAfterSeconds} s.` : `It was still going after ${t.seconds} s.`}
+      </p>
+      {t.screenshots && (
+        <div className="gen-shots">
+          {t.screenshots.host && (
+            <figure>
+              <img src={t.screenshots.host} alt="The big screen during the playtest" />
+              <figcaption className="small muted">Big screen</figcaption>
+            </figure>
+          )}
+          {t.screenshots.phone && (
+            <figure className="gen-shot-phone">
+              <img src={t.screenshots.phone} alt="A phone during the playtest" />
+              <figcaption className="small muted">Phone</figcaption>
+            </figure>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** A game's code as text, with line numbers; lines the checks flagged are marked. */
+function SourceCode({ source, report }) {
+  const flagged = new Map();
+  for (const f of [...(report?.problems ?? []), ...(report?.warnings ?? [])]) {
+    if (typeof f === 'object' && f.line && f.code) flagged.set(f.line, [...(flagged.get(f.line) ?? []), f.message]);
+  }
+  return (
+    <pre className="gen-code">
+      <code>
+        {source.split('\n').map((text, i) => {
+          const notes = flagged.get(i + 1);
+          return (
+            <span key={i} className={notes ? 'code-line flagged' : 'code-line'} data-line={i + 1} title={notes?.join('\n')}>
+              {text}
+              {'\n'}
+            </span>
+          );
+        })}
+      </code>
+    </pre>
   );
 }
 

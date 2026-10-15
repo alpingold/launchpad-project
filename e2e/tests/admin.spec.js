@@ -2,8 +2,9 @@ import { test, expect } from './helpers.js';
 import { ADMIN } from '../server/accounts.js';
 
 // The admin page for AI-made games (plan §11, A6). The test server's generator is a fake
-// (e2e/server/testServer.js): it takes ~2 s, writes a renamed copy of the Probe frame game
-// ("Robot Majority"), or a broken game when the idea contains "broken".
+// (e2e/server/testServer.js): it takes ~2 s, writes a renamed copy of the party-rounds
+// template ("Robot Majority"), or a broken game when the idea contains "broken", with a
+// stand-in for the browser playtest's results.
 test.setTimeout(60_000);
 const GENERATED = { timeout: 20_000 }; // other tests' jobs may be in the queue first
 
@@ -47,7 +48,12 @@ test('generate → read it → playtest with phones → publish → ask for chan
   await expect(detail(page).getByText('asking qwen3.8:27b')).toBeVisible(GENERATED);
   await expect(detail(page).getByText('Ready for review')).toBeVisible(GENERATED);
   await expect(detail(page).getByRole('heading', { name: 'Robot Majority' })).toBeVisible();
-  await expect(detail(page).getByText(/Passed every check: the game info/)).toBeVisible();
+  await expect(detail(page).getByText(/Passed every check: the game info, the static check, and 20 s of play/)).toBeVisible();
+  // The playtest's screenshots and the lines worth a look (F4).
+  await expect(detail(page).getByRole('img', { name: 'The big screen during the playtest' })).toBeVisible();
+  await expect(detail(page).getByRole('img', { name: 'A phone during the playtest' })).toBeVisible();
+  await expect(detail(page).getByText('Worth a look')).toBeVisible();
+  await expect(detail(page).getByText(/never called party\.save/)).toBeVisible();
   await expect(detail(page).locator('pre')).toContainText('id="game-info"'); // the code, as text
   const gameId = (await detail(page).getByText(/^g-[a-z0-9]{8}$/).textContent()).trim();
 
@@ -66,7 +72,7 @@ test('generate → read it → playtest with phones → publish → ask for chan
   await hostPage.getByRole('combobox', { name: 'Game' }).selectOption(`${gameId}-v1`);
   await expect(hostPage.locator('.game-picker')).toContainText('AI-made · v1 playtest, only you');
   await hostPage.getByRole('button', { name: 'Start game' }).click();
-  await expect(alex.page.frameLocator('iframe.game-frame').getByRole('button', { name: 'Ping' })).toBeVisible();
+  await expect(alex.page.frameLocator('iframe.game-frame').getByRole('button', { name: '3', exact: true })).toBeVisible(); // pick a number
 
   // Publish: every host can pick it now, with the AI-made badge.
   await detail(page).getByRole('button', { name: 'Publish v1' }).click();
@@ -125,11 +131,14 @@ test('a failed game shows why, with its test report and code', async ({ browser 
 
   await expect(detail(page).getByText('Failed', { exact: true }).first()).toBeVisible(GENERATED);
   await expect(detail(page).getByText('no passing game after 1 attempt')).toBeVisible();
-  await expect(detail(page).getByText(/The tests found \d+ problems?:/)).toBeVisible();
-  await expect(detail(page).getByText(/no game info/).first()).toBeVisible();
+  await expect(detail(page).getByText(/The checks found \d+ problems?/)).toBeVisible();
+  // The static check's finding, with its line; the line is marked in the code.
+  const finding = detail(page).locator('.gen-findings li', { hasText: 'fetch is blocked in a game' });
+  await expect(finding).toContainText('line 5');
+  await expect(finding.locator('.gen-finding-code')).toHaveText("party.ready(() => fetch('https://example.com/scores'));");
   await expect(detail(page).getByRole('button', { name: /Playtest/ })).toHaveCount(0); // only Delete
   await expect(detail(page).getByLabel('Ask for changes')).toHaveCount(0); // nothing that passed to change
   await detail(page).getByText(/^Code \(/).click();
-  await expect(detail(page).locator('pre')).toContainText('Oops, no game info.');
+  await expect(detail(page).locator('pre .code-line.flagged')).toHaveAttribute('data-line', '5');
   await admin.context.close();
 });

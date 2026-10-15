@@ -24,10 +24,37 @@ import { ADMIN } from './accounts.js';
 const PROBE_SOURCE = readFileSync(new URL('./probe.html', import.meta.url), 'utf8');
 const UI_DEMO_SOURCE = readFileSync(new URL('./ui-demo.html', import.meta.url), 'utf8');
 
-/** What the fake "AI" writes: the Probe game, renamed so the tests can tell it apart. */
-const GOOD_SOURCE = PROBE_SOURCE.replace('"name": "Probe"', '"name": "Robot Majority"');
-/** What it writes when the idea contains "broken": a page with no game info. */
-const BROKEN_SOURCE = '<p>Oops, no game info.</p>\n';
+const ROUNDS_TEMPLATE = readFileSync(new URL('../../generator/templates/rounds.html', import.meta.url), 'utf8');
+
+/** What the fake "AI" writes: the party-rounds template, renamed so the tests can tell it apart. */
+const GOOD_SOURCE = ROUNDS_TEMPLATE.replace('"name": "Unique Number"', '"name": "Robot Majority"');
+/** What it writes when the idea contains "broken": a game whose line 5 reaches for the network. */
+const BROKEN_SOURCE = [
+  '<script type="application/json" id="game-info">',
+  '  { "name": "Oops", "description": "Broken on purpose.", "minPlayers": 1, "maxPlayers": 4 }',
+  '</script>',
+  '<script>',
+  "  party.ready(() => fetch('https://example.com/scores'));",
+  '</script>',
+  '',
+].join('\n');
+
+/** A stand-in screenshot: a plain picture, as a data: URL like the real ones. */
+const shot = (w, h, label) =>
+  `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><rect width="100%" height="100%" fill="#dde"/><text x="20" y="40" font-size="24">${label}</text></svg>`)}`;
+
+/** What the real checker adds after its browser playtest (generator/src/check/checkGame.js). */
+function withFakePlaytest(report) {
+  return {
+    ...report,
+    checked: 'the game info, the static check, and 20 s of play in a headless browser with 3 simulated phones',
+    warnings: [...report.warnings, { rule: 'save', screen: 'big screen', message: 'The game never called party.save, so a big-screen reload starts it over.' }],
+    playtest: {
+      players: 3, seconds: 20, eventsFromPhones: 12, updatesToPhones: 30, saves: 0, ended: true, endedAfterSeconds: 14,
+      screenshots: { host: shot(640, 360, 'big screen'), phone: shot(195, 390, 'phone') },
+    },
+  };
+}
 
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -46,7 +73,7 @@ async function fakeGenerator(job, { onStep }) {
       ? job.change.source.replace(/"name": "[^"]*"/, '"name": "Robot Majority 2"')
       : GOOD_SOURCE;
   const changelog = job.change ? '- Renamed it to Robot Majority 2' : null;
-  const report = frameGameReport(source);
+  const report = withFakePlaytest(frameGameReport(source));
   if (!report.ok) {
     onStep(`attempt 1/4: ${report.problems.length} problem(s)`);
     return { ok: false, model: job.model, source, report, changelog, error: 'no passing game after 1 attempt' };
