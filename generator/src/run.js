@@ -6,7 +6,7 @@
 //
 //   { "step": "design", "idea": "...", "model": "..." }
 //       → a design document. With "redraft": { "draft", "feedback" }: a new draft.
-//         "examples": false leaves the example designs out of the prompt (plan §13n).
+//         "examples": true adds the example designs to the prompt (off by default, plan §13n).
 //   { "step": "design", ..., "change": { "request", "source", "design"?, "earlierRequests"? } }
 //       → a change plan for an existing game (with "redraft" too).
 //   { "step": "build", "idea": "...", "design": "<the approved design>" }
@@ -84,7 +84,7 @@ async function design(job, model, { chatFn = chat, onStep = () => {} }) {
   const isPlan = job.change !== undefined;
   const what = isPlan ? 'plan' : 'design';
   const headings = isPlan ? PLAN_HEADINGS : DESIGN_HEADINGS;
-  const messages = isPlan ? planMessages({ idea: job.idea, ...job.change }, job.redraft) : designMessages(job.idea, job.redraft, { examples: job.examples ?? true });
+  const messages = isPlan ? planMessages({ idea: job.idea, ...job.change }, job.redraft) : designMessages(job.idea, job.redraft, { examples: job.examples ?? false });
   const result = { ok: false, model, design: null, attempts: [] };
 
   for (let attempt = 1; attempt <= DESIGN_ATTEMPTS; attempt++) {

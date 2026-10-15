@@ -29,8 +29,9 @@ When the game ends, who wins, and how ties are handled. Rankings for `party.end`
 How long one round (or level, or turn) takes, and how long the whole game takes, worked out
 from the numbers above: show the arithmetic (distance ÷ speed, timers × rounds, countdowns
 and pauses). For example: "a round: 100 tiles ÷ 6 tiles/s ≈ 17 s, ≈ 25 s with jumps;
-3 rounds + 5 s countdowns + 6 s final screen ≈ 1.5–2 min." If the idea asks for a length,
-match it.
+3 rounds + 5 s countdowns + 6 s final screen ≈ 1.5–2 min." Aim for 5–15 minutes unless
+the idea asks for a length; if your total is outside that, change the design (more rounds,
+longer levels, more to do) instead of just reporting it.
 
 ## Art
 How things are drawn: canvas shapes, text characters (`party.ui.ascii`), HTML and CSS, or

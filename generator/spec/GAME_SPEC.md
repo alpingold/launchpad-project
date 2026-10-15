@@ -70,6 +70,9 @@ phases or screens. A game must start, react to its players, and end with `party.
   controls). Show the player who they are (name and colour) and what to do right now.
 - **Big screen:** readable from across the room: big text, high contrast, few words. Show
   whose turn it is, timers, scores, and what just happened.
+- **Length:** a game lasts about **5–15 minutes** unless the idea asks for something else,
+  and each round, level, race or fight takes at least about 20 seconds. Make a game long
+  enough with more rounds, longer levels or more to do, not with waiting.
 - **Both themes:** use the colour variables below, so the game looks right in light and dark
   mode. A canvas can read them with `getComputedStyle(document.documentElement)`.
 

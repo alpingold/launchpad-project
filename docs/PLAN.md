@@ -1060,8 +1060,9 @@ works out how long its game lasts (and our own Tower Dash, its closest example, 
 short). Three ways to steer it:
 1. **A "Length" heading in every design, with the arithmetic** (distance ÷ speed, timers ×
    rounds). **Chosen and built (2026-10-15).** The example designs got honest Length sections.
-2. *A default target in the rulebook:* about 5–15 minutes per game unless the idea says
-   otherwise; at least ~20 s per round or level. **Not yet: to test later.**
+2. **A default target in the rulebook:** about 5–15 minutes per game unless the idea says
+   otherwise; at least ~20 s per round or level; DESIGN.md says to change the design, not
+   just report a total outside that. **Built (2026-10-15), after the experiment in 13n.**
 3. *A length choice on the new-game form* (Quick ~3 min / Normal ~10 min / Long 20+ min; and
    `--length` in the terminal), sent to the model as a fixed value, never free text. **Not
    yet: to test later.**
@@ -1148,6 +1149,10 @@ example designs, one design each, all passed the heading check in 32–72 s):**
 - **Length is short either way** except the RPGs: 1.5–7 min for the party games, even with
   the Length heading. So option 2 (a default target) looks needed regardless.
 - One hallucination: a "with" design claimed Dungeon Party has a secret thief role.
+
+**Decided (2026-10-15):** the design step leaves the example designs out by default (the job
+switch `examples: true` brings them back); the build step keeps its example game. And the
+rulebook gets the default length target (option 2 above).
 
 **The longer idea: every game made becomes data.** We already keep the idea, every design
 draft *with the admin's feedback*, the approved design, every code attempt with its check

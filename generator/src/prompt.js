@@ -1,7 +1,8 @@
 // What the model reads (plan §13i, F5). Two steps, each its own conversation:
 //
-//   DESIGN  the rulebook, how to write a design, three example designs, the art library,
-//           and the idea → a short design document (or, for a change, a short plan).
+//   DESIGN  the rulebook, how to write a design, the art library, and the idea → a short
+//           design document (or, for a change, a short plan). The three example designs are
+//           left out by default: they made the model copy them (plan §13n's experiment).
 //   BUILD   the rulebook, the art library, the template and the example the approved
 //           design names (the example with ITS design, so the model sees how a design
 //           becomes code), and the approved design → one game file.
@@ -98,9 +99,9 @@ const DESIGN_ANSWER = `Reply with the design only: Markdown, starting with "# " 
  * A new game's design.
  * @param {string} idea
  * @param {{ draft: string, feedback: string }} [redraft]  a new draft: the last one and what to change
- * @param {{ examples?: boolean }} [opts]  examples: false leaves the example designs out
+ * @param {{ examples?: boolean }} [opts]  examples: true adds the example designs (off by default: §13n)
  */
-export function designMessages(idea, redraft, { examples = true } = {}) {
+export function designMessages(idea, redraft, { examples = false } = {}) {
   const parts = [`Design a game based on this idea. If part of it isn't possible with how games work, design the closest game that is.\n\n${data('game-idea', idea)}`];
   if (redraft) {
     parts.push(`Your last draft:\n\n<last-draft>\n${String(redraft.draft).trim()}\n</last-draft>`);
