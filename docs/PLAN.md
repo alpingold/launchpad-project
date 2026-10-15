@@ -1128,6 +1128,27 @@ classes, 30 s turns and Defend-on-timeout). On `main`, examples were the biggest
 - **Build step:** examples teach the SDK, saving and reloads. Removing them probably means
   more failed attempts; measure later (each build ~10 min).
 
+**Result of the design experiment (2026-10-15, qwen3.8:27b, 5 ideas × with/without the
+example designs, one design each, all passed the heading check in 32–72 s):**
+
+| Idea | With examples | Without |
+|---|---|---|
+| Racing platformer | ASCII, Tower Dash's 7 tiles/s | canvas, its own physics |
+| Fantasy RPG | Knight/Mage/Cleric/Rogue (+2 more) | no classes: the room votes as one party |
+| Cooking | real-time orders | rounds per order |
+| Space shooter | similar either way (canvas, joystick) | similar |
+| Thief mystery | similar either way (alibi cards) | similar |
+
+- **Copying is real but narrow:** where an example is close (platformer, RPG), it supplies
+  the specifics: numbers, class lists, ASCII. Without it the model invents its own.
+- **The names still anchor it:** without the designs, it still names `bumper-blobs` and
+  `dungeon-party` as closest examples, because DESIGN.md lists them. That's harmless (the
+  build step needs the choice), but it shows how much the prompt's words steer.
+- **Designs without examples are ~20% longer** and sometimes slower (up to 72 s).
+- **Length is short either way** except the RPGs: 1.5–7 min for the party games, even with
+  the Length heading. So option 2 (a default target) looks needed regardless.
+- One hallucination: a "with" design claimed Dungeon Party has a secret thief role.
+
 **The longer idea: every game made becomes data.** We already keep the idea, every design
 draft *with the admin's feedback*, the approved design, every code attempt with its check
 report, the playtest results, and the admin's choices (playtest, publish, reject, fixes).
