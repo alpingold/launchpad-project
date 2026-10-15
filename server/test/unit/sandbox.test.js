@@ -73,6 +73,9 @@ test('failures are explained', async () => {
   const noResult = await runGeneratorInSandbox(job, fakeOpenshell({ exec: { code: 137, stdout: '', stderr: 'STEP x\nKilled' } }));
   assert.equal(noResult.error, 'the generator gave no result (exit 137): Killed');
 
+  const cutOff = await runGeneratorInSandbox(job, fakeOpenshell({ exec: { code: 0, stdout: '{"ok":true,"source":"<scri', stderr: '' } }));
+  assert.equal(cutOff.error, "the generator's result was cut off after 26 bytes (exit 0)");
+
   const slow = await runGeneratorInSandbox(job, fakeOpenshell({ exec: { code: null, stdout: '', stderr: '', timedOut: true } }));
   assert.match(slow.error, /took longer than 20 minutes/);
 

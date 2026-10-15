@@ -185,6 +185,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     job = null;
   }
   const result = await runJob(job, { onStep: (text) => process.stderr.write(`STEP ${text}\n`) });
-  process.stdout.write(`${JSON.stringify(result)}\n`);
-  process.exit(result.ok ? 0 : 1);
+  // Exit only once the result is fully written: `openshell sandbox exec` passes stdout on
+  // asynchronously, and exiting right away cut a built game's result off at 64 KB (F5).
+  process.stdout.write(`${JSON.stringify(result)}\n`, () => process.exit(result.ok ? 0 : 1));
 }

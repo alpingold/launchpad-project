@@ -95,6 +95,7 @@ export async function runGeneratorInSandbox(job, { onStep = () => {}, cfg = conf
     try {
       return JSON.parse(ran.stdout.trim().split('\n').at(-1));
     } catch {
+      if (ran.stdout.length > 0) return failed(`the generator's result was cut off after ${ran.stdout.length} bytes (exit ${ran.code})`);
       return failed(`the generator gave no result (exit ${ran.code}): ${lastLines(ran.stderr)}`);
     }
   } catch (err) {
