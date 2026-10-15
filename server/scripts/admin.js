@@ -16,6 +16,7 @@ import {
   createGeneratedGame,
   saveVersionSource,
   setLiveVersions,
+  saveDraft,
   getGeneratedGame,
   listGeneratedGames,
   deleteGeneratedGame,
@@ -32,9 +33,10 @@ const HELP = `Usage: npm run admin -- <command>
   grant <username>                      make an account an admin
   revoke <username>                     take admin away
   games                                 list AI-generated games and their versions
-  import-game <file> --owner <username> [--status playtest|review]
+  import-game <file> --owner <username> [--status playtest|review] [--idea "<text>"] [--design <file.md>]
                                         store a game file as a new generated game (its version 1;
                                         default: playtest). Its game info must be valid first.
+                                        --idea and --design: what it was made from, shown on /admin
   set-live <game id> published|playtest <version|none>
                                         choose which version everyone gets (published), or only
                                         its owner (playtest); "none" takes it down
@@ -109,7 +111,12 @@ switch (command) {
     const report = frameGameReport(source);
     if (!report.ok) done(`Not imported: fix these first:\n - ${report.problems.map(describeProblem).join('\n - ')}`, false);
 
-    const game = createGeneratedGame(db, { ownerUserId: owner.id, prompt: `imported by hand from ${path.basename(file)}` });
+    const idea = flag('idea')?.trim() || `imported by hand from ${path.basename(file)}`;
+    const designFile = flag('design');
+    const design = designFile ? await readFile(path.resolve(process.env.INIT_CWD || process.cwd(), designFile), 'utf8') : null;
+
+    const game = createGeneratedGame(db, { ownerUserId: owner.id, prompt: idea });
+    if (design) saveDraft(db, game.id, 1, { text: design, by: 'ai' }); // the design it was built from
     saveVersionSource(db, game.id, 1, { source, report, ...report.game });
     if (status === 'playtest') setLiveVersions(db, game.id, { playtestVersion: 1 });
     done(`Imported as ${game.id} (${status}, owner ${owner.username}) ${restartNote}`);
