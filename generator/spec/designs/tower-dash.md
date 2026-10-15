@@ -30,6 +30,12 @@ exit first. Fast, a bit frantic, readable from across the room.
 ## Ending and winner
 After level 3, most points wins; ties share a place. A 6 s final screen, then `party.end`.
 
+## Length
+- A level: about 44 tiles from `S` to `>` ÷ 7 tiles/s ≈ 6 s of straight running; with jumps,
+  spikes and coins, 10–20 s for the leader. The rest have at most 30 s more (120 s at most).
+- The game: 3 levels + 4 s between them + a 6 s final screen ≈ 1–2 min. Short: a warm-up
+  game. Longer levels or more of them would make it last.
+
 ## Art
 Text characters only, with `party.ui.ascii` and a colour per character.
 

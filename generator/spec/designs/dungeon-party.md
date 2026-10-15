@@ -35,6 +35,12 @@ The dragon dies: everyone wins together. Every hero is down:
 the party loses. Either way, rankings and scores come from each hero's points: damage dealt,
 healing done and a share of the treasure. A 7 s final screen, then `party.end`.
 
+## Length
+- A turn: at most 30 s, usually 5–10 s. A fight: about 3–5 rounds of every hero plus the
+  monsters ≈ 1–3 min with 3 heroes. A vote: at most 20 s.
+- The game: every path is 3 rooms after the entrance, ending in the lair, so 2–3 fights,
+  plus votes and pauses ≈ 10–20 min. Win or lose, a 7 s final screen.
+
 ## Art
 Text characters with `party.ui.ascii`; HTML for the side panel and phones.
 

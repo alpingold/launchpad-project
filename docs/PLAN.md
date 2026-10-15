@@ -1054,6 +1054,18 @@ The aim is that someone can ask for a party round game, a platformer, an RPG, a 
 
 **On malicious code:** the model isn't trying to attack anyone. The realistic risks are its habits (CDN scripts, outside fonts) and, from A7 on, other people's ideas containing instructions aimed at the model. The templates, rulebook and static check handle the first; the sandbox, CSP and admin approval handle the second.
 
+**Game length (found in F5's live test, 2026-10-15).** The first live design, a racing
+platformer, had 40-column tracks: about 7 s per round and 2 minutes per game. The model never
+works out how long its game lasts (and our own Tower Dash, its closest example, is about as
+short). Three ways to steer it:
+1. **A "Length" heading in every design, with the arithmetic** (distance ÷ speed, timers ×
+   rounds). **Chosen and built (2026-10-15).** The example designs got honest Length sections.
+2. *A default target in the rulebook:* about 5–15 minutes per game unless the idea says
+   otherwise; at least ~20 s per round or level. **Not yet: to test later.**
+3. *A length choice on the new-game form* (Quick ~3 min / Normal ~10 min / Long 20+ min; and
+   `--length` in the terminal), sent to the model as a fixed value, never free text. **Not
+   yet: to test later.**
+
 ### 13j. Example games (hand-written, also the AI's examples)
 
 | Game | Kind | Big screen | Phones | Players |

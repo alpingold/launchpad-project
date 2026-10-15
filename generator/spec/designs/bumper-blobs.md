@@ -31,6 +31,13 @@ A real-time party brawler on ice: chaotic, slippery and quick. Rounds last under
 After 3 rounds, the most round wins wins; ties share a place. Rankings by wins. A 5 s final
 screen, then `party.end`.
 
+## Length
+- A round: 3 s countdown, then it lasts until one blob is left. The ice starts melting after
+  20 s at 2.5 units/s from a radius of 100, so a round ends within about 60 s; usually 20–45 s.
+  Plus 3 s for the result.
+- The game: 3 rounds ≈ 1.5–3 min, plus a 5 s final screen. Short on purpose: groups play it
+  several times in a row.
+
 ## Art
 Canvas: circles, an ice disc with a soft edge, water. No pictures.
 

@@ -25,6 +25,13 @@ Step by step, from the start to the end, with numbers: timers, points, speeds, h
 ## Ending and winner
 When the game ends, who wins, and how ties are handled. Rankings for `party.end`.
 
+## Length
+How long one round (or level, or turn) takes, and how long the whole game takes, worked out
+from the numbers above: show the arithmetic (distance ÷ speed, timers × rounds, countdowns
+and pauses). For example: "a round: 100 tiles ÷ 6 tiles/s ≈ 17 s, ≈ 25 s with jumps;
+3 rounds + 5 s countdowns + 6 s final screen ≈ 1.5–2 min." If the idea asks for a length,
+match it.
+
 ## Art
 How things are drawn: canvas shapes, text characters (`party.ui.ascii`), HTML and CSS, or
 pictures from the art library.
