@@ -6,7 +6,7 @@ import { frameGameOrThrow } from './frameGame.js';
  * The official (hand-made) games, by id. Each is one file: server/src/games/<id>/game.html
  * (plan §13c). To add a game: make its folder and add its id here.
  */
-export const OFFICIAL_GAMES = ['bumper-blobs', 'tower-dash'];
+export const OFFICIAL_GAMES = ['bumper-blobs', 'tower-dash', 'dungeon-party'];
 
 /** Reads an official game's file. Throws if it's missing or its info is invalid. */
 export function readOfficialGame(id) {

@@ -1,0 +1,476 @@
+<script type="application/json" id="game-info">
+  {
+    "name": "Dungeon Party",
+    "description": "A co-op ASCII dungeon crawl: pick your path together, fight monsters turn by turn, and slay the dragon.",
+    "minPlayers": 1,
+    "maxPlayers": 6
+  }
+</script>
+<!--
+  DUNGEON PARTY: an example frame game (plan §13j): a turn-based co-op adventure.
+   - The big screen draws the dungeon in text characters (party.ui.ascii): rooms appear as
+     the party finds them; @ is the party, monsters are letters. Beside it: the heroes, the
+     monsters, whose turn it is (party.ui.timer) and the battle log.
+   - Each phone is that player's hero: a character card, and buttons on their turn.
+   - Between rooms everyone votes on a door. Nothing waits forever: a turn ends itself after
+     30 s (the hero defends), and a vote after 20 s.
+  The whole game is saved after every change (party.save), so a big-screen reload carries
+  on exactly where it was.
+-->
+<style>
+  .board { display: grid; grid-template-columns: 1fr 19rem; gap: 1rem; height: 100%; box-sizing: border-box; padding: 0.75rem 1rem; }
+  .left { display: flex; flex-direction: column; gap: 0.5rem; min-height: 0; }
+  .left h1 { margin: 0; }
+  #map { flex: 1; min-height: 12rem; background: #0d0d14; border-radius: var(--radius); }
+  .log { margin: 0; padding: 0.5rem 0.75rem; list-style: none; font-family: var(--mono); font-size: 0.85rem; min-height: 7.5em; }
+  .log li:last-child { font-weight: 800; }
+  .unit { display: flex; justify-content: space-between; gap: 0.5rem; padding: 0.15rem 0; }
+  .unit.down { opacity: 0.45; text-decoration: line-through; }
+  .unit.turn { font-weight: 800; color: var(--accent); }
+  .hp { font-family: var(--mono); white-space: nowrap; }
+  .side h2 { font-size: 1.1rem; margin: 0.25rem 0; }
+  .hero-card { text-align: center; }
+  .hero-card .cls { font-size: 1.6rem; font-weight: 800; }
+  .actions { display: grid; gap: 0.6rem; }
+  .bar { height: 0.7rem; border-radius: 1rem; background: var(--border); overflow: hidden; margin: 0.25rem 0 0.5rem; }
+  .bar > div { height: 100%; background: var(--good); }
+</style>
+
+<div id="app"></div>
+
+<script>
+  'use strict';
+
+  // ---- The dungeon --------------------------------------------------------------------------
+  // Rooms are rectangles on a 48 × 17 map; exits say which way and to which room.
+  const ROOMS = {
+    entrance: { name: 'the entrance hall', x: 2, y: 10, w: 12, h: 6, exits: { North: 'crypt', East: 'den' } },
+    den: { name: 'the goblin den', x: 18, y: 10, w: 12, h: 6, hint: 'You hear snickering…', monsters: [['Goblin', 'g', 2]], exits: { North: 'treasure', East: 'nest' } },
+    nest: { name: 'the spider nest', x: 34, y: 10, w: 12, h: 6, hint: 'Something skitters in the dark.', monsters: [['Spider', 'x', 3]], exits: { North: 'lair' } },
+    crypt: { name: 'the crypt', x: 2, y: 1, w: 12, h: 6, hint: 'A cold wind smells of dust.', monsters: [['Skeleton', 's', 2]], exits: { East: 'treasure' } },
+    treasure: { name: 'the treasure room', x: 18, y: 1, w: 12, h: 6, hint: 'Is that… gold?', treasure: true, exits: { East: 'lair' } },
+    lair: { name: "the dragon's lair", x: 34, y: 1, w: 12, h: 6, hint: 'The walls are scorched black.', monsters: [['Dragon', 'D', 1]], exits: {} },
+  };
+  const MONSTERS = {
+    Goblin: { hp: 14, atk: [3, 5] },
+    Spider: { hp: 9, atk: [2, 4] },
+    Skeleton: { hp: 18, atk: [3, 6] },
+    Dragon: { hp: 45, atk: [5, 8], breath: [3, 5] }, // breathes fire on everyone every third round
+  };
+  const CLASSES = [
+    { cls: 'Knight', hp: 40, atk: [5, 8], special: 'Shield Wall', about: 'Everyone takes half damage this round.' },
+    { cls: 'Mage', hp: 24, atk: [2, 4], mp: 9, special: 'Fireball', cost: 3, about: '4–7 damage to every monster (3 MP).' },
+    { cls: 'Cleric', hp: 30, atk: [3, 5], special: 'Heal', about: 'Heal a hero 8–12, even one who is down.' },
+    { cls: 'Rogue', hp: 28, atk: [4, 7], special: 'Sneak Attack', about: '8–12 damage to one monster, once per fight.' },
+  ];
+  const TURN_MS = 30_000;
+  const VOTE_MS = 20_000;
+  const PAUSE_MS = 2500; // after a fight or a treasure, before the vote
+  // Balance for the party's size: more heroes, more monster HP; fewer heroes, softer hits.
+  const hpScale = (heroes) => 1 + 0.6 * (heroes - 1);
+  const hitScale = (heroes) => (heroes === 1 ? 0.6 : heroes === 2 ? 0.8 : 1);
+  const FINAL_MS = 7000;
+  const roll = ([lo, hi]) => lo + Math.floor(Math.random() * (hi - lo + 1));
+
+  party.ready(({ role, me, restored }) => {
+    if (role === 'host') startDungeonMaster(restored);
+    else startHero(me);
+  });
+
+  // ---- The big screen: the dungeon master ----------------------------------------------------
+  function startDungeonMaster(restored) {
+    const { el, ascii, timer } = party.ui;
+    const app = document.getElementById('app');
+    const title = el('h1', {}, 'Dungeon Party');
+    const logList = el('ul', { class: 'log card', 'aria-label': 'Battle log' });
+    const heroesBox = el('div');
+    const monstersBox = el('div');
+    const turnBox = el('p', { class: 'big-text', style: { fontSize: '1.3rem' }, role: 'status' });
+    const timerSlot = el('div');
+    app.append(
+      el('div', { class: 'board' },
+        el('div', { class: 'left' }, title, el('div', { id: 'map' }), logList),
+        el('div', { class: 'side stack' }, turnBox, timerSlot, el('h2', {}, 'Heroes'), heroesBox, el('h2', {}, 'Monsters'), monstersBox),
+      ),
+    );
+    const map = ascii('#map', { cols: 48, rows: 17, colors: { '#': '#7e6b5a', '.': '#3a3a4a', '+': '#c8a165', '$': '#ffd84d' } });
+    let clock = null;
+    let pending = null; // the one timer the game is waiting on (a turn, a vote, a pause)
+
+    // Everything that matters is in `g`, so it can be saved and restored as one object.
+    let g = restored ?? newGame();
+
+    function newGame() {
+      const heroes = party.players.map((p, i) => {
+        const c = CLASSES[i % CLASSES.length];
+        return { id: p.id, name: p.name, cls: c.cls, hp: c.hp, maxHp: c.hp, mp: c.mp ?? 0, maxMp: c.mp ?? 0, defending: false, sneakUsed: false, score: 0 };
+      });
+      return { phase: 'start', room: 'entrance', seen: ['entrance'], taken: [], heroes, monsters: [], round: 1, turn: 0, shieldWall: false, votes: {}, choices: [], log: [], result: null };
+    }
+
+    const heroOf = (id) => g.heroes.find((h) => h.id === id);
+    const alive = (list) => list.filter((u) => u.hp > 0);
+    const connected = (id) => party.players.find((p) => p.id === id)?.connected !== false;
+    function log(text) {
+      g.log = [...g.log, text].slice(-6);
+    }
+    function wait(ms, fn) {
+      clearTimeout(pending);
+      pending = setTimeout(fn, ms);
+    }
+    function showTimer(ms) {
+      clock?.destroy();
+      clock = ms ? timer(timerSlot, { endsAt: party.now() + ms }) : null;
+    }
+
+    // ---- Moving through the dungeon ----
+    function enterRoom(id) {
+      const room = ROOMS[id];
+      g.room = id;
+      if (!g.seen.includes(id)) g.seen.push(id);
+      log(`The party enters ${room.name}.`);
+      if (room.monsters) return startBattle(room);
+      if (room.treasure && !g.taken.includes(id)) {
+        g.taken.push(id);
+        const share = Math.floor(30 / g.heroes.length);
+        for (const h of g.heroes) {
+          h.score += share;
+          h.hp = Math.min(h.maxHp, Math.max(h.hp, 0) + 8);
+        }
+        log(`Treasure! Everyone gets ${share} gold and catches their breath (+8 HP).`);
+        g.phase = 'pause';
+        update();
+        return wait(PAUSE_MS, startVote);
+      }
+      startVote();
+    }
+
+    function startVote() {
+      g.choices = Object.entries(ROOMS[g.room].exits)
+        .filter(([, to]) => !g.seen.includes(to))
+        .map(([dir, to]) => ({ dir, to, hint: ROOMS[to].hint ?? '' }));
+      if (g.choices.length === 0) g.choices = [{ dir: 'onward', to: 'lair', hint: ROOMS.lair.hint }];
+      g.phase = 'vote';
+      g.votes = {};
+      showTimer(VOTE_MS);
+      update();
+      wait(VOTE_MS, resolveVote);
+    }
+
+    function resolveVote() {
+      const counts = g.choices.map((c, i) => Object.values(g.votes).filter((v) => v === i).length);
+      const pick = counts.indexOf(Math.max(...counts)); // a tie goes to the first door
+      const choice = g.choices[pick];
+      log(`The party heads ${choice.dir === 'onward' ? 'onward' : choice.dir.toLowerCase()}.`);
+      enterRoom(choice.to);
+    }
+
+    // ---- Fighting ----
+    function startBattle(room) {
+      const scale = hpScale(g.heroes.length);
+      g.monsters = room.monsters.flatMap(([kind, letter, count]) =>
+        Array.from({ length: count }, (_, i) => {
+          const hp = Math.round(MONSTERS[kind].hp * scale);
+          return { id: `m${i}`, kind, letter, name: count > 1 ? `${kind} ${i + 1}` : kind, hp, maxHp: hp };
+        }),
+      );
+      for (const h of g.heroes) h.sneakUsed = false;
+      g.phase = 'battle';
+      g.round = 1;
+      g.turn = -1;
+      log(`${g.monsters.length > 1 ? `${g.monsters.length} ${room.monsters[0][0]}s attack` : `The ${g.monsters[0].name} attacks`}!`);
+      nextTurn();
+    }
+
+    function nextTurn() {
+      do g.turn += 1;
+      while (g.turn < g.heroes.length && g.heroes[g.turn].hp <= 0);
+      if (g.turn >= g.heroes.length) {
+        monstersAct();
+        if (g.phase !== 'battle') return;
+        g.round += 1;
+        g.turn = -1;
+        return nextTurn();
+      }
+      const hero = g.heroes[g.turn];
+      hero.defending = false; // a defend lasts until your next turn
+      showTimer(TURN_MS);
+      update();
+      // A hero whose player has gone still takes a turn: they defend.
+      wait(connected(hero.id) ? TURN_MS : 1500, () => act(hero.id, { act: 'defend' }));
+    }
+
+    function act(heroId, { act, target }) {
+      const hero = heroOf(heroId);
+      if (g.phase !== 'battle' || g.heroes[g.turn] !== hero) return; // not your turn
+      const foe = g.monsters.find((m) => m.id === target && m.hp > 0) ?? alive(g.monsters)[0];
+      const hit = (m, dmg) => {
+        const dealt = Math.min(m.hp, dmg);
+        m.hp -= dealt;
+        hero.score += dealt;
+        return m.hp === 0 ? `${dmg}: the ${m.name} falls!` : `${dmg}`;
+      };
+      if (act === 'attack') {
+        let dmg = roll(CLASSES.find((c) => c.cls === hero.cls).atk);
+        const crit = hero.cls === 'Rogue' && Math.random() < 0.3;
+        if (crit) dmg *= 2;
+        log(`${hero.name} hits the ${foe.name}${crit ? ' (critical!)' : ''} for ${hit(foe, dmg)}`);
+      } else if (act === 'special' && hero.cls === 'Knight') {
+        g.shieldWall = true;
+        log(`${hero.name} raises a Shield Wall!`);
+      } else if (act === 'special' && hero.cls === 'Mage' && hero.mp >= 3) {
+        hero.mp -= 3;
+        const parts = alive(g.monsters).map((m) => `${m.name} ${hit(m, roll([4, 7]))}`);
+        log(`${hero.name} casts Fireball: ${parts.join(', ')}`);
+      } else if (act === 'special' && hero.cls === 'Cleric') {
+        const friend = heroOf(target) ?? hero;
+        const before = Math.max(friend.hp, 0);
+        friend.hp = Math.min(friend.maxHp, before + roll([8, 12]));
+        hero.score += friend.hp - before;
+        log(`${hero.name} heals ${friend === hero ? 'themself' : friend.name} (+${friend.hp - before} HP)${before === 0 ? ': back on their feet!' : ''}`);
+      } else if (act === 'special' && hero.cls === 'Rogue' && !hero.sneakUsed) {
+        hero.sneakUsed = true;
+        log(`${hero.name} sneaks behind the ${foe.name}: ${hit(foe, roll([8, 12]))}`);
+      } else {
+        hero.defending = true;
+        log(`${hero.name} defends.`);
+      }
+      if (alive(g.monsters).length === 0) return winBattle();
+      nextTurn();
+    }
+
+    function monstersAct() {
+      const breath = g.round % 3 === 0 && g.monsters.some((m) => m.kind === 'Dragon' && m.hp > 0);
+      const hurt = (h, rolled) => {
+        const dmg = Math.max(1, Math.round(rolled * hitScale(g.heroes.length)));
+        let taken = h.defending ? Math.ceil(dmg / 2) : dmg;
+        if (g.shieldWall) taken = Math.ceil(taken / 2);
+        h.hp = Math.max(0, h.hp - taken);
+        return taken;
+      };
+      if (breath) {
+        const dmg = roll(MONSTERS.Dragon.breath);
+        const parts = alive(g.heroes).map((h) => `${h.name} ${hurt(h, dmg)}`);
+        log(`The Dragon breathes fire! ${parts.join(', ')}`);
+      } else {
+        for (const m of alive(g.monsters)) {
+          const targets = alive(g.heroes);
+          if (targets.length === 0) break;
+          const h = targets[Math.floor(Math.random() * targets.length)];
+          const taken = hurt(h, roll(MONSTERS[m.kind].atk));
+          log(`The ${m.name} hits ${h.name} for ${taken}${h.hp === 0 ? `: ${h.name} is down!` : ''}`);
+        }
+      }
+      g.shieldWall = false;
+      if (alive(g.heroes).length === 0) finish(false);
+    }
+
+    function winBattle() {
+      if (g.room === 'lair') return finish(true);
+      // Catch your breath: everyone gets back 30% of their HP, and the fallen get back up.
+      for (const h of g.heroes) h.hp = Math.min(h.maxHp, Math.max(h.hp, 0) + Math.round(h.maxHp * 0.3));
+      log('Victory! Everyone catches their breath (+30% HP).');
+      g.phase = 'pause';
+      g.monsters = [];
+      showTimer(0);
+      update();
+      wait(PAUSE_MS, startVote);
+    }
+
+    function finish(won) {
+      clearTimeout(pending);
+      g.phase = 'final';
+      g.result = won ? 'won' : 'lost';
+      log(won ? 'The dragon is slain! The party is victorious!' : 'The party has fallen…');
+      showTimer(0);
+      update();
+      wait(FINAL_MS, () => {
+        g.phase = 'ended';
+        const ranked = [...g.heroes].sort((a, b) => b.score - a.score);
+        party.end({ rankings: ranked.map((h) => h.id), scores: Object.fromEntries(g.heroes.map((h) => [h.id, h.score])) });
+      });
+    }
+
+    // ---- What the phones send ----
+    party.on('event', (from, data) => {
+      if (!data || typeof data !== 'object' || !heroOf(from)) return;
+      if (g.phase === 'vote' && Number.isInteger(data.vote) && data.vote >= 0 && data.vote < g.choices.length) {
+        g.votes[from] = data.vote;
+        update();
+        if (party.players.filter((p) => p.connected).every((p) => p.id in g.votes)) wait(600, resolveVote);
+        return;
+      }
+      if (['attack', 'special', 'defend'].includes(data.act)) act(from, { act: data.act, target: data.target });
+    });
+    party.on('left', (id) => {
+      if (g.phase === 'battle' && g.heroes[g.turn]?.id === id) wait(1500, () => act(id, { act: 'defend' }));
+    });
+    party.on('back', () => update());
+
+    // ---- Showing it all ----
+    function drawMap() {
+      const lines = Array.from({ length: 17 }, () => Array(48).fill(' '));
+      const put = (x, y, ch) => (lines[y][x] = ch);
+      for (const [id, r] of Object.entries(ROOMS)) {
+        if (!g.seen.includes(id)) continue;
+        for (let y = r.y; y < r.y + r.h; y++) {
+          for (let x = r.x; x < r.x + r.w; x++) {
+            put(x, y, y === r.y || y === r.y + r.h - 1 || x === r.x || x === r.x + r.w - 1 ? '#' : '.');
+          }
+        }
+        if (r.treasure && !g.taken.includes(id)) put(r.x + 6, r.y + 3, '$');
+        // Doors and corridors to the rooms next door.
+        for (const [dir, to] of Object.entries(r.exits)) {
+          const t = ROOMS[to];
+          if (dir === 'East') {
+            const y = r.y + 3;
+            put(r.x + r.w - 1, y, '+');
+            for (let x = r.x + r.w; x < t.x; x++) put(x, y, '.');
+            if (g.seen.includes(to)) put(t.x, y, '+');
+          } else {
+            const x = r.x + 6;
+            put(x, r.y, '+');
+            for (let y = t.y + t.h; y < r.y; y++) put(x, y, '.');
+            if (g.seen.includes(to)) put(x, t.y + t.h - 1, '+');
+          }
+        }
+      }
+      const room = ROOMS[g.room];
+      const cells = [{ x: room.x + 3, y: room.y + 3, ch: '@', color: '#4fc3f7' }];
+      g.monsters.forEach((m, i) => cells.push({ x: room.x + 7 + (i % 3), y: room.y + 2 + Math.floor(i / 3) * 2, ch: m.hp > 0 ? m.letter : '%', color: m.hp > 0 ? '#ff5252' : '#555' }));
+      map.render(lines.map((l) => l.join('')), { cells });
+    }
+
+    const hpText = (u) => `${'█'.repeat(Math.ceil((u.hp / u.maxHp) * 8))}${'░'.repeat(8 - Math.ceil((u.hp / u.maxHp) * 8))} ${u.hp}/${u.maxHp}`;
+
+    function update() {
+      title.textContent = g.phase === 'final' ? (g.result === 'won' ? 'Victory!' : 'Defeat…') : `Dungeon Party: ${ROOMS[g.room].name}`;
+      const current = g.phase === 'battle' ? g.heroes[g.turn] : null;
+      heroesBox.replaceChildren(
+        ...g.heroes.map((h) =>
+          el('div', { class: `unit ${h.hp === 0 ? 'down' : ''} ${h === current ? 'turn' : ''}` }, el('span', {}, `${h.name} the ${h.cls}`), el('span', { class: 'hp' }, hpText(h))),
+        ),
+      );
+      monstersBox.replaceChildren(
+        ...(g.monsters.length ? g.monsters.map((m) => el('div', { class: `unit ${m.hp === 0 ? 'down' : ''}` }, el('span', {}, m.name), el('span', { class: 'hp' }, hpText(m)))) : [el('p', { class: 'muted' }, 'None here.')]),
+      );
+      if (g.phase === 'vote') {
+        turnBox.textContent = `Which way? ${g.choices.map((c, i) => `${c.dir} (${Object.values(g.votes).filter((v) => v === i).length})`).join(' · ')}`;
+      } else if (current) turnBox.textContent = `${current.name}'s turn`;
+      else turnBox.textContent = g.phase === 'final' ? (g.result === 'won' ? 'The dragon is slain!' : 'The party has fallen…') : '';
+      logList.replaceChildren(...g.log.map((line) => el('li', {}, line)));
+      drawMap();
+      tellPhones();
+      if (g.phase !== 'ended') party.save(g);
+    }
+
+    function tellPhones() {
+      const current = g.phase === 'battle' ? g.heroes[g.turn] : null;
+      for (const h of g.heroes) {
+        let text;
+        if (g.phase === 'vote') text = 'Vote: which way should the party go?';
+        else if (g.phase === 'battle') text = h.hp === 0 ? "You're down! Your friends can still win (and a Cleric can heal you)." : h === current ? 'Your turn!' : `${current.name}'s turn…`;
+        else if (g.phase === 'final') text = g.result === 'won' ? 'The dragon is slain! You win!' : 'The party has fallen…';
+        else text = g.log.at(-1) ?? '';
+        party.setState(h.id, {
+          phase: g.phase,
+          text,
+          hero: { name: h.name, cls: h.cls, hp: h.hp, maxHp: h.maxHp, mp: h.mp, maxMp: h.maxMp, score: h.score },
+          special: specialFor(h),
+          myTurn: h === current && h.hp > 0,
+          choices: g.phase === 'vote' ? g.choices.map((c) => ({ dir: c.dir, hint: c.hint })) : [],
+          voted: g.votes[h.id] ?? null,
+          monsters: alive(g.monsters).map((m) => ({ id: m.id, name: m.name, hp: m.hp })),
+          heroes: g.heroes.map((o) => ({ id: o.id, name: o.name, hp: o.hp, maxHp: o.maxHp })),
+        });
+      }
+    }
+
+    function specialFor(h) {
+      const c = CLASSES.find((k) => k.cls === h.cls);
+      const usable = h.cls === 'Mage' ? h.mp >= c.cost : h.cls === 'Rogue' ? !h.sneakUsed : true;
+      const target = h.cls === 'Cleric' ? 'hero' : h.cls === 'Rogue' ? 'monster' : null;
+      return { name: c.special, about: c.about, usable, target };
+    }
+
+    // ---- Start, or carry on after a reload ----
+    if (!restored) {
+      log('Brave heroes gather at the dungeon gate…');
+      g.phase = 'pause';
+      update();
+      wait(PAUSE_MS, () => enterRoom('entrance'));
+    } else if (g.phase === 'battle') {
+      g.turn -= 1; // the interrupted hero gets their turn back
+      nextTurn();
+    } else if (g.phase === 'vote') {
+      startVote();
+    } else if (g.phase === 'final') {
+      finish(g.result === 'won');
+    } else {
+      update();
+      wait(PAUSE_MS, () => (g.monsters.length ? nextTurn() : startVote()));
+    }
+  }
+
+  // ---- A phone: your hero -------------------------------------------------------------------
+  function startHero() {
+    const { el } = party.ui;
+    const card = el('div', { class: 'card hero-card' });
+    const status = el('p', { class: 'center', role: 'status' }, 'Gathering at the gate…');
+    const actions = el('div', { class: 'actions' });
+    document.getElementById('app').append(el('div', { class: 'screen' }, card, status, el('div', { class: 'grow' }), actions));
+
+    let picking = null; // 'monster' or 'hero' while choosing a target
+    let pickingAct = 'attack'; // what the chosen target is for
+
+    party.on('state', (s) => {
+      const h = s.hero;
+      card.replaceChildren(
+        el('div', { class: 'cls' }, `${h.name} the ${h.cls}`),
+        el('div', { class: 'bar' }, el('div', { style: { width: `${(h.hp / h.maxHp) * 100}%` } })),
+        el('div', {}, `HP ${h.hp}/${h.maxHp}${h.maxMp ? ` · MP ${h.mp}/${h.maxMp}` : ''} · Score ${h.score}`),
+      );
+      status.textContent = s.text;
+      if (!s.myTurn) picking = null;
+      drawActions(s);
+    });
+
+    function button(label, data, extra = {}) {
+      return el('button', { class: `big ${extra.secondary ? 'secondary' : ''}`, disabled: extra.disabled, onClick: () => { picking = null; party.send(data); } }, label);
+    }
+
+    function drawActions(s) {
+      actions.replaceChildren();
+      if (s.phase === 'vote') {
+        s.choices.forEach((c, i) => actions.append(button(`${c.dir === 'onward' ? 'Onward' : `${c.dir} door`}${s.voted === i ? ' ✓' : ''}`, { vote: i }, { secondary: s.voted !== null && s.voted !== i })));
+        s.choices.forEach((c) => c.hint && actions.append(el('p', { class: 'muted center' }, `${c.dir}: ${c.hint}`)));
+        return;
+      }
+      if (!s.myTurn) return;
+      if (picking === 'monster') {
+        actions.append(el('p', { class: 'center' }, 'Which one?'));
+        for (const m of s.monsters) actions.append(button(`${m.name} (${m.hp} HP)`, { act: pickingAct, target: m.id }));
+        actions.append(el('button', { class: 'secondary', onClick: () => { picking = null; drawActions(s); } }, 'Back'));
+        return;
+      }
+      if (picking === 'hero') {
+        actions.append(el('p', { class: 'center' }, 'Heal who?'));
+        for (const o of s.heroes) actions.append(button(`${o.name} (${o.hp}/${o.maxHp})`, { act: 'special', target: o.id }));
+        actions.append(el('button', { class: 'secondary', onClick: () => { picking = null; drawActions(s); } }, 'Back'));
+        return;
+      }
+      const choose = (act, kind) => () => {
+        pickingAct = act;
+        if (kind === 'monster' && s.monsters.length === 1) return party.send({ act, target: s.monsters[0].id });
+        picking = kind;
+        drawActions(s);
+      };
+      actions.append(
+        el('button', { class: 'big', onClick: choose('attack', 'monster') }, 'Attack'),
+        el('button', { class: 'big', disabled: !s.special.usable, onClick: s.special.target ? choose('special', s.special.target) : () => party.send({ act: 'special' }) }, s.special.name),
+        el('p', { class: 'muted center' }, s.special.about),
+        button('Defend', { act: 'defend' }, { secondary: true }),
+      );
+    }
+  }
+</script>
