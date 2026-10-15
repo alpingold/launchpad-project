@@ -1154,6 +1154,13 @@ example designs, one design each, all passed the heading check in 32–72 s):**
 switch `examples: true` brings them back); the build step keeps its example game. And the
 rulebook gets the default length target (option 2 above).
 
+**Check of the length target (2026-10-15, the three shortest ideas again, no examples):**
+cooking 4 → 6.5 min, space shooter 2 → 4.5–6 min, thief mystery 5.5–7 → **2 min**. It helps
+but doesn't hold: the model calls 4.5 min "within 5–15", and for the thief it shortened the
+game and argued that "a session plays 3–5 games". Ideas for next time: a fixed
+"Total: about N min" line the server reads and shows on the admin page (flagged when outside
+the target), or option 3 (a length choice), so the target is an input, not a hint.
+
 **The longer idea: every game made becomes data.** We already keep the idea, every design
 draft *with the admin's feedback*, the approved design, every code attempt with its check
 report, the playtest results, and the admin's choices (playtest, publish, reject, fixes).
