@@ -1218,6 +1218,26 @@ finished vs stopped, and a thumbs up/down after a game; (c) the model-as-librari
 once there are ~10 published games; (d) revisit fine-tuning at a few hundred games, with a
 lab's help.
 
+
+**Model comparison, 2026-10-15** (`generator/out/compare/`, not in git). Same two ideas
+(the racing platformer, the RPG). Each model wrote its own design, and built from the SAME
+approved designs qwen built from. qwen's builds are from earlier the same day.
+
+| Model (context) | Design: time, quality | Platformer build | RPG build |
+|---|---|---|---|
+| qwen3.8:27b (65K) | 36–65 s; concrete, numbers and arithmetic, ~5–6.5 min games | passed, attempt 1 (~5 min); full, playable | passed, attempt 2 (~7 min); 12×12 map with fog, rich |
+| gpt-oss:120b (65K) | 11–16 s; detailed, longest | passed, attempt 2 (104 s); **barely visible track, no players drawn** | passed, attempt 4 (209 s); **party stuck at the start** ("can't go" every way) |
+| gemma4:26b-a4b (65K) | 6–7 s; short and vague in places | **failed**: the same syntax error 4 times | passed, attempt 1 (94 s); clean, playable |
+| llama4:latest (16K) | 11–12 s; vague, no numbers, ignores the rules (2–12 players, 45–60 min) | **failed**: context full after attempt 1 | **failed**: context full after attempt 1 |
+
+- **The checks pass games that are broken to a player** (gpt-oss's two). "Not blank" isn't
+  "playable": a check that players actually move or appear would catch these.
+- **The fix loop now stays flat:** gpt-oss's 4 RPG attempts each sent ~19.5K tokens (before
+  the change, attempt 4 would have sent ~45K).
+- **llama4's 16K context can't hold a build** (prompt ~11–15K tokens + the game).
+- Conclusion so far: qwen makes the best games but is slowest; gemma4 is fast and sometimes
+  good but unreliable; gpt-oss is fast with lower quality; llama4 is out for building.
+
 ---
 
 ## Verification (how to confirm the plan worked once built)
