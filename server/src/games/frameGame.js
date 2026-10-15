@@ -1,4 +1,5 @@
 import { config } from '../config.js';
+import { staticCheck } from './staticCheck.js';
 
 // FRAME GAMES (plan §13c): a game is ONE HTML file. The same page runs on the big screen
 // (the referee: rules, timers, scores, the big picture) and on every phone (the
@@ -109,14 +110,30 @@ export function frameGameOrThrow(source, id) {
 }
 
 /**
- * The test report for a game file, in the shape versions store and the admin page shows.
- * For now it only covers the game info; F4 adds a static check and a playtest in a
- * headless browser (plan §13l).
- * @returns {{ ok: boolean, problems: string[], checked: string, game?: { name: string, description: string } }}
+ * A problem found in a game file: a plain sentence (the game info), or a finding from the
+ * static check or the browser playtest, which may point at a line.
+ * @typedef {string | { message: string, rule?: string, line?: number, code?: string }} Problem
+ */
+
+/**
+ * The server's report for a game file, in the shape versions store and the admin page
+ * shows: the game info and the static check (staticCheck.js). Errors fail it; warnings
+ * are lines to look at in review. The browser playtest (F4) runs in the generator's
+ * sandbox, never on the server, and adds its own results to the report there.
+ * @returns {{ ok: boolean, problems: Problem[], warnings: Problem[], checked: string, game?: { name: string, description: string } }}
  */
 export function frameGameReport(source) {
   const result = readFrameGame(source, 'game');
-  const checked = 'the game info (checks in a real browser come in F4)';
-  if (!result.ok) return { ok: false, problems: result.problems, checked };
-  return { ok: true, problems: [], checked, game: { name: result.game.name, description: result.game.description } };
+  const checked = 'the game info and the static check';
+  if (!result.ok) return { ok: false, problems: result.problems, warnings: [], checked };
+  const { errors, warnings } = staticCheck(source);
+  const game = { name: result.game.name, description: result.game.description };
+  return { ok: errors.length === 0, problems: errors, warnings, checked, game };
+}
+
+/** A problem as one line of text, for the command line. */
+export function describeProblem(problem) {
+  if (typeof problem === 'string') return problem;
+  const where = problem.line ? `line ${problem.line}: ` : '';
+  return `${where}${problem.message}${problem.code ? `\n     ${problem.code}` : ''}`;
 }

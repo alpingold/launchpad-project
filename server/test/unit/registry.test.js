@@ -53,12 +53,18 @@ test('frameGameReport: the shape versions store and the admin page shows', () =>
   assert.deepEqual(frameGameReport(TAP_SOURCE), {
     ok: true,
     problems: [],
-    checked: 'the game info (checks in a real browser come in F4)',
+    warnings: [],
+    checked: 'the game info and the static check',
     game: { name: 'Tap Test', description: 'First to 3 taps wins. Test-only.' },
   });
   const bad = frameGameReport('export default {}; // a block game');
   assert.equal(bad.ok, false);
   assert.match(bad.problems[0], /no game info/);
+  // The static check's findings point at lines.
+  const fetching = frameGameReport(TAP_SOURCE.replace('party.ready(', 'fetch("/x"); party.ready('));
+  assert.equal(fetching.ok, false);
+  assert.equal(fetching.problems[0].rule, 'network');
+  assert.equal(typeof fetching.problems[0].line, 'number');
 });
 
 test('register + get + list (list leaves out the game files)', () => {

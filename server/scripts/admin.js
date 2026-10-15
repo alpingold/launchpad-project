@@ -22,7 +22,7 @@ import {
   gameStatus,
   mainVersion,
 } from '../src/db/generatedGames.js';
-import { frameGameReport } from '../src/games/frameGame.js';
+import { frameGameReport, describeProblem } from '../src/games/frameGame.js';
 
 const HELP = `Usage: npm run admin -- <command>
 
@@ -94,7 +94,7 @@ switch (command) {
     const fullPath = path.resolve(process.env.INIT_CWD || process.cwd(), file);
     const source = await readFile(fullPath, 'utf8');
     const report = frameGameReport(source);
-    if (!report.ok) done(`Not imported: fix these first:\n - ${report.problems.join('\n - ')}`, false);
+    if (!report.ok) done(`Not imported: fix these first:\n - ${report.problems.map(describeProblem).join('\n - ')}`, false);
 
     const game = createGeneratedGame(db, { ownerUserId: owner.id, prompt: `imported by hand from ${path.basename(file)}` });
     saveVersionSource(db, game.id, 1, { source, report, ...report.game });
