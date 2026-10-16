@@ -10,7 +10,9 @@ import { validateFrameGame } from './frameGame.js';
  * @property {number | null} ownerUserId   generated games only: who generated it
  * @property {number | null} version       generated games only: which version of it this is
  * @property {number | null} addedAt       generated games only: when it was made (ms), for "newest"
- * @property {Buffer | null} thumb         a JPEG screenshot for the catalogue (plan §14), if there is one
+ * @property {{ host?: Buffer, phone?: Buffer }} shots   JPEG screenshots for the catalogue (plan §14, §16), if any
+ * @property {string} baseId   the game this is a version of (generated: "g-…" for every version;
+ *   official: its own id). Its catalogue page and votes belong to this id (plan §16).
  */
 
 /**
@@ -33,13 +35,13 @@ export class GameRegistry {
    * @param {{ replace?: boolean }} [opts]  replace: swap out a game already using this id
    *   (a newly published version); the old one stays if the new one is invalid
    */
-  register(game, { source = 'official', status = null, ownerUserId = null, version = null, addedAt = null, thumb = null } = {}, { replace = false } = {}) {
+  register(game, { source = 'official', status = null, ownerUserId = null, version = null, addedAt = null, shots = {}, baseId = game?.id } = {}, { replace = false } = {}) {
     const problems = validateFrameGame(game);
     if (problems.length > 0) {
       throw new Error(`Game "${game?.id}" can't be registered:\n - ${problems.join('\n - ')}`);
     }
     if (this.entries.has(game.id) && !replace) throw new Error(`A game with id "${game.id}" is already registered`);
-    this.entries.set(game.id, { game, meta: { source, status, ownerUserId, version, addedAt, thumb } });
+    this.entries.set(game.id, { game, meta: { source, status, ownerUserId, version, addedAt, shots, baseId } });
   }
 
   /** Removes a game (e.g. a generated game that was rejected). @returns {boolean} */
@@ -59,19 +61,22 @@ export class GameRegistry {
   }
 
   /**
-   * A game's screenshot (JPEG), if this user may see the game and it has one.
+   * One of a game's screenshots (JPEG), if this user may see the game and it has that one.
    * @param {string} id
+   * @param {'host' | 'phone'} which
    * @param {{ userId?: number | null }} [viewer]
    * @returns {Buffer | undefined}
    */
-  thumb(id, { userId = null } = {}) {
+  shot(id, which, { userId = null } = {}) {
     const entry = this.entries.get(id);
-    return entry && isVisible(entry.meta, userId) ? (entry.meta.thumb ?? undefined) : undefined;
+    if (!entry || !isVisible(entry.meta, userId) || !Object.hasOwn(entry.meta.shots, which)) return undefined;
+    return entry.meta.shots[which];
   }
 
   /**
    * Public info for the catalogue (not the game files), only the games this user may see.
-   * Games without tags or a length (older ones) get [] and null.
+   * Games without tags or a length (older ones) get [] and null. ownerUserId and baseId are
+   * for the catalogue (server/src/games/catalog.js), which turns them into a creator's name.
    * @param {{ userId?: number | null }} [viewer]
    */
   list({ userId = null } = {}) {
@@ -86,8 +91,10 @@ export class GameRegistry {
         tags: tags ?? [],
         minutes: minutes ?? null,
         addedAt: meta.addedAt,
-        hasThumb: meta.thumb !== null,
+        shots: ['host', 'phone'].filter((w) => meta.shots[w]),
         source: meta.source,
+        baseId: meta.baseId,
+        ownerUserId: meta.ownerUserId,
         ...(meta.source === 'generated' && { status: meta.status, version: meta.version }),
       }));
   }

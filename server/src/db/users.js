@@ -42,6 +42,22 @@ export function setAdmin(db, username, isAdmin) {
   return db.prepare('UPDATE users SET is_admin = ? WHERE username = ?').run(isAdmin ? 1 : 0, username).changes === 1;
 }
 
+/** A public profile (plan §16), by username (any capitalization). @returns {{ id: number, username: string, bio: string, createdAt: number } | null} */
+export function getProfile(db, username) {
+  const row = db.prepare('SELECT id, username, bio, created_at FROM users WHERE username = ?').get(username);
+  return row ? { id: row.id, username: row.username, bio: row.bio ?? '', createdAt: row.created_at } : null;
+}
+
+/** Usernames by account id, for showing who made each game. @returns {Map<number, string>} */
+export function usernamesById(db) {
+  return new Map(db.prepare('SELECT id, username FROM users').all().map((r) => [r.id, r.username]));
+}
+
+/** Saves your bio (already checked). */
+export function setBio(db, userId, bio) {
+  db.prepare('UPDATE users SET bio = ? WHERE id = ?').run(bio === '' ? null : bio, userId);
+}
+
 /** Whether this account is an admin (false if there's no such account). */
 export function isAdminUser(db, userId) {
   return db.prepare('SELECT is_admin FROM users WHERE id = ?').get(userId)?.is_admin === 1;

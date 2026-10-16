@@ -3,6 +3,10 @@ import { currentUser } from '../auth/currentUser.js';
 import { requireJsonPosts } from './requireJson.js';
 import { AttemptLimiter } from '../auth/attemptLimiter.js';
 import { KeyError } from '../generation/userKeys.js';
+import { setBio } from '../db/users.js';
+
+/** The longest bio on a profile page (plan §16). */
+export const MAX_BIO_LENGTH = 500;
 
 /**
  * Your own account (plan §15), mounted under /api/account. Logged in only (401 if not).
@@ -10,10 +14,12 @@ import { KeyError } from '../generation/userKeys.js';
  *   GET    /api/account/genai-key          → { saved, last4, savedAt }   never the key itself
  *   PUT    /api/account/genai-key  { key } → { saved, last4, savedAt }   checked with GenAI Studio, then saved encrypted
  *   DELETE /api/account/genai-key          → 204
+ *   PUT    /api/account/profile    { bio } → { bio }   shown on /u/<username> (plan §16)
  *
  * Errors: { error: 'CODE', message }.
  *
- * @param {{ db: import('better-sqlite3').Database, userKeys: ReturnType<typeof import('../generation/userKeys.js').createUserKeys> }} deps
+ * @param {{ db: import('better-sqlite3').Database, userKeys?: ReturnType<typeof import('../generation/userKeys.js').createUserKeys> }} deps
+ *   userKeys: without it (some tests), the key routes aren't there
  */
 export function createAccountRouter({ db, userKeys }) {
   const router = express.Router();
@@ -27,6 +33,17 @@ export function createAccountRouter({ db, userKeys }) {
     req.user = user;
     next();
   });
+
+  router.put('/profile', (req, res) => {
+    const bio = req.body?.bio;
+    if (typeof bio !== 'string' || bio.trim().length > MAX_BIO_LENGTH) {
+      return res.status(400).json({ error: 'INVALID_BIO', message: `A bio is text, at most ${MAX_BIO_LENGTH} characters.` });
+    }
+    setBio(db, req.user.id, bio.trim());
+    res.json({ bio: bio.trim() });
+  });
+
+  if (!userKeys) return router;
 
   router.get('/genai-key', (req, res) => {
     res.json(userKeys.status(req.user.id));

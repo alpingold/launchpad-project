@@ -103,24 +103,29 @@ export function validateFrameGame(game) {
     problems.push('maxPlayers must be at least minPlayers');
   }
 
-  const { tags, minutes } = game;
-  if (tags !== undefined) {
-    if (!Array.isArray(tags) || tags.length < 1 || tags.length > MAX_GAME_TAGS || new Set(tags).size !== tags.length) {
-      problems.push(`tags must be a list of 1–${MAX_GAME_TAGS} different tags`);
-    } else {
-      const unknown = tags.filter((t) => !GAME_TAGS.includes(t));
-      if (unknown.length > 0) problems.push(`unknown tag ${unknown.map((t) => JSON.stringify(t)).join(', ')} (allowed: ${GAME_TAGS.join(', ')})`);
-    }
-  }
-  if (minutes !== undefined) {
-    const ok = (n) => Number.isInteger(n) && n >= 1 && n <= MAX_GAME_MINUTES;
-    if (!Array.isArray(minutes) || minutes.length !== 2 || !minutes.every(ok) || minutes[0] > minutes[1]) {
-      problems.push(`minutes must be [low, high]: whole minutes from 1 to ${MAX_GAME_MINUTES}, low first (e.g. [5, 10])`);
-    }
-  }
+  if (game.tags !== undefined) problems.push(...tagProblems(game.tags));
+  if (game.minutes !== undefined) problems.push(...minutesProblems(game.minutes));
 
   if (typeof game.source !== 'string' || game.source.length === 0) problems.push('source must be the game file');
   return problems;
+}
+
+/** What's wrong with a game's tags (plan §14), if anything. @param {unknown} tags @returns {string[]} */
+export function tagProblems(tags) {
+  if (!Array.isArray(tags) || tags.length < 1 || tags.length > MAX_GAME_TAGS || new Set(tags).size !== tags.length) {
+    return [`tags must be a list of 1–${MAX_GAME_TAGS} different tags`];
+  }
+  const unknown = tags.filter((t) => !GAME_TAGS.includes(t));
+  return unknown.length > 0 ? [`unknown tag ${unknown.map((t) => JSON.stringify(t)).join(', ')} (allowed: ${GAME_TAGS.join(', ')})`] : [];
+}
+
+/** What's wrong with a game's length in minutes (plan §14), if anything. @param {unknown} minutes @returns {string[]} */
+export function minutesProblems(minutes) {
+  const ok = (n) => Number.isInteger(n) && n >= 1 && n <= MAX_GAME_MINUTES;
+  if (!Array.isArray(minutes) || minutes.length !== 2 || !minutes.every(ok) || minutes[0] > minutes[1]) {
+    return [`minutes must be [low, high]: whole minutes from 1 to ${MAX_GAME_MINUTES}, low first (e.g. [5, 10])`];
+  }
+  return [];
 }
 
 /**

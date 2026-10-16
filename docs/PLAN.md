@@ -1394,6 +1394,36 @@ minting needs the admin's Purdue login on the server.)
   `client/public/help/genai-key/`) and `/create` (the admin page's game maker, for your own
   games). The home page links to both.
 
+## 16. Getting around: site links, game pages, votes, creators and profiles (decided 2026-10-16)
+
+**Decided with the user:**
+- **Links at the top right of every page**, next to ⚙: Games (the catalogue), Docs (`/kit`),
+  and Sign up, or Account when logged in. Hidden while a game is on screen.
+- **Votes:** 👍/👎 per game, one vote per account (change or take it back any time); not on
+  your own games. The catalogue can sort by best rated (👍 minus 👎).
+- **A page per game**, `/games/<id>`: its screenshots, description, players, length, tags,
+  votes, its creator, and Host this game. Catalogue cards open it (lobby cards still just
+  choose).
+- **The creator can edit** its name, short description, a longer "About this game", tags,
+  length, and which screenshot leads. Admins can edit any game, including official ones.
+- **Every game shows who made it** ("by alpingold"; official games: "by BoilerGames"), and the
+  name links to their **profile** `/u/<username>`: their bio (edited on /account) and the
+  games of theirs you can see.
+
+**How:**
+- **Edits never touch the game file.** They're stored as a catalogue entry next to it
+  (migration 8, `game_pages`): no code changes, so nothing needs checking again. Plain text
+  only (React shows it as text, never as HTML), same limits as the game info (§14), "About"
+  up to 1,500 characters. Creator edits go live at once; an admin can change them back.
+- **Votes** (migration 8, `game_votes`: game, account, +1/−1). A generated game's versions
+  share one page and one vote count (the votes belong to the game, not a version).
+- `users.bio` (migration 8, up to 500 characters).
+- `GET /api/games` adds `creator`, `votes {up, down}`, `myVote`, with the catalogue entry
+  applied. New: `GET /api/games/:id`, `PUT /api/games/:id/page`, `PUT /api/games/:id/vote
+  { value: 1 | -1 | 0 }`, `GET /api/games/:id/shot/host|phone`, `GET /api/users/:username`,
+  `PUT /api/account/profile { bio }`.
+- Official games also ship `phone.jpg` (the checker's phone screenshot).
+
 ---
 
 ## Verification (how to confirm the plan worked once built)

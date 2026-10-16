@@ -87,7 +87,7 @@ test("a game's catalogue picture: served as a JPEG, only to whoever may see the 
   const ownerCookie = await signUp(baseUrl, 'owner');
   const ownerId = (await me(ownerCookie)).id;
   const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]);
-  registry.register(tapGame('g-pic1'), { source: 'generated', status: 'playtest', ownerUserId: ownerId, thumb: jpeg });
+  registry.register(tapGame('g-pic1'), { source: 'generated', status: 'playtest', ownerUserId: ownerId, shots: { phone: jpeg } });
 
   const res = await fetch(`${baseUrl}/api/games/g-pic1/thumb`, { headers: { Cookie: ownerCookie } });
   assert.equal(res.status, 200);
@@ -97,7 +97,9 @@ test("a game's catalogue picture: served as a JPEG, only to whoever may see the 
   assert.equal((await fetch(`${baseUrl}/api/games/tap-test/thumb`)).status, 404, 'no picture');
   assert.equal((await fetch(`${baseUrl}/api/games/nope/thumb`)).status, 404);
   const listed = (await (await fetch(`${baseUrl}/api/games`, { headers: { Cookie: ownerCookie } })).json()).games;
-  assert.deepEqual(listed.map((g) => [g.id, g.hasThumb]), [['tap-test', false], ['g-pic1', true]]);
+  assert.deepEqual(listed.map((g) => [g.id, g.shots]), [['tap-test', []], ['g-pic1', ['phone']]]);
+  assert.equal((await fetch(`${baseUrl}/api/games/g-pic1/shot/phone`, { headers: { Cookie: ownerCookie } })).status, 200);
+  assert.equal((await fetch(`${baseUrl}/api/games/g-pic1/shot/host`, { headers: { Cookie: ownerCookie } })).status, 404, 'it has no big-screen picture');
 });
 
 test('a published generated game is for everyone', async () => {

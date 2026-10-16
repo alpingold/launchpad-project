@@ -24,7 +24,7 @@ function tempDir(t) {
 test('a new database gets every table and the latest version', () => {
   const db = openDatabase(':memory:');
   assert.equal(db.pragma('user_version', { simple: true }), LATEST_VERSION);
-  assert.deepEqual(tables(db), ['build_attempts', 'game_versions', 'genai_keys', 'generated_games', 'sessions', 'users']);
+  assert.deepEqual(tables(db), ['build_attempts', 'game_pages', 'game_versions', 'game_votes', 'genai_keys', 'generated_games', 'sessions', 'users']);
 });
 
 test('an existing pre-migration database (like the one from M7) is upgraded, keeping its data, with a backup', (t) => {
@@ -40,7 +40,7 @@ test('an existing pre-migration database (like the one from M7) is upgraded, kee
   const db = openDatabase(file);
   assert.equal(db.pragma('user_version', { simple: true }), LATEST_VERSION);
   assert.deepEqual(listUsers(db), [{ id: 1, username: 'alpingold', isAdmin: false, createdAt: 1 }]);
-  assert.deepEqual(tables(db), ['build_attempts', 'game_versions', 'genai_keys', 'generated_games', 'sessions', 'users']);
+  assert.deepEqual(tables(db), ['build_attempts', 'game_pages', 'game_versions', 'game_votes', 'genai_keys', 'generated_games', 'sessions', 'users']);
   db.close();
 
   // The copy made before migrating is the old database, untouched.

@@ -384,7 +384,12 @@ export function listLiveVersions(db) {
 }
 
 export function deleteGeneratedGame(db, id) {
-  return db.prepare('DELETE FROM generated_games WHERE id = ?').run(id).changes === 1;
+  return db.transaction(() => {
+    // Its catalogue entry and votes (plan §16) go with it.
+    db.prepare('DELETE FROM game_pages WHERE game_id = ?').run(id);
+    db.prepare('DELETE FROM game_votes WHERE game_id = ?').run(id);
+    return db.prepare('DELETE FROM generated_games WHERE id = ?').run(id).changes === 1;
+  })();
 }
 
 // --- Describing a game (for the admin page and the admin script) ----------------------------

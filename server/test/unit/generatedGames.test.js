@@ -25,7 +25,7 @@ import {
   sha256,
 } from '../../src/db/generatedGames.js';
 import { GameRegistry } from '../../src/games/registry.js';
-import { loadGeneratedGames, thumbFromReport } from '../../src/games/generated.js';
+import { loadGeneratedGames, shotsFromReport } from '../../src/games/generated.js';
 import { tapGame, TAP_SOURCE } from '../helpers/frameGames.js';
 
 // AI-generated games and their versions, stored in the database (plan §11 A3, §12e K6).
@@ -159,11 +159,13 @@ test('registry: official and published games are for everyone, playtest only for
 
 // --- Loading at startup -------------------------------------------------------------------
 
-test("thumbFromReport: the final check's big-screen screenshot, or null", () => {
+test("shotsFromReport: the final check's screenshots (big screen and phone), as JPEGs", () => {
   const jpeg = Buffer.from([0xff, 0xd8, 9]);
-  assert.deepEqual(thumbFromReport({ playtest: { screenshots: { host: `data:image/jpeg;base64,${jpeg.toString('base64')}` } } }), jpeg);
+  const url = `data:image/jpeg;base64,${jpeg.toString('base64')}`;
+  assert.deepEqual(shotsFromReport({ playtest: { screenshots: { host: url, phone: url } } }), { host: jpeg, phone: jpeg });
+  assert.deepEqual(shotsFromReport({ playtest: { screenshots: { phone: url } } }), { phone: jpeg });
   for (const report of [null, {}, { playtest: {} }, { playtest: { screenshots: { host: 'data:image/png;base64,AAAA' } } }]) {
-    assert.equal(thumbFromReport(report), null);
+    assert.deepEqual(shotsFromReport(report), {});
   }
 });
 

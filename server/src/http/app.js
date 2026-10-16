@@ -3,9 +3,9 @@ import { config } from '../config.js';
 import { GameRegistry } from '../games/registry.js';
 import { openDatabase } from '../db/database.js';
 import { createAuthRouter } from './authRoutes.js';
-import { currentUser } from '../auth/currentUser.js';
 import { createAdminRouter } from './adminRoutes.js';
 import { createAccountRouter } from './accountRoutes.js';
+import { createGamesRouter } from './gamesRoutes.js';
 import { kitGuide } from '../games/kitGuide.js';
 
 /**
@@ -35,21 +35,8 @@ export function createApp({ games = new GameRegistry(), db = openDatabase(':memo
     res.json({ ok: true });
   });
 
-  // The games this host can start (id, name, description, player counts, where it came
-  // from). Logged in, that includes their own AI-generated games still in playtest.
-  app.get('/api/games', (req, res) => {
-    const user = currentUser(db, req.headers.cookie).user;
-    res.json({ games: games.list({ userId: user?.id ?? null }) });
-  });
-
-  // A game's screenshot for the catalogue (plan §14). Same visibility as the game itself.
-  // A published game keeps its id from version to version, so browsers check back after 5 min.
-  app.get('/api/games/:id/thumb', (req, res) => {
-    const user = currentUser(db, req.headers.cookie).user;
-    const thumb = games.thumb(req.params.id, { userId: user?.id ?? null });
-    if (!thumb) return res.status(404).json({ error: 'NOT_FOUND' });
-    res.set('Cache-Control', 'private, max-age=300').type('image/jpeg').send(thumb);
-  });
+  // The game catalogue, game pages, votes and profiles (plan §14, §16).
+  app.use('/api', createGamesRouter({ db, games }));
 
   // The game kit guide (/kit): how frame games work, the same text the AI reads.
   app.get('/api/kit', (_req, res) => {
@@ -60,7 +47,7 @@ export function createApp({ games = new GameRegistry(), db = openDatabase(':memo
   app.use('/api', createAuthRouter({ db, cfg }));
 
   // Your own account: your GenAI Studio key (plan §15).
-  if (userKeys) app.use('/api/account', createAccountRouter({ db, userKeys }));
+  app.use('/api/account', createAccountRouter({ db, userKeys }));
 
   // Admin only: generating and approving AI-made games.
   if (generation) app.use('/api/admin', createAdminRouter({ db, generation }));

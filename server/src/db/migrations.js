@@ -172,6 +172,39 @@ export const MIGRATIONS = [
       );
     `,
   },
+  {
+    version: 8,
+    description: 'catalogue entries, votes and bios (plan §16)',
+    sql: `
+      -- What a game's creator (or an admin) changed about how it's shown in the catalogue. Never
+      -- the game file itself. game_id is an official game's id or a generated game's id
+      -- ("g-..."), so there's no foreign key; deleting a generated game deletes its row too.
+      -- NULL: use what the game file says.
+      CREATE TABLE game_pages (
+        game_id      TEXT    PRIMARY KEY,
+        name         TEXT,
+        description  TEXT,
+        about        TEXT,
+        tags_json    TEXT,
+        minutes_json TEXT,
+        main_shot    TEXT    CHECK (main_shot IN ('host', 'phone')),
+        updated_by   INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        updated_at   INTEGER NOT NULL
+      );
+
+      -- One vote per account per game: +1 or -1. Taking a vote back deletes its row.
+      CREATE TABLE game_votes (
+        game_id    TEXT    NOT NULL,
+        user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        value      INTEGER NOT NULL CHECK (value IN (-1, 1)),
+        created_at INTEGER NOT NULL,
+        PRIMARY KEY (game_id, user_id)
+      );
+
+      -- A few words about yourself, for your profile page (/u/<username>).
+      ALTER TABLE users ADD COLUMN bio TEXT;
+    `,
+  },
 ];
 
 /** The version a fully up-to-date database has. */

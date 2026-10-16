@@ -12,15 +12,19 @@ export function liveGameId(gameId, as, version) {
 }
 
 /**
- * The big-screen screenshot from a version's final check, as a JPEG (plan §14), or null
- * (an imported game, or one checked before screenshots were kept).
+ * The screenshots from a version's final check, as JPEGs (plan §14, §16): the big screen and a
+ * phone. None for an imported game, or one checked before screenshots were kept.
  * @param {import('../games/frameGame.js').CheckReport | null} report
- * @returns {Buffer | null}
+ * @returns {{ host?: Buffer, phone?: Buffer }}
  */
-export function thumbFromReport(report) {
-  const url = report?.playtest?.screenshots?.host;
+export function shotsFromReport(report) {
   const prefix = 'data:image/jpeg;base64,';
-  return typeof url === 'string' && url.startsWith(prefix) ? Buffer.from(url.slice(prefix.length), 'base64') : null;
+  const shots = {};
+  for (const which of ['host', 'phone']) {
+    const url = report?.playtest?.screenshots?.[which];
+    if (typeof url === 'string' && url.startsWith(prefix)) shots[which] = Buffer.from(url.slice(prefix.length), 'base64');
+  }
+  return shots;
 }
 
 /**
@@ -40,7 +44,7 @@ export async function registerVersion(registry, game, version, as, { replace = f
   }
   const id = liveGameId(game.id, as, version.version);
   const frameGame = frameGameOrThrow(version.source, id);
-  const meta = { source: 'generated', status: as, ownerUserId: game.ownerUserId, version: version.version, addedAt: game.createdAt, thumb: thumbFromReport(version.report) };
+  const meta = { source: 'generated', status: as, ownerUserId: game.ownerUserId, version: version.version, addedAt: game.createdAt, shots: shotsFromReport(version.report), baseId: game.id };
   registry.register(frameGame, meta, { replace });
   return id;
 }
