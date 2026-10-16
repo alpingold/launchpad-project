@@ -1522,6 +1522,30 @@ look, filling the screen, and motion over detail. The design's "Template" headin
 in the rulebook: a saved snapshot is plain JSON (a `Set` comes back as `{}`, K-RPG's bug).
 Browser tests keep a kit-free "Unique Number" (the old rounds template) as a test game.
 
+## 21. `party.ui`: what's hard to build, and better phones (decided and built 2026-10-16)
+
+**Looked at:** which widgets 25 AI-made games used (`el` 25, `timer` 13, `gamepad` 11,
+`scoreboard` 8, `countdown` 4, `joystick` 2, `drawPad` 0; none wrote their own touch
+handling) and how hard each is to get right on a phone. Hard: `drawPad` (smooth lines, phone
+vs TV shapes, small enough to send), `joystick` and `gamepad` (fingers, interruptions, keys).
+Easy and mostly a look: `scoreboard`.
+
+**Done (with the user's go-ahead):**
+- **Phones in a game:** the site header is hidden; one slim bar under the game holds the
+  name, room, ⚙ and Leave, so the game gets nearly the whole screen (it lost ~9rem before).
+  `viewport-fit=cover` and safe-area padding keep it clear of notches and the home bar.
+- **The screen stays on** during a game (Wake Lock, taken again when the page comes back).
+  Needs HTTPS (or localhost), so it works once deployed, not over a LAN/Tailscale address.
+- **Gamepad:** a thumb slides from one button to the next without lifting (◀ to ▶).
+- **Joystick:** starts where the thumb lands, with a small dead zone.
+- **`party.ui.textInput`** for word games: Enter/Send, empty ignored, a counter, text big
+  enough that phones don't zoom in. (Not a `<form>`: the sandbox blocks form submission.)
+- **`party.ui.sound(name)`:** short sounds made in code (no files), and the iframe gets
+  `allow="autoplay"` so the big screen, where nobody taps the game, may play them.
+- **`scoreboard` removed** (each game shows scores in its own style). The restored Checkpoint
+  Dash keeps a pasted-in copy of it; the e2e Unique Number has its own list.
+- Not done: vibration (Android only, and the parent page would have to do it for the game).
+
 ---
 
 ## Verification (how to confirm the plan worked once built)

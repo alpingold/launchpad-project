@@ -42,13 +42,19 @@
   party.ready(({ role, restored }) => (role === 'host' ? referee(restored) : phone()));
 
   function referee(restored) {
-    const { el, timer, scoreboard } = party.ui;
+    const { el, timer } = party.ui;
     const app = document.getElementById('app');
     const title = el('h1');
     const body = el('div', { class: 'stack' });
     const timerSlot = el('div');
     app.append(el('div', { class: 'screen big-screen' }, el('div', { class: 'stack' }, title, timerSlot, body), el('div', { id: 'scores' })));
-    const scores = scoreboard('#scores', { title: 'Scores' });
+    // The scores, best first (its own little list: party.ui has no scoreboard since plan §21).
+    const scores = {
+      update(rows) {
+        const sorted = [...rows].sort((a, b) => b.score - a.score);
+        document.getElementById('scores').replaceChildren(el('h2', {}, 'Scores'), el('ol', {}, sorted.map((r) => el('li', {}, `${r.name}: ${r.score}`))));
+      },
+    };
     let clock = null;
     let pending = null;
 

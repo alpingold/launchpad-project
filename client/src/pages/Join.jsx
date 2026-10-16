@@ -3,6 +3,7 @@ import { connectSocket } from '../net/socket.js';
 import { loadSession, saveSession, clearSession } from '../net/storage.js';
 import PlayerList from '../components/PlayerList.jsx';
 import GameFrame from '../game/GameFrame.jsx';
+import SettingsMenu from '../settings/SettingsMenu.jsx';
 import LastGameResults from '../game/LastGameResults.jsx';
 import { useGameMessages } from '../game/useGameMessages.js';
 import { usePageTitle } from '../usePageTitle.js';
@@ -158,10 +159,16 @@ export default function Join() {
           ) : (
             <p className="muted">Loading the game…</p>
           )}
-          <p className="muted small">
-            {me.name} · room <span className="mono">{me.code}</span>
-          </p>
-          {leaveButton}
+          {/* One slim bar under the game (plan §21): who you are, ⚙, and Leave. */}
+          <div className="phone-bar">
+            <span className="muted small">
+              {me.name} · room <span className="mono">{me.code}</span>
+            </span>
+            <SettingsMenu />
+            <button type="button" className="secondary-button phone-bar-leave" onClick={leave} disabled={!connected}>
+              Leave
+            </button>
+          </div>
         </main>
       );
     }

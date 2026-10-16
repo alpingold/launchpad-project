@@ -415,12 +415,46 @@ body {
 }
 
 .game-frame-player {
-  height: calc(100dvh - 9rem);
+  /* §21: the whole phone, minus the slim bar under it (and the home indicator on notched phones) */
+  height: calc(100dvh - 3.5rem - env(safe-area-inset-bottom));
   min-height: 20rem;
 }
 
 .join-game {
-  padding-top: 0.5rem;
+  max-width: none;
+  padding: 0.25rem 0.25rem 0;
+}
+
+/* §21: during a game a phone hides the site's header; this bar under the game replaces it. */
+body.in-game-player .site-header {
+  display: none;
+}
+
+.phone-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  height: 3.25rem;
+  padding: 0 0.5rem env(safe-area-inset-bottom);
+}
+
+.phone-bar > span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.phone-bar .settings-button {
+  width: 2.25rem;
+  height: 2.25rem;
+  font-size: 1.1rem;
+}
+
+.phone-bar-leave {
+  font-size: 0.9rem;
+  padding: 0.4rem 0.8rem;
 }
 
 .host-game-buttons {
@@ -544,6 +578,10 @@ select {
   align-items: center;
   gap: 0.5rem;
   padding: 0.75rem 0.75rem 0;
+  /* §21: viewport-fit=cover lets the page reach under a notch; keep the header clear of it */
+  padding-top: max(0.75rem, env(safe-area-inset-top));
+  padding-left: max(0.75rem, env(safe-area-inset-left));
+  padding-right: max(0.75rem, env(safe-area-inset-right));
 }
 
 .site-header-right {

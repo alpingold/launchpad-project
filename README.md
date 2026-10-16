@@ -109,8 +109,8 @@ A game talks to BoilerGames only through the `party` SDK
   - `party.end({ rankings, scores })`
 
 Games also get **`party.ui`**, ready-made pieces styled like the rest of the site in both
-themes: `joystick`, `gamepad` (hold buttons like ◀ ▶ Jump), `timer`, `scoreboard`, `drawPad` /
-`drawing`, and `countdown`. There's also `el` (builds elements safely), plus a base style for
+themes: `joystick`, `gamepad` (hold buttons like ◀ ▶ Jump), `textInput` (typing on a phone),
+`timer`, `drawPad` / `drawing`, `countdown`, and `sound` (short sounds made in code). There's also `el` (builds elements safely), plus a base style for
 headings, buttons and inputs. Games draw with shapes on a canvas, or with HTML and CSS, in
 their own style. `async`/`await` is fine in a game. (A game-logic library, `party.kit`, and
 starter templates were tried and dropped: the games came out simpler without them, plan §20.)

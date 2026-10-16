@@ -3,7 +3,7 @@
 </script>
 <!--
   A test-only frame game for the browser tests (plan §13, F2). Phones get a joystick, a
-  gamepad and a drawing pad; the big screen shows a timer, a scoreboard, an ASCII map
+  gamepad, a drawing pad, a text box and a sound button; the big screen shows a timer, a tap count, a map
   where the gamepad moves your "@", and the last drawing. The big screen also writes what
   it received in a log, so the tests can check each helper end to end.
   A phone's "Countdown" button starts party.ui.countdown on the big screen.
@@ -15,7 +15,7 @@
 </style>
 <div id="app"></div>
 <script>
-  const { el, joystick, gamepad, timer, scoreboard, drawPad, drawing, countdown } = party.ui;
+  const { el, joystick, gamepad, timer, textInput, drawPad, drawing, countdown, sound } = party.ui;
   const COLORS = ['#e53935', '#1e88e5', '#43a047', '#fb8c00'];
 
   party.ready(({ role, me, players }) => {
@@ -32,7 +32,7 @@
     app.append(el('div', { class: 'host-layout' }, left, right));
 
     timer('#timer', { endsAt: party.now() + 60_000 });
-    const scores = scoreboard('#scores', { title: 'Taps' });
+    const scores = { update: (rows) => document.getElementById('scores').replaceChildren(el('h2', {}, 'Taps'), ...rows.map((r) => el('p', {}, `${r.name}: ${r.score}`))) };
     const art = drawing('#art', [], { label: 'Last drawing' });
     // A 20 × 7 board drawn with shapes: a border, three coins, a circle per player.
     const map = document.getElementById('map');
@@ -86,6 +86,11 @@
         art.show(data.drawing);
         write(`drawing ${who}: ${data.drawing.length} strokes`);
       }
+      if (data.answer) {
+        write(`answer ${who}: ${data.answer}`);
+        write(`host sound: ${sound('win')}`); // the big screen plays a sound without anyone tapping it
+      }
+      if (data.sound !== undefined) write(`sound ${who}: ${data.sound}`);
     });
   }
 
@@ -98,8 +103,11 @@
         el('div', { id: 'drawpad' }),
         el('button', { class: 'big', id: 'send-drawing' }, 'Send drawing'),
         el('button', { class: 'secondary', onClick: () => party.send({ countdown: true }) }, 'Countdown'),
+        el('div', { id: 'answer' }),
+        el('button', { class: 'secondary', onClick: () => party.send({ sound: sound('coin') }) }, 'Beep'),
       ),
     );
+    textInput('#answer', { placeholder: 'Type an answer', maxLength: 40, onSubmit: (text) => party.send({ answer: text }) });
     joystick('#stick', { onChange: (x, y) => party.send({ stick: { x, y } }) });
     gamepad('#pad', { dpad: 'horizontal', buttons: [{ id: 'jump', label: 'Jump' }], onChange: (state) => party.send({ pad: state }) });
     const pad = drawPad('#drawpad');

@@ -62,10 +62,37 @@ export default function GameFrame({ run, role, me = null, roomPlayers, send, onB
   Object.assign(live.current, { players, theme, send, role, me, onBroken });
   const [broken, setBroken] = useState(false);
 
-  // While a game is on screen, the site's links at the top stay out of the way (plan §16).
+  // While a game is on screen, the site's links at the top stay out of the way (plan §16);
+  // a phone hides the whole header and uses a slim bar under the game instead (Join.jsx).
   useEffect(() => {
-    document.body.classList.add('in-game');
-    return () => document.body.classList.remove('in-game');
+    document.body.classList.add('in-game', `in-game-${role}`);
+    return () => document.body.classList.remove('in-game', `in-game-${role}`);
+  }, [role]);
+
+  // Keep the screen on while a game runs (plan §21): a phone waiting for its turn shouldn't
+  // lock and drop out. The browser lets go of the lock when the page is hidden, so take it
+  // again when it comes back. Needs HTTPS (or localhost); elsewhere it quietly does nothing.
+  useEffect(() => {
+    if (!('wakeLock' in navigator)) return undefined;
+    let lock = null;
+    let gone = false;
+    const take = () => {
+      if (gone || document.visibilityState !== 'visible') return;
+      navigator.wakeLock
+        .request('screen')
+        .then((l) => {
+          if (gone) l.release();
+          else lock = l;
+        })
+        .catch(() => {}); // not allowed here (e.g. no HTTPS, battery saver): the screen may sleep
+    };
+    take();
+    document.addEventListener('visibilitychange', take);
+    return () => {
+      gone = true;
+      document.removeEventListener('visibilitychange', take);
+      lock?.release().catch(() => {});
+    };
   }, []);
 
   useEffect(() => {
@@ -203,6 +230,9 @@ export default function GameFrame({ run, role, me = null, roomPlayers, send, onB
       className={`game-frame game-frame-${role}`}
       title="Game"
       sandbox="allow-scripts"
+      // Sound (plan §21): pass this page's permission to play audio on to the game, so the big
+      // screen (where nobody taps inside the frame) can play it.
+      allow="autoplay"
       srcDoc={srcDoc}
       onLoad={onLoad}
     />

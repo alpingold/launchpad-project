@@ -38,7 +38,59 @@ test('joystick: drag to steer, let go to stop', async ({ people }) => {
   await expect(log).toContainText('stick Alex: 0.00, 0.00');
 });
 
-test('gamepad: hold and release, with the mouse and with keys; the map and scoreboard follow', async ({ people }) => {
+test('joystick (plan §21): it starts where the thumb lands, and a small wobble there sends nothing', async ({ people }) => {
+  const { alex, log } = await startDemo(people);
+  const stick = await frame(alex.page).getByRole('application', { name: 'Joystick: drag to steer' }).boundingBox();
+  const start = { x: stick.x + stick.width * 0.3, y: stick.y + stick.height * 0.7 }; // off-centre: the lower left
+  await alex.page.mouse.move(start.x, start.y);
+  await alex.page.mouse.down();
+  await alex.page.mouse.move(start.x + 4, start.y - 3, { steps: 2 }); // inside the dead zone
+  await alex.page.waitForTimeout(300);
+  await expect(log).not.toContainText('stick Alex');
+  await alex.page.mouse.move(start.x, start.y - stick.height * 0.4, { steps: 4 }); // straight up from where it landed
+  await expect(log).toContainText('stick Alex: 0.00, -1.00');
+  await alex.page.mouse.up();
+});
+
+test('gamepad (plan §21): a finger slides from one button to the next without lifting', async ({ people }) => {
+  const { alex, log } = await startDemo(people);
+  const left = await frame(alex.page).getByRole('button', { name: 'Left' }).boundingBox();
+  const right = await frame(alex.page).getByRole('button', { name: 'Right' }).boundingBox();
+  await alex.page.mouse.move(left.x + left.width / 2, left.y + left.height / 2);
+  await alex.page.mouse.down();
+  await expect(log).toContainText('pad Alex: left');
+  await alex.page.mouse.move(right.x + right.width / 2, right.y + right.height / 2, { steps: 6 });
+  await expect(log).toContainText('pad Alex: right'); // left let go, right held
+  await alex.page.mouse.up();
+  await expect(log).toContainText('pad Alex: none');
+});
+
+test('text input (plan §21): Enter sends, the box empties, empty answers are ignored; text big enough not to zoom', async ({ people }) => {
+  const { alex, log } = await startDemo(people);
+  const box = frame(alex.page).getByRole('textbox', { name: 'Your answer' });
+  expect(await box.evaluate((input) => parseFloat(getComputedStyle(input).fontSize))).toBeGreaterThanOrEqual(16);
+  await expect(box).toHaveAttribute('enterkeyhint', 'send');
+  await box.fill('   ');
+  await box.press('Enter');
+  await box.fill('a llama in pajamas');
+  await expect(frame(alex.page).getByText('18/40')).toBeVisible();
+  await box.press('Enter');
+  await expect(log).toContainText('answer Alex: a llama in pajamas');
+  await expect(log.getByText(/^answer Alex/)).toHaveCount(1); // the blank one was never sent
+  await expect(box).toHaveValue('');
+});
+
+test('sound (plan §21): a phone and the big screen can play sounds; the frame may play audio', async ({ people }) => {
+  const { host, alex, log } = await startDemo(people);
+  await expect(host.page.locator('iframe.game-frame')).toHaveAttribute('allow', 'autoplay');
+  await frame(alex.page).getByRole('button', { name: 'Beep' }).click();
+  await expect(log).toContainText('sound Alex: true');
+  await frame(alex.page).getByRole('textbox', { name: 'Your answer' }).fill('yes');
+  await frame(alex.page).getByRole('textbox', { name: 'Your answer' }).press('Enter');
+  await expect(log).toContainText('host sound: true');
+});
+
+test('gamepad: hold and release, with the mouse and with keys; the map and the tap count follow', async ({ people }) => {
   const { host, alex, log } = await startDemo(people);
   const right = frame(alex.page).getByRole('button', { name: 'Right' });
   await right.hover();
@@ -51,8 +103,7 @@ test('gamepad: hold and release, with the mouse and with keys; the map and score
   await frame(alex.page).locator('body').click({ position: { x: 5, y: 5 } }); // focus the frame for keys
   await alex.page.keyboard.press('Space'); // the first button's key: Jump
   await expect(log).toContainText('pad Alex: jump');
-  const scores = frame(host.page).getByRole('table');
-  await expect(scores.getByRole('row').first()).toContainText(/Alex\s*1/);
+  await expect(frame(host.page).locator('#scores')).toContainText('Alex: 1');
   expect(await hasInk(frame(host.page).getByRole('img', { name: 'Game map' }))).toBe(true);
 });
 
@@ -84,4 +135,17 @@ test('the countdown counts down to GO; party.kit is gone (plan §20)', async ({ 
   await expect(big).toHaveText('GO!', { timeout: 4000 });
   await expect(log).toContainText('countdown: GO');
   await expect(big).toHaveCount(0);
+});
+
+test('phone layout in a game (plan §21): no site header, the game nearly fills the screen, a slim bar with ⚙ and Leave', async ({ people }) => {
+  const { alex } = await startDemo(people);
+  await expect(alex.page.locator('.site-header')).toBeHidden();
+  const bar = alex.page.locator('.phone-bar');
+  await expect(bar).toContainText('Alex · room');
+  await expect(bar.getByRole('button', { name: 'Leave' })).toBeVisible();
+  const frameBox = await alex.page.locator('iframe.game-frame').boundingBox();
+  const { height } = alex.page.viewportSize();
+  expect(frameBox.height).toBeGreaterThan(height - 70); // about all of it, minus the bar
+  await bar.getByRole('button', { name: 'Settings' }).click();
+  await expect(alex.page.getByRole('dialog', { name: 'Settings' })).toBeVisible();
 });

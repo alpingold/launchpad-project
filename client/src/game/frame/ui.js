@@ -53,11 +53,15 @@ window.__partyUi = function createPartyUi(party) {
   /**
    * A thumb stick. onChange(x, y) gets -1..1 each (length ≤ 1; y is down), rounded, at most
    * every `every` ms and only when it really moved, plus once on release (0, 0).
+   * The stick starts where the thumb lands (players don't look at their phone), and a small
+   * dead zone in the middle keeps a resting thumb from drifting.
    */
   function joystick(target, { onChange = () => {}, color, every = 80, keys = true, label = 'Joystick: drag to steer' } = {}) {
     const root = mount(target, 'joystick');
     const knob = el('div', { class: 'pu-knob' });
-    const pad = el('div', { class: 'pu-joystick', role: 'application', 'aria-label': label }, knob);
+    const base = el('div', { class: 'pu-stick-base' }, knob);
+    const pad = el('div', { class: 'pu-joystick', role: 'application', 'aria-label': label }, base);
+    const DEAD = 0.15; // of the reach
     if (color) knob.style.background = color;
     root.append(pad);
 
@@ -83,19 +87,35 @@ window.__partyUi = function createPartyUi(party) {
         x /= len;
         y /= len;
       }
-      value = { x, y };
-      knob.style.transform = `translate(${x * 95}%, ${y * 95}%)`; // stays inside the pad
+      knob.style.transform = `translate(${x * 100}%, ${y * 100}%)`; // the knob follows the thumb, up to the ring
+      // The dead zone: nothing near the middle, then the full range from its edge out.
+      const l = Math.min(len, 1);
+      const scale = l <= DEAD ? 0 : (l - DEAD) / (1 - DEAD) / l;
+      value = { x: x * scale, y: y * scale };
       send(force);
     }
-    function fromPointer(event) {
+    let centre = null; // where the thumb landed, in page pixels
+    function moveBase(x, y) {
       const rect = pad.getBoundingClientRect();
-      const reach = rect.width * 0.4;
-      set((event.clientX - (rect.left + rect.width / 2)) / reach, (event.clientY - (rect.top + rect.height / 2)) / reach, false);
+      base.style.left = `${x - rect.left}px`;
+      base.style.top = `${y - rect.top}px`;
+    }
+    function fromPointer(event) {
+      const reach = base.getBoundingClientRect().width / 2;
+      set((event.clientX - centre.x) / reach, (event.clientY - centre.y) / reach, false);
     }
     pad.addEventListener('pointerdown', (event) => {
       if (!enabled) return;
       dragging = event.pointerId;
       pad.setPointerCapture(event.pointerId);
+      // The stick starts here, but its ring stays inside the pad.
+      const rect = pad.getBoundingClientRect();
+      const r = base.getBoundingClientRect().width / 2;
+      centre = {
+        x: Math.min(Math.max(event.clientX, rect.left + r), rect.right - r),
+        y: Math.min(Math.max(event.clientY, rect.top + r), rect.bottom - r),
+      };
+      moveBase(centre.x, centre.y);
       fromPointer(event);
     });
     pad.addEventListener('pointermove', (event) => {
@@ -104,6 +124,8 @@ window.__partyUi = function createPartyUi(party) {
     const release = (event) => {
       if (event.pointerId !== dragging) return;
       dragging = null;
+      base.style.left = '';
+      base.style.top = ''; // back to the middle
       set(0, 0, true);
     };
     pad.addEventListener('pointerup', release);
@@ -161,6 +183,8 @@ window.__partyUi = function createPartyUi(party) {
   // ---- Gamepad: buttons you hold ---------------------------------------------------------
   /**
    * Arrow buttons and action buttons that count while held (several at once, multi-touch).
+   * A finger can slide from one button to another without lifting (◀ to ▶): the one under it
+   * counts, as on a real controller. Sliding off into a gap keeps the last one held.
    *   dpad: 'horizontal' (◀ ▶), 'full' (◀ ▶ ▲ ▼) or 'none'
    *   buttons: [{ id: 'jump', label: 'Jump', key: ' ' }]  (key: also works on a keyboard)
    * onChange(state, id) gets every control's state, e.g. { left: false, right: true, jump: false },
@@ -185,21 +209,7 @@ window.__partyUi = function createPartyUi(party) {
     function holdButton(id, text, aria, cls) {
       const node = el('button', { class: `pu-hold ${cls ?? ''}`, 'aria-label': aria, type: 'button' }, text);
       state[id] = false;
-      const pointers = new Set();
-      node.addEventListener('pointerdown', (event) => {
-        event.preventDefault();
-        node.setPointerCapture(event.pointerId);
-        pointers.add(event.pointerId);
-        press(id, true);
-      });
-      const up = (event) => {
-        if (!pointers.delete(event.pointerId)) return;
-        if (pointers.size === 0) press(id, false);
-      };
-      node.addEventListener('pointerup', up);
-      node.addEventListener('pointercancel', up);
-      node.addEventListener('contextmenu', (event) => event.preventDefault()); // long press on phones
-      controls.push({ id, node });
+      controls.push({ id, node, fingers: new Set() });
       return node;
     }
 
@@ -215,7 +225,39 @@ window.__partyUi = function createPartyUi(party) {
       actions.append(holdButton(b.id, b.label ?? b.id, b.label ?? b.id));
       keyFor[b.key ?? (i === 0 ? ' ' : ['x', 'c', 'v'][i - 1])] = b.id;
     });
-    root.append(el('div', { class: 'pu-gamepad' }, dirs.length ? pad : null, actions));
+    const gp = el('div', { class: 'pu-gamepad' }, dirs.length ? pad : null, actions);
+    root.append(gp);
+
+    // Fingers are followed by the whole pad, not one button, so they can slide between buttons.
+    const fingerOn = new Map(); // pointerId → the control it holds
+    const controlAt = (x, y) => controls.find((c) => c.node === document.elementFromPoint(x, y)?.closest('.pu-hold')) ?? null;
+    function hold(pointerId, control) {
+      const was = fingerOn.get(pointerId) ?? null;
+      if (was === control) return;
+      if (was) {
+        was.fingers.delete(pointerId);
+        if (was.fingers.size === 0) press(was.id, false);
+      }
+      if (control) {
+        fingerOn.set(pointerId, control);
+        control.fingers.add(pointerId);
+        press(control.id, true);
+      } else fingerOn.delete(pointerId);
+    }
+    gp.addEventListener('pointerdown', (event) => {
+      const control = controlAt(event.clientX, event.clientY);
+      if (!control) return;
+      event.preventDefault();
+      gp.setPointerCapture(event.pointerId); // keep getting this finger's moves, wherever it goes
+      hold(event.pointerId, control);
+    });
+    gp.addEventListener('pointermove', (event) => {
+      if (fingerOn.has(event.pointerId)) hold(event.pointerId, controlAt(event.clientX, event.clientY) ?? fingerOn.get(event.pointerId));
+    });
+    const lift = (event) => hold(event.pointerId, null);
+    gp.addEventListener('pointerup', lift);
+    gp.addEventListener('pointercancel', lift);
+    gp.addEventListener('contextmenu', (event) => event.preventDefault()); // long press on phones
 
     function onKey(event) {
       if (!keys) return;
@@ -288,35 +330,123 @@ window.__partyUi = function createPartyUi(party) {
     };
   }
 
-  // ---- Scoreboard --------------------------------------------------------------------------
-  /** A table of names and scores, best first; equal scores share a rank. `me` is highlighted. */
-  function scoreboard(target, { title = 'Scores', me = party.me } = {}) {
-    const root = mount(target, 'scoreboard');
-    const table = el('table', { class: 'pu-scoreboard' });
-    root.append(table);
-    function update(rows) {
-      const sorted = [...rows].sort((a, b) => b.score - a.score);
-      let rank = 0;
-      table.replaceChildren(
-        el('caption', {}, title),
-        el(
-          'tbody',
-          {},
-          sorted.map((row, i) => {
-            if (i === 0 || row.score !== sorted[i - 1].score) rank = i + 1;
-            return el(
-              'tr',
-              { class: row.id !== undefined && row.id === me ? 'pu-me' : null },
-              el('td', { class: 'pu-rank' }, rank),
-              el('td', {}, row.color ? el('span', { class: 'pu-dot', style: { background: row.color } }) : null, row.name),
-              el('td', { class: 'pu-score' }, row.score),
-            );
-          }),
-        ),
-      );
+  // ---- Text input ------------------------------------------------------------------------
+  /**
+   * A box for typing an answer on a phone, with a Send button (plan §21). It avoids the usual
+   * phone traps: text big enough that iPhones don't zoom in, Enter sends, the keyboard's key says
+   * "send", the box scrolls into view above the keyboard, a character counter, and empty
+   * answers are ignored.
+   *   textInput(target, { placeholder, maxLength = 80, button = 'Send', multiline = false,
+   *                       clearOnSubmit = true, onSubmit(text) })
+   * Returns { value, clear(), focus(), setEnabled(on), destroy() }.
+   */
+  function textInput(target, { placeholder = '', maxLength = 80, button = 'Send', multiline = false, clearOnSubmit = true, onSubmit = () => {}, label = 'Your answer' } = {}) {
+    const root = mount(target, 'textInput');
+    const box = el(multiline ? 'textarea' : 'input', {
+      class: 'pu-text',
+      placeholder,
+      maxlength: maxLength,
+      'aria-label': label,
+      autocomplete: 'off',
+      autocapitalize: 'sentences',
+      spellcheck: 'true',
+      enterkeyhint: 'send',
+      rows: multiline ? 3 : null,
+    });
+    const count = el('span', { class: 'pu-count', 'aria-hidden': 'true' }, `0/${maxLength}`);
+    // Not a <form>: the game's sandbox blocks form submission, so Enter and Send are handled here.
+    const send = el('button', { class: 'big', type: 'button' }, button);
+    const wrap = el('div', { class: 'pu-text-form' }, box, el('div', { class: 'pu-text-row' }, count, send));
+    root.append(wrap);
+    let enabled = true;
+    function submit() {
+      const text = box.value.trim();
+      if (!enabled || !text) return;
+      onSubmit(text);
+      if (clearOnSubmit) {
+        box.value = '';
+        count.textContent = `0/${maxLength}`;
+      }
     }
-    update([]);
-    return { update, destroy: () => table.remove() };
+    box.addEventListener('input', () => (count.textContent = `${box.value.length}/${maxLength}`));
+    box.addEventListener('focus', () => setTimeout(() => wrap.scrollIntoView({ block: 'center', behavior: 'smooth' }), 300)); // after the keyboard opens
+    box.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
+        event.preventDefault();
+        submit();
+      }
+    });
+    send.addEventListener('click', submit);
+    return {
+      get value() {
+        return box.value;
+      },
+      clear() {
+        box.value = '';
+        count.textContent = `0/${maxLength}`;
+      },
+      focus: () => box.focus(),
+      setEnabled(on) {
+        enabled = Boolean(on);
+        box.disabled = !enabled;
+        send.disabled = !enabled;
+      },
+      destroy: () => wrap.remove(),
+    };
+  }
+
+  // ---- Sound ------------------------------------------------------------------------------
+  /**
+   * Short sounds made in code (no files, plan §21): sound('win'). Names: tap, blip, tick, pop,
+   * coin, go, buzz, win, lose. Or your own: sound({ notes: [440, 660], ms: 120, type: 'square' }).
+   * Phones play once the player has tapped the game; the big screen may play from the start.
+   * Returns false if sound isn't available here (it never throws).
+   */
+  const SOUNDS = {
+    tap: { notes: [600], ms: 40, type: 'triangle' },
+    blip: { notes: [880], ms: 80, type: 'sine' },
+    tick: { notes: [1200], ms: 30, type: 'square', volume: 0.15 },
+    pop: { notes: [300], slide: 900, ms: 90, type: 'sine' },
+    coin: { notes: [988, 1319], ms: 90, type: 'square', volume: 0.2 },
+    go: { notes: [660, 990], ms: 140, type: 'triangle' },
+    buzz: { notes: [140], ms: 300, type: 'sawtooth', volume: 0.25 },
+    win: { notes: [523, 659, 784, 1047], ms: 120, type: 'triangle' },
+    lose: { notes: [400], slide: 160, ms: 450, type: 'sawtooth', volume: 0.2 },
+  };
+  let audio = null;
+  function context() {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return null;
+    audio ??= new Ctx();
+    if (audio.state === 'suspended') audio.resume().catch(() => {});
+    return audio;
+  }
+  // Browsers only start sound after a tap or key inside the game: wake it on the first one.
+  for (const type of ['pointerdown', 'keydown']) window.addEventListener(type, () => context(), { capture: true, passive: true });
+  function sound(what) {
+    try {
+      const spec = typeof what === 'string' ? SOUNDS[what] : what;
+      const ctx = spec && context();
+      if (!ctx) return false;
+      const { notes = [440], ms = 100, type = 'sine', volume = 0.3, slide } = spec;
+      let at = ctx.currentTime;
+      for (const freq of notes) {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, at);
+        if (slide) osc.frequency.exponentialRampToValueAtTime(slide, at + ms / 1000);
+        gain.gain.setValueAtTime(Math.min(1, volume), at);
+        gain.gain.exponentialRampToValueAtTime(0.001, at + ms / 1000); // a soft end, no click
+        osc.connect(gain).connect(ctx.destination);
+        osc.start(at);
+        osc.stop(at + ms / 1000 + 0.02);
+        at += ms / 1000;
+      }
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   // ---- Drawing --------------------------------------------------------------------------
@@ -488,5 +618,5 @@ window.__partyUi = function createPartyUi(party) {
     };
   }
 
-  return Object.freeze({ el, joystick, gamepad, timer, scoreboard, drawPad, drawing, countdown, INK: Object.freeze({ ...INK }) });
+  return Object.freeze({ el, joystick, gamepad, timer, textInput, drawPad, drawing, countdown, sound, INK: Object.freeze({ ...INK }) });
 };

@@ -169,11 +169,13 @@ booleans. A `Set`, `Map`, class instance or function comes back broken (a `Set` 
 
 ## `party.ui`: ready-made pieces
 
-Use these instead of writing your own: they work on phones and keyboards, and look right
-in both themes. Each takes an element or a CSS selector.
+The phone's input is the hard part on a touch screen; use these instead of writing your own
+touch handling. They work on phones and keyboards, and look right in both themes. Each takes
+an element or a CSS selector. Everything else (scores, boards, the scene) the game draws in
+its own style.
 
 ```js
-const { el, joystick, gamepad, timer, scoreboard, drawPad, drawing, INK } = party.ui;
+const { el, joystick, gamepad, textInput, timer, countdown, drawPad, drawing, sound, INK } = party.ui;
 
 el(tag, props, ...children)
 //   Builds an element. props: class, style (object), onClick etc. (handlers), other attributes.
@@ -182,20 +184,24 @@ el(tag, props, ...children)
 //   el('button', { class: 'big', onClick: () => party.send({ pick: 2 }) }, 'Two')
 
 joystick(target, { onChange(x, y), color })
-//   A thumb stick. x and y are -1..1 (y is down). Calls onChange only when it moved
-//   (about 12 times a second at most) and once with (0, 0) on release. Arrow keys/WASD work too.
+//   A thumb stick. x and y are -1..1 (y is down). It starts where the thumb lands, with a small
+//   dead zone. Calls onChange only when it moved (about 12 times a second at most) and once
+//   with (0, 0) on release. Arrow keys/WASD work too.
 //   Returns { setColor(color), setEnabled(on), destroy() }.
 
 gamepad(target, { dpad: 'horizontal' | 'full' | 'none', buttons: [{ id: 'jump', label: 'Jump', key: ' ' }], onChange(state, id) })
-//   Buttons that count while held (several at once). state is every control's state,
-//   e.g. { left: false, right: true, jump: false }. Returns { setEnabled(on), destroy() }.
+//   Buttons that count while held (several at once; a thumb can slide from ◀ to ▶). state is
+//   every control's state, e.g. { left: false, right: true, jump: false }.
+//   Returns { setEnabled(on), destroy() }.
+
+textInput(target, { placeholder, maxLength: 80, button: 'Send', multiline: false, onSubmit(text) })
+//   A box for typing on a phone: Enter or Send calls onSubmit with the trimmed text (empty is
+//   ignored) and empties the box. Big enough text that phones don't zoom in.
+//   Returns { value, clear(), focus(), setEnabled(on), destroy() }. Send the text with party.send.
 
 timer(target, { endsAt, onDone })
 //   A bar and seconds counting down to endsAt, a SERVER time (party.now() + ms).
 //   Returns { set(newEndsAt), stop(), destroy() }.
-
-scoreboard(target, { title, me })
-//   .update([{ id, name, score, color }]): a table, best first; ties share a rank.
 
 drawPad(target, { colors: ['black', 'red', 'blue'], onChange(strokes) })
 //   A pad to draw on with a finger, with colour swatches, undo and clear.
@@ -206,6 +212,11 @@ INK                             // the drawing colours: { black, red, blue, ... 
 
 countdown(target, { endsAt, onGo })
 //   A big 3, 2, 1, GO! over the screen, to endsAt (server time); onGo runs at zero.
+
+sound(name)   // a short sound made in code: 'tap', 'blip', 'tick', 'pop', 'coin', 'go', 'buzz', 'win', 'lose'
+sound({ notes: [440, 660], ms: 120, type: 'square' })   // or your own (type: sine, square, triangle, sawtooth)
+//   The big screen can play sounds any time; a phone after the player's first tap. Keep them
+//   short and use them for moments (a point, a buzzer, the winner), not all the time.
 ```
 
 ## How to draw
