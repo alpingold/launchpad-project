@@ -30,7 +30,8 @@ export const MAX_IDEA_LENGTH = 1000;
  *     65,536  the context
  *   −  6,000  the rulebook and art library (~4K), the design, plan and request (~2K)
  *   −  1,000  the problems the checks found (in a fix)
- *   − 20,000  the model's thinking and its edits (changes measured ~2–9K; a big one more)
+ *   − 20,000  the model's thinking and its edits (measured: under 1K for a change, but a
+ *             first build thinks up to ~20K, so a hard change gets the same room)
  *   = 38,500  for the game: × 2.8 bytes ≈ 108 KB.
  * So the limit is 100 KB, the same as the rulebook's limit for any game the AI writes
  * (MAX_GAME_BYTES): every AI-made game can be changed, and a change can't grow it past it.
@@ -50,8 +51,10 @@ export const MAX_WHOLE_FILE_LENGTH = 60 * 1024;
 /**
  * The size limit the rulebook gives the model, for every game it writes (a first build
  * too). A first build has no old game in the conversation: prompt (~6K tokens) + thinking
- * (measured up to ~22K) + a 100 KB game (~36K tokens) ≈ 64K: it just fits, and real games
- * are 15–35 KB. So it stays as it was.
+ * (measured up to ~24K) + a 100 KB game (~36K tokens) ≈ 66K: right at the edge. But the
+ * games it writes are 12–35 KB (~5–13K tokens), far below, and its fixes are now edits
+ * (one copy of the game, not two). So it stays as it was: lowering it would only refuse
+ * games the model doesn't write anyway.
  */
 export const MAX_GAME_BYTES = 100 * 1024;
 
