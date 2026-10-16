@@ -1333,7 +1333,7 @@ leaves more of the 65K context for fixes and bigger games. Keep the example game
 for retries. Next: a few more C2-style runs over time, and a short combined kit sample in the
 rulebook if games keep skipping the kit.
 
-## 14. The game catalogue (decided 2026-10-16)
+## 14. The game catalogue (decided and built 2026-10-16)
 
 The host picks a game from a dropdown today. With more (AI-made) games that stops working:
 you can't see what a game looks like, what kind it is, or whether it fits your group.
