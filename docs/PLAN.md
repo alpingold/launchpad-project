@@ -1,6 +1,6 @@
 # BoilerGames: Implementation Plan (MVP lobby + extension structure)
 
-> **Status (2026-10-14):** M0–M7 done. AI game generation A0–A6 done. **Now: the game dev kit, contract v3 (§12, milestones K1–K6)**, because AI-made games were too simple with 5 fixed screens. K1–K6 are done. **On branch `iframe-games`: frame games (§13); F0–F5 done and live-tested (2026-10-15). Not merging yet (decided 2026-10-15): first iron out the open items in §13n (a "players actually move" check, storing every build attempt, game length)**; on `main`, next is deploying (M8). A7 (bring your own key) is built (§15, 2026-10-16). This file is the living plan: decisions and changes are recorded here as they happen, so `git log docs/PLAN.md` shows how it evolved.
+> **Status (2026-10-16):** M0–M7 done; AI generation, frame games (§13, now `main`; the old block games are in the `block-games` branch), the catalogue (§14), bring-your-own-key (§15), game pages/votes/profiles (§16), a room per game (§17), the guided /create flow (§19) and better phones (§21) are built. **Focus (§22): the games that fit a big screen with phones as controllers** (drawing and guessing, writing and voting, bluffing and secrets, trivia, board games, loose real-time action), not platformers or RPGs. Next: play-tests with people, then deploying (M8). This file is the living plan: decisions and changes are recorded here as they happen, so `git log docs/PLAN.md` shows how it evolved.
 
 _Site renamed from "LaunchPad Party" to **BoilerGames** on 2026-10-11 (built for the Purdue LaunchPad club; the club name stays where it refers to the club)._
 
@@ -847,9 +847,9 @@ After K6, the kit was still the limit, in the same way the 5 screens were before
 - **The game's logic runs in the big screen's iframe** (option B, the AirConsole model). The server only passes **events** between the big screen and the phones, and **never runs game code**.
 - **Frames only on this branch.** The block games, the kit, the GameRunner and the harness are removed, not kept side by side. The games will be new ones.
 - **The first game is new**: one the kit could never do (13g).
-- **Any kind of game (decided 2026-10-15).** Not only party rounds: an RPG, a platformer or anything else must be possible. The platform assumes as little as it can about what a game is (13h).
+- **Any kind of game (decided 2026-10-15; narrowed 2026-10-16, §22).** Not only party rounds: an RPG, a platformer or anything else must be possible. The platform assumes as little as it can about what a game is (13h). _Since §22 the focus is the genres that fit phones-as-controllers; the platform still doesn't forbid others._
 - **Generation becomes two approved steps (decided 2026-10-15): design first, then code.** The model first writes a design, and you read it, ask for changes or edit it. Only the design you approve gets built (13i). This is the same plan-then-build process you use when working with Claude Code.
-- **Two more example games, with ASCII art:** a platformer and an RPG (13j). Text characters are the art, so no asset files are needed.
+- **Two more example games, with ASCII art:** a platformer and an RPG (13j). Text characters are the art, so no asset files are needed. _(Both removed on 2026-10-16, §18.)_
 
 **This reverses three earlier decisions:** Q1 (declarative views, §4a), E6 ("no generated UI code ever runs in a browser", §5), and "free HTML/JS is not built" (§12a). The protection moves from "the platform draws everything" to "the browser's sandbox walls the game in" (13e).
 
@@ -993,14 +993,17 @@ Every walls-in measure is something the **browser** enforces, not our code:
 
 ### 13h. Any kind of game
 
+> _Narrowed on 2026-10-16 (§22): the platform below still assumes as little as possible, but
+> what we build, test and steer the AI toward are the genres that fit phones-as-controllers._
+
 The aim is that someone can ask for a party round game, a platformer, an RPG, a puzzle, a racing game, anything. So the platform assumes as little as possible:
 - **No required shape.** There are no rounds, phases or scoreboards in the contract. The SDK only connects screens. A game only has to start, react to its players, and eventually call `party.end` (or be stopped by the host).
 - **Any player count from 1 to 12.** A solo platformer with the big screen as the TV is fine.
 - **No time limit.** The host's "Stop game" button replaces it (13f).
 - **The phone can be anything:** a joystick, a D-pad with jump, an RPG character sheet with menus, a drawing pad, or just a "buzz" button.
 - **The big screen can be anything:** a world map, a side-scrolling level, a table of cards.
-- **Templates are help, not rules.** The starter templates (13i) cover common shapes: party rounds, real-time action, turn-based adventure. A game may use one or none.
-- **Still out of scope:** joining after a game starts (D7) and saving progress between game nights. They come up naturally with RPGs; see Q17 and Q18.
+- **Templates are help, not rules.** The starter templates (13i) cover common shapes: party rounds, real-time action, turn-based adventure. A game may use one or none. _(Templates were dropped on 2026-10-16, §20.)_
+- **Still out of scope:** joining after a game starts (D7) and saving progress between game nights. They come up naturally with RPGs; see Q17 and Q18. _(Not needed for §22's genres.)_
 
 ### 13i. Steering the AI: design first, then code
 
@@ -1113,12 +1116,12 @@ The two ASCII games also stress-test the SDK for genres that aren't party rounds
 - **Latency:** phone → server → big screen is one hop more than block games. On the same Wi-Fi that's tens of milliseconds. Bumper Blobs will show whether it's noticeable.
 - **AI-written UI** is more code to get wrong and more to review. F4 (testing in a real browser) matters more than the harness did.
 - **Phones:** canvas games on cheap phones, battery, and audio (browsers only play sound after a tap).
-- **Long games** (an RPG) make a big-screen refresh more painful, so F1's save/restore matters more.
-- **Bigger designs, bigger files.** An RPG is more code than a party round. Keep an eye on the file-size cap, the prompt size and qwen's time per attempt.
+- **Long games** (an RPG) make a big-screen refresh more painful, so F1's save/restore matters more. _(Less pressing with §22's genres: short rounds.)_
+- **Bigger designs, bigger files.** An RPG is more code than a party round. Keep an eye on the file-size cap, the prompt size and qwen's time per attempt. _(Less pressing with §22's genres.)_
 - **Q15 (decided in F1): sticky state is enough.** A phone is a controller. Its `state` from the big screen is what it should show, and it comes back after a reload; anything else on the phone is the game's own business.
 - **Q16 (decided 2026-10-16):** the block games are kept in the branch `block-games`, not in the live code. Bringing them back as a frame game that draws blocks stays possible.
-- **Q17:** let players join a game that's already running (drop-in for RPGs)? D7 says no for now.
-- **Q18:** save a game's progress between game nights (an RPG campaign)? Would need storage per game; out of scope for now.
+- **Q17:** let players join a game that's already running (drop-in for RPGs)? D7 says no for now. _Shelved (§22): it came from RPGs. Short party games just start a new round._
+- **Q18:** save a game's progress between game nights (an RPG campaign)? Would need storage per game; out of scope for now. _Shelved (§22)._
 
 ### 13n. Future: the game library as AI data (idea, 2026-10-15)
 
@@ -1545,6 +1548,43 @@ Easy and mostly a look: `scoreboard`.
 - **`scoreboard` removed** (each game shows scores in its own style). The restored Checkpoint
   Dash keeps a pasted-in copy of it; the e2e Unique Number has its own list.
 - Not done: vibration (Android only, and the parent page would have to do it for the game).
+
+## 22. Focus: the games that fit (decided 2026-10-16)
+
+**Why:** everything we tried showed that platformers and RPGs, as we built them, don't fit a
+room where everyone looks at one TV and plays on a phone. Tower Dash needed precise jumps on
+buttons you can't feel, with 0.05–0.15 s between thumb and screen and eyes on the TV
+(§18). The RPGs were long, mostly reading, and one player's turn left everyone else waiting.
+The fresh designs of §20 already drifted away from them (a lane race, a group vote).
+
+**The focus from now on:**
+
+| Genre | Why it fits | Phone | Big screen |
+|---|---|---|---|
+| **Drawing and guessing** | everyone acts at once; funny reveals | `drawPad`, `textInput` | the drawings, the guesses |
+| **Writing and voting** (Quiplash-style) | private answers, a shared laugh | `textInput`, buttons | answers side by side, the vote |
+| **Bluffing, secrets, hidden roles** | the phone keeps a secret; the room talks | your secret, your choice | the story, the reveal |
+| **Trivia and quick decisions** | everyone answers at once | big buttons | the question, who got it |
+| **Board and turn games** (short turns) | a shared board everyone can see | your options | the board |
+| **Loose real-time action** (Bumper Blobs) | forgiving: 0.1 s late doesn't matter | `joystick`, `gamepad` | the arena |
+
+What they share: **everyone does something at the same time** (or turns take seconds), the
+phone holds what's **private** (an answer, a secret, a drawing), the TV is **the show**, and a
+game lasts minutes, not hours.
+
+**What this changes:**
+- **What we build and test next:** example games, AI experiments and play-tests use ideas from
+  these genres (e.g. a drawing game, a Quiplash-style game, a bluffing game, trivia), not the
+  platformer/RPG ideas we used as test ideas until now (§13n, §13o, §20).
+- **Platform work follows these genres:** what they need (text input, drawing, sound,
+  phones that stay awake, phases with timers, private state per phone) comes first. §21's
+  `textInput` and `sound` were the first of these. Long-game work (drop-in, saving between
+  nights, Q17/Q18) is shelved.
+- **The AI:** the rulebook already says what plays well (§18) and the design step adapts ideas
+  toward it (a "racing platformer" came back as a lane race). Nothing stops someone asking for
+  another genre; we just don't optimise for it.
+- **Kept, not removed:** the platform still assumes nothing about a game's shape (13h); the
+  `platformer`, `rpg` and `adventure` catalogue tags stay so any such game can be labelled.
 
 ---
 
