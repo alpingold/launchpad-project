@@ -37,6 +37,7 @@ import {
 } from '../db/generatedGames.js';
 import { liveGameId, registerVersion } from '../games/generated.js';
 import { runGeneratorInSandbox } from './sandbox.js';
+import { isAdminUser } from '../db/users.js';
 import { MODELS, DEFAULT_MODEL, isAllowedModel } from '../../../generator/src/models.js';
 import { MAX_DESIGN_LENGTH } from '../../../generator/src/extract.js';
 
@@ -68,10 +69,14 @@ export class GenerationService {
    * @param {import('../games/registry.js').GameRegistry} deps.games   the running server's games
    * @param {boolean} deps.enabled      false: generating is switched off (managing games still works)
    * @param {typeof runGeneratorInSandbox} [deps.runGenerator]   tests pass a fake
+   * @param {ReturnType<typeof import('./userKeys.js').createUserKeys>} [deps.userKeys]
+   *   users' own GenAI Studio keys (plan §15): a job runs with its owner's key. Without one,
+   *   only an admin's job may run (with the server's own key).
    * @param {(message: string) => void} [deps.log]
    */
-  constructor({ db, games, enabled, runGenerator = runGeneratorInSandbox, log = (m) => console.log(m) }) {
+  constructor({ db, games, enabled, runGenerator = runGeneratorInSandbox, userKeys = null, log = (m) => console.log(m) }) {
     this.db = db;
+    this.userKeys = userKeys;
     this.games = games;
     this.enabled = Boolean(enabled);
     this.disabledReason = this.enabled
@@ -115,14 +120,30 @@ export class GenerationService {
     };
   }
 
-  /** Refuses new work if generating is off or the queue is full. */
-  checkCanQueue() {
+  /**
+   * Refuses new work if generating is off, the queue is full, this person has no key to
+   * use, or they already have a job waiting or running (one each, plan §15).
+   * @param {number} ownerUserId  whose job it would be
+   */
+  checkCanQueue(ownerUserId) {
     if (!this.enabled) {
       throw new GenerationError(503, 'GENERATION_DISABLED', this.disabledReason);
+    }
+    if (!this.hasKey(ownerUserId)) {
+      throw new GenerationError(403, 'NO_KEY', 'Save your GenAI Studio API key on your account page first.');
+    }
+    const busy = [this.running, ...this.queue].filter(Boolean).some((id) => getGeneratedGame(this.db, id)?.ownerUserId === ownerUserId);
+    if (busy) {
+      throw new GenerationError(409, 'ALREADY_RUNNING', 'You already have a game being made. Wait for it to finish, then start the next one.');
     }
     if (this.queue.length + (this.running ? 1 : 0) >= MAX_QUEUED) {
       throw new GenerationError(429, 'QUEUE_FULL', `${MAX_QUEUED} games are already being made. Wait for one to finish.`);
     }
+  }
+
+  /** Can this person's jobs run: their own saved key, or (admins) the server's? */
+  hasKey(userId) {
+    return isAdminUser(this.db, userId) || (this.userKeys?.status(userId).saved ?? false);
   }
 
   /**
@@ -131,7 +152,7 @@ export class GenerationService {
    * @param {{ ownerUserId: number, idea: unknown, model?: unknown }} request  idea/model are untrusted input
    */
   start({ ownerUserId, idea, model = DEFAULT_MODEL }) {
-    this.checkCanQueue();
+    this.checkCanQueue(ownerUserId);
     const trimmed = checkText(idea, 'INVALID_IDEA', 'Describe the game');
     checkModel(model);
     const game = createGeneratedGame(this.db, { ownerUserId, prompt: trimmed, model });
@@ -147,7 +168,6 @@ export class GenerationService {
    */
   requestChanges({ id, request, basedOn, model = DEFAULT_MODEL, skipDesign = false }) {
     const game = this.get(id);
-    this.checkCanQueue();
     const trimmed = checkText(request, 'INVALID_REQUEST', 'Describe the change');
     checkModel(model);
     const open = game.versions.find((v) => BUSY_STATUSES.includes(v.status) || v.status === 'design_ready');
@@ -155,6 +175,7 @@ export class GenerationService {
       const why = open.status === 'design_ready' ? `v${open.version}'s ${open.basedOn === null ? 'design' : 'plan'} is waiting for you: build it or discard it first.` : 'A version of this game is already being made. Wait for it to finish.';
       throw new GenerationError(409, 'BUSY', why);
     }
+    this.checkCanQueue(game.ownerUserId);
     const base =
       basedOn === undefined
         ? (findVersion(game, game.playtestVersion) ?? findVersion(game, game.publishedVersion) ?? game.versions.findLast((v) => v.status === 'ready'))
@@ -183,8 +204,8 @@ export class GenerationService {
 
   /** "Change the design": the model writes a new draft with the admin's feedback. */
   redesign({ id, version: versionNumber, feedback }) {
-    const { version } = this.designedVersion(id, versionNumber);
-    this.checkCanQueue();
+    const { game, version } = this.designedVersion(id, versionNumber);
+    this.checkCanQueue(game.ownerUserId);
     const trimmed = typeof feedback === 'string' ? feedback.trim() : '';
     if (trimmed.length < MIN_FEEDBACK_LENGTH || trimmed.length > MAX_IDEA_LENGTH) {
       throw new GenerationError(400, 'INVALID_FEEDBACK', `Say what to change in ${MIN_FEEDBACK_LENGTH}–${MAX_IDEA_LENGTH} characters.`);
@@ -208,8 +229,8 @@ export class GenerationService {
 
   /** "Build it": writes the code from the approved design (or tries again after a failed build). */
   build({ id, version: versionNumber }) {
-    const { version } = this.designedVersion(id, versionNumber);
-    this.checkCanQueue();
+    const { game, version } = this.designedVersion(id, versionNumber);
+    this.checkCanQueue(game.ownerUserId);
     startBuild(this.db, id, version.version);
     this.enqueue(id);
     return this.get(id);
@@ -264,12 +285,19 @@ export class GenerationService {
     const designing = version.status === 'designing';
     const job = this.jobFor(game, version);
 
-    this.log(`[generate] ${id} v${version.version}: ${designing ? (job.redraft ? 'new draft' : 'design') : 'build'} started with ${version.model}`);
+    // The owner's own key (plan §15); none: an admin's job uses the server's key. Never logged.
+    const apiKey = this.userKeys?.keyFor(game.ownerUserId) ?? null;
+
+    this.log(`[generate] ${id} v${version.version}: ${designing ? (job.redraft ? 'new draft' : 'design') : 'build'} started with ${version.model}${apiKey ? " (the owner's key)" : ''}`);
     let result;
-    try {
-      result = await this.runGenerator(job, { onStep });
-    } catch (err) {
-      result = { ok: false, error: err.message };
+    if (!apiKey && !isAdminUser(this.db, game.ownerUserId)) {
+      result = { ok: false, error: "Your GenAI Studio key couldn't be used. Save it again on your account page, then try again." };
+    } else {
+      try {
+        result = await this.runGenerator(job, { onStep, ...(apiKey && { apiKey }) });
+      } catch (err) {
+        result = { ok: false, error: err.message };
+      }
     }
     if (!getGeneratedGame(this.db, id)) return; // deleted while it was running
 

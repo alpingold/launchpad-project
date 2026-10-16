@@ -4,6 +4,7 @@ import { createGameServer } from './server.js';
 import { openDatabase } from './db/database.js';
 import { createDefaultRegistry } from './games/index.js';
 import { loadGeneratedGames } from './games/generated.js';
+import { loadKeySecret } from './auth/keyVault.js';
 
 const db = openDatabase(config.DB_PATH);
 console.log(`[server] database: ${config.DB_PATH}`);
@@ -13,7 +14,10 @@ const games = createDefaultRegistry();
 const { loaded, skipped } = await loadGeneratedGames(db, games);
 console.log(`[server] games: ${games.list({}).length} public; generated loaded ${loaded.length}, skipped ${skipped.length}`);
 
-const server = createGameServer({}, { db, games });
+// Opens users' saved GenAI Studio keys (plan §15). Not in the database, on purpose.
+const keySecret = loadKeySecret({ file: config.KEY_SECRET_PATH });
+
+const server = createGameServer({}, { db, games, keySecret });
 
 server.httpServer.listen(config.PORT, () => {
   console.log(`[server] listening on http://localhost:${config.PORT} (WebSocket path ${config.WS_PATH})`);

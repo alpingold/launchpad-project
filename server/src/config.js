@@ -124,6 +124,10 @@ export const config = {
   GENERATOR_POLICY_PATH:
     process.env.GENERATOR_POLICY_PATH ||
     fileURLToPath(new URL('../../generator/openshell/policy.yaml', import.meta.url)),
+  // Users' own GenAI Studio keys are stored encrypted (plan §15). The secret that opens them:
+  // GENAI_KEY_SECRET (base64 of 32 bytes), or else this file, made the first time.
+  KEY_SECRET_PATH: process.env.KEY_SECRET_PATH || fileURLToPath(new URL('../data/key-secret', import.meta.url)),
+
   // A last-resort limit on one sandbox job (a design, or a build: up to 4 model calls plus a
   // playtest each). Model calls stream, and a call only fails after 2 minutes of silence
   // (generator/src/llm.js), so a slow but working model is never cut off by this in practice.

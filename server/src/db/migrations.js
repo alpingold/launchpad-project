@@ -156,6 +156,22 @@ export const MIGRATIONS = [
       );
     `,
   },
+  {
+    version: 7,
+    description: "users' own GenAI Studio keys, encrypted (plan §15, A7)",
+    sql: `
+      -- At most one key per account. Only the encrypted key is stored (server/src/auth/keyVault.js);
+      -- the secret that opens it is not in this database. last4 is shown so people know which key it is.
+      CREATE TABLE genai_keys (
+        user_id     INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        ciphertext  BLOB    NOT NULL,
+        iv          BLOB    NOT NULL,
+        tag         BLOB    NOT NULL,
+        last4       TEXT    NOT NULL,
+        created_at  INTEGER NOT NULL
+      );
+    `,
+  },
 ];
 
 /** The version a fully up-to-date database has. */

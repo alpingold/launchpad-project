@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { openDatabase } from '../../src/db/database.js';
-import { createUser } from '../../src/db/users.js';
+import { createUser, setAdmin } from '../../src/db/users.js';
 import { createGeneratedGame, getGeneratedGame, gameStatus, saveDraft, startRedraft, listBuildAttempts } from '../../src/db/generatedGames.js';
 import { GameRegistry } from '../../src/games/registry.js';
 import { GenerationService, MAX_QUEUED } from '../../src/generation/service.js';
@@ -34,6 +34,7 @@ function fakeGenerator() {
 function setup({ enabled = true } = {}) {
   const db = openDatabase(':memory:');
   const admin = createUser(db, 'admin', 'scrypt$x');
+  setAdmin(db, 'admin', true); // admins without their own key use the server's
   const games = new GameRegistry();
   const fake = fakeGenerator();
   const service = new GenerationService({ db, games, enabled, runGenerator: fake.runGenerator, log: () => {} });
@@ -157,15 +158,22 @@ test('designs: new drafts with feedback, the admin\'s own edits, and what is ref
   assert.equal(codeOf(() => service.build({ id, version: 7 })), 'NOT_FOUND');
 });
 
-test('one job at a time, in order; the queue has a limit', async () => {
-  const { service, admin, calls } = setup();
+test('one job at a time, in order; one per person; the queue has a limit', async () => {
+  const { service, admin, calls, db } = setup();
+  /** Another admin, so their jobs can wait in the same queue. */
+  const person = (name) => {
+    const user = createUser(db, name, 'scrypt$x');
+    setAdmin(db, name, true);
+    return user.id;
+  };
   const first = service.start({ ownerUserId: admin.id, idea: IDEA });
-  const second = service.start({ ownerUserId: admin.id, idea: `${IDEA} again`, model: 'qwen3.8:27b' });
+  assert.equal(codeOf(() => service.start({ ownerUserId: admin.id, idea: IDEA })), 'ALREADY_RUNNING', 'one job per person (plan §15)');
+  const second = service.start({ ownerUserId: person('second'), idea: `${IDEA} again`, model: 'qwen3.8:27b' });
   assert.equal(calls.length, 1, 'the second waits');
   assert.equal(service.progress(second.id).queuePosition, 1);
 
-  for (let i = 2; i < MAX_QUEUED; i++) service.start({ ownerUserId: admin.id, idea: IDEA });
-  assert.equal(codeOf(() => service.start({ ownerUserId: admin.id, idea: IDEA })), 'QUEUE_FULL');
+  for (let i = 2; i < MAX_QUEUED; i++) service.start({ ownerUserId: person(`p${i}`), idea: IDEA });
+  assert.equal(codeOf(() => service.start({ ownerUserId: person('late'), idea: IDEA })), 'QUEUE_FULL');
 
   calls[0].finish(DESIGNED);
   await service.current;
@@ -401,7 +409,9 @@ test('deleting: removes every live version and the database rows; a waiting job 
   assert.equal(ctx.db.prepare('SELECT COUNT(*) AS n FROM game_versions WHERE game_id = ?').get(id).n, 0);
 
   const running = ctx.service.start({ ownerUserId: ctx.admin.id, idea: IDEA });
-  const waiting = ctx.service.start({ ownerUserId: ctx.admin.id, idea: IDEA });
+  createUser(ctx.db, 'other', 'scrypt$x');
+  setAdmin(ctx.db, 'other', true);
+  const waiting = ctx.service.start({ ownerUserId: ctx.admin.id + 1, idea: IDEA }); // one job per person
   assert.equal(codeOf(() => ctx.service.remove(running.id)), 'WRONG_STATUS');
   ctx.service.remove(waiting.id);
   const before = ctx.calls.length;

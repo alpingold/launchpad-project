@@ -7,6 +7,9 @@ import { createRouter } from './router.js';
 import { createDefaultRegistry } from './games/index.js';
 import { openDatabase } from './db/database.js';
 import { GenerationService } from './generation/service.js';
+import { createKeyVault } from './auth/keyVault.js';
+import { createUserKeys } from './generation/userKeys.js';
+import { randomBytes } from 'node:crypto';
 import { deleteExpiredSessions } from './db/sessions.js';
 import { currentUser } from './auth/currentUser.js';
 
@@ -25,17 +28,20 @@ import { currentUser } from './auth/currentUser.js';
  * @param {import('better-sqlite3').Database} [deps.db]  index.js passes the real database file;
  *   tests leave it out and get a fresh in-memory database
  * @param {typeof import('./generation/sandbox.js').runGeneratorInSandbox} [deps.runGenerator]  tests pass a fake instead of the real OpenShell sandbox
+ * @param {Buffer} [deps.keySecret]  opens users' saved GenAI Studio keys (index.js loads the real one; tests get a random one)
+ * @param {(key: string) => Promise<'ok' | 'rejected' | 'unreachable'>} [deps.checkKey]  tests pass a fake GenAI Studio key check
  */
-export function createGameServer(overrides = {}, { games = createDefaultRegistry(), db, runGenerator } = {}) {
+export function createGameServer(overrides = {}, { games = createDefaultRegistry(), db, runGenerator, keySecret = randomBytes(32), checkKey } = {}) {
   const cfg = { ...config, ...overrides };
   const ownsDb = !db;
   db ??= openDatabase(':memory:');
 
   // AI-generated games (plan §11): a queue that runs the generator in OpenShell sandboxes.
-  const generation = new GenerationService({ db, games, enabled: cfg.GENERATION_ENABLED, runGenerator });
+  const userKeys = createUserKeys({ db, vault: createKeyVault(keySecret), checkKey });
+  const generation = new GenerationService({ db, games, enabled: cfg.GENERATION_ENABLED, runGenerator, userKeys });
   generation.recoverInterrupted(); // anything "generating" was cut off by the last restart
 
-  const httpServer = http.createServer(createApp({ games, db, cfg, generation }));
+  const httpServer = http.createServer(createApp({ games, db, cfg, generation, userKeys }));
 
   // RoomManager needs a way to send messages, but the transport (which owns the sockets)
   // is created after it. This function only runs later, once `transport` exists,

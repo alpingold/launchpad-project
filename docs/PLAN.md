@@ -1361,6 +1361,39 @@ replacing the dropdown in the host lobby. Each card: a **screenshot**, name, des
   game" button → `/host?game=<id>`, which preselects it) and by the lobby (pick a card, then
   Start). Filters are worked out in the browser: the list is small.
 
+## 15. Bring your own key: every account can make games (A7, decided 2026-10-16)
+
+**Decided with the user:** any account holder can generate games with **their own** Purdue
+GenAI Studio API key (so it runs as them, on their quota: RCAC's "a key acts with your
+identity" is respected). The key is **stored, encrypted**, so it's entered once. **One AI job
+per person at a time.** A guide with screenshots shows how to get a key. (Rejected: the
+server minting keys from the admin's account. Every such key would act as the admin, and
+minting needs the admin's Purdue login on the server.)
+
+**How:**
+- **Storing the key** (migration 7, table `genai_keys`): AES-256-GCM (`node:crypto`, no new
+  dependency) with a server secret that is NOT in the database: `GENAI_KEY_SECRET` (32 bytes,
+  base64) or, if unset, a random one made once in `server/data/key-secret` (file mode 600).
+  The user id is bound in (GCM's "additional data"), so a stolen row can't be moved to
+  another account. A copy of the database alone reveals no keys. The key is never sent back
+  to the browser (only its last 4 characters) and never logged.
+- **Saving checks the key** with one call to GenAI Studio's model list, so a typo is caught
+  right away. `GET/PUT/DELETE /api/account/genai-key`.
+- **Using it:** for each job, the server decrypts the key and creates a **temporary OpenShell
+  provider** (`openshell provider create --type genai-studio --from-existing`, with the key in
+  that command's environment, never its arguments), runs the sandbox with it, and deletes the
+  provider afterwards. The sandbox still only sees a placeholder. Admins without a saved key
+  keep using the server's `genai-studio` provider.
+- **Who:** `/api/generations` (logged in, with a saved key, or an admin) works like the admin
+  routes but only on your own games. Publishing to everyone stays admin-only (`/api/admin`),
+  since admin approval is what makes the frame-game risks acceptable (§13e). A user's games
+  are playtest games: only they can see and start them.
+- **One job per person:** starting a design, build or change while another of yours is
+  waiting or running is refused (`409 ALREADY_RUNNING`). The server-wide queue limit stays.
+- **Pages:** `/account` (the key, with the 3-step guide; screenshots in
+  `client/public/help/genai-key/`) and `/create` (the admin page's game maker, for your own
+  games). The home page links to both.
+
 ---
 
 ## Verification (how to confirm the plan worked once built)

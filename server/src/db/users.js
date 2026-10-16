@@ -42,6 +42,11 @@ export function setAdmin(db, username, isAdmin) {
   return db.prepare('UPDATE users SET is_admin = ? WHERE username = ?').run(isAdmin ? 1 : 0, username).changes === 1;
 }
 
+/** Whether this account is an admin (false if there's no such account). */
+export function isAdminUser(db, userId) {
+  return db.prepare('SELECT is_admin FROM users WHERE id = ?').get(userId)?.is_admin === 1;
+}
+
 /** Every account, for the admin script. @returns {(User & { createdAt: number })[]} */
 export function listUsers(db) {
   return db

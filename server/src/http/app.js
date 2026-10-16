@@ -5,6 +5,7 @@ import { openDatabase } from '../db/database.js';
 import { createAuthRouter } from './authRoutes.js';
 import { currentUser } from '../auth/currentUser.js';
 import { createAdminRouter } from './adminRoutes.js';
+import { createAccountRouter } from './accountRoutes.js';
 import { kitGuide } from '../games/kitGuide.js';
 
 /**
@@ -20,8 +21,9 @@ import { kitGuide } from '../games/kitGuide.js';
  * @param {import('better-sqlite3').Database} [deps.db]  accounts database (tests: in-memory)
  * @param {typeof config} [deps.cfg]
  * @param {import('../generation/service.js').GenerationService} [deps.generation]  AI games (admin routes)
+ * @param {ReturnType<typeof import('../generation/userKeys.js').createUserKeys>} [deps.userKeys]  users' own GenAI Studio keys (plan §15)
  */
-export function createApp({ games = new GameRegistry(), db = openDatabase(':memory:'), cfg = config, generation } = {}) {
+export function createApp({ games = new GameRegistry(), db = openDatabase(':memory:'), cfg = config, generation, userKeys } = {}) {
   const app = express();
   app.set('trust proxy', cfg.TRUST_PROXY);
 
@@ -56,6 +58,9 @@ export function createApp({ games = new GameRegistry(), db = openDatabase(':memo
 
   // Sign up, log in, log out, who am I.
   app.use('/api', createAuthRouter({ db, cfg }));
+
+  // Your own account: your GenAI Studio key (plan §15).
+  if (userKeys) app.use('/api/account', createAccountRouter({ db, userKeys }));
 
   // Admin only: generating and approving AI-made games.
   if (generation) app.use('/api/admin', createAdminRouter({ db, generation }));
