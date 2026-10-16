@@ -76,13 +76,12 @@ test("a creator edits their game's page; their name links to their profile, with
   await page.goto('/create');
   await page.getByLabel('Game idea').fill(`Everyone votes, the most popular answer scores (${test.info().testId}-${Date.now()})`);
   await page.getByRole('button', { name: 'Write the design' }).click();
-  const detail = page.locator('.gen-detail');
-  const v1 = detail.getByRole('article', { name: 'Version 1' });
-  await expect(v1.getByRole('button', { name: 'Build it' })).toBeVisible(GENERATED);
-  await v1.getByRole('button', { name: 'Build it' }).click();
-  await expect(detail.getByText('Ready for review')).toBeVisible(GENERATED);
-  await detail.getByRole('button', { name: 'Playtest v1' }).click();
-  const gameId = (await detail.getByText(/^g-[a-z0-9]{8}$/).textContent()).trim();
+  await expect(page).toHaveURL(/^[^?]*\/create\/g-[a-z0-9]{8}$/);
+  const gameId = new URL(page.url()).pathname.split('/').at(-1);
+  await expect(page.getByRole('button', { name: 'Build it' })).toBeVisible(GENERATED);
+  await page.getByRole('button', { name: 'Build it' }).click();
+  await page.getByRole('button', { name: 'Play it now' }).click(GENERATED);
+  await expect(page).toHaveURL(`/host?game=${gameId}-v1`);
 
   // Its page: by me, my own game (no voting), and an editor.
   await page.goto(`/games/${gameId}-v1`);

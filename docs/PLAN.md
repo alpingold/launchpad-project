@@ -1457,6 +1457,34 @@ is fine (only the old block games, which ran on the server, couldn't use it).
 **Next (art):** a small `party.draw` helper for shapes (see the user discussion on 2026-10-16),
 then a curated, openly licensed sprite/icon set in the art library.
 
+## 19. /create as a guided flow (decided and built 2026-10-16)
+
+**Decided with the user:** `/create` was the admin page's game maker with a friendlier intro:
+one long page with the idea box, every game, and one game's versions, test reports, attempts,
+ids and code (open by default). Fine for the admin; too much for a player making their first
+game. Now it walks you through the steps instead. Frontend only: the server and its rules
+didn't change, and `/admin` stays as it was.
+
+**How:**
+- **`/create`**: the idea box, with four example ideas to start from (games that fit, §18)
+  and one line on what works well; then **Your games**, one row each, with a small four-dot
+  track and what it's doing in words. Writing the design takes you to the game's own page.
+- **`/create/<id>`** (a page per game): the game's name as the heading, your idea, a
+  **board-game track** (Idea → Design → Build → Play; for a change: Change → Plan → Build →
+  Play) with the game as a token on the step it's at, and one panel with only what that
+  step needs: reading the design (build it, edit it, ask for a new draft), the AI working
+  (what it's doing now; you can close the page), a failed build (build again), or **Play it
+  now** (makes it your playtest version and opens a room for it in one click) with
+  screenshots from the AI's test and **Want it different?** (ask for changes).
+- **For the curious** (closed): every version, the checks' report, how it was built, and
+  the code. Kept for people who want to learn from it; it's the same code the admin reads.
+- Where a game is comes from its newest version's status (`whereIs` in `CreateGame.jsx`),
+  the same statuses the admin page shows. The page asks for the small list every 2 s while
+  the AI works and fetches the whole game (with its code) only when it changed.
+- **Look:** the site's colors and fonts, plus one new one, Boilermaker gold, used only for
+  the track (how far your game got). The token hops when the game moves on while you watch
+  and breathes while the AI works; both are off with "reduce motion".
+
 ---
 
 ## Verification (how to confirm the plan worked once built)

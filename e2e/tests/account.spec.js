@@ -66,21 +66,37 @@ test('/create: without a key it asks for one; with a key, one game at a time, an
   const idea = `Everyone votes, the most popular answer scores (${test.info().testId}-${Date.now()})`;
   await page.getByLabel('Game idea').fill(idea);
   await page.getByRole('button', { name: 'Write the design' }).click();
+  // Each game has its own page, with the four steps as a track (plan §19).
+  await expect(page).toHaveURL(/^[^?]*\/create\/g-[a-z0-9]{8}$/);
+  const gamePage = page.url();
+  const gameId = new URL(gamePage).pathname.split('/').at(-1);
+  const track = page.getByRole('list', { name: /^Step \d of 4/ });
 
   // A second game while the first is being made: refused.
+  await page.goto('/create');
   await page.getByLabel('Game idea').fill(`${idea}, again`);
   await page.getByRole('button', { name: 'Write the design' }).click();
   await expect(page.getByText('You already have a game being made. Wait for it to finish, then start the next one.')).toBeVisible();
 
-  // Build, then playtest: only the owner can start it, and only an admin can publish.
-  const detail = page.locator('.gen-detail');
-  const v1 = detail.getByRole('article', { name: 'Version 1' });
-  await expect(v1.getByRole('button', { name: 'Build it' })).toBeVisible(GENERATED);
-  await v1.getByRole('button', { name: 'Build it' }).click();
-  await expect(detail.getByText('Ready for review')).toBeVisible(GENERATED);
-  await detail.getByRole('button', { name: 'Playtest v1' }).click();
-  await expect(detail.getByText(/ask the site admin if it can be published/)).toBeVisible();
-  await expect(detail.getByRole('button', { name: /Publish/ })).toHaveCount(0);
+  // The list links to the game's page.
+  await page.locator(`a[href="/create/${gameId}"]`).click();
+  await expect(page).toHaveURL(gamePage);
+
+  // Read the design, build it, then play: only the owner can start it, and only an admin can publish.
+  await expect(page.getByRole('button', { name: 'Build it' })).toBeVisible(GENERATED);
+  await expect(track).toHaveAccessibleName('Step 2 of 4: Design');
+  await page.getByRole('button', { name: 'Build it' }).click();
+  await expect(page.getByRole('heading', { name: 'Your game is ready' })).toBeVisible(GENERATED);
+  await expect(track).toHaveAccessibleName('Step 4 of 4: Play');
+  await expect(page.getByRole('heading', { name: 'Robot Majority', level: 1 })).toBeVisible();
+  await expect(page.getByText(/The site admin decides which games everyone can play/)).toBeVisible();
+  await expect(page.getByRole('button', { name: /Publish/ })).toHaveCount(0);
+  // The code is there, folded away.
+  await page.getByText('For the curious').click();
+  await page.getByText(/^The code \(\d+ lines\)$/).click();
+  await expect(page.locator('.gen-code:visible')).toContainText('Robot Majority'); // (each build attempt's code stays folded)
+  await page.getByRole('button', { name: 'Play it now' }).click();
+  await expect(page).toHaveURL(`/host?game=${gameId}-v1`);
 
   // The game is listed for its owner (the lobby uses the same list), marked as theirs alone.
   await page.goto('/games');
