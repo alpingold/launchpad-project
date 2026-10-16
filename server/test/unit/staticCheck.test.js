@@ -133,3 +133,23 @@ test('scanJs keeps code and blanks strings and comments, keeping the length', ()
   assert.equal(code, 'a(" ")     \nb(`  ${y}  `)');
   assert.equal(text, 'a("x")     \nb(`t ${y} t`)');
 });
+
+test('a variable of its own named top or parent is not the page (plan §13o false alarm)', () => {
+  const own = staticCheck(game('const top = dirs.filter((d) => votes[d] === mx);\nconst dir = top[Math.floor(Math.random() * top.length)];'));
+  assert.deepEqual(own.errors, []);
+  const param = staticCheck(game('const pickOne = (parent) => parent.children[0];'));
+  assert.deepEqual(param.errors, []);
+  // Still caught: the page itself.
+  assert.deepEqual(rulesOf(staticCheck(game('window.top.location.reload();')).errors), ['page']);
+  assert.deepEqual(rulesOf(staticCheck(game('parent.document.title;')).errors), ['page']);
+});
+
+test('a script that does not parse is reported with its line, without running it', () => {
+  const { errors } = staticCheck(game("const s = { flex-direction: 'column' };"));
+  assert.deepEqual(rulesOf(errors), ['syntax']);
+  assert.equal(errors[0].line, 6);
+  assert.match(errors[0].message, /doesn't parse: Unexpected token '-'/);
+  assert.equal(errors[0].code, "const s = { flex-direction: 'column' };");
+  // A broken script never runs here: this would throw if it did.
+  assert.deepEqual(rulesOf(staticCheck(game('throw new Error("ran!"); const x = ;')).errors), ['syntax']);
+});

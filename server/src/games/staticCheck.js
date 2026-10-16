@@ -11,6 +11,10 @@
 // parts each rule shouldn't see are blanked out with spaces, keeping every line break, so a
 // match's position is still its line in the file. Code rules never look inside strings or
 // comments, so "Pick a location." or "// on top." can't trip them.
+//
+// It also compiles each script (without running it), to point at the line of a syntax error.
+
+import vm from 'node:vm';
 
 /**
  * @typedef {Object} Finding
@@ -47,7 +51,9 @@ const ERROR_RULES = [
   { rule: 'eval', in: 'code', re: new RegExp(`${NOT_IDENT}eval\\s*\\(|\\bnew\\s+Function\\s*\\(|${NOT_IDENT}Function\\s*\\(`, 'g'), message: 'Running code from text (`eval`, `Function`) is blocked in a game.' },
   { rule: 'eval', in: 'code', re: /\bset(Timeout|Interval)\s*\(\s*["'`]/g, message: '`set$1` with a string is code from text, which is blocked: pass a function.' },
   // The page around the game: only the party SDK talks to it.
-  { rule: 'page', in: 'code', re: new RegExp(`${NOT_IDENT}(parent|top|opener|frameElement)\\s*\\.|\\bwindow\\s*\\.\\s*(parent|top|opener|frameElement)\\b`, 'g'), message: 'A game can\'t reach the page around it. Use `party` for everything.' },
+  // A bare `top.` or `parent.` is the page only if the game hasn't made its own variable with
+  // that name (`const top = …` was flagged by mistake in plan §13o's runs); `window.top` always is.
+  { rule: 'page', in: 'code', re: new RegExp(`${NOT_IDENT}(parent|top|opener|frameElement)\\s*\\.|\\bwindow\\s*\\.\\s*(parent|top|opener|frameElement)\\b`, 'g'), unlessDeclared: 1, message: 'A game can\'t reach the page around it. Use `party` for everything.' },
   { rule: 'page', in: 'code', re: /\bpostMessage\s*\(/g, message: '`postMessage` is the party SDK\'s job: use `party.send`, `party.sendTo` or `party.setState`.' },
   // What a sandboxed frame doesn't have: these throw or do nothing.
   { rule: 'storage', in: 'code', re: /\b(localStorage|sessionStorage|indexedDB)\b|\bdocument\s*\.\s*cookie\b/g, message: 'Storage and cookies don\'t exist in a game frame (they throw). To survive a reload, use `party.save` and `restored`.' },
@@ -78,6 +84,7 @@ export function staticCheck(source) {
     const seen = new Set();
     for (const r of rules) {
       for (const m of views[r.in].matchAll(r.re)) {
+        if (r.unlessDeclared && m[r.unlessDeclared] && declares(views.code, m[r.unlessDeclared])) continue;
         const line = lineAt(views.lineStarts, m.index);
         const key = `${r.rule}:${line}`;
         if (seen.has(key)) continue; // one finding per rule per line
@@ -89,7 +96,7 @@ export function staticCheck(source) {
     return found.sort((a, b) => a.line - b.line);
   };
 
-  const errors = run(ERROR_RULES);
+  const errors = [...syntaxErrors(views.scripts, views.lineStarts, lines), ...run(ERROR_RULES)];
   const warnings = run(WARNING_RULES);
   // The two calls every game needs (a missing one is the most common slip).
   if (!/\bparty\s*\.\s*ready\s*\(/.test(views.code)) {
@@ -99,6 +106,39 @@ export function staticCheck(source) {
     warnings.push({ rule: 'sdk', line: 1, message: 'The game never calls `party.end(…)`: only the host\'s Stop button can end it.', code: '' });
   }
   return { errors, warnings };
+}
+
+/** Does the code make its own variable, function or parameter with this name? */
+function declares(code, name) {
+  const n = `\\b${name}\\b`;
+  return new RegExp(
+    [
+      `\\b(?:const|let|var|function|class)\\s+${n}`, // const top = …
+      `\\b(?:const|let|var)\\s*[{[][^}\\]]*${n}[^}\\]]*[}\\]]\\s*=`, // const { top } = …
+      `${n}\\s*=>`, // top => …
+      `\\([^()]*${n}[^()]*\\)\\s*(?:=>|\\{)`, // (a, top) => … / function f(top) {
+    ].join('|'),
+  ).test(code);
+}
+
+/**
+ * Scripts that don't even parse, with the line of the mistake. (In the browser, a syntax
+ * error only says "Unexpected token" with no line; the model couldn't tell where to look.)
+ * The code is only compiled here, never run.
+ */
+function syntaxErrors(scripts, lineStarts, lines) {
+  const found = [];
+  for (const { start, text } of scripts) {
+    try {
+      new vm.Script(text, { filename: 'game-script' });
+    } catch (err) {
+      if (!(err instanceof SyntaxError)) continue;
+      const at = /^game-script:(\d+)/.exec(err.stack ?? '');
+      const line = lineAt(lineStarts, start) + (at ? Number(at[1]) - 1 : 0);
+      found.push({ rule: 'syntax', line, message: `This script doesn't parse: ${err.message}. Fix the syntax on this line (or just before it).`, code: lines[line - 1]?.trim().slice(0, 160) ?? '' });
+    }
+  }
+  return found;
 }
 
 function lineAt(lineStarts, index) {
@@ -134,6 +174,9 @@ export function splitViews(source) {
     for (let i = from; i < to; i++) if (target[i] !== '\n') target[i] = ' ';
   };
 
+  /** The JavaScript in <script> elements, with where each starts (for the syntax check). */
+  const scripts = [];
+
   // HTML comments are nobody's business.
   for (const m of source.matchAll(/<!--[\s\S]*?(-->|$)/g)) clear(markup, m.index, m.index + m[0].length);
 
@@ -150,6 +193,7 @@ export function splitViews(source) {
       const js = scanJs(m[3]);
       put(code, start, js.code);
       put(text, start, js.text);
+      if (!/\btype\s*=\s*["']?module/i.test(m[2])) scripts.push({ start, text: m[3] });
     }
   }
   // Inline event handlers (onclick="…") are code too; style="…" attributes are styles.
@@ -165,7 +209,7 @@ export function splitViews(source) {
     }
   }
 
-  const views = { code: code.join(''), text: text.join(''), markup: markupText, style: style.join('') };
+  const views = { code: code.join(''), text: text.join(''), markup: markupText, style: style.join(''), scripts };
   views.all = mergeViews([views.text, views.markup, views.style], len);
   views.lineStarts = [0];
   for (let i = 0; i < len; i++) if (source[i] === '\n') views.lineStarts.push(i + 1);

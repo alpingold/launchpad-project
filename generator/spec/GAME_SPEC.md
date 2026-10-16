@@ -159,6 +159,7 @@ const { el, joystick, gamepad, timer, scoreboard, drawPad, drawing, ascii, INK }
 
 el(tag, props, ...children)
 //   Builds an element. props: class, style (object), onClick etc. (handlers), other attributes.
+//   style keys are JavaScript names: { flexDirection: 'column' }, never { flex-direction: … }.
 //   Children are elements or text; text always stays text.
 //   el('button', { class: 'big', onClick: () => party.send({ pick: 2 }) }, 'Two')
 
