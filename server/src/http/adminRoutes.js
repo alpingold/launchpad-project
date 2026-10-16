@@ -4,6 +4,7 @@ import { requireJsonPosts } from './requireJson.js';
 import { GenerationError } from '../generation/service.js';
 import { gameStatus, mainVersion, listBuildAttempts } from '../db/generatedGames.js';
 import { changedLines } from '../generation/lineDiff.js';
+import { isAdminUser } from '../db/users.js';
 
 /**
  * Admin routes (plan §11 A5, versions §12e K6), mounted under /api/admin. Every route needs
@@ -28,20 +29,41 @@ import { changedLines } from '../generation/lineDiff.js';
  *
  * Errors: { error: 'CODE', message }.
  *
- * @param {{ db: import('better-sqlite3').Database, generation: import('../generation/service.js').GenerationService }} deps
+ * The same routes, for EVERY account and only on their own games (plan §15), are mounted
+ * under /api/generations with `mine: true`: anyone logged in, starting work needs their
+ * own GenAI Studio key (the service checks), and publish/unpublish are left out (admins
+ * decide what everyone gets). Someone else's game is a 404 there, as if it didn't exist.
+ *
+ * @param {{ db: import('better-sqlite3').Database, generation: import('../generation/service.js').GenerationService, mine?: boolean }} deps
  */
-export function createAdminRouter({ db, generation }) {
+export function createAdminRouter({ db, generation, mine = false }) {
   const router = express.Router();
-  router.use(requireJsonPosts);
+  // Only for these routes: with `mine` this router sits on /api itself.
+  router.use('/generations', requireJsonPosts);
 
-  // Who's asking: only admins get past this.
-  router.use((req, res, next) => {
+  // Who's asking: only admins get past this (any account, for their own games).
+  router.use('/generations', (req, res, next) => {
     const user = currentUser(db, req.headers.cookie).user;
     if (!user) return res.status(401).json({ error: 'NOT_AUTHENTICATED', message: 'Log in first.' });
-    if (!user.isAdmin) return res.status(403).json({ error: 'NOT_ADMIN', message: 'Only admins can do this.' });
+    if (!mine && !user.isAdmin) return res.status(403).json({ error: 'NOT_ADMIN', message: 'Only admins can do this.' });
     req.user = user;
     next();
   });
+
+  // Your own games only: someone else's is "not found" (the same answer as a made-up id).
+  if (mine) {
+    router.param('id', (req, res, next, id) => {
+      let owner;
+      try {
+        owner = generation.get(id).ownerUserId;
+      } catch (err) {
+        if (err instanceof GenerationError) return res.status(err.status).json({ error: err.code, message: err.message });
+        return next(err);
+      }
+      if (owner !== req.user.id) return res.status(404).json({ error: 'NOT_FOUND', message: 'There is no such game.' });
+      next();
+    });
+  }
 
   /** The list view: no code (it can be long), just what the admin page's table shows. */
   const summary = (game) => {
@@ -114,8 +136,11 @@ export function createAdminRouter({ db, generation }) {
 
   router.get(
     '/generations',
-    handle((_req, res) => {
-      res.json({ info: generation.info(), games: generation.list().map(summary) });
+    handle((req, res) => {
+      const games = mine ? generation.list().filter((g) => g.ownerUserId === req.user.id) : generation.list();
+      // canGenerate: whether this person's jobs can run at all (their own key, or an admin).
+      const info = { ...generation.info(), canGenerate: generation.hasKey(req.user.id), isAdmin: isAdminUser(db, req.user.id) };
+      res.json({ info, games: games.map(summary) });
     }),
   );
 
@@ -182,12 +207,14 @@ export function createAdminRouter({ db, generation }) {
     }),
   );
 
-  router.post(
-    '/generations/:id/publish',
-    handle(async (req, res) => {
-      res.json({ game: detail(await generation.publish(req.params.id)) });
-    }),
-  );
+  if (!mine) {
+    router.post(
+      '/generations/:id/publish',
+      handle(async (req, res) => {
+        res.json({ game: detail(await generation.publish(req.params.id)) });
+      }),
+    );
+  }
 
   router.post(
     '/generations/:id/stop-playtest',
@@ -196,12 +223,14 @@ export function createAdminRouter({ db, generation }) {
     }),
   );
 
-  router.post(
-    '/generations/:id/unpublish',
-    handle((req, res) => {
-      res.json({ game: detail(generation.takeDown(req.params.id, 'published')) });
-    }),
-  );
+  if (!mine) {
+    router.post(
+      '/generations/:id/unpublish',
+      handle((req, res) => {
+        res.json({ game: detail(generation.takeDown(req.params.id, 'published')) });
+      }),
+    );
+  }
 
   router.delete(
     '/generations/:id',

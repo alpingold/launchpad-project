@@ -65,6 +65,9 @@ export function createApp({ games = new GameRegistry(), db = openDatabase(':memo
   // Admin only: generating and approving AI-made games.
   if (generation) app.use('/api/admin', createAdminRouter({ db, generation }));
 
+  // Every account: making games with your own GenAI Studio key, only your own games (plan §15).
+  if (generation) app.use('/api', createAdminRouter({ db, generation, mine: true }));
+
   // Any other /api path is a clean JSON 404 instead of Express's HTML page.
   app.use('/api', (_req, res) => {
     res.status(404).json({ error: 'NOT_FOUND' });
