@@ -8,7 +8,7 @@ import { frameGameOrThrow } from './frameGame.js';
  * them with `npm run check-game -- <game.html> --shots <folder>`). To add a game: make its
  * folder and add its id here.
  */
-export const OFFICIAL_GAMES = ['bumper-blobs', 'tower-dash', 'dungeon-party'];
+export const OFFICIAL_GAMES = ['bumper-blobs'];
 
 /** Reads an official game's file. Throws if it's missing or its info is invalid. */
 export function readOfficialGame(id) {

@@ -30,7 +30,7 @@ To check one frame game file (game info, static check, and 20 s of play in a hea
 browser with simulated phones; it RUNS the game, so use it on files you wrote or chose):
 
 ```sh
-npm run check-game -- server/src/games/tower-dash/game.html --shots /tmp/shots
+npm run check-game -- server/src/games/bumper-blobs/game.html --shots /tmp/shots
 ```
 
 The browser tests (`e2e/`) start their own server on :3100 and client on :5174 with 2-second
@@ -110,8 +110,10 @@ A game talks to BoilerGames only through the `party` SDK
 
 Games also get **`party.ui`**, ready-made pieces styled like the rest of the site in both
 themes: `joystick`, `gamepad` (hold buttons like ◀ ▶ Jump), `timer`, `scoreboard`, `drawPad` /
-`drawing`, and `ascii` (a coloured grid of text characters, for ASCII-art games). There's also
-`el` (builds elements safely), plus a base style for headings, buttons and inputs.
+`drawing`, and `countdown`. There's also `el` (builds elements safely), plus a base style for
+headings, buttons and inputs. Games draw with simple geometric shapes on a canvas, or with
+HTML and CSS. **`party.kit`** has the game logic most games need: phases with timers that
+survive reloads, votes, turns, rankings, player colours, dice. `async`/`await` is fine in a game.
 
 If a game hangs the big screen (which freezes that whole tab), the server notices that the
 page has gone quiet and stops the game after 15 s. A game that loads another page into its
@@ -132,9 +134,8 @@ The file starts with its info, which is the only part the server reads:
 - **A browser test proves it:** `e2e/tests/frames.spec.js` tries nine ways out on both screens.
 
 **The games:**
-- **Bumper Blobs:** phones are joysticks, and the big screen is an ice arena.
-- **Tower Dash:** an ASCII platformer race over three levels.
-- **Dungeon Party:** a co-op ASCII RPG. Vote on doors, fight turn by turn, slay the dragon.
+- **Bumper Blobs:** phones are joysticks, and the big screen is an ice arena. (Tower Dash and
+  Dungeon Party, the ASCII-art games, were removed on 2026-10-16: see plan §18.)
 
 **Starter templates** for the AI generator are in `generator/templates/`: party rounds,
 real-time and turn-based. Each is a tiny game that already handles the hard parts.

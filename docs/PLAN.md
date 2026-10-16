@@ -1437,6 +1437,26 @@ isn't there (or isn't yours to playtest) never gets a room. The server didn't ch
 was never tied to a game; the page keeps the choice in its address, so a reload keeps it.
 After logging in without a `next`, you land on `/games`. The lobby's card picker is gone.
 
+## 18. Shapes, not ASCII; games that fit (decided and built 2026-10-16)
+
+**Decided with the user:** ASCII art (as used) looked poor and steered games toward genres
+that don't fit (Tower Dash, a precise platformer). Removed: the official games **Tower Dash**
+and **Dungeon Party** (and their designs, which were the AI's examples), the imported AI
+games Checkpoint Dash and The Long Road (database backed up first), `party.ui.ascii` (with its
+camera and fog options) and `party.kit.platformer` (its levels were text grids). Kept:
+**Bumper Blobs**, the only example game now, and `party.kit.camera` (plain arithmetic).
+
+**Instead:** games draw with **simple geometric shapes** on a canvas (or HTML and CSS). The
+rulebook has a "How to draw" section (flat colours, player colours with initials, big shapes,
+a canvas sized to its box and the screen's pixel ratio) and says which games fit: the phone for
+choices, secrets, words, drawings and simple steering; the big screen for the shared show; no
+precise timing on a touch screen (~0.05–0.15 s from phone to screen, buttons you can't feel,
+eyes on the TV). The `turns` template draws its board with shapes. It also says `async`/`await`
+is fine (only the old block games, which ran on the server, couldn't use it).
+
+**Next (art):** a small `party.draw` helper for shapes (see the user discussion on 2026-10-16),
+then a curated, openly licensed sprite/icon set in the art library.
+
 ---
 
 ## Verification (how to confirm the plan worked once built)

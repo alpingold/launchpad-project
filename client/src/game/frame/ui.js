@@ -12,7 +12,6 @@
 //   party.ui.scoreboard(el, { title, me })      .update([{ id, name, score, color }])
 //   party.ui.drawPad(el, { colors })            .strokes(), .clear(), .undo(), .setEnabled()
 //   party.ui.drawing(el, strokes)               shows strokes from a drawPad
-//   party.ui.ascii(el, { cols, rows, colors })  .render(lines, { colors, cells, camera, fog }): text-character art
 //   party.ui.countdown(el, { endsAt, onGo })    a big 3, 2, 1, GO! over everything
 //
 // Every helper takes an element or a CSS selector, and returns an object to control it.
@@ -449,81 +448,6 @@ window.__partyUi = function createPartyUi(party) {
     };
   }
 
-  // ---- ASCII art -------------------------------------------------------------------------
-  /**
-   * A grid of text characters, drawn on a canvas so it stays fast at 60 frames a second and
-   * fits its element at any size (phone or TV).
-   *   const map = party.ui.ascii('#map', { cols: 40, rows: 20, colors: { '#': '#8d6e63', '$': 'gold' } });
-   *   map.render(['#######', '#@  $ #', '#######'], { cells: [{ x: 1, y: 1, ch: '@', color: 'red' }] })
-   * `colors` (here or per render) gives a colour per character; `cells` puts characters on
-   * top at given spots (players, monsters…). Anything else uses the text colour.
-   * A world bigger than cols × rows: pass `camera: { x, y }`, the top-left tile to show (see
-   * party.kit.camera). Lines and cells stay in WORLD positions.
-   * Fog of war: `fog: { seen, char = '?', color }`. seen is a Set or array of "x,y" strings, or
-   * a function (x, y) → true; unseen tiles show `char`, and cells there are hidden (unless the
-   * cell has `always: true`).
-   */
-  function ascii(target, { cols = 40, rows = 20, colors = {}, background, label = 'Game map' } = {}) {
-    const root = mount(target, 'ascii');
-    const canvas = el('canvas', { class: 'pu-ascii', role: 'img', 'aria-label': label });
-    root.append(canvas);
-    const g = canvas.getContext('2d');
-    let last = { lines: [], opts: {} };
-
-    function render(lines = [], opts = {}) {
-      last = { lines, opts };
-      const dpr = window.devicePixelRatio || 1;
-      const w = canvas.clientWidth;
-      const h = canvas.clientHeight;
-      if (!w || !h) return;
-      canvas.width = Math.round(w * dpr);
-      canvas.height = Math.round(h * dpr);
-      g.setTransform(dpr, 0, 0, dpr, 0, 0);
-      const styles = getComputedStyle(document.documentElement);
-      const text = styles.getPropertyValue('--text').trim() || '#1a1a2e';
-      const font = styles.getPropertyValue('--mono').trim() || 'monospace';
-      g.clearRect(0, 0, w, h);
-      if (background ?? opts.background) {
-        g.fillStyle = background ?? opts.background;
-        g.fillRect(0, 0, w, h);
-      }
-      // The biggest cells that fit; a monospace character is about 0.6 as wide as it's tall.
-      const cell = Math.min(h / rows, w / cols / 0.6);
-      const cw = cell * 0.6;
-      const ox = (w - cw * cols) / 2;
-      const oy = (h - cell * rows) / 2;
-      g.font = `700 ${cell * 0.92}px ${font}`;
-      g.textAlign = 'center';
-      g.textBaseline = 'middle';
-      const palette = { ...colors, ...(opts.colors ?? {}) };
-      const put = (x, y, ch, color) => {
-        if (x < 0 || y < 0 || x >= cols || y >= rows || ch === ' ') return;
-        g.fillStyle = color ?? palette[ch] ?? text;
-        g.fillText(ch, ox + (x + 0.5) * cw, oy + (y + 0.55) * cell);
-      };
-      const cam = { x: Math.round(opts.camera?.x ?? 0), y: Math.round(opts.camera?.y ?? 0) };
-      const fog = opts.fog;
-      const seenSet = fog && (fog.seen instanceof Set ? fog.seen : Array.isArray(fog.seen) ? new Set(fog.seen) : null);
-      const seen = !fog ? () => true : typeof fog.seen === 'function' ? fog.seen : (x, y) => Boolean(seenSet?.has(`${x},${y}`));
-      const fogChar = String(fog?.char ?? '?')[0];
-      const fogColor = fog?.color ?? (styles.getPropertyValue('--muted').trim() || '#888');
-      const cells = (opts.cells ?? []).filter((c) => c.always || seen(c.x, c.y));
-      const covered = new Set(cells.map((c) => `${c.x},${c.y}`));
-      for (let y = 0; y < rows; y++) {
-        const line = [...String(lines[y + cam.y] ?? '')];
-        for (let x = 0; x < cols; x++) {
-          const wx = x + cam.x;
-          const wy = y + cam.y;
-          if (covered.has(`${wx},${wy}`)) continue;
-          if (!seen(wx, wy)) put(x, y, fogChar, fogColor);
-          else put(x, y, line[wx] ?? ' ');
-        }
-      }
-      for (const c of cells) put(c.x - cam.x, c.y - cam.y, String(c.ch)[0] ?? ' ', c.color);
-    }
-    new ResizeObserver(() => render(last.lines, last.opts)).observe(canvas);
-    return { render, destroy: () => canvas.remove() };
-  }
 
   // ---- Countdown --------------------------------------------------------------------------
   /**
@@ -564,5 +488,5 @@ window.__partyUi = function createPartyUi(party) {
     };
   }
 
-  return Object.freeze({ el, joystick, gamepad, timer, scoreboard, drawPad, drawing, ascii, countdown, INK: Object.freeze({ ...INK }) });
+  return Object.freeze({ el, joystick, gamepad, timer, scoreboard, drawPad, drawing, countdown, INK: Object.freeze({ ...INK }) });
 };

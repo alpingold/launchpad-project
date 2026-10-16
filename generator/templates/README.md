@@ -12,9 +12,8 @@ are marked `TEMPLATE`. Each one already handles the hard parts:
 |---|---|---|
 | `rounds.html` | Party rounds: everyone answers at once, reveal, scores, next round | Unique Number |
 | `realtime.html` | Real-time: fixed steps and a canvas on the big screen, joysticks on phones | Star Catch |
-| `turns.html` | Turn-based adventure: one player at a time, an ASCII map, a turn timer | Treasure Hunt |
+| `turns.html` | Turn-based adventure: one player at a time, a board drawn with shapes, a turn timer | Treasure Hunt |
 
 They're playable: the browser tests register them (`e2e/server/testServer.js`) and play
-each one (`e2e/tests/templates.spec.js`). The full example games are in
-`server/src/games/`: Bumper Blobs (real-time), Tower Dash (an ASCII platformer) and
-Dungeon Party (an ASCII RPG).
+each one (`e2e/tests/templates.spec.js`). The full example game is in
+`server/src/games/`: Bumper Blobs (real-time, drawn with canvas shapes).

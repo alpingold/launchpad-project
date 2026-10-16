@@ -41,11 +41,9 @@ export const TEMPLATES = {
 };
 export const EXAMPLES = {
   'bumper-blobs': { game: '../../server/src/games/bumper-blobs/game.html', design: '../spec/designs/bumper-blobs.md' },
-  'tower-dash': { game: '../../server/src/games/tower-dash/game.html', design: '../spec/designs/tower-dash.md' },
-  'dungeon-party': { game: '../../server/src/games/dungeon-party/game.html', design: '../spec/designs/dungeon-party.md' },
 };
 /** When the design names no example: the closest one for its template. */
-const EXAMPLE_FOR_TEMPLATE = { realtime: 'bumper-blobs', turns: 'dungeon-party', rounds: null, none: 'bumper-blobs' };
+const EXAMPLE_FOR_TEMPLATE = { realtime: 'bumper-blobs', turns: null, rounds: null, none: 'bumper-blobs' };
 
 /** The art library, as the model should see it: id, description, tags. */
 export function describeAssets() {

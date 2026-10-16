@@ -12,13 +12,12 @@
 -->
 <style>
   .host-layout { display: grid; grid-template-columns: 2fr 1fr; gap: 1rem; height: 100%; box-sizing: border-box; padding: 1rem; }
-  #map { min-height: 12rem; height: 45vh; }
+  #map { display: block; width: 100%; min-height: 12rem; height: 45vh; }
   #art { max-width: 20rem; }
-  #world { min-height: 8rem; height: 20vh; }
 </style>
 <div id="app"></div>
 <script>
-  const { el, joystick, gamepad, timer, scoreboard, drawPad, drawing, ascii, countdown } = party.ui;
+  const { el, joystick, gamepad, timer, scoreboard, drawPad, drawing, countdown } = party.ui;
   const kit = party.kit;
 
   party.ready(({ role, me, players }) => {
@@ -30,37 +29,49 @@
   function startHost(app, players) {
     const nameOf = (id) => players.find((p) => p.id === id)?.name ?? id;
     const log = el('ul', { 'aria-label': 'Log' });
-    const left = el('div', { class: 'stack' }, el('h1', {}, 'UI Demo'), el('div', { id: 'timer' }), el('div', { id: 'map', class: 'card' }), el('div', { id: 'world', class: 'card' }));
+    const left = el('div', { class: 'stack' }, el('h1', {}, 'UI Demo'), el('div', { id: 'timer' }), el('canvas', { id: 'map', class: 'card', role: 'img', 'aria-label': 'Game map' }));
     const right = el('div', { class: 'stack' }, el('div', { id: 'scores' }), el('div', { id: 'art' }), log);
     app.append(el('div', { class: 'host-layout' }, left, right));
 
     timer('#timer', { endsAt: party.now() + 60_000 });
     const scores = scoreboard('#scores', { title: 'Taps' });
     const art = drawing('#art', [], { label: 'Last drawing' });
-    const map = ascii('#map', { cols: 20, rows: 7, colors: { '#': '#8d6e63', '$': '#d4a017' } });
-    const WALLS = ['####################', '#                  #', '#   $         $    #', '#                  #', '#        $         #', '#                  #', '####################'];
+    // A 20 × 7 board drawn with shapes: a border, three coins, a circle per player.
+    const map = document.getElementById('map');
+    const COINS = [[4, 2], [14, 2], [9, 4]];
+    function drawMap() {
+      const box = map.getBoundingClientRect();
+      map.width = box.width;
+      map.height = box.height;
+      const g = map.getContext('2d');
+      const size = Math.min(box.width / 20, box.height / 7);
+      g.strokeStyle = '#8d6e63';
+      g.lineWidth = size / 2;
+      g.strokeRect(size / 4, size / 4, size * 20 - size / 2, size * 7 - size / 2);
+      const dot = (x, y, r, color) => {
+        g.fillStyle = color;
+        g.beginPath();
+        g.arc((x + 0.5) * size, (y + 0.5) * size, r * size, 0, Math.PI * 2);
+        g.fill();
+      };
+      for (const [x, y] of COINS) dot(x, y, 0.3, '#d4a017');
+      for (const [id, s] of spots) dot(s.x, s.y, 0.42, kit.colorOf(id));
+    }
 
     const spots = new Map(players.map((p, i) => [p.id, { x: 2 + i * 2, y: 3 }]));
     const taps = new Map(players.map((p) => [p.id, 0]));
     const write = (text) => log.append(el('li', {}, text));
     write(`kit: ${kit.ordinal(3)}, ${kit.rank({ [players[0].id]: 5 }).rankings[0] === players[0].id ? 'ranked' : 'not ranked'}, ${kit.colorOf(players[0].id)}`);
 
-    // A world 40 wide, seen 12 at a time, following the first player; fog until you've been near.
-    const WORLD = ['#'.repeat(40), ...Array.from({ length: 3 }, (_, y) => `#${'.'.repeat(38).replace(/./g, (c, x) => ((x + y) % 7 === 0 ? '$' : c))}#`), '#'.repeat(40)];
-    const world = ascii('#world', { cols: 12, rows: 5, colors: { '$': '#d4a017' }, label: 'World map' });
-    const seen = new Set();
-    function drawWorld() {
-      const first = spots.get(players[0].id);
-      const x = first.x * 2; // moves twice as fast across the wider world
-      for (let dx = -2; dx <= 2; dx++) for (let y = 0; y < 5; y++) seen.add(`${x + dx},${y}`);
-      const cam = kit.camera(x, 12, WORLD[0].length);
-      world.render(WORLD, { camera: { x: cam, y: 0 }, fog: { seen }, cells: [{ x, y: 2, ch: '@', color: kit.colorOf(players[0].id) }] });
-      write(`world camera ${cam}`);
+    // party.kit.camera: where a 12-wide view of a 40-wide world starts, following the first player.
+    function followFirst() {
+      const x = spots.get(players[0].id).x * 2; // moves twice as fast across the wider world
+      write(`world camera ${kit.camera(x, 12, 40)}`);
     }
 
     function draw() {
-      map.render(WALLS, { cells: [...spots].map(([id, s]) => ({ x: s.x, y: s.y, ch: '@', color: '#e53935' })) });
-      drawWorld();
+      drawMap();
+      followFirst();
       scores.update(players.map((p) => ({ id: p.id, name: p.name, score: taps.get(p.id) })));
     }
     draw();

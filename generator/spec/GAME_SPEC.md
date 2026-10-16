@@ -10,9 +10,19 @@ file runs on the big screen and on every phone, each inside a sandboxed iframe:
 - **Each phone (role `"player"`) is a controller.** It shows what the big screen tells it,
   and sends the player's input (taps, a joystick, a choice, a drawing) to the big screen.
 
-The server only passes messages between them. Any kind of game works: party rounds, a
-platformer, an RPG, a racing game, a puzzle, a drawing game. There are no required rounds,
-phases or screens. A game must start, react to its players, and end with `party.end`.
+The server only passes messages between them. There are no required rounds, phases or
+screens. A game must start, react to its players, and end with `party.end`.
+
+**What plays well here.** Everyone looks at one big screen and holds a phone. A phone
+reaches the big screen in about 0.05–0.15 s, its buttons can't be felt, and eyes are on the
+TV, not the thumbs. So games work best when the phone is for **choices, secrets, words,
+drawings or simple steering**, and the big screen for **the shared show**: party rounds,
+voting and bluffing, drawing and guessing, trivia, board games, and loose, forgiving real-time
+games (bumping, dodging, collecting). Avoid what needs pixel-precise timing on a touch
+screen (precise platform jumping, rhythm games).
+
+`async`/`await`, Promises, timers and `requestAnimationFrame` are all fine. (There's no
+network, so there's nothing to fetch.)
 
 ## The file
 
@@ -96,7 +106,7 @@ party.now()          // server time in ms: use it for every timer and deadline
 party.asset(id)      // URL of an approved picture (see the art library), or null
 party.players / party.me / party.role / party.theme   // the same, any time after ready
 party.ui             // ready-made pieces you can see (below)
-party.kit            // game-logic helpers: phases, votes, turns, results, platformer physics (below)
+party.kit            // game-logic helpers: phases, votes, turns, results (below)
 party.on(name, fn)   // listen; the names are below
 ```
 
@@ -160,7 +170,7 @@ Use these instead of writing your own: they work on phones and keyboards, and lo
 in both themes. Each takes an element or a CSS selector.
 
 ```js
-const { el, joystick, gamepad, timer, scoreboard, drawPad, drawing, ascii, INK } = party.ui;
+const { el, joystick, gamepad, timer, scoreboard, drawPad, drawing, INK } = party.ui;
 
 el(tag, props, ...children)
 //   Builds an element. props: class, style (object), onClick etc. (handlers), other attributes.
@@ -191,25 +201,17 @@ drawPad(target, { colors: ['black', 'red', 'blue'], onChange(strokes) })
 drawing(target, strokes)        // shows strokes; returns { show(strokes) }
 INK                             // the drawing colours: { black, red, blue, ... }
 
-ascii(target, { cols, rows, colors: { '#': '#8d6e63', '$': 'gold' }, background })
-//   A grid of text characters drawn on a canvas that fits its element (fast enough for 60 fps).
-//   .render(lines, { cells: [{ x, y, ch: '@', color: 'red' }], colors, camera, fog })
-//   lines: an array of strings (the map); cells: characters on top (players, monsters).
-//   A world bigger than cols × rows: camera: { x, y } is the top-left tile shown (party.kit.camera
-//   centres it). Lines and cells stay in world positions.
-//   Fog of war: fog: { seen: Set of "x,y" strings }: unseen tiles show '?' and hide their cells.
-
 countdown(target, { endsAt, onGo })
 //   A big 3, 2, 1, GO! over the screen, to endsAt (server time); onGo runs at zero.
 ```
 
 ## `party.kit`: game-logic helpers
 
-The machinery most games need, already right. Votes, turns and bodies are **plain objects**:
+The machinery most games need, already right. Votes and turns are **plain objects**:
 keep them in your game state and they're saved with `party.save` like everything else.
 
 ```js
-const { phases, vote, turns, rank, platformer, camera, colorOf, ordinal, roll, between, pick, shuffle } = party.kit;
+const { phases, vote, turns, rank, camera, colorOf, ordinal, roll, between, pick, shuffle } = party.kit;
 
 const flow = phases({                       // named phases with time limits that survive reloads
   ask:    { ms: 20000, enter() { show(); }, timeout() { flow.go('reveal'); } },
@@ -231,14 +233,27 @@ turns.next(g.turns)                         // the next CONNECTED player (null i
 
 party.end(rank(g.scores));                  // { rankings, scores, places }: ties share a place
 
-const world = platformer(LEVEL_LINES, { run: 7, jump: 15.5 });  // '#' solid, '=' one-way platform
-const body = world.body(world.find('S')[0]);  // stands on the tile below S; a plain object
-const touched = world.step(body, { left, right, jump }, dt);   // [{ ch: '$', x, y }] or [{ ch: 'fell' }]
-world.set(x, y, ' ');  world.lines();       // change a tile; the map as lines for party.ui.ascii
-camera(body.x, 45, world.cols)              // first column of a 45-wide view centred on the body
+camera(player.x, 800, 3000)                 // left edge of an 800-wide view centred on the player, inside a 3000-wide world
 
 colorOf(playerId)  ordinal(3) === '3rd'  roll(6)  between(2, 5)  pick(list)  shuffle(list)
 ```
+
+## How to draw
+
+Draw with **simple geometric shapes** on a `<canvas>` (circles, rounded rectangles, lines,
+polygons, text), or with HTML and CSS for cards, lists and buttons. Simple shapes read well
+from across a room and are hard to get wrong.
+
+- **Look:** flat colours, a dark or light background that the shapes stand out on, each
+  player in their own colour (`party.kit.colorOf(id)`) with their initial or name on them,
+  big shapes (the TV is far away), and a little motion (easing, a pop when something
+  happens) instead of detail.
+- **A canvas that fits its box** (phone or TV, sharp on any screen): size it to its box times
+  `devicePixelRatio`, scale the drawing context to match, draw in CSS pixels, and redraw when
+  its size changes (`new ResizeObserver(draw).observe(canvas)`) or every frame in a real-time
+  game. Draw in your own world units and scale them to the box, so the game looks the same
+  on every screen.
+- **The art library** (`party.asset(id)`) has a few approved pictures; use them where they fit.
 
 ## Base styles
 

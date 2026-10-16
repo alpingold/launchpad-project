@@ -12,8 +12,6 @@ const rulesOf = (findings) => findings.map((f) => f.rule);
 test('the official games, the templates and the test games pass', () => {
   const files = [
     '../../src/games/bumper-blobs/game.html',
-    '../../src/games/tower-dash/game.html',
-    '../../src/games/dungeon-party/game.html',
     '../../../generator/templates/rounds.html',
     '../../../generator/templates/realtime.html',
     '../../../generator/templates/turns.html',

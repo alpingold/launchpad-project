@@ -30,27 +30,27 @@ test('every page has Games, Docs and Sign up at the top; Account once logged in;
 
 test("a card opens its game's page: screenshots, creator, facts, Host this game; logged out it asks to log in to vote", async ({ page }) => {
   await page.goto('/games');
-  await page.locator('.game-card', { hasText: 'Tower Dash' }).click(); // anywhere on the card
-  await expect(page).toHaveURL('/games/tower-dash');
-  await expect(page).toHaveTitle('Tower Dash · BoilerGames');
-  await expect(page.getByRole('heading', { name: 'Tower Dash', level: 1 })).toBeVisible();
+  await page.locator('.game-card', { hasText: 'Bumper Blobs' }).click(); // anywhere on the card
+  await expect(page).toHaveURL('/games/bumper-blobs');
+  await expect(page).toHaveTitle('Bumper Blobs · BoilerGames');
+  await expect(page.getByRole('heading', { name: 'Bumper Blobs', level: 1 })).toBeVisible();
   await expect(page.getByText('by BoilerGames')).toBeVisible();
-  await expect(page.getByText('1–8 players · 1–3 min')).toBeVisible();
+  await expect(page.getByText('2–12 players · 2–5 min')).toBeVisible();
   const big = page.locator('.game-page-shot');
-  await expect(big).toHaveAttribute('alt', 'The big screen during a game of Tower Dash');
+  await expect(big).toHaveAttribute('alt', 'The big screen during a game of Bumper Blobs');
   await page.getByRole('group', { name: 'Screenshots' }).getByRole('button', { name: 'A phone' }).click();
-  await expect(big).toHaveAttribute('alt', 'A phone during a game of Tower Dash');
+  await expect(big).toHaveAttribute('alt', 'A phone during a game of Bumper Blobs');
   await expect.poll(() => big.evaluate((img) => img.complete && img.naturalWidth > 0)).toBe(true);
   await expect(page.getByRole('link', { name: 'Log in to vote' })).toBeVisible();
   await expect(page.getByRole('button', { name: /I like it/ })).toBeDisabled();
-  await expect(page.getByRole('link', { name: 'Host this game' })).toHaveAttribute('href', '/login?next=%2Fhost%3Fgame%3Dtower-dash');
+  await expect(page.getByRole('link', { name: 'Host this game' })).toHaveAttribute('href', '/login?next=%2Fhost%3Fgame%3Dbumper-blobs');
   await page.goto('/games/no-such-game');
   await expect(page.getByRole('heading', { name: 'Game not found' })).toBeVisible();
 });
 
 test('votes: ▲, change to ▼, press again to take it back; the card shows the count', async ({ people }) => {
   const { page } = await people.host();
-  await page.goto('/games/dungeon-party');
+  await page.goto('/games/bumper-blobs');
   const up = page.getByRole('button', { name: /I like it/ });
   const down = page.getByRole('button', { name: /I don't like it/ });
   const before = Number((await up.textContent()).match(/\d+/)[0]);
@@ -61,8 +61,8 @@ test('votes: ▲, change to ▼, press again to take it back; the card shows the
   await expect(up).toHaveAttribute('aria-pressed', 'false');
   await expect(down).toHaveAttribute('aria-pressed', 'true');
   await page.goto('/games');
-  await expect(page.locator('.game-card', { hasText: 'Dungeon Party' }).locator('.game-votes')).toContainText('▼ 1');
-  await page.goto('/games/dungeon-party');
+  await expect(page.locator('.game-card', { hasText: 'Bumper Blobs' }).locator('.game-votes')).toContainText('▼ 1');
+  await page.goto('/games/bumper-blobs');
   await page.getByRole('button', { name: /I don't like it/ }).click(); // take it back
   await expect(page.getByRole('button', { name: /I don't like it/ })).toHaveAttribute('aria-pressed', 'false');
 });
@@ -124,7 +124,7 @@ test("a creator edits their game's page; their name links to their profile, with
 test('the header fits the narrowest phones (320 px) without sideways scrolling', async ({ browser }) => {
   const context = await browser.newContext({ ...devices['iPhone SE'], defaultBrowserType: undefined });
   const page = await context.newPage();
-  for (const path of ['/', '/games', '/games/tower-dash', '/kit', '/login']) {
+  for (const path of ['/', '/games', '/games/bumper-blobs', '/kit', '/login']) {
     await page.goto(path);
     await expect(page.getByRole('navigation', { name: 'Pages' }).getByRole('link', { name: 'Sign up' })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), path).toBe(true);

@@ -38,7 +38,7 @@ test('joystick: drag to steer, let go to stop', async ({ people }) => {
   await expect(log).toContainText('stick Alex: 0.00, 0.00');
 });
 
-test('gamepad: hold and release, with the mouse and with keys; the ASCII map and scoreboard follow', async ({ people }) => {
+test('gamepad: hold and release, with the mouse and with keys; the map and scoreboard follow', async ({ people }) => {
   const { host, alex, log } = await startDemo(people);
   const right = frame(alex.page).getByRole('button', { name: 'Right' });
   await right.hover();
@@ -73,7 +73,7 @@ test('drawing pad: draw, send, and the big screen shows it; the timer counts dow
   await expect(seconds).toContainText(/^5[0-8]$/, { timeout: 5000 });
 });
 
-test('party.kit is in every frame; the countdown counts down to GO; a wider map scrolls, with fog (plan §13o)', async ({ people }) => {
+test('party.kit is in every frame; the countdown counts down to GO; the camera follows (plan §13o)', async ({ people }) => {
   const { host, alex, log } = await startDemo(people);
   await expect(log).toContainText('kit: 3rd, ranked, #e53935'); // ordinal, rank and colorOf, inside the frame
   await expect(log).toContainText('world camera 0');
@@ -85,7 +85,6 @@ test('party.kit is in every frame; the countdown counts down to GO; a wider map 
     await expect(log).toContainText(`Alex at ${3 + i},3`);
   }
   await expect(log).toContainText('world camera 14');
-  expect(await hasInk(frame(host.page).getByRole('img', { name: 'World map' }))).toBe(true);
 
   // The countdown: numbers, then GO!, then it's gone; onGo ran.
   await frame(alex.page).getByRole('button', { name: 'Countdown' }).click();

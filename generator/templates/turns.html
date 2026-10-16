@@ -4,8 +4,8 @@
 </script>
 <!--
   STARTER TEMPLATE: TURN-BASED ADVENTURE (plan §13i). One player acts at a time; the big
-  screen draws the world in text characters (party.ui.ascii) and keeps a log; the phone
-  whose turn it is gets buttons. The example game is "Treasure Hunt": swap in your own
+  screen draws the board with simple shapes on a canvas and keeps a log; the phone whose
+  turn it is gets buttons. The example game is "Treasure Hunt": swap in your own
   world and actions where it says TEMPLATE.
 
   The shape, with party.kit:
@@ -18,7 +18,7 @@
 -->
 <style>
   .big-screen { display: grid; grid-template-columns: 2fr 1fr; gap: 1rem; height: 100%; box-sizing: border-box; padding: 1rem; }
-  #map { min-height: 14rem; height: 60vh; background: #10101a; border-radius: var(--radius); }
+  #board { display: block; width: 100%; height: 60vh; min-height: 14rem; background: #1b2030; border-radius: var(--radius); }
   .log { font-family: var(--mono); font-size: 0.9rem; list-style: none; padding: 0; }
   .dirs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; }
 </style>
@@ -27,6 +27,7 @@
   'use strict';
 
   // ---- TEMPLATE: the world and its actions ----------------------------------------------------
+  // The board as data: '#' a wall, '$' the treasure, ' ' open floor. (Drawn with shapes below.)
   const MAP = [
     '##########################',
     '#        #               #',
@@ -63,20 +64,20 @@
   party.ready(({ role, me, restored }) => (role === 'host' ? referee(restored) : phone(me)));
 
   function referee(restored) {
-    const { el, ascii, timer } = party.ui;
+    const { el, timer } = party.ui;
     const { turns, phases, roll, colorOf, rank } = party.kit;
     const app = document.getElementById('app');
     const status = el('p', { class: 'big-text', role: 'status' });
     const logList = el('ul', { class: 'log', 'aria-label': 'Log' });
     const timerSlot = el('div');
-    app.append(el('div', { class: 'big-screen' }, el('div', { class: 'stack' }, el('h1', {}, 'Treasure Hunt'), el('div', { id: 'map' })), el('div', { class: 'stack' }, status, timerSlot, logList)));
-    const map = ascii('#map', { cols: MAP[0].length, rows: MAP.length, colors: { '#': '#8d6e63', '$': '#ffd84d' } });
+    app.append(el('div', { class: 'big-screen' }, el('div', { class: 'stack' }, el('h1', {}, 'Treasure Hunt'), el('canvas', { id: 'board', role: 'img', 'aria-label': 'The board' })), el('div', { class: 'stack' }, status, timerSlot, logList)));
+    const board = document.getElementById('board');
     let clock = null;
 
     const g = restored ?? {
       turns: turns.start(), // everyone, in join order
       roll: 1,
-      log: ['Find the treasure ($)! Roll, then pick a direction.'],
+      log: ['Find the treasure (the gold star)! Roll, then pick a direction.'],
       winner: null,
       heroes: party.players.map((p, i) => ({ id: p.id, name: p.name, color: colorOf(p.id), x: START.x + (i % 3), y: START.y - Math.floor(i / 3) })),
       flow: {},
@@ -131,7 +132,7 @@
       clock?.destroy();
       clock = flow.phase === 'turn' ? timer(timerSlot, { endsAt: flow.endsAt }) : null;
       logList.replaceChildren(...g.log.map((line) => el('li', {}, line)));
-      map.render(MAP, { cells: g.heroes.map((h) => ({ x: h.x, y: h.y, ch: (h.name.trim()[0] || '?').toUpperCase(), color: h.color })) });
+      drawBoard(board, g.heroes);
       for (const h of g.heroes) {
         const mine = h === hero && !g.winner;
         party.setState(h.id, {
@@ -143,12 +144,71 @@
       party.save(g);
     }
 
+    // Redraw when the screen changes size (the canvas fills its box).
+    new ResizeObserver(() => drawBoard(board, g.heroes)).observe(board);
+
     // A new game, or a reload: the interrupted player gets their turn again (a fresh roll);
     // the end screen carries on where it was.
     if (restored && flow.phase === 'won') {
       show();
       flow.resume();
     } else flow.go('turn');
+  }
+
+  // TEMPLATE: how the board looks. Simple shapes on a canvas: rounded squares for walls, a star
+  // for the treasure, a circle with an initial for each hero.
+  function drawBoard(canvas, heroes) {
+    const box = canvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.round(box.width * dpr);
+    canvas.height = Math.round(box.height * dpr);
+    const g = canvas.getContext('2d');
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const cols = MAP[0].length;
+    const rows = MAP.length;
+    const size = Math.min(box.width / cols, box.height / rows); // one square, in CSS pixels
+    const left = (box.width - size * cols) / 2;
+    const top = (box.height - size * rows) / 2;
+    const at = (x, y) => [left + x * size, top + y * size];
+    g.clearRect(0, 0, box.width, box.height);
+    for (let y = 0; y < rows; y++) {
+      for (let x = 0; x < cols; x++) {
+        const [px, py] = at(x, y);
+        if (MAP[y][x] === '#') {
+          g.fillStyle = '#6d5a4e';
+          g.beginPath();
+          g.roundRect(px + 1, py + 1, size - 2, size - 2, size * 0.2);
+          g.fill();
+        } else if (MAP[y][x] === '$') {
+          star(g, px + size / 2, py + size / 2, size * 0.45, '#ffd84d');
+        }
+      }
+    }
+    for (const h of heroes) {
+      const [px, py] = at(h.x, h.y);
+      g.fillStyle = h.color;
+      g.beginPath();
+      g.arc(px + size / 2, py + size / 2, size * 0.42, 0, Math.PI * 2);
+      g.fill();
+      g.fillStyle = '#fff';
+      g.font = `bold ${Math.round(size * 0.5)}px system-ui, sans-serif`;
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      g.fillText((h.name.trim()[0] || '?').toUpperCase(), px + size / 2, py + size / 2 + 1);
+    }
+  }
+
+  /** A five-pointed star centred on (x, y). */
+  function star(g, x, y, r, color) {
+    g.fillStyle = color;
+    g.beginPath();
+    for (let i = 0; i < 10; i++) {
+      const a = -Math.PI / 2 + (i * Math.PI) / 5;
+      const d = i % 2 === 0 ? r : r * 0.45;
+      g.lineTo(x + Math.cos(a) * d, y + Math.sin(a) * d);
+    }
+    g.closePath();
+    g.fill();
   }
 
   function phone() {

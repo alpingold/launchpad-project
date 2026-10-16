@@ -10,19 +10,19 @@ async function fillAndSubmit(page, username, password, button) {
 test('visiting /host logged out sends you to the login page; without a game, to the catalogue first', async ({ page }) => {
   await page.goto('/host');
   await expect(page).toHaveURL('/games');
-  await page.goto('/host?game=tower-dash');
-  await expect(page).toHaveURL('/login?next=%2Fhost%3Fgame%3Dtower-dash');
+  await page.goto('/host?game=bumper-blobs');
+  await expect(page).toHaveURL('/login?next=%2Fhost%3Fgame%3Dbumper-blobs');
   await expect(page.getByRole('heading', { name: 'Log in to host' })).toBeVisible();
 });
 
 test('create an account, land on the host page, log out, log back in', async ({ page }) => {
   const username = uniqueUsername();
-  await page.goto('/host?game=tower-dash');
+  await page.goto('/host?game=bumper-blobs');
   await page.getByRole('button', { name: 'Create one' }).click();
   await expect(page.getByRole('heading', { name: 'Create a host account' })).toBeVisible();
   await fillAndSubmit(page, username, 'a good password', 'Create account');
 
-  await expect(page).toHaveURL('/host?game=tower-dash');
+  await expect(page).toHaveURL('/host?game=bumper-blobs');
   await expect(page.locator('.room-code')).toHaveText(/^[A-Z]{4}$/);
   await expect(page.getByText(`Hosting as ${username}`)).toBeVisible();
 
@@ -85,12 +85,12 @@ test('the login cookie is HttpOnly: page JavaScript cannot read it', async ({ pa
 test('opening /host in a second tab gives the same room back', async ({ context }) => {
   await context.request.post('/api/signup', { data: { username: uniqueUsername(), password: 'a good password' } });
   const tab1 = await context.newPage();
-  await tab1.goto('/host?game=tower-dash');
+  await tab1.goto('/host?game=bumper-blobs');
   await expect(tab1.locator('.room-code')).toHaveText(/^[A-Z]{4}$/); // wait for the room first
   const code = await tab1.locator('.room-code').textContent();
 
   const tab2 = await context.newPage();
-  await tab2.goto('/host?game=tower-dash');
+  await tab2.goto('/host?game=bumper-blobs');
   await expect(tab2.locator('.room-code')).toHaveText(code);
   await expect(tab1.getByText('This room is now open in another tab or window.')).toBeVisible();
 });

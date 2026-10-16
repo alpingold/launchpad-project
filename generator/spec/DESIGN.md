@@ -34,8 +34,9 @@ the idea asks for a length; if your total is outside that, change the design (mo
 longer levels, more to do) instead of just reporting it.
 
 ## Art
-How things are drawn: canvas shapes, text characters (`party.ui.ascii`), HTML and CSS, or
-pictures from the art library.
+How things are drawn: simple geometric shapes on a canvas, HTML and CSS, or pictures from
+the art library. Name the shapes and colours of the main things (e.g. "players: coloured
+circles with their initial; walls: dark rounded squares; the goal: a gold star").
 
 ## Template
 One of: `rounds` (everyone answers at once, reveal, next round), `realtime` (the big screen
@@ -43,8 +44,8 @@ runs a world 60 times a second; phones steer), `turns` (one player acts at a tim
 `none`. Then one sentence on why.
 
 ## Closest example
-One of: `bumper-blobs` (real-time canvas), `tower-dash` (ASCII platformer),
-`dungeon-party` (turn-based ASCII RPG with votes), or `none`. Then one sentence on why.
+One of: `bumper-blobs` (real-time canvas with a joystick), or `none`. Then one sentence on
+why.
 
 ## Edge cases
 - A player leaves, or comes back.

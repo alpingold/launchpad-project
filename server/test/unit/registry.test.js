@@ -139,8 +139,8 @@ test('the default registry offers the official games, each read from its game.ht
     assert.ok(g.tags.length > 0 && g.minutes, `${g.id} has tags and a length for the catalogue`);
     assert.deepEqual(g.shots, ['host', 'phone'], `${g.id} has both screenshots`);
   }
-  assert.deepEqual([...createDefaultRegistry().shot('tower-dash', 'phone').subarray(0, 2)], [0xff, 0xd8], 'a JPEG');
-  assert.equal(createDefaultRegistry().shot('tower-dash', 'nope'), undefined);
+  assert.deepEqual([...createDefaultRegistry().shot('bumper-blobs', 'phone').subarray(0, 2)], [0xff, 0xd8], 'a JPEG');
+  assert.equal(createDefaultRegistry().shot('bumper-blobs', 'nope'), undefined);
 });
 
 test("the rulebook lists exactly the allowed tags, in the same order (the AI reads it)", () => {

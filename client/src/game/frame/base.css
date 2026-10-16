@@ -345,8 +345,4 @@
   transform: scale(1.1);
 }
 
-:where(.pu-ascii) {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
+
