@@ -1,5 +1,8 @@
--- BoilerGames database: accounts and login sessions only.
--- Rooms and games are NOT stored here; they live in memory and last minutes.
+-- BoilerGames database, VERSION 1 ONLY (M7): accounts and login sessions.
+-- This file is never changed. Every table and column added since (AI-made games, their
+-- versions and build attempts, GenAI Studio keys, game pages, votes, bios) comes from a
+-- migration in migrations.js, which brings any database up to date on startup.
+-- Rooms and running games are not stored at all; they live in memory and last minutes.
 -- Every statement is "IF NOT EXISTS", so this runs safely on every server start.
 
 -- One row per host account.
