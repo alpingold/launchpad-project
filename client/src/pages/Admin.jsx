@@ -25,7 +25,7 @@ import Markdown from '../components/Markdown.jsx';
 // Progress: while a game is being made, the page asks the server for the list every 2 s.
 // That's simpler than new WebSocket messages, and only one admin is ever watching.
 
-const POLL_MS = 2000;
+export const POLL_MS = 2000;
 const LOGIN_URL = '/login?next=/admin';
 
 /** A game's status, in words (the server works it out from its versions). */
@@ -40,7 +40,7 @@ const STATUS_TEXT = {
 };
 
 /** A version's status, in words. */
-const VERSION_STATUS_TEXT = {
+export const VERSION_STATUS_TEXT = {
   designing: 'Writing the design',
   design_ready: 'Design ready',
   generating: 'Building',
@@ -48,7 +48,7 @@ const VERSION_STATUS_TEXT = {
   ready: 'Passed the checks',
 };
 /** A change's design is a plan; the words follow. */
-const PLAN_STATUS_TEXT = { ...VERSION_STATUS_TEXT, designing: 'Writing the plan', design_ready: 'Plan ready' };
+export const PLAN_STATUS_TEXT = { ...VERSION_STATUS_TEXT, designing: 'Writing the plan', design_ready: 'Plan ready' };
 
 export default function Admin() {
   usePageTitle('Admin');
@@ -80,12 +80,12 @@ export default function Admin() {
 }
 
 /**
- * Making games with AI: the form, your games, and one game's versions. The admin page shows
- * every game; the /create page (plan §15) the same thing for your own games only, with your
- * own key. Publishing to everyone appears only for admins (`info.isAdmin`).
+ * Making games with AI: the form, every game, and one game's versions, with every detail.
+ * (The /create page, plan §19, is the guided version for your own games: it reuses the
+ * exported pieces below.)
  * @param {{ heading?: string, intro?: import('react').ReactNode }} props
  */
-export function GameMaker({ heading = 'AI games', intro }) {
+function GameMaker({ heading = 'AI games', intro }) {
   const [info, setInfo] = useState(null); // what the server allows (models, idea length, switched on?)
   const [games, setGames] = useState(null); // summaries, newest first
   const [loadError, setLoadError] = useState(null);
@@ -596,7 +596,7 @@ function Version({ version: v, open, live, busy, info, canDiscard, onPlaytest, o
  *   basedOn?: number, label?: string, open?: boolean }} props
  *   basedOn: the version compared with (for the default label); label replaces that label
  */
-function ChangedLines({ changes, basedOn, label = `Changed lines since v${basedOn}`, open = true }) {
+export function ChangedLines({ changes, basedOn, label = `Changed lines since v${basedOn}`, open = true }) {
   return (
     <details className="gen-source gen-diff" open={open}>
       <summary>
@@ -626,7 +626,7 @@ function ChangedLines({ changes, basedOn, label = `Changed lines since v${basedO
  * How a version was built (plan §13n): every attempt, what the checks found in it, and what
  * the model changed to fix it. The last passing attempt is the version's own code.
  */
-function Attempts({ attempts }) {
+export function Attempts({ attempts }) {
   const builds = new Set(attempts.map((a) => a.build)).size;
   const failed = attempts.filter((a) => !a.ok).length;
   const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
@@ -692,7 +692,7 @@ function Progress({ progress }) {
  * A design (or a change's plan) waiting for you: read it, then Build it, ask the AI for a new
  * draft, or edit it yourself. Earlier drafts are kept below.
  */
-function DesignEditor({ version: v, isPlan, busy, info, canDiscard, onRedesign, onSaveDesign, onBuild, onDiscard }) {
+export function DesignEditor({ version: v, isPlan, busy, info, canDiscard, onRedesign, onSaveDesign, onBuild, onDiscard, banner = true }) {
   const [feedback, setFeedback] = useState('');
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(v.design);
@@ -701,11 +701,13 @@ function DesignEditor({ version: v, isPlan, busy, info, canDiscard, onRedesign, 
 
   return (
     <div className="gen-design-editor">
-      <p className="banner" role="status">
-        {v.status === 'failed'
-          ? `The build failed. Change the ${what} and build again, or just build again.`
-          : `Read the ${what}. Nothing is built until you press Build it.`}
-      </p>
+      {banner && (
+        <p className="banner" role="status">
+          {v.status === 'failed'
+            ? `The build failed. Change the ${what} and build again, or just build again.`
+            : `Read the ${what}. Nothing is built until you press Build it.`}
+        </p>
+      )}
       {v.drafts.length > 0 && v.drafts.at(-1).feedback && (
         <p className="muted small">
           This draft was written after: <q>{v.drafts.at(-1).feedback}</q>
@@ -804,7 +806,7 @@ function DesignEditor({ version: v, isPlan, busy, info, canDiscard, onRedesign, 
 }
 
 /** The checks' results (plan §13i, F4): problems, lines worth a look, and the playtest. */
-function Report({ report }) {
+export function Report({ report }) {
   const problems = report.problems ?? [];
   const warnings = report.warnings ?? [];
   return (
@@ -889,7 +891,7 @@ function PlaytestResult({ playtest: t }) {
 }
 
 /** A game's code as text, with line numbers; lines the checks flagged are marked. */
-function SourceCode({ source, report }) {
+export function SourceCode({ source, report }) {
   const flagged = new Map();
   for (const f of [...(report?.problems ?? []), ...(report?.warnings ?? [])]) {
     if (typeof f === 'object' && f.line && f.code) flagged.set(f.line, [...(flagged.get(f.line) ?? []), f.message]);
@@ -932,6 +934,6 @@ function shorten(text, max = 60) {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
 
-function formatTime(ms) {
+export function formatTime(ms) {
   return new Date(ms).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
