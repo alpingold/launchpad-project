@@ -9,7 +9,6 @@ import {
   planMessages,
   buildMessages,
   changeBuildMessages,
-  pickTemplate,
   pickExample,
   DESIGN_HEADINGS,
 } from '../../../generator/src/prompt.js';
@@ -167,35 +166,24 @@ test('the design prompt: the rulebook and the design format (example designs onl
   assert.match(redraft.content, /<feedback>\nMake it shorter\n<\/feedback>/);
 });
 
-test('template and example come from the design (with sensible fallbacks)', () => {
-  const design = (template, example) => `# G\n## Template\n\`${template}\`: because.\n## Closest example\n\`${example}\`: because.\n## Edge cases\n- none`;
-  assert.deepEqual([pickTemplate(design('turns', 'bumper-blobs')), pickExample(design('turns', 'bumper-blobs'))], ['turns', 'bumper-blobs']);
-  assert.deepEqual([pickTemplate(design('turns', 'none')), pickExample(design('turns', 'none'))], ['turns', null]);
-  assert.deepEqual([pickTemplate(design('none', 'none')), pickExample(design('none', 'none'))], [null, 'bumper-blobs']);
-  assert.deepEqual([pickTemplate(design('rounds', 'none')), pickExample(design('rounds', 'none'))], ['rounds', null]);
-  assert.deepEqual([pickTemplate('no sections at all'), pickExample('no sections at all')], [null, 'bumper-blobs']);
+test('the example game comes from the design, only when it names one', () => {
+  const design = (example) => `# G\n## Closest example\n\`${example}\`: because.\n## Edge cases\n- none`;
+  assert.equal(pickExample(design('bumper-blobs')), 'bumper-blobs');
+  assert.equal(pickExample(design('none')), null);
+  assert.equal(pickExample('no sections at all'), null);
 });
 
-test('the build prompt: the template the design picked; its example game only when asked', () => {
-  const design = DESIGN.replace(/## Template[\s\S]*?## Edge/, '## Template\n`turns`: yes\n\n## Closest example\n`bumper-blobs`: real-time\n\n## Edge');
+test('the build prompt: the rulebook and the design; the example game only when asked; no kit, no template (plan §20)', () => {
+  const design = DESIGN.replace(/## Closest example[\s\S]*?## Edge/, '## Closest example\n`bumper-blobs`: real-time\n\n## Edge');
   const [system, user] = buildMessages('Run and jump', design, { exampleGame: true });
-  assert.match(system.content, /starter template the design chose: turns/);
-  assert.match(system.content, /"name": "Treasure Hunt"/, 'the turns template');
   assert.match(system.content, /"name": "Bumper Blobs"/, 'the example game');
   assert.match(user.content, /<design>\n# Bumper Blobs/);
 
-  const [noExample] = buildMessages('Run and jump', design);
-  assert.doesNotMatch(noExample.content, /"name": "Bumper Blobs"/, 'plan §13o: no example game by default');
-  assert.match(noExample.content, /"name": "Treasure Hunt"/, 'the template stays');
-});
-
-test('the build prompt without helpers (plan §20): no party.kit section and no starter template', () => {
-  const design = DESIGN.replace(/## Template[\s\S]*?## Edge/, '## Template\n`turns`: yes\n\n## Edge');
-  const [free] = buildMessages('Run and jump', design, { helpers: false });
-  assert.doesNotMatch(free.content, /party\.kit/);
-  assert.doesNotMatch(free.content, /starter template/);
-  assert.match(free.content, /## `party\.ui`/, 'party.ui stays');
-  assert.match(free.content, /## How to draw/);
+  const [plain] = buildMessages('Run and jump', design);
+  assert.doesNotMatch(plain.content, /"name": "Bumper Blobs"/, 'plan §13o: no example game by default');
+  assert.doesNotMatch(plain.content, /party\.kit|starter template/i);
+  assert.match(plain.content, /## `party\.ui`/);
+  assert.match(plain.content, /Give\s+the game its own look/);
 });
 
 test('change prompts: the plan sees the design, code and request; the build gets the approved plan', () => {

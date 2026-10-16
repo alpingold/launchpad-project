@@ -1,6 +1,5 @@
 import sdk from './sdk.js?raw';
 import ui from './ui.js?raw';
-import kit from './kit.js?raw';
 import style from './base.css?raw';
 import { frameDocumentFrom } from './template.js';
 
@@ -13,5 +12,5 @@ import { frameDocumentFrom } from './template.js';
  * @param {string} origin      our site's origin (window.location.origin)
  */
 export function buildFrameDocument(gameSource, origin) {
-  return frameDocumentFrom({ style, ui, kit, sdk }, gameSource, origin);
+  return frameDocumentFrom({ style, ui, sdk }, gameSource, origin);
 }

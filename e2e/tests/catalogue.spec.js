@@ -59,7 +59,7 @@ test('"Host this game": logged out it goes through the login, then the lobby has
 });
 
 roomTest('the lobby shows only its game; Change game warns, ends the room, and opens the catalogue', async ({ people }) => {
-  const host = await people.host({ game: 'template-turns' });
+  const host = await people.host({ game: 'treasure-hunt' });
   const alex = await people.player(host.code, 'Alex');
   await expect(host.page.getByRole('heading', { name: 'Next game: Treasure Hunt' })).toBeVisible();
   await expect(host.page.locator('.game-card')).toHaveCount(0); // no catalogue in the lobby

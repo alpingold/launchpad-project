@@ -29,7 +29,6 @@ generator/
   spec/GAME_SPEC.md             F5: the rulebook: how frame games work, the party SDK, party.ui (also /kit)
   spec/DESIGN.md                F5: how a design is written: the fixed headings (also /kit)
   spec/designs/                 F5: designs of the three official games, in that format
-  templates/                    F3: starter templates (rounds, realtime, turns) the build may start from
   Dockerfile                    the sandbox image (+ Dockerfile.dockerignore, an allow-list)
   openshell/genai-studio.yaml   provider profile: how the sandbox uses the API key without seeing it
   openshell/policy.yaml         sandbox policy: which files it may read/write (network comes from the provider)

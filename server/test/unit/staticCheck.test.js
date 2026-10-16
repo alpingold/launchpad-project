@@ -9,12 +9,10 @@ const INFO = '<script type="application/json" id="game-info">{ "name": "T", "des
 const game = (body, extraHtml = '') => `${INFO}\n${extraHtml}\n<script>\nparty.ready(() => {});\nparty.end({ rankings: [] });\n${body}\n</script>\n`;
 const rulesOf = (findings) => findings.map((f) => f.rule);
 
-test('the official games, the templates and the test games pass', () => {
+test('the official games and the test games pass', () => {
   const files = [
     '../../src/games/bumper-blobs/game.html',
-    '../../../generator/templates/rounds.html',
-    '../../../generator/templates/realtime.html',
-    '../../../generator/templates/turns.html',
+    '../../../e2e/server/unique-number.html',
     '../fixtures/tap-test.html',
   ];
   for (const file of files) {

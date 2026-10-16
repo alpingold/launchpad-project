@@ -41,9 +41,6 @@ screen, then `party.end`.
 ## Art
 Canvas: circles, an ice disc with a soft edge, water. No pictures.
 
-## Template
-`realtime`: the big screen runs physics every frame and phones steer.
-
 ## Closest example
 `none`: this is the real-time example itself.
 

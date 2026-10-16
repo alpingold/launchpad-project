@@ -1513,6 +1513,15 @@ template) and **F** (`helpers: false`: no kit section, no template). One run eac
 - **The new rulebook changed the designs:** the platformer became a forgiving lane race
   ("Star Sprint"), the RPG a group-vote adventure ("Realm Party").
 
+**Decided (2026-10-16), and done:** `party.kit` and the three starter templates are gone
+(from the frames, the checker, the prompt and the rulebook); builds get the rulebook and the
+design only. `party.ui` stays (real input widgets). The rulebook's "How to draw" no longer
+prescribes a look (coloured circles with initials…): each design's **Art** section now picks
+the game's own palette, background, shape style and motion, and the rulebook asks for that
+look, filling the screen, and motion over detail. The design's "Template" heading is gone. New
+in the rulebook: a saved snapshot is plain JSON (a `Set` comes back as `{}`, K-RPG's bug).
+Browser tests keep a kit-free "Unique Number" (the old rounds template) as a test game.
+
 ---
 
 ## Verification (how to confirm the plan worked once built)

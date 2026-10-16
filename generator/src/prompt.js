@@ -3,9 +3,9 @@
 //   DESIGN  the rulebook, how to write a design, the art library, and the idea → a short
 //           design document (or, for a change, a short plan). The three example designs are
 //           left out by default: they made the model copy them (plan §13n's experiment).
-//   BUILD   the rulebook, the art library, the template and the example the approved
-//           design names (the example with ITS design, so the model sees how a design
-//           becomes code), and the approved design → one game file.
+//   BUILD   the rulebook, the art library and the approved design → one game file. On
+//           request (exampleGame), also the example game the design names, with ITS design.
+//           (Starter templates and party.kit were dropped on 2026-10-16: plan §20.)
 //
 // The idea, change requests and the admin's feedback come from people typing into a form,
 // so they're treated as DATA: each in its own clearly marked section, and the instructions
@@ -30,20 +30,13 @@ export const MAX_SOURCE_LENGTH = 100_000;
 export const MAX_GAME_BYTES = 100 * 1024;
 
 /** The headings every design has, in order (generator/spec/DESIGN.md). */
-export const DESIGN_HEADINGS = ['Genre and feel', 'Players', 'Big screen', 'Phones', 'Rules', 'Ending and winner', 'Length', 'Art', 'Template', 'Closest example', 'Edge cases'];
+export const DESIGN_HEADINGS = ['Genre and feel', 'Players', 'Big screen', 'Phones', 'Rules', 'Ending and winner', 'Length', 'Art', 'Closest example', 'Edge cases'];
 /** The headings every change plan has. */
 export const PLAN_HEADINGS = ['What changes', 'What stays the same', 'Risks'];
 
-export const TEMPLATES = {
-  rounds: '../templates/rounds.html',
-  realtime: '../templates/realtime.html',
-  turns: '../templates/turns.html',
-};
 export const EXAMPLES = {
   'bumper-blobs': { game: '../../server/src/games/bumper-blobs/game.html', design: '../spec/designs/bumper-blobs.md' },
 };
-/** When the design names no example: the closest one for its template. */
-const EXAMPLE_FOR_TEMPLATE = { realtime: 'bumper-blobs', turns: null, rounds: null, none: 'bumper-blobs' };
 
 /** The art library, as the model should see it: id, description, tags. */
 export function describeAssets() {
@@ -58,15 +51,10 @@ function chosen(design, heading, allowed) {
   return words.find((w) => allowed.includes(w)) ?? null;
 }
 
-/** What the design's "Template" and "Closest example" sections pick (null: none). */
-export function pickTemplate(design) {
-  const t = chosen(design, 'Template', [...Object.keys(TEMPLATES), 'none']);
-  return t === 'none' ? null : t;
-}
+/** The example game the design's "Closest example" section names (null: none). */
 export function pickExample(design) {
   const e = chosen(design, 'Closest example', [...Object.keys(EXAMPLES), 'none']);
-  if (e && e !== 'none') return e;
-  return EXAMPLE_FOR_TEMPLATE[pickTemplate(design) ?? 'none'];
+  return e && e !== 'none' ? e : null;
 }
 
 const data = (tag, text) => `<${tag}>\n${String(text).trim().slice(0, MAX_IDEA_LENGTH)}\n</${tag}>`;
@@ -169,40 +157,13 @@ function currentGame({ idea, design, source, earlierRequests = [] }) {
 // --- Step 2: the build -------------------------------------------------------------------
 
 /**
- * The rulebook without party.kit (an experiment, plan §20): its section, and the lines that
- * point at it, are left out. (The kit is still loaded in every frame; the model just isn't told.)
- */
-export function rulebookWithoutKit() {
-  const spec = read('../spec/GAME_SPEC.md');
-  const start = spec.indexOf('## `party.kit`');
-  const end = spec.indexOf('\n## ', start + 1);
-  return (spec.slice(0, start) + spec.slice(end + 1))
-    .replace(/^party\.kit .*\n/m, '')
-    .replace(' (`party.kit.colorOf(id)`)', '');
-}
-
-/**
  * @param {string | null | undefined} design
- * @param {{ exampleGame?: boolean, helpers?: boolean }} [opts]  exampleGame: true adds the example game (off by default, plan §13o)
- *   helpers: false leaves out party.kit and the starter template, so the game is written from the
- *   rulebook and the design alone (an experiment, plan §20; the templates are built on party.kit)
+ * @param {{ exampleGame?: boolean }} [opts]  exampleGame: true adds the example game (off by default, plan §13o)
  */
-function buildSystemPrompt(design, { exampleGame = false, helpers = true } = {}) {
-  const template = helpers ? pickTemplate(design) : null;
+function buildSystemPrompt(design, { exampleGame = false } = {}) {
   const example = exampleGame ? pickExample(design) : null;
-  const parts = [`You write party games for BoilerGames from an approved design. Follow these instructions exactly.`, helpers ? read('../spec/GAME_SPEC.md') : rulebookWithoutKit()];
+  const parts = [`You write party games for BoilerGames from an approved design. Follow these instructions exactly.`, read('../spec/GAME_SPEC.md')];
   parts.push(`## The art library (the only allowed \`party.asset\` ids)\n\n${describeAssets()}`);
-  if (template) {
-    parts.push(`## The starter template the design chose: ${template}
-
-Start from this file. Its tricky parts are already right (saving, reloads, players who leave,
-timers, checking phone events, party.end): keep them, and replace the parts marked TEMPLATE
-with the design's game.
-
-\`\`\`html
-${read(TEMPLATES[template]).trim()}
-\`\`\``);
-  }
   if (example) {
     parts.push(`## An example: a design and the game built from it
 
@@ -228,7 +189,7 @@ const BUILD_ANSWER = `Reply with the complete game file in ONE \`\`\`html code b
  * Building a new game from its approved design.
  * @param {string} idea
  * @param {string} design
- * @param {{ exampleGame?: boolean, helpers?: boolean }} [opts]  see buildSystemPrompt
+ * @param {{ exampleGame?: boolean }} [opts]  see buildSystemPrompt
  * @returns {import('./llm.js').Message[]}
  */
 export function buildMessages(idea, design, opts) {

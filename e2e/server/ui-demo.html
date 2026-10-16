@@ -6,9 +6,7 @@
   gamepad and a drawing pad; the big screen shows a timer, a scoreboard, an ASCII map
   where the gamepad moves your "@", and the last drawing. The big screen also writes what
   it received in a log, so the tests can check each helper end to end.
-  Since §13o: a second map shows a wider world through a camera that follows the first
-  player, with fog of war; a phone's "Countdown" button starts party.ui.countdown on the big
-  screen; and the log proves party.kit is there.
+  A phone's "Countdown" button starts party.ui.countdown on the big screen.
 -->
 <style>
   .host-layout { display: grid; grid-template-columns: 2fr 1fr; gap: 1rem; height: 100%; box-sizing: border-box; padding: 1rem; }
@@ -18,7 +16,7 @@
 <div id="app"></div>
 <script>
   const { el, joystick, gamepad, timer, scoreboard, drawPad, drawing, countdown } = party.ui;
-  const kit = party.kit;
+  const COLORS = ['#e53935', '#1e88e5', '#43a047', '#fb8c00'];
 
   party.ready(({ role, me, players }) => {
     const app = document.getElementById('app');
@@ -55,23 +53,14 @@
         g.fill();
       };
       for (const [x, y] of COINS) dot(x, y, 0.3, '#d4a017');
-      for (const [id, s] of spots) dot(s.x, s.y, 0.42, kit.colorOf(id));
+      [...spots.values()].forEach((s, i) => dot(s.x, s.y, 0.42, COLORS[i % COLORS.length]));
     }
 
     const spots = new Map(players.map((p, i) => [p.id, { x: 2 + i * 2, y: 3 }]));
     const taps = new Map(players.map((p) => [p.id, 0]));
     const write = (text) => log.append(el('li', {}, text));
-    write(`kit: ${kit.ordinal(3)}, ${kit.rank({ [players[0].id]: 5 }).rankings[0] === players[0].id ? 'ranked' : 'not ranked'}, ${kit.colorOf(players[0].id)}`);
-
-    // party.kit.camera: where a 12-wide view of a 40-wide world starts, following the first player.
-    function followFirst() {
-      const x = spots.get(players[0].id).x * 2; // moves twice as fast across the wider world
-      write(`world camera ${kit.camera(x, 12, 40)}`);
-    }
-
     function draw() {
       drawMap();
-      followFirst();
       scores.update(players.map((p) => ({ id: p.id, name: p.name, score: taps.get(p.id) })));
     }
     draw();

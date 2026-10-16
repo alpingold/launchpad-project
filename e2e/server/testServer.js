@@ -3,7 +3,7 @@
 // the app itself:
 //   0. Test-only frame games: Probe (probe.html: pings, state, players, and it tries every
 //      way out of its sandboxed frame) and UI Demo (ui-demo.html: every party.ui helper),
-//      plus the generator's starter templates (generator/templates/), each a tiny game.
+//      plus Unique Number (a small rounds game) and two catalogue entries made from Probe.
 //   1. A FAKE generator instead of the OpenShell sandbox + GenAI Studio. The tests don't
 //      need Docker, an API key or the network, and a game takes ~2 s instead of minutes.
 //      It writes a renamed Probe ("Robot Majority"); a change request renames it to
@@ -24,10 +24,10 @@ import { ADMIN } from './accounts.js';
 const PROBE_SOURCE = readFileSync(new URL('./probe.html', import.meta.url), 'utf8');
 const UI_DEMO_SOURCE = readFileSync(new URL('./ui-demo.html', import.meta.url), 'utf8');
 
-const ROUNDS_TEMPLATE = readFileSync(new URL('../../generator/templates/rounds.html', import.meta.url), 'utf8');
+const UNIQUE_NUMBER = readFileSync(new URL('./unique-number.html', import.meta.url), 'utf8');
 
 /** What the fake "AI" writes: the party-rounds template, renamed so the tests can tell it apart. */
-const GOOD_SOURCE = ROUNDS_TEMPLATE.replace('"name": "Unique Number"', '"name": "Robot Majority"');
+const GOOD_SOURCE = UNIQUE_NUMBER.replace('"name": "Unique Number"', '"name": "Robot Majority"');
 /** What it writes when the idea contains "broken": a game whose line 5 reaches for the network. */
 const BROKEN_SOURCE = [
   '<script type="application/json" id="game-info">',
@@ -107,10 +107,11 @@ setAdmin(db, admin.username, true);
 const games = createDefaultRegistry();
 games.register(frameGameOrThrow(PROBE_SOURCE, 'probe'));
 games.register(frameGameOrThrow(UI_DEMO_SOURCE, 'ui-demo'));
-for (const name of ['rounds', 'realtime', 'turns']) {
-  const source = readFileSync(new URL(`../../generator/templates/${name}.html`, import.meta.url), 'utf8');
-  games.register(frameGameOrThrow(source, `template-${name}`));
-}
+games.register(frameGameOrThrow(UNIQUE_NUMBER, 'unique-number'));
+// For the catalogue's tests (tags, player counts, search): Probe under other names.
+const asCatalogueEntry = (info) => PROBE_SOURCE.replace(/(id="game-info">)[\s\S]*?(<\/script>)/, `$1${JSON.stringify(info)}$2`);
+games.register(frameGameOrThrow(asCatalogueEntry({ name: 'Treasure Hunt', description: 'Test-only: a catalogue entry.', minPlayers: 1, maxPlayers: 6, tags: ['board'], minutes: [3, 8] }), 'treasure-hunt'));
+games.register(frameGameOrThrow(asCatalogueEntry({ name: 'Star Catch', description: 'Test-only: a catalogue entry.', minPlayers: 1, maxPlayers: 12, tags: ['action'], minutes: [1, 3] }), 'star-catch'));
 
 // A short hang watchdog (normally 15 s), so the test of a hung big screen is quick.
 // Users' own GenAI Studio keys (plan §15): a fake check instead of asking GenAI Studio.

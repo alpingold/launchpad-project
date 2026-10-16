@@ -111,9 +111,9 @@ A game talks to BoilerGames only through the `party` SDK
 Games also get **`party.ui`**, ready-made pieces styled like the rest of the site in both
 themes: `joystick`, `gamepad` (hold buttons like ◀ ▶ Jump), `timer`, `scoreboard`, `drawPad` /
 `drawing`, and `countdown`. There's also `el` (builds elements safely), plus a base style for
-headings, buttons and inputs. Games draw with simple geometric shapes on a canvas, or with
-HTML and CSS. **`party.kit`** has the game logic most games need: phases with timers that
-survive reloads, votes, turns, rankings, player colours, dice. `async`/`await` is fine in a game.
+headings, buttons and inputs. Games draw with shapes on a canvas, or with HTML and CSS, in
+their own style. `async`/`await` is fine in a game. (A game-logic library, `party.kit`, and
+starter templates were tried and dropped: the games came out simpler without them, plan §20.)
 
 If a game hangs the big screen (which freezes that whole tab), the server notices that the
 page has gone quiet and stops the game after 15 s. A game that loads another page into its
@@ -136,9 +136,6 @@ The file starts with its info, which is the only part the server reads:
 **The games:**
 - **Bumper Blobs:** phones are joysticks, and the big screen is an ice arena. (Tower Dash and
   Dungeon Party, the ASCII-art games, were removed on 2026-10-16: see plan §18.)
-
-**Starter templates** for the AI generator are in `generator/templates/`: party rounds,
-real-time and turn-based. Each is a tiny game that already handles the hard parts.
 
 ## AI-made games
 

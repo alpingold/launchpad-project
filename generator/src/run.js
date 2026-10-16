@@ -55,7 +55,6 @@ import { describeProblem } from '../../server/src/games/frameGame.js';
  * @property {{ draft: string, feedback: string }} [redraft]  design: a new draft of `draft`
  * @property {boolean} [examples]         design: add the example designs (off by default)
  * @property {boolean} [exampleGame]      build: add the example game's design and code (off by default, plan §13o)
- * @property {boolean} [helpers]          build: false leaves party.kit and the starter template out (an experiment, plan §20)
  * @property {number} [maxAttempts]       build
  */
 
@@ -116,7 +115,6 @@ export async function runJob(job, deps = {}) {
   }
   if (job.examples !== undefined && typeof job.examples !== 'boolean') return fail('examples must be true or false');
   if (job.exampleGame !== undefined && typeof job.exampleGame !== 'boolean') return fail('exampleGame must be true or false');
-  if (job.helpers !== undefined && typeof job.helpers !== 'boolean') return fail('helpers must be true or false');
 
   if (job.step === 'design') return design(job, model, deps);
   if (job.step === 'build') {
@@ -180,7 +178,7 @@ async function build(job, model, { chatFn = chat, check = checkGame, onStep = ()
   // The conversation is the prompt plus, after a failed attempt, ONLY that attempt and its
   // problems: earlier attempts are dropped. Each one is a whole game (~10K tokens), and the
   // model's context is 65K (plan §13n): keeping them all would overflow by attempt 4.
-  const prompt = change ? changeBuildMessages({ idea: job.idea, ...change }, change.plan ?? null) : buildMessages(job.idea, job.design, { exampleGame: job.exampleGame ?? false, helpers: job.helpers ?? true });
+  const prompt = change ? changeBuildMessages({ idea: job.idea, ...change }, change.plan ?? null) : buildMessages(job.idea, job.design, { exampleGame: job.exampleGame ?? false });
   let messages = prompt;
   const result = { ok: false, model, source: null, report: null, changelog: null, attempts: [] };
 

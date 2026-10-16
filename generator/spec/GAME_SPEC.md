@@ -88,8 +88,10 @@ network, so there's nothing to fetch.)
 - **Length:** a game lasts about **5–15 minutes** unless the idea asks for something else,
   and each round, level, race or fight takes at least about 20 seconds. Make a game long
   enough with more rounds, longer levels or more to do, not with waiting.
-- **Both themes:** use the colour variables below, so the game looks right in light and dark
-  mode. A canvas can read them with `getComputedStyle(document.documentElement)`.
+- **Both themes:** the game's own scene can have its own colours (a night sky is dark in both
+  themes). For page text, panels and buttons outside the scene, use the colour variables
+  below, so they look right in light and dark mode. A canvas can read them with
+  `getComputedStyle(document.documentElement)`.
 
 ## The `party` SDK
 
@@ -106,7 +108,6 @@ party.now()          // server time in ms: use it for every timer and deadline
 party.asset(id)      // URL of an approved picture (see the art library), or null
 party.players / party.me / party.role / party.theme   // the same, any time after ready
 party.ui             // ready-made pieces you can see (below)
-party.kit            // game-logic helpers: phases, votes, turns, results (below)
 party.on(name, fn)   // listen; the names are below
 ```
 
@@ -163,6 +164,8 @@ function bigScreen(restored) {
 ```
 
 Timers don't survive a reload: store deadlines as `party.now()` times and set them again.
+The snapshot travels as JSON: keep it to plain objects, arrays, strings, numbers and
+booleans. A `Set`, `Map`, class instance or function comes back broken (a `Set` becomes `{}`).
 
 ## `party.ui`: ready-made pieces
 
@@ -205,49 +208,18 @@ countdown(target, { endsAt, onGo })
 //   A big 3, 2, 1, GO! over the screen, to endsAt (server time); onGo runs at zero.
 ```
 
-## `party.kit`: game-logic helpers
-
-The machinery most games need, already right. Votes and turns are **plain objects**:
-keep them in your game state and they're saved with `party.save` like everything else.
-
-```js
-const { phases, vote, turns, rank, camera, colorOf, ordinal, roll, between, pick, shuffle } = party.kit;
-
-const flow = phases({                       // named phases with time limits that survive reloads
-  ask:    { ms: 20000, enter() { show(); }, timeout() { flow.go('reveal'); } },
-  reveal: { ms: 4000,  enter() { show(); }, timeout() { flow.go(g.round < 3 ? 'ask' : 'final'); } },
-  final:  { enter() { show(); } },          // no ms: stays until you call go()
-}, { state: g.flow, onChange: () => party.save(g) });   // g.flow = {} in a new game
-flow.go('ask');                             // a new game
-flow.resume();                              // after a reload (restored g): its timer runs again
-flow.phase; flow.endsAt;                    // for party.ui.timer({ endsAt: flow.endsAt })
-
-g.vote = vote.start(['North', 'East']);     // everyone may vote; { voters } to choose who
-vote.cast(g.vote, playerId, data.choice)    // false if it isn't a real option or voter
-vote.waitingFor(g.vote)                     // connected players who haven't voted ([] = all in)
-vote.result(g.vote)                         // { winner, counts, tied }; ties: random ({ tie: 'first' | 'none' })
-
-g.turns = turns.start();                    // everyone, in join order
-turns.current(g.turns)                      // whose turn it is (a player id)
-turns.next(g.turns)                         // the next CONNECTED player (null if nobody); g.turns.round
-
-party.end(rank(g.scores));                  // { rankings, scores, places }: ties share a place
-
-camera(player.x, 800, 3000)                 // left edge of an 800-wide view centred on the player, inside a 3000-wide world
-
-colorOf(playerId)  ordinal(3) === '3rd'  roll(6)  between(2, 5)  pick(list)  shuffle(list)
-```
-
 ## How to draw
 
-Draw with **simple geometric shapes** on a `<canvas>` (circles, rounded rectangles, lines,
-polygons, text), or with HTML and CSS for cards, lists and buttons. Simple shapes read well
-from across a room and are hard to get wrong.
+Draw with shapes on a `<canvas>`, or with HTML and CSS for cards, lists and buttons. **Give
+the game its own look**, the one in the design's Art section (its palette, background and
+style), so it doesn't look like every other game. Whatever the style:
 
-- **Look:** flat colours, a dark or light background that the shapes stand out on, each
-  player in their own colour (`party.kit.colorOf(id)`) with their initial or name on them,
-  big shapes (the TV is far away), and a little motion (easing, a pop when something
-  happens) instead of detail.
+- **Readable from across the room:** big, high-contrast shapes and few words. Each player is
+  easy to tell apart (their own colour, their name where it matters).
+- **Fill the screen:** the big screen is a TV. Use the whole frame for the game, not a strip
+  in the middle of an empty page.
+- **Motion over detail:** easing, a pop, a shake or a flash when something happens says more
+  than fine detail nobody can see from the couch.
 - **A canvas that fits its box** (phone or TV, sharp on any screen): size it to its box times
   `devicePixelRatio`, scale the drawing context to match, draw in CSS pixels, and redraw when
   its size changes (`new ResizeObserver(draw).observe(canvas)`) or every frame in a real-time

@@ -34,14 +34,14 @@ the idea asks for a length; if your total is outside that, change the design (mo
 longer levels, more to do) instead of just reporting it.
 
 ## Art
-How things are drawn: simple geometric shapes on a canvas, HTML and CSS, or pictures from
-the art library. Name the shapes and colours of the main things (e.g. "players: coloured
-circles with their initial; walls: dark rounded squares; the goal: a gold star").
-
-## Template
-One of: `rounds` (everyone answers at once, reveal, next round), `realtime` (the big screen
-runs a world 60 times a second; phones steer), `turns` (one player acts at a time), or
-`none`. Then one sentence on why.
+This game's own look, so it doesn't look like every other game:
+- **Palette and background:** 3–5 colours and what the scene sits on.
+- **Style:** the shape language, e.g. "soft blobs and rounded tiles", "sharp neon lines on
+  black", "paper cards with thick ink outlines", "chunky pixel blocks".
+- **The main things:** how the players, the goal and the dangers look, and how players are
+  told apart.
+- **Motion:** what moves, pops, shakes or glows, and when.
+It's drawn with shapes on a canvas, HTML and CSS, or pictures from the art library.
 
 ## Closest example
 One of: `bumper-blobs` (real-time canvas with a joystick), or `none`. Then one sentence on

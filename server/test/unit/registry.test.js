@@ -121,15 +121,6 @@ test('get does not find built-in object properties', () => {
   assert.equal(new GameRegistry().get('constructor'), undefined);
 });
 
-test("the generator's starter templates are valid frame games", () => {
-  for (const name of ['rounds', 'realtime', 'turns']) {
-    const source = readFileSync(new URL(`../../../generator/templates/${name}.html`, import.meta.url), 'utf8');
-    const result = readFrameGame(source, `template-${name}`);
-    assert.equal(result.ok, true, `${name}: ${result.problems?.join('; ')}`);
-    assert.match(source, /TEMPLATE/, `${name} marks the parts to change`);
-  }
-});
-
 test('the default registry offers the official games, each read from its game.html', () => {
   assert.deepEqual(createDefaultRegistry().list().map((g) => g.id), OFFICIAL_GAMES);
   const blobs = createDefaultRegistry().get('bumper-blobs');
