@@ -118,6 +118,17 @@ test('migration 5 (F5): versions keep every field, and can now be designing or w
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM game_versions').get().n, 0, 'deleting a game still deletes its versions');
 });
 
+test('migration 9 (plan §23): earlier build attempts were whole files; the mode is checked', () => {
+  const db = new Database(':memory:');
+  db.pragma('foreign_keys = OFF'); // only build_attempts matters here
+  db.exec(SCHEMA);
+  migrate(db, { migrations: MIGRATIONS.filter((m) => m.version <= 8) });
+  db.prepare("INSERT INTO build_attempts (game_id, version, build, attempt, ok, created_at) VALUES ('g-1', 1, 1, 1, 0, 5)").run();
+  assert.deepEqual(migrate(db), [9]);
+  assert.equal(db.prepare('SELECT mode FROM build_attempts').pluck().get(), 'whole');
+  assert.throws(() => db.prepare("UPDATE build_attempts SET mode = 'diff'").run(), /CHECK constraint failed/);
+});
+
 test('a brand-new database file gets no (pointless) backup', (t) => {
   const dir = tempDir(t);
   openDatabase(path.join(dir, 'new.db')).close();

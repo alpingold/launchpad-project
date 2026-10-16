@@ -206,6 +206,17 @@ export const MIGRATIONS = [
       ALTER TABLE users ADD COLUMN bio TEXT;
     `,
   },
+  {
+    version: 9,
+    description: 'how each build attempt was written: whole file or edits (plan §23)',
+    sql: `
+      -- 'whole': the model wrote the whole game file; 'edits': it sent changes to the last
+      -- file (plan §23), which the generator applied. Every attempt before this migration
+      -- was a whole file, so they're marked that way.
+      ALTER TABLE build_attempts ADD COLUMN mode TEXT CHECK (mode IN ('whole', 'edits'));
+      UPDATE build_attempts SET mode = 'whole';
+    `,
+  },
 ];
 
 /** The version a fully up-to-date database has. */

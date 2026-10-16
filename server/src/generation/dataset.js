@@ -50,6 +50,7 @@ export function datasetRecords(games, { attemptsOf = () => new Map() } = {}) {
         attempts: (attempts.get(v.version) ?? []).map((a) => ({
           build: a.build,
           attempt: a.attempt,
+          mode: a.mode,
           ok: a.ok,
           problems: ruleCounts(a.report?.problems),
           source: a.source,

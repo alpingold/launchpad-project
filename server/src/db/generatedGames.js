@@ -260,6 +260,7 @@ export function markVersionFailed(db, gameId, version, error, { source = null, r
  * @typedef {Object} BuildAttempt
  * @property {number} build      1, or more if the version was built again after failing
  * @property {number} attempt    1–4 within that build
+ * @property {'whole' | 'edits' | null} mode  how the model wrote it (plan §23): the whole file, or edits to the last one
  * @property {boolean} ok
  * @property {string | null} source
  * @property {import('../games/frameGame.js').CheckReport | null} report   without screenshots
@@ -272,7 +273,7 @@ export function markVersionFailed(db, gameId, version, error, { source = null, r
 /**
  * Saves the attempts of one build of a version (as the generator returned them), as the
  * next build number. Attempts without an attempt number are skipped.
- * @param {{ attempt: number, ok: boolean, source?: string | null, report?: object | null, seconds?: number,
+ * @param {{ attempt: number, mode?: 'whole' | 'edits', ok: boolean, source?: string | null, report?: object | null, seconds?: number,
  *   usage?: { prompt_tokens?: number, completion_tokens?: number } | null }[]} attempts
  * @returns {number} the build number
  */
@@ -282,8 +283,8 @@ export function saveBuildAttempts(db, gameId, version, attempts, { now = Date.no
       .prepare('SELECT COALESCE(MAX(build), 0) + 1 AS next FROM build_attempts WHERE game_id = ? AND version = ?')
       .get(gameId, version);
     const insert = db.prepare(
-      `INSERT INTO build_attempts (game_id, version, build, attempt, ok, source, report_json, seconds, prompt_tokens, completion_tokens, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO build_attempts (game_id, version, build, attempt, mode, ok, source, report_json, seconds, prompt_tokens, completion_tokens, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     for (const a of attempts ?? []) {
       if (!Number.isInteger(a?.attempt)) continue;
@@ -292,6 +293,7 @@ export function saveBuildAttempts(db, gameId, version, attempts, { now = Date.no
         version,
         next,
         a.attempt,
+        a.mode === 'whole' || a.mode === 'edits' ? a.mode : null,
         a.ok ? 1 : 0,
         typeof a.source === 'string' ? a.source : null,
         a.report ? JSON.stringify(a.report) : null,
@@ -318,6 +320,7 @@ export function listBuildAttempts(db, gameId) {
     byVersion.get(row.version).push({
       build: row.build,
       attempt: row.attempt,
+      mode: row.mode,
       ok: row.ok === 1,
       source: row.source,
       report: row.report_json ? JSON.parse(row.report_json) : null,

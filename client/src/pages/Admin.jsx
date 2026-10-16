@@ -647,6 +647,7 @@ export function Attempts({ attempts }) {
               <p>
                 <strong>{name}</strong>: {a.ok ? '✓ passed' : plural(problems.length, 'problem')}
                 <span className="muted small">
+                  {a.mode === 'edits' && ' · edits'}
                   {a.seconds !== null && ` · ${a.seconds} s`}
                   {tokens}
                 </span>

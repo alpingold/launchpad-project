@@ -263,8 +263,8 @@ test('build attempts: numbered per build, read back by version, deleted with the
   const { id } = createGeneratedGame(db, { ownerUserId: admin.id, prompt: 'a tapping game' });
   const usage = { prompt_tokens: 100, completion_tokens: 50 };
   const first = saveBuildAttempts(db, id, 1, [
-    { attempt: 1, ok: false, source: 'bad', report: { ok: false, problems: ['no game info'] }, seconds: 30, usage },
-    { attempt: 2, ok: false, source: null, report: { ok: false, problems: ['no game file'] }, seconds: 20, usage: null },
+    { attempt: 1, mode: 'whole', ok: false, source: 'bad', report: { ok: false, problems: ['no game info'] }, seconds: 30, usage },
+    { attempt: 2, mode: 'edits', ok: false, source: null, report: { ok: false, problems: ["edit 1: this text isn't in the file"] }, seconds: 20, usage: null },
     { ok: true, source: 'skipped: no attempt number' },
   ], { now: 5 });
   const second = saveBuildAttempts(db, id, 1, [{ attempt: 1, ok: true, source: 'good', report: { ok: true, problems: [] }, seconds: 40, usage }]);
@@ -274,6 +274,8 @@ test('build attempts: numbered per build, read back by version, deleted with the
   assert.deepEqual(attempts.map((a) => [a.build, a.attempt, a.ok, a.source]), [[1, 1, false, 'bad'], [1, 2, false, null], [2, 1, true, 'good']]);
   assert.deepEqual([attempts[0].report, attempts[0].seconds, attempts[0].promptTokens, attempts[0].completionTokens, attempts[0].createdAt], [{ ok: false, problems: ['no game info'] }, 30, 100, 50, 5]);
   assert.equal(attempts[1].promptTokens, null);
+  // How each was written (plan §23); an attempt from before edit mode has no mode.
+  assert.deepEqual(attempts.map((a) => a.mode), ['whole', 'edits', null]);
 
   addVersion(db, id, { request: 'a tiny fix', basedOn: 1, status: 'generating' });
   saveBuildAttempts(db, id, 2, [{ attempt: 1, ok: true, source: 'v2' }]);
