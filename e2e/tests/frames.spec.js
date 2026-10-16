@@ -1,4 +1,4 @@
-import { test, expect } from './helpers.js';
+import { test, expect, chooseGame } from './helpers.js';
 
 // Frame games (plan §13): each game is its own page in a sandboxed iframe. The big screen's
 // frame is the referee; phones' frames are controllers; the server only relays events.
@@ -10,7 +10,7 @@ const frame = (page) => page.frameLocator('iframe.game-frame');
 async function startProbe(people, { controllable = false } = {}) {
   const host = await people.host();
   const alex = await people.player(host.code, 'Alex', { controllable });
-  await host.page.getByRole('combobox', { name: 'Game' }).selectOption('probe');
+  await chooseGame(host.page, 'probe');
   await host.page.getByRole('button', { name: 'Start game' }).click();
   await expect(frame(host.page).getByRole('heading', { name: 'Big screen' })).toBeVisible();
   await expect(frame(alex.page).getByRole('heading', { name: 'Phone Alex' })).toBeVisible();
@@ -71,7 +71,7 @@ test('the host can stop a game; a big screen that reloads before its game saved 
   await expect(alex.page.getByRole('heading', { name: "You're in!" })).toBeVisible();
   await expect(alex.page.getByText('The host stopped the game.')).toBeVisible();
 
-  await host.page.getByRole('combobox', { name: 'Game' }).selectOption('probe'); // the picker starts over
+  await chooseGame(host.page, 'probe'); // the picker starts over
   await host.page.getByRole('button', { name: 'Start game' }).click();
   await expect(frame(alex.page).getByRole('heading', { name: 'Phone Alex' })).toBeVisible();
   await host.page.reload(); // Probe saves after each event, and there hasn't been one

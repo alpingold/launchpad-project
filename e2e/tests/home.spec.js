@@ -6,7 +6,10 @@ test('home page explains the site and lists the games', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'BoilerGames', level: 1 })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'How it works' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Bumper Blobs' })).toBeVisible();
-  await expect(page.locator('.game-cards li', { hasText: 'Bumper Blobs' })).toContainText('2–12 players');
+  await expect(page.locator('.game-card', { hasText: 'Bumper Blobs' })).toContainText('2–12 players');
+  await expect(page.locator('.game-card')).toHaveCount(3);
+  await page.getByRole('link', { name: /See all \d+ games/ }).click();
+  await expect(page).toHaveURL('/games');
 });
 
 test('the join box sends you to the join page with the code filled in', async ({ page }) => {

@@ -1,4 +1,4 @@
-import { test, expect } from './helpers.js';
+import { test, expect, chooseGame } from './helpers.js';
 
 // party.ui, the helpers inside every game frame (plan §13, F2), end to end with the
 // test-only UI Demo game (e2e/server/ui-demo.html): phones use them, the big screen logs
@@ -9,7 +9,7 @@ const frame = (page) => page.frameLocator('iframe.game-frame');
 async function startDemo(people) {
   const host = await people.host();
   const alex = await people.player(host.code, 'Alex');
-  await host.page.getByRole('combobox', { name: 'Game' }).selectOption('ui-demo');
+  await chooseGame(host.page, 'ui-demo');
   await host.page.getByRole('button', { name: 'Start game' }).click();
   await expect(frame(alex.page).getByRole('heading', { name: 'Phone Alex' })).toBeVisible();
   const log = frame(host.page).getByRole('list', { name: 'Log' });

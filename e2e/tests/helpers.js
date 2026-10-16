@@ -114,3 +114,13 @@ async function controlWebSockets(page) {
 export function hostPlayers(hostPage) {
   return hostPage.locator('.player-list li');
 }
+
+/** Chooses a game in the host lobby's catalogue (plan §14), by its id. */
+export async function chooseGame(hostPage, gameId) {
+  await hostPage.locator(`.game-picker input[name="game"][value="${gameId}"]`).check();
+}
+
+/** A game's card in the host lobby's catalogue, by its id. */
+export function gameCard(hostPage, gameId) {
+  return hostPage.locator('.game-picker .game-card', { has: hostPage.locator(`input[name="game"][value="${gameId}"]`) });
+}

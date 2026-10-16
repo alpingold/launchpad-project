@@ -19,7 +19,8 @@ const ENDED_TEXT = {
   idle: 'The room closed after a long time with no activity.',
 };
 
-const LOGIN_URL = '/login?next=/host';
+// Back to this page after logging in, with ?game=… if the /games page sent us.
+const LOGIN_URL = `/login?next=${encodeURIComponent(`/host${window.location.search}`)}`;
 
 /**
  * The big-screen page. Hosting needs an account (M7): check the login first, and only then
@@ -221,7 +222,7 @@ function HostRoom({ user }) {
         </p>
       )}
       <LastGameResults results={game.lastResults} players={room.players} />
-      <GamePicker playerCount={room.players.length} onStart={startGame} disabled={!connected} />
+      <GamePicker playerCount={room.players.length} onStart={startGame} disabled={!connected} initialGameId={new URLSearchParams(window.location.search).get('game')} />
       {endRoomButton}
       <p className="muted small">Hosting as {user.username}</p>
     </main>

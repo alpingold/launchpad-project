@@ -2,7 +2,10 @@ import { useState } from 'react';
 import { useGames } from '../net/useGames.js';
 import { usePageTitle } from '../usePageTitle.js';
 import { useCurrentUser, logOut } from '../net/auth.js';
-import AiBadge from '../components/AiBadge.jsx';
+import GameCard from '../components/GameCard.jsx';
+
+/** How many games the front page shows; the rest are on /games. */
+const HOME_GAMES = 3;
 
 // The public front page: what this is, how it works, and the two ways in.
 // Hosting needs an account; joining is open to everyone.
@@ -111,24 +114,17 @@ export default function Home() {
         {games === null && <p className="muted">Loading…</p>}
         {games?.length === 0 && <p className="muted">No games available right now.</p>}
         <ul className="game-cards">
-          {games?.map((game) => (
-            <li key={game.id} className="card">
-              <h3>
-                {game.name}
-                <AiBadge game={game} />
-              </h3>
-              <p>{game.description}</p>
-              <p className="muted small">
-                {game.minPlayers === game.maxPlayers
-                  ? `${game.minPlayers} players`
-                  : `${game.minPlayers}–${game.maxPlayers} players`}
-              </p>
-            </li>
+          {games?.slice(0, HOME_GAMES).map((game) => (
+            <GameCard key={game.id} game={game} />
           ))}
         </ul>
+        <p>
+          <a className="primary-button" href="/games">
+            {games?.length > HOME_GAMES ? `See all ${games.length} games` : 'Browse the games'}
+          </a>
+        </p>
         <p className="muted small">
-          More games, including a Mario Party-style board game, are on the way. Curious how games are made? See the{' '}
-          <a href="/kit">game kit</a>.
+          Curious how games are made? See the <a href="/kit">game kit</a>.
         </p>
       </section>
     </main>

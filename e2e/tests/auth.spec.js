@@ -9,7 +9,7 @@ async function fillAndSubmit(page, username, password, button) {
 
 test('visiting /host logged out sends you to the login page', async ({ page }) => {
   await page.goto('/host');
-  await expect(page).toHaveURL('/login?next=/host');
+  await expect(page).toHaveURL('/login?next=%2Fhost');
   await expect(page.getByRole('heading', { name: 'Log in to host' })).toBeVisible();
 });
 

@@ -231,17 +231,163 @@ body {
 }
 
 /* M5: game picker and status */
+/* §14: the lobby picks from the catalogue; the chosen game and Start stay on top. */
 .game-picker {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.5rem;
   margin: 1.5rem 0;
+  text-align: left;
 }
 
-.game-picker select {
-  font-size: 1.1rem;
-  padding: 0.3rem 0.5rem;
+.game-picker-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  margin-bottom: 1rem;
+}
+
+.game-picker-bar h2 {
+  margin: 0;
+  flex: 1 1 12rem;
+  font-size: 1.2rem;
+}
+
+.game-picker-bar p {
+  margin: 0;
+}
+
+/* §14: the game catalogue (/games and the lobby) */
+.games-page {
+  max-width: 64rem;
+}
+
+.catalogue-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.catalogue-filters label:first-child {
+  flex: 1 1 12rem;
+}
+
+.catalogue-filters input,
+.catalogue-filters select {
+  width: 100%;
+  font: inherit;
+  padding: 0.45rem 0.6rem;
+  border: 2px solid var(--input-border);
+  border-radius: 0.5rem;
+}
+
+.catalogue-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.6rem;
+}
+
+.tag-chip {
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 0.2rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid var(--input-border);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.tag-chip[aria-pressed='true'] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+
+/* .card.game-card: .card (further down) would otherwise win and add its padding back. */
+.card.game-card {
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0 0 1rem;
+  overflow: hidden;
+}
+
+.game-card > :not(.game-thumb) {
+  margin: 0 1rem;
+}
+
+.game-card h3 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.4rem;
+  margin-bottom: 0;
+}
+
+.game-card h3 .ai-badge {
+  margin-left: 0;
+}
+
+.game-card-description {
+  flex: 1;
+}
+
+.game-card-facts {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+.game-thumb {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  background: var(--chip);
+}
+
+.game-thumb-tile {
+  display: grid;
+  place-items: center;
+  font-size: 3rem;
+  font-weight: 800;
+  color: #fff;
+  background: linear-gradient(135deg, hsl(var(--tile-hue) 65% 50%), hsl(calc(var(--tile-hue) + 40) 65% 38%));
+}
+
+.game-tags {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.game-tags li {
+  font-size: 0.75rem;
+  padding: 0.05rem 0.5rem;
+  border-radius: 999px;
+  background: var(--chip);
+}
+
+.game-card-action {
+  align-self: flex-start;
+  margin-top: 0.4rem;
+  font-size: 1rem;
+}
+
+.game-card-pickable {
+  cursor: pointer;
+}
+
+.game-card-selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.game-card-misfit {
+  opacity: 0.6;
 }
 
 /* During a game the big screen uses the whole width of the TV, not the narrow page column. */
@@ -901,4 +1047,9 @@ code {
   border-top: 1px solid var(--border);
   padding-top: 0.5rem;
   margin-bottom: 0.5rem;
+}
+
+.game-picker .primary-button:disabled {
+  background: var(--accent-disabled);
+  cursor: default;
 }

@@ -1,4 +1,4 @@
-import { test, expect } from './helpers.js';
+import { test, expect, chooseGame, gameCard } from './helpers.js';
 import { ADMIN } from '../server/accounts.js';
 
 // The admin page for AI-made games (plan §11, A6). The test server's generator is a fake
@@ -100,7 +100,7 @@ test('design → new draft → edit → build → read it → playtest with phon
   await detail(page).getByRole('button', { name: 'Playtest v1' }).click();
   await expect(detail(page).getByText('Playtest (only you)')).toBeVisible();
   const otherHost = await people.host();
-  await expect(otherHost.page.locator(`option[value^="${gameId}"]`)).toHaveCount(0);
+  await expect(otherHost.page.locator(`.game-picker input[name="game"][value^="${gameId}"]`)).toHaveCount(0);
 
   // The admin hosts a room and plays it with two phones.
   const hostPage = await admin.context.newPage();
@@ -108,7 +108,7 @@ test('design → new draft → edit → build → read it → playtest with phon
   const code = await hostPage.locator('.room-code').textContent();
   const alex = await people.player(code, 'Alex');
   await people.player(code, 'Blake');
-  await hostPage.getByRole('combobox', { name: 'Game' }).selectOption(`${gameId}-v1`);
+  await chooseGame(hostPage, `${gameId}-v1`);
   await expect(hostPage.locator('.game-picker')).toContainText('AI-made · v1 playtest, only you');
   await hostPage.getByRole('button', { name: 'Start game' }).click();
   await expect(alex.page.frameLocator('iframe.game-frame').getByRole('button', { name: '3', exact: true })).toBeVisible(); // pick a number
@@ -117,9 +117,9 @@ test('design → new draft → edit → build → read it → playtest with phon
   await detail(page).getByRole('button', { name: 'Publish v1' }).click();
   await expect(detail(page).getByText('Everyone plays v1.')).toBeVisible();
   await otherHost.page.reload();
-  await expect(otherHost.page.locator(`option[value="${gameId}"]`)).toHaveText('Robot Majority (AI-made)');
-  await otherHost.page.goto('/');
-  await expect(otherHost.page.locator('.game-cards li', { hasText: 'Robot Majority' }).first()).toContainText('AI-made');
+  await expect(gameCard(otherHost.page, gameId).locator('h3')).toHaveText(/^Robot Majority\s*AI-made$/);
+  await otherHost.page.goto('/games');
+  await expect(otherHost.page.locator('.game-card', { hasText: 'Robot Majority' })).toContainText('AI-made');
   await otherHost.page.goto('/host'); // back before the room's host grace period runs out
   await expect(otherHost.page.locator('.room-code')).toHaveText(/^[A-Z]{4}$/);
 
@@ -147,24 +147,24 @@ test('design → new draft → edit → build → read it → playtest with phon
   await hostPage.getByRole('button', { name: 'End room' }).click();
   await hostPage.getByRole('button', { name: 'Start a new room' }).click();
   await expect(hostPage.locator('.room-code')).toHaveText(/^[A-Z]{4}$/);
-  await expect(hostPage.locator(`option[value="${gameId}"]`)).toHaveText('Robot Majority (AI-made)');
-  await expect(hostPage.locator(`option[value="${gameId}-v2"]`)).toHaveText('Robot Majority 2 (AI-made, v2 playtest)');
+  await expect(gameCard(hostPage, gameId).locator('h3')).toHaveText(/^Robot Majority\s*AI-made$/);
+  await expect(gameCard(hostPage, `${gameId}-v2`).locator('h3')).toHaveText(/^Robot Majority 2\s*AI-made · v2 playtest, only you$/);
   await otherHost.page.reload();
   await expect(otherHost.page.locator('.room-code')).toHaveText(/^[A-Z]{4}$/);
-  await expect(otherHost.page.locator(`option[value^="${gameId}"]`)).toHaveCount(1);
+  await expect(otherHost.page.locator(`.game-picker input[name="game"][value^="${gameId}"]`)).toHaveCount(1);
 
   // Publish v2: it replaces v1 for everyone.
   await detail(page).getByRole('button', { name: 'Publish v2' }).click();
   await expect(detail(page).getByText('Everyone plays v2.')).toBeVisible();
   await otherHost.page.reload();
-  await expect(otherHost.page.locator(`option[value="${gameId}"]`)).toHaveText('Robot Majority 2 (AI-made)');
+  await expect(gameCard(otherHost.page, gameId).locator('h3')).toHaveText(/^Robot Majority 2\s*AI-made$/);
 
   // Delete: gone from the list and from the game pickers.
   await detail(page).getByRole('button', { name: 'Delete game' }).click();
   await expect(detail(page)).toHaveCount(0);
   await otherHost.page.reload();
   await expect(otherHost.page.locator('.room-code')).toHaveText(/^[A-Z]{4}$/);
-  await expect(otherHost.page.locator(`option[value^="${gameId}"]`)).toHaveCount(0);
+  await expect(otherHost.page.locator(`.game-picker input[name="game"][value^="${gameId}"]`)).toHaveCount(0);
   await admin.context.close();
 });
 
