@@ -217,10 +217,15 @@ function NewGameForm({ info, onStarted }) {
         </p>
       )}
       {info.enabled && info.canGenerate === false && (
-        <p className="banner" role="status">
-          To make games, first save your Purdue GenAI Studio API key on <a href="/account">your account page</a>. It
-          takes a minute, and the guide there shows how.
-        </p>
+        <div className="banner" role="status">
+          <p>
+            <strong>Add your API key first.</strong> Making games runs on your own Purdue GenAI Studio API key. It takes a
+            minute, and the account page shows how to get one.
+          </p>
+          <a className="primary-button" href="/account">
+            Add your API key
+          </a>
+        </div>
       )}
       <form className="admin-form" onSubmit={handleSubmit}>
         <label>

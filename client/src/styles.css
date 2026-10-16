@@ -577,8 +577,69 @@ select {
   color: var(--link);
 }
 
+/* Phones: the links fold into a ☰ menu (SiteNav.jsx). */
+.site-menu {
+  display: none;
+  position: relative;
+}
+
+.site-menu-button {
+  display: grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 1.2rem;
+  cursor: pointer;
+}
+
+.site-menu-links {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.4rem);
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  min-width: 10rem;
+  padding: 0.4rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 15%);
+}
+
+.site-menu-links a {
+  padding: 0.6rem 0.8rem;
+  border-radius: 0.5rem;
+  color: var(--text);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.site-menu-links a:hover {
+  background: var(--chip);
+}
+
+.site-menu-links a[aria-current='page'] {
+  color: var(--link);
+}
+
+@media (max-width: 36rem) {
+  .site-nav {
+    display: none;
+  }
+
+  .site-menu {
+    display: block;
+  }
+}
+
 /* While a game is on screen (GameFrame.jsx), only ⚙ and home stay. */
-body.in-game .site-nav {
+body.in-game .site-nav,
+body.in-game .site-menu {
   display: none;
 }
 
@@ -1307,14 +1368,6 @@ code {
     font-size: 0.9rem;
   }
 
-  .site-nav {
-    flex-wrap: nowrap;
-  }
-
-  .site-nav a {
-    padding: 0.35rem 0.35rem;
-    font-size: 0.9rem;
-  }
 }
 
 /* The narrowest phones (e.g. 320 px): the home link is just "←" (its name is still read out). */
@@ -1327,4 +1380,12 @@ code {
     clip-path: inset(50%);
     white-space: nowrap;
   }
+}
+
+/* §15/§16: the "make an account" choices on /create */
+.create-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
 }

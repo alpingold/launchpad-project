@@ -1,4 +1,3 @@
-import { useEffect } from 'react';
 import { useCurrentUser } from '../net/auth.js';
 import { useOwnGamesApi } from '../net/admin.js';
 import { usePageTitle } from '../usePageTitle.js';
@@ -6,22 +5,37 @@ import { GameMaker } from './Admin.jsx';
 
 // Make your own games with AI (plan §15), for any account, with your own GenAI Studio key.
 // The same tool as the admin page, on your own games only. The server enforces all of it.
+// Logged out: this page says what you need (an account, then a key) instead of redirecting.
 
-const LOGIN_URL = '/login?next=/create';
+const SIGN_UP_URL = '/login?mode=signup&next=/create';
+const LOG_IN_URL = '/login?next=/create';
 
 export default function Create() {
   usePageTitle('Make a game');
   useOwnGamesApi(); // this page talks to /api/generations (each page load is a fresh start: D12)
   const user = useCurrentUser();
 
-  useEffect(() => {
-    if (user === null) window.location.replace(LOGIN_URL);
-  }, [user]);
-
-  if (!user) {
+  if (user === undefined) {
     return (
       <main className="page">
         <h1>Checking your login…</h1>
+      </main>
+    );
+  }
+  if (user === null) {
+    return (
+      <main className="page">
+        <h1>Make a game</h1>
+        <p>
+          Describe a game and the AI designs and builds it for you. To do that you need a free account, and then your own
+          Purdue GenAI Studio API key (the account page shows how to get one).
+        </p>
+        <p className="create-actions">
+          <a className="primary-button" href={SIGN_UP_URL}>
+            Create an account
+          </a>
+          <a href={LOG_IN_URL}>I already have one: log in</a>
+        </p>
       </main>
     );
   }

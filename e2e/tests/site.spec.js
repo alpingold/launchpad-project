@@ -11,7 +11,7 @@ test('every page has Games, Docs and Sign up at the top; Account once logged in;
   for (const path of ['/', '/games', '/join', '/kit']) {
     await page.goto(path);
     const nav = page.getByRole('navigation', { name: 'Pages' });
-    await expect(nav.getByRole('link')).toHaveText(['Games', 'Docs', 'Sign up']);
+    await expect(nav.getByRole('link')).toHaveText(['Games', 'Create', 'Docs', 'Sign up']);
   }
   await page.getByRole('navigation', { name: 'Pages' }).getByRole('link', { name: 'Sign up' }).click();
   await expect(page.getByRole('heading', { name: 'Create a host account' })).toBeVisible();
@@ -19,7 +19,7 @@ test('every page has Games, Docs and Sign up at the top; Account once logged in;
 
   const host = await people.host({ game: 'probe' });
   const nav = host.page.getByRole('navigation', { name: 'Pages' });
-  await expect(nav.getByRole('link')).toHaveText(['Games', 'Docs', 'Account']);
+  await expect(nav.getByRole('link')).toHaveText(['Games', 'Create', 'Docs', 'Account']);
   // Once a game starts, the links step aside (⚙ stays).
   await people.player(host.code, 'Alex');
   await host.page.getByRole('button', { name: 'Start game' }).click();
@@ -121,13 +121,20 @@ test("a creator edits their game's page; their name links to their profile, with
   await expect(other.page.getByText('No games yet.')).toBeVisible();
 });
 
-test('the header fits the narrowest phones (320 px) without sideways scrolling', async ({ browser }) => {
+test('on the narrowest phones (320 px) the header fits, with the links in a ☰ menu', async ({ browser }) => {
   const context = await browser.newContext({ ...devices['iPhone SE'], defaultBrowserType: undefined });
   const page = await context.newPage();
   for (const path of ['/', '/games', '/games/bumper-blobs', '/kit', '/login']) {
     await page.goto(path);
-    await expect(page.getByRole('navigation', { name: 'Pages' }).getByRole('link', { name: 'Sign up' })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), path).toBe(true);
+    // The links are behind the ☰ menu here.
+    await expect(page.getByRole('link', { name: 'Create' })).toBeHidden();
+    await page.getByRole('button', { name: 'Menu' }).click();
+    const menu = page.getByRole('navigation', { name: 'Pages' });
+    await expect(menu.getByRole('link')).toHaveText(['Games', 'Create', 'Docs', 'Sign up']);
+    await expect(page.getByRole('button', { name: 'Settings' })).toBeVisible();
   }
+  await page.getByRole('link', { name: 'Create' }).click();
+  await expect(page).toHaveURL('/create');
   await context.close();
 });

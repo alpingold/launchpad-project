@@ -7,11 +7,16 @@ test.setTimeout(60_000);
 const GENERATED = { timeout: 20_000 }; // other tests' jobs may be in the queue first
 const GOOD_KEY = 'sk-good-0123456789abcdef0123';
 
-test('logged out, /account and /create send you to the login page', async ({ page }) => {
+test('logged out: /account sends you to the login page; /create says to make an account first', async ({ page }) => {
   await page.goto('/account');
   await expect(page).toHaveURL('/login?next=/account');
-  await page.goto('/create');
-  await expect(page).toHaveURL('/login?next=/create');
+  await page.goto('/');
+  await page.getByRole('navigation', { name: 'Pages' }).getByRole('link', { name: 'Create' }).click();
+  await expect(page).toHaveURL('/create');
+  await expect(page.getByText(/you need a free account, and then your own Purdue GenAI Studio API key/)).toBeVisible();
+  await page.getByRole('link', { name: 'Create an account' }).click();
+  await expect(page.getByRole('heading', { name: 'Create a host account' })).toBeVisible();
+  await expect(page).toHaveURL('/login?mode=signup&next=/create');
 });
 
 test('save a key (a wrong one is refused), see only its end; the guide shows the 3 steps', async ({ people }) => {
@@ -51,8 +56,9 @@ test('/create: without a key it asks for one; with a key, one game at a time, an
   const { page, context } = await people.host();
   await page.goto('/create');
   await expect(page.getByRole('heading', { name: 'Make a game', level: 1 })).toBeVisible();
-  await expect(page.getByText(/first save your Purdue GenAI Studio API key/)).toBeVisible();
+  await expect(page.getByText('Add your API key first.')).toBeVisible();
   await expect(page.getByLabel('Game idea')).toBeDisabled();
+  await expect(page.getByRole('link', { name: 'Add your API key' })).toHaveAttribute('href', '/account');
 
   const saved = await context.request.put('/api/account/genai-key', { data: { key: GOOD_KEY } });
   expect(saved.status()).toBe(200);
