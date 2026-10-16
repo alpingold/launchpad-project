@@ -40,6 +40,15 @@ export function createApp({ games = new GameRegistry(), db = openDatabase(':memo
     res.json({ games: games.list({ userId: user?.id ?? null }) });
   });
 
+  // A game's screenshot for the catalogue (plan §14). Same visibility as the game itself.
+  // A published game keeps its id from version to version, so browsers check back after 5 min.
+  app.get('/api/games/:id/thumb', (req, res) => {
+    const user = currentUser(db, req.headers.cookie).user;
+    const thumb = games.thumb(req.params.id, { userId: user?.id ?? null });
+    if (!thumb) return res.status(404).json({ error: 'NOT_FOUND' });
+    res.set('Cache-Control', 'private, max-age=300').type('image/jpeg').send(thumb);
+  });
+
   // The game kit guide (/kit): how frame games work, the same text the AI reads.
   app.get('/api/kit', (_req, res) => {
     res.json(kitGuide());

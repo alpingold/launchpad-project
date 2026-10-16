@@ -48,6 +48,7 @@ test('GET /api/games lists the games for the host picker', async () => {
         tags: [],
         minutes: null,
         addedAt: null,
+        hasThumb: false,
         source: 'official',
       },
     ],

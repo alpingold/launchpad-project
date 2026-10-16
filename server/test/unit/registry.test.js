@@ -96,6 +96,7 @@ test('register + get + list (list leaves out the game files)', () => {
       tags: [],
       minutes: null,
       addedAt: null,
+      hasThumb: false,
       source: 'official',
     },
   ]);
@@ -133,8 +134,9 @@ test('the default registry offers the official games, each read from its game.ht
   assert.deepEqual([blobs.name, blobs.minPlayers, blobs.maxPlayers], ['Bumper Blobs', 2, 12]);
   assert.match(blobs.source, /party\.ready/);
   for (const g of createDefaultRegistry().list()) {
-    assert.ok(g.tags.length > 0 && g.minutes, `${g.id} has tags and a length for the catalogue`);
+    assert.ok(g.tags.length > 0 && g.minutes && g.hasThumb, `${g.id} has tags, a length and a picture for the catalogue`);
   }
+  assert.deepEqual([...createDefaultRegistry().thumb('tower-dash').subarray(0, 2)], [0xff, 0xd8], 'a JPEG');
 });
 
 test("the rulebook lists exactly the allowed tags, in the same order (the AI reads it)", () => {

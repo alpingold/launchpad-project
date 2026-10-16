@@ -83,6 +83,23 @@ test('a playtest game is listed and startable only for the account that generate
   for (const c of [other.host, other.alex, owner.host, owner.alex]) c.close();
 });
 
+test("a game's catalogue picture: served as a JPEG, only to whoever may see the game (plan §14)", async () => {
+  const ownerCookie = await signUp(baseUrl, 'owner');
+  const ownerId = (await me(ownerCookie)).id;
+  const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]);
+  registry.register(tapGame('g-pic1'), { source: 'generated', status: 'playtest', ownerUserId: ownerId, thumb: jpeg });
+
+  const res = await fetch(`${baseUrl}/api/games/g-pic1/thumb`, { headers: { Cookie: ownerCookie } });
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get('content-type'), 'image/jpeg');
+  assert.deepEqual(Buffer.from(await res.arrayBuffer()), jpeg);
+  assert.equal((await fetch(`${baseUrl}/api/games/g-pic1/thumb`)).status, 404, 'a playtest game: not for others');
+  assert.equal((await fetch(`${baseUrl}/api/games/tap-test/thumb`)).status, 404, 'no picture');
+  assert.equal((await fetch(`${baseUrl}/api/games/nope/thumb`)).status, 404);
+  const listed = (await (await fetch(`${baseUrl}/api/games`, { headers: { Cookie: ownerCookie } })).json()).games;
+  assert.deepEqual(listed.map((g) => [g.id, g.hasThumb]), [['tap-test', false], ['g-pic1', true]]);
+});
+
 test('a published generated game is for everyone', async () => {
   registry.register(tapGame('g-public1'), { source: 'generated', status: 'published', ownerUserId: 999 });
   const cookie = await signUp(baseUrl);

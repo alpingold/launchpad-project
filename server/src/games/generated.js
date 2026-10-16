@@ -12,6 +12,18 @@ export function liveGameId(gameId, as, version) {
 }
 
 /**
+ * The big-screen screenshot from a version's final check, as a JPEG (plan §14), or null
+ * (an imported game, or one checked before screenshots were kept).
+ * @param {import('../games/frameGame.js').CheckReport | null} report
+ * @returns {Buffer | null}
+ */
+export function thumbFromReport(report) {
+  const url = report?.playtest?.screenshots?.host;
+  const prefix = 'data:image/jpeg;base64,';
+  return typeof url === 'string' && url.startsWith(prefix) ? Buffer.from(url.slice(prefix.length), 'base64') : null;
+}
+
+/**
  * Checks one version's game file and adds it to the registry under its live id.
  * Throws (with a readable message) if the file was changed since it was reviewed, or if
  * its game info is invalid (e.g. a block game from before frame games: plan §13).
@@ -28,7 +40,7 @@ export async function registerVersion(registry, game, version, as, { replace = f
   }
   const id = liveGameId(game.id, as, version.version);
   const frameGame = frameGameOrThrow(version.source, id);
-  const meta = { source: 'generated', status: as, ownerUserId: game.ownerUserId, version: version.version, addedAt: game.createdAt };
+  const meta = { source: 'generated', status: as, ownerUserId: game.ownerUserId, version: version.version, addedAt: game.createdAt, thumb: thumbFromReport(version.report) };
   registry.register(frameGame, meta, { replace });
   return id;
 }

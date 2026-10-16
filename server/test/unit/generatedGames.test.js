@@ -25,7 +25,7 @@ import {
   sha256,
 } from '../../src/db/generatedGames.js';
 import { GameRegistry } from '../../src/games/registry.js';
-import { loadGeneratedGames } from '../../src/games/generated.js';
+import { loadGeneratedGames, thumbFromReport } from '../../src/games/generated.js';
 import { tapGame, TAP_SOURCE } from '../helpers/frameGames.js';
 
 // AI-generated games and their versions, stored in the database (plan §11 A3, §12e K6).
@@ -158,6 +158,14 @@ test('registry: official and published games are for everyone, playtest only for
 });
 
 // --- Loading at startup -------------------------------------------------------------------
+
+test("thumbFromReport: the final check's big-screen screenshot, or null", () => {
+  const jpeg = Buffer.from([0xff, 0xd8, 9]);
+  assert.deepEqual(thumbFromReport({ playtest: { screenshots: { host: `data:image/jpeg;base64,${jpeg.toString('base64')}` } } }), jpeg);
+  for (const report of [null, {}, { playtest: {} }, { playtest: { screenshots: { host: 'data:image/png;base64,AAAA' } } }]) {
+    assert.equal(thumbFromReport(report), null);
+  }
+});
 
 test('loadGeneratedGames: live versions load under their ids (published: g-…, playtest: g-…-vN)', async () => {
   const { db, admin, store } = setup();

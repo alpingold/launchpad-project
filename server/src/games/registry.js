@@ -10,6 +10,7 @@ import { validateFrameGame } from './frameGame.js';
  * @property {number | null} ownerUserId   generated games only: who generated it
  * @property {number | null} version       generated games only: which version of it this is
  * @property {number | null} addedAt       generated games only: when it was made (ms), for "newest"
+ * @property {Buffer | null} thumb         a JPEG screenshot for the catalogue (plan §14), if there is one
  */
 
 /**
@@ -32,13 +33,13 @@ export class GameRegistry {
    * @param {{ replace?: boolean }} [opts]  replace: swap out a game already using this id
    *   (a newly published version); the old one stays if the new one is invalid
    */
-  register(game, { source = 'official', status = null, ownerUserId = null, version = null, addedAt = null } = {}, { replace = false } = {}) {
+  register(game, { source = 'official', status = null, ownerUserId = null, version = null, addedAt = null, thumb = null } = {}, { replace = false } = {}) {
     const problems = validateFrameGame(game);
     if (problems.length > 0) {
       throw new Error(`Game "${game?.id}" can't be registered:\n - ${problems.join('\n - ')}`);
     }
     if (this.entries.has(game.id) && !replace) throw new Error(`A game with id "${game.id}" is already registered`);
-    this.entries.set(game.id, { game, meta: { source, status, ownerUserId, version, addedAt } });
+    this.entries.set(game.id, { game, meta: { source, status, ownerUserId, version, addedAt, thumb } });
   }
 
   /** Removes a game (e.g. a generated game that was rejected). @returns {boolean} */
@@ -58,6 +59,17 @@ export class GameRegistry {
   }
 
   /**
+   * A game's screenshot (JPEG), if this user may see the game and it has one.
+   * @param {string} id
+   * @param {{ userId?: number | null }} [viewer]
+   * @returns {Buffer | undefined}
+   */
+  thumb(id, { userId = null } = {}) {
+    const entry = this.entries.get(id);
+    return entry && isVisible(entry.meta, userId) ? (entry.meta.thumb ?? undefined) : undefined;
+  }
+
+  /**
    * Public info for the catalogue (not the game files), only the games this user may see.
    * Games without tags or a length (older ones) get [] and null.
    * @param {{ userId?: number | null }} [viewer]
@@ -74,6 +86,7 @@ export class GameRegistry {
         tags: tags ?? [],
         minutes: minutes ?? null,
         addedAt: meta.addedAt,
+        hasThumb: meta.thumb !== null,
         source: meta.source,
         ...(meta.source === 'generated' && { status: meta.status, version: meta.version }),
       }));
