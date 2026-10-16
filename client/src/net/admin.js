@@ -1,7 +1,13 @@
-// Talking to the admin API for AI-generated games (server/src/http/adminRoutes.js).
-// Every call needs a logged-in admin; the server checks that on each request.
+// Talking to the API for AI-generated games (server/src/http/adminRoutes.js). Two places
+// serve it: /api/admin/generations (admins: every game) and /api/generations (any account:
+// only your own games, plan §15). The server checks who may do what on each request.
 
-const BASE = '/api/admin/generations';
+let BASE = '/api/admin/generations';
+
+/** The /create page uses the per-account routes: it calls this while rendering, before any request. */
+export function useOwnGamesApi() {
+  BASE = '/api/generations';
+}
 
 /**
  * Sends a request and returns the JSON body plus `ok`/`status`. Never throws: a network

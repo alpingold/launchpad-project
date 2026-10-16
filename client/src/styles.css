@@ -1053,3 +1053,29 @@ code {
   background: var(--accent-disabled);
   cursor: default;
 }
+
+/* §15: the account page's step-by-step key guide */
+.key-guide {
+  padding-left: 1.5rem;
+}
+
+.key-guide li {
+  margin-bottom: 1.5rem;
+}
+
+.key-guide img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+}
+
+.account-page .admin-form input {
+  width: 100%;
+  font: inherit;
+  padding: 0.45rem 0.6rem;
+  border: 2px solid var(--input-border);
+  border-radius: 0.5rem;
+  box-sizing: border-box;
+}

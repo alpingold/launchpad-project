@@ -73,7 +73,7 @@ async function fakeGenerator(job, { onStep }) {
   await pause(500);
   if (job.step === 'design') {
     onStep(`${job.change ? 'plan' : 'design'}: asking ${job.model}`);
-    await pause(1000);
+    await pause(2500); // long enough for the page to show this step while it runs
     return { ok: true, model: job.model, design: fakeDesign(job), attempts: [] };
   }
   onStep(`attempt 1/4: asking ${job.model}`);
@@ -113,7 +113,11 @@ for (const name of ['rounds', 'realtime', 'turns']) {
 }
 
 // A short hang watchdog (normally 15 s), so the test of a hung big screen is quick.
-const server = createGameServer({ GAME_WATCHDOG_MS: 5000 }, { db, games, runGenerator: fakeGenerator });
+// Users' own GenAI Studio keys (plan §15): a fake check instead of asking GenAI Studio.
+// Keys starting "sk-good" work; any other key is rejected.
+const checkKey = async (key) => (key.startsWith('sk-good') ? 'ok' : 'rejected');
+
+const server = createGameServer({ GAME_WATCHDOG_MS: 5000 }, { db, games, runGenerator: fakeGenerator, checkKey });
 server.httpServer.listen(config.PORT, () => {
   console.log(`[e2e server] listening on http://localhost:${config.PORT}`);
 });

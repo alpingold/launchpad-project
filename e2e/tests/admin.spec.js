@@ -6,6 +6,9 @@ import { ADMIN } from '../server/accounts.js';
 // template ("Robot Majority"), or a broken game when the idea contains "broken", with a
 // stand-in for the browser playtest's results.
 test.setTimeout(60_000);
+// One after another: these tests share the one admin account, which may have only one AI
+// job at a time (plan §15).
+test.describe.configure({ mode: 'serial' });
 const GENERATED = { timeout: 20_000 }; // other tests' jobs may be in the queue first
 
 /** A browser context logged in as the test admin, with dialogs (confirm) accepted. */
@@ -22,7 +25,12 @@ async function adminPage(browser) {
 async function generate(page, idea) {
   await page.goto('/admin');
   await page.getByLabel('Game idea').fill(`${idea} (${test.info().testId}-${Date.now()})`);
-  await page.getByRole('button', { name: 'Write the design' }).click();
+  // The admin may have one job at a time (plan §15): an earlier test's last job may still be
+  // finishing, so try again until it's accepted (the box empties).
+  await expect(async () => {
+    await page.getByRole('button', { name: 'Write the design' }).click();
+    await expect(page.getByLabel('Game idea')).toHaveValue('', { timeout: 1000 });
+  }).toPass(GENERATED);
 }
 
 /** Waits for the design (or plan) to be ready, then presses Build it. */
@@ -33,6 +41,16 @@ async function buildWhenDesigned(page, version = 1) {
 }
 
 const detail = (page) => page.locator('.gen-detail');
+
+// Each test leaves the admin with no job running, so the next one may start its own.
+test.afterEach(async ({ playwright, baseURL }) => {
+  const api = await playwright.request.newContext({ baseURL });
+  expect((await api.post('/api/login', { data: ADMIN })).status()).toBe(200);
+  await expect
+    .poll(async () => (await (await api.get('/api/admin/generations')).json()).games.some((g) => g.progress !== null), GENERATED)
+    .toBe(false);
+  await api.dispose();
+});
 
 test('only admins get in', async ({ page, people }) => {
   await page.goto('/admin');

@@ -76,10 +76,16 @@ export default function Admin() {
       </main>
     );
   }
-  return <AdminPanel />;
+  return <GameMaker />;
 }
 
-function AdminPanel() {
+/**
+ * Making games with AI: the form, your games, and one game's versions. The admin page shows
+ * every game; the /create page (plan §15) the same thing for your own games only, with your
+ * own key. Publishing to everyone appears only for admins (`info.isAdmin`).
+ * @param {{ heading?: string, intro?: import('react').ReactNode }} props
+ */
+export function GameMaker({ heading = 'AI games', intro }) {
   const [info, setInfo] = useState(null); // what the server allows (models, idea length, switched on?)
   const [games, setGames] = useState(null); // summaries, newest first
   const [loadError, setLoadError] = useState(null);
@@ -112,13 +118,15 @@ function AdminPanel() {
 
   return (
     <main className="page admin">
-      <h1>AI games</h1>
-      <p className="muted">
-        Describe a game. The AI writes a short design first: read it, ask for changes or edit it, then press Build it. The
-        AI then writes the game and checks it in a sandbox, playing it in a hidden browser. A game is a web page that runs
-        in a locked-down frame on the big screen and the phones, never on this server. Nobody can play it until you read
-        the code and press Playtest. The AI follows the <a href="/kit">game kit</a> guide.
-      </p>
+      <h1>{heading}</h1>
+      {intro ?? (
+        <p className="muted">
+          Describe a game. The AI writes a short design first: read it, ask for changes or edit it, then press Build it.
+          The AI then writes the game and checks it in a sandbox, playing it in a hidden browser. A game is a web page that
+          runs in a locked-down frame on the big screen and the phones, never on this server. Nobody can play it until you
+          read the code and press Playtest. The AI follows the <a href="/kit">game kit</a> guide.
+        </p>
+      )}
       {loadError && (
         <p className="error" role="alert">
           {loadError}
@@ -181,6 +189,8 @@ function NewGameForm({ info, onStarted }) {
   const [model, setModel] = useState(info.defaultModel);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
+  // Switched on here, and this person's jobs can run (their own key, or an admin: plan §15).
+  const ready = info.enabled && info.canGenerate !== false;
   const length = idea.trim().length;
   const fits = length >= info.minIdeaLength && length <= info.maxIdeaLength;
 
@@ -206,6 +216,12 @@ function NewGameForm({ info, onStarted }) {
           {info.disabledReason} You can still manage the games below.
         </p>
       )}
+      {info.enabled && info.canGenerate === false && (
+        <p className="banner" role="status">
+          To make games, first save your Purdue GenAI Studio API key on <a href="/account">your account page</a>. It
+          takes a minute, and the guide there shows how.
+        </p>
+      )}
       <form className="admin-form" onSubmit={handleSubmit}>
         <label>
           Game idea
@@ -216,14 +232,14 @@ function NewGameForm({ info, onStarted }) {
             maxLength={info.maxIdeaLength}
             placeholder="e.g. Everyone secretly votes for who is most likely to…; points for matching the majority."
             // Locked while sending: the reply clears the box, which would wipe anything typed meanwhile.
-            disabled={!info.enabled || busy}
+            disabled={!ready || busy}
           />
           <span className="muted small">
             {length}/{info.maxIdeaLength} characters (at least {info.minIdeaLength})
           </span>
         </label>
         {info.models.length > 1 ? (
-          <fieldset className="model-options" disabled={!info.enabled}>
+          <fieldset className="model-options" disabled={!ready}>
             <legend>Model</legend>
             {info.models.map((m) => (
               <label key={m.id} className="settings-option">
@@ -251,7 +267,7 @@ function NewGameForm({ info, onStarted }) {
             {error}
           </p>
         )}
-        <button type="submit" className="primary-button" disabled={!info.enabled || !fits || busy}>
+        <button type="submit" className="primary-button" disabled={!ready || !fits || busy}>
           Write the design
         </button>
       </form>
@@ -334,7 +350,7 @@ function GameDetail({ summary, info, onChanged, onDeleted }) {
         <p className="banner" role="status">
           Only you can start v{playtest}: it's in your game picker on the <a href="/host">host page</a>
           {published !== null && <>, next to v{published}, which everyone else keeps playing</>}. Try it with real
-          phones, then publish it.
+          phones, then {info.isAdmin ? 'publish it' : 'ask the site admin if it can be published for everyone'}.
         </p>
       )}
 
@@ -344,7 +360,7 @@ function GameDetail({ summary, info, onChanged, onDeleted }) {
         </p>
       )}
       <div className="gen-actions">
-        {playtest !== null && (
+        {playtest !== null && info.isAdmin && (
           <button
             type="button"
             className="primary-button"
@@ -364,7 +380,7 @@ function GameDetail({ summary, info, onChanged, onDeleted }) {
             Stop playtest
           </button>
         )}
-        {published !== null && (
+        {published !== null && info.isAdmin && (
           <button
             type="button"
             className="secondary-button"

@@ -64,7 +64,7 @@ export default function Home() {
                 Host a game
               </a>
               <p className="muted small">
-                Logged in as {user.username} ·{' '}
+                Logged in as {user.username} · <a href="/create">Make a game with AI</a> · <a href="/account">Account</a> ·{' '}
                 {user.isAdmin && (
                   <>
                     <a href="/admin">AI games</a> ·{' '}

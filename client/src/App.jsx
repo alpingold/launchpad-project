@@ -6,6 +6,8 @@ import Login from './pages/Login.jsx';
 import Admin from './pages/Admin.jsx';
 import Kit from './pages/Kit.jsx';
 import Games from './pages/Games.jsx';
+import Create from './pages/Create.jsx';
+import Account from './pages/Account.jsx';
 import { SettingsProvider } from './settings/SettingsContext.jsx';
 import SettingsMenu from './settings/SettingsMenu.jsx';
 import HomeLink from './components/HomeLink.jsx';
@@ -20,6 +22,8 @@ const PAGES = {
   '/admin': Admin,
   '/kit': Kit,
   '/games': Games,
+  '/create': Create,
+  '/account': Account,
 };
 
 /** "/join/" and "/join" are the same page. */
