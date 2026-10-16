@@ -12,6 +12,7 @@ const rulesOf = (findings) => findings.map((f) => f.rule);
 test('the official games and the test games pass', () => {
   const files = [
     '../../src/games/bumper-blobs/game.html',
+    '../../src/games/stowaways/game.html',
     '../../../e2e/server/unique-number.html',
     '../fixtures/tap-test.html',
   ];
