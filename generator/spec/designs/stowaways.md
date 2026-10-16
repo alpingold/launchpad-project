@@ -25,8 +25,8 @@ secret, the TV is the evidence board.
   player's name (text, drawing with `party.ui.drawing`, or a dot on an agree–disagree
   scale), then "Discuss!" with a 60 s bar.
 - **Button:** the screen flashes red, "Sam pushed the button!", the accused capsules slide
-  into the airlock, a 15 s "make your case" bar, then the vote: a tick per vote, then all
-  votes at once. A failed vote lists who said No.
+  into the airlock, a 15 s "make your case" bar, then the vote: a chip per voter that ticks
+  when they've voted (not how), then all votes at once. A failed vote lists who said No.
 - **End:** the airlock opens, each accused capsule flips to HUMAN or ALIEN, then every
   role, "The humans win!" or "The aliens win!", 8 s, then `party.end`.
 
@@ -35,7 +35,7 @@ No sounds on phones (a neighbour could hear a secret). Your colour and name at t
 - **Role card:** covered; tap to show, tap to hide (so a neighbour can't read it).
   "You are HUMAN" or "You are an ALIEN" (+ the other aliens, hacks left).
 - **The button:** a big red button at the bottom while you have it and pushing is allowed.
-  Then pick exactly as many players as there are aliens, and **Accuse** (25 s).
+  Then pick exactly as many players as there are aliens (not yourself), and **Accuse** (25 s).
 - **Captain picks:** test type (Write, Draw, Opinion), then tap the players, then **Start test**.
 - **Everyone else, during the pick:** the crew grid. Humans tap to mark suspects (private
   notes); aliens tap to place a hack. Both look the same, so tapping gives nothing away.
@@ -80,18 +80,18 @@ No sounds on phones (a neighbour could hear a secret). Your colour and name at t
 - **Palette:** blueprint navy `#0b1d33` with a faint grid, cyan line `#4fd1ff`, card paper
   `#eef4ff`, captain amber `#ffc94a`, alarm red `#ff3b5c`; the 10 player colours on top.
 - **Style:** a station schematic: thin glowing cyan outlines, rounded rectangles, crew as
-  capsule "helmets" (a rounded pill with a visor) in their colour; answer cards are paper.
+  round space helmets (a dome in their colour, a round visor, an antenna); answer cards are paper.
 - **The airlock:** two door halves at centre right that slide open.
 - **Motion:** a slow scan line sweeps the grid; cards slide in with a small overshoot;
   the button shakes the screen with a red flash; the doors slide; roles flip like cards.
 - **Sound (big screen only):** `go` when a test starts, `tick` in the clock's last 10 s,
   `blip` per card, an alarm (`sound({ notes: [880, 440, 880, 440], ms: 140, type: 'square' })`)
   on the button, `pop` per vote, `win`/`lose` at the end.
-- Canvas for the background and capsules, HTML and CSS for cards and text.
+- Canvas for the background (grid, hull outline, scan line); HTML and CSS for helmets, cards and text.
 
 ## Closest example
-`none`: Bumper Blobs is real-time; this is phases and secrets. Expected size ~60–75 KB
-(prompts ~8 KB), under 100 KB.
+`none`: Bumper Blobs is real-time; this is phases and secrets. Built: ~58 KB (prompts ~7 KB),
+under 100 KB.
 
 ## Edge cases
 - **A player leaves:** skipped as captain and in votes; their test answer shows "(no answer)".
@@ -103,5 +103,5 @@ No sounds on phones (a neighbour could hear a secret). Your colour and name at t
   players vote); an all-disconnected room times out.
 - **Big screen reload:** everything is in one JSON object saved with `party.save` after each change:
   phase and its end time (server time), clock left, roles, hacks (arrays), captain, buttons,
-  used prompts, the current test and answers, the vote. Drawings over 20 KB are thinned, so a
-  4-drawing test stays under the save limit. A cut-off phase resumes with its deadline.
+  used prompts, the current test and answers, the vote. A drawing is at most ~15 KB (the
+  drawPad's cap; over 20 KB is refused), so a 4-drawing test stays under the save limit. A cut-off phase resumes with its deadline.
