@@ -50,3 +50,13 @@ test('sort: A–Z, and newest (games with no date last)', () => {
 test('tagsInUse: most used first, then A–Z', () => {
   assert.deepEqual(tagsInUse(GAMES), ['platformer', 'racing', 'action', 'adventure', 'rpg']);
 });
+
+test('sort by top rated: most 👍 minus 👎 first; ties keep the order given', () => {
+  const voted = [
+    { ...game('A'), votes: { up: 1, down: 0 } },
+    { ...game('B'), votes: { up: 5, down: 1 } },
+    { ...game('C') }, // no votes yet
+    { ...game('D'), votes: { up: 2, down: 1 } },
+  ];
+  assert.deepEqual(filterGames(voted, { ...NO_FILTERS, sort: 'top' }).map((g) => g.name), ['B', 'A', 'D', 'C']);
+});

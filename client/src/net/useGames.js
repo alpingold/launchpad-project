@@ -1,11 +1,14 @@
 import { useEffect, useState } from 'react';
 
 /**
- * A game as GET /api/games lists it (server/src/games/registry.js list()).
- * @typedef {{ id: string, name: string, description: string, minPlayers: number, maxPlayers: number,
- *   tags: string[], minutes: [number, number] | null, addedAt: number | null, hasThumb: boolean,
- *   source: 'official' | 'generated', status?: 'playtest' | 'published', version?: number }} GameInfo
+ * A game as GET /api/games lists it (server/src/games/catalog.js CatalogGame).
+ * @typedef {{ id: string, pageId: string, name: string, description: string, minPlayers: number, maxPlayers: number,
+ *   tags: string[], minutes: [number, number] | null, addedAt: number | null, shots: ('host' | 'phone')[],
+ *   source: 'official' | 'generated', status?: 'playtest' | 'published', version?: number,
+ *   creator: { username: string } | null, votes: { up: number, down: number }, myVote: 1 | -1 | 0,
+ *   canEdit: boolean, canVote: boolean }} GameInfo
  *   status and version: AI-generated games only. tags []/minutes null: the game doesn't say.
+ *   shots: the main one first. creator null: an official game (made by BoilerGames).
  */
 
 /**

@@ -55,7 +55,7 @@ export function saveGamePage(db, gameId, page, userId, now = Date.now()) {
   );
 }
 
-/** value: 1 (👍), -1 (👎) or 0 (take the vote back). */
+/** value: 1 (up), -1 (down) or 0 (take the vote back). */
 export function setVote(db, gameId, userId, value, now = Date.now()) {
   if (value === 0) {
     db.prepare('DELETE FROM game_votes WHERE game_id = ? AND user_id = ?').run(gameId, userId);

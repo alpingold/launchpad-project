@@ -8,9 +8,12 @@ import Kit from './pages/Kit.jsx';
 import Games from './pages/Games.jsx';
 import Create from './pages/Create.jsx';
 import Account from './pages/Account.jsx';
+import GamePage from './pages/GamePage.jsx';
+import Profile from './pages/Profile.jsx';
 import { SettingsProvider } from './settings/SettingsContext.jsx';
 import SettingsMenu from './settings/SettingsMenu.jsx';
 import HomeLink from './components/HomeLink.jsx';
+import SiteNav from './components/SiteNav.jsx';
 
 // The site's pages, by URL path. Plain links (<a href>) do a full page load, which is all a
 // handful of pages needs (decision D12: no router library). Adding a page = one line here.
@@ -32,14 +35,45 @@ function currentPath() {
   return path === '' ? '/' : path;
 }
 
+/** Pages with a name in the address (plan §16): /games/<id> and /u/<username>. */
+const PAGES_WITH_A_NAME = [
+  [/^\/games\/([^/]+)$/, (name) => <GamePage id={name} />],
+  [/^\/u\/([^/]+)$/, (name) => <Profile username={name} />],
+];
+
+/** The page for this address. */
+function pageFor(path) {
+  if (Object.hasOwn(PAGES, path)) {
+    const Page = PAGES[path];
+    return <Page />;
+  }
+  for (const [pattern, page] of PAGES_WITH_A_NAME) {
+    const match = pattern.exec(path);
+    if (match) {
+      try {
+        return page(decodeURIComponent(match[1]));
+      } catch {
+        break; // a broken %-escape: not a page
+      }
+    }
+  }
+  return <NotFound />;
+}
+
 export default function App() {
   const path = currentPath();
-  const Page = Object.hasOwn(PAGES, path) ? PAGES[path] : NotFound;
   return (
     <SettingsProvider>
-      <SettingsMenu />
-      {path !== '/' && <HomeLink />}
-      <Page />
+      {/* The top of every page: home on the left (not on the home page itself), then the
+          site's pages and ⚙ on the right (plan §16). */}
+      <header className="site-header">
+        {path !== '/' ? <HomeLink /> : <span />}
+        <div className="site-header-right">
+          <SiteNav />
+          <SettingsMenu />
+        </div>
+      </header>
+      {pageFor(path)}
     </SettingsProvider>
   );
 }

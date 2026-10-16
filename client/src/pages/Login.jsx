@@ -6,7 +6,8 @@ import { usePageTitle } from '../usePageTitle.js';
 export default function Login() {
   const next = safeNextPath(new URLSearchParams(window.location.search).get('next'));
   const user = useCurrentUser();
-  const [mode, setMode] = useState('login'); // 'login' | 'signup'
+  // ?mode=signup opens the "create account" form (the Sign up link at the top of every page).
+  const [mode, setMode] = useState(() => (new URLSearchParams(window.location.search).get('mode') === 'signup' ? 'signup' : 'login'));
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState(null);

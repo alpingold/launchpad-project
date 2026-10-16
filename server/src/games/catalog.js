@@ -1,6 +1,7 @@
 import { allGamePages, getGamePage, saveGamePage, voteCounts, votesBy, setVote } from '../db/gamePages.js';
 import { usernamesById } from '../db/users.js';
 import { tagProblems, minutesProblems } from './frameGame.js';
+import { GAME_TAGS, MAX_GAME_TAGS } from './tags.js';
 
 // The game catalogue (plan §14, §16): the registry's games as the site shows them, with what
 // their creators changed (their "page"), who made them, and everyone's votes. The registry
@@ -85,7 +86,8 @@ export function catalogList(db, registry, viewer) {
 /**
  * One game's page: everything on its card, plus its "About" text and, for whoever may edit it,
  * what the game file itself says (to show what an empty field falls back to).
- * @returns {CatalogGame & { about: string, fromFile?: { name: string, description: string, tags: string[], minutes: [number, number] | null } }}
+ * @returns {CatalogGame & { about: string, fromFile?: { name: string, description: string, tags: string[], minutes: [number, number] | null },
+ *   tagChoices?: string[], maxTags?: number }}  tagChoices/maxTags: for the edit form
  */
 export function catalogGame(db, registry, viewer, id) {
   const game = catalogList(db, registry, viewer).find((g) => g.id === id);
@@ -95,6 +97,8 @@ export function catalogGame(db, registry, viewer, id) {
   if (game.canEdit) {
     const file = registry.list({ userId: viewer.userId }).find((g) => g.id === id);
     result.fromFile = { name: file.name, description: file.description, tags: file.tags, minutes: file.minutes };
+    result.tagChoices = GAME_TAGS;
+    result.maxTags = MAX_GAME_TAGS;
   }
   return result;
 }
@@ -154,7 +158,7 @@ function checkPage(input, shots) {
 }
 
 /**
- * Votes on a game: 1 (👍), -1 (👎) or 0 (take it back). Logged in; not on your own games.
+ * Votes on a game: 1 (up), -1 (down) or 0 (take it back). Logged in; not on your own games.
  * @returns {CatalogGame}
  */
 export function voteOnGame(db, registry, viewer, id, value) {

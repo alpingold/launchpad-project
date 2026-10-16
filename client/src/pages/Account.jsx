@@ -42,10 +42,62 @@ export default function Account() {
   return (
     <main className="page account-page">
       <h1>Your account</h1>
-      <p className="muted">Logged in as {user.username}.</p>
+      <p className="muted">
+        Logged in as {user.username} · <a href={`/u/${encodeURIComponent(user.username)}`}>Your profile</a>
+      </p>
+      <BioSection username={user.username} />
       <KeySection />
       <KeyGuide />
     </main>
+  );
+}
+
+/** Your bio, shown on your profile page (plan §16). */
+function BioSection({ username }) {
+  const [bio, setBio] = useState(null); // null while loading
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState(null); // { error?: string, text: string }
+
+  useEffect(() => {
+    fetch(`/api/users/${encodeURIComponent(username)}`)
+      .then((res) => res.json())
+      .then((data) => setBio(data.profile?.bio ?? ''))
+      .catch(() => setBio(''));
+  }, [username]);
+
+  async function save(event) {
+    event.preventDefault();
+    setBusy(true);
+    setMessage(null);
+    try {
+      const res = await fetch('/api/account/profile', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bio }) });
+      const data = await res.json().catch(() => ({}));
+      setMessage(res.ok ? { text: 'Saved.' } : { error: true, text: data.message ?? 'Something went wrong.' });
+    } catch {
+      setMessage({ error: true, text: "Couldn't reach the server." });
+    }
+    setBusy(false);
+  }
+
+  return (
+    <section className="card" aria-labelledby="bio-heading">
+      <h2 id="bio-heading">Your profile</h2>
+      <form className="admin-form" onSubmit={save}>
+        <label>
+          Bio
+          <textarea value={bio ?? ''} onChange={(e) => setBio(e.target.value)} rows={3} maxLength={500} disabled={bio === null || busy} placeholder="A few words about you, for your profile page" />
+          <span className="muted small">{(bio ?? '').length}/500 characters</span>
+        </label>
+        {message && (
+          <p className={message.error ? 'error' : undefined} role={message.error ? 'alert' : 'status'}>
+            {message.text}
+          </p>
+        )}
+        <button type="submit" className="primary-button" disabled={bio === null || busy}>
+          Save bio
+        </button>
+      </form>
+    </section>
   );
 }
 

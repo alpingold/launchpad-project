@@ -48,6 +48,7 @@ export default function GameCatalogue({ games, roomPlayers, selectedId = null, o
           <span className="visually-hidden">Sort</span>
           <select value={filters.sort} onChange={(e) => set({ sort: e.target.value })}>
             <option value="featured">Featured</option>
+            <option value="top">Top rated</option>
             <option value="name">A–Z</option>
             <option value="newest">Newest</option>
           </select>

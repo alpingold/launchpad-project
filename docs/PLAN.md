@@ -1394,13 +1394,13 @@ minting needs the admin's Purdue login on the server.)
   `client/public/help/genai-key/`) and `/create` (the admin page's game maker, for your own
   games). The home page links to both.
 
-## 16. Getting around: site links, game pages, votes, creators and profiles (decided 2026-10-16)
+## 16. Getting around: site links, game pages, votes, creators and profiles (decided and built 2026-10-16)
 
 **Decided with the user:**
 - **Links at the top right of every page**, next to ⚙: Games (the catalogue), Docs (`/kit`),
   and Sign up, or Account when logged in. Hidden while a game is on screen.
-- **Votes:** 👍/👎 per game, one vote per account (change or take it back any time); not on
-  your own games. The catalogue can sort by best rated (👍 minus 👎).
+- **Votes:** ▲/▼ (up/down) per game, one vote per account (change or take it back any time); not on
+  your own games. The catalogue can sort by top rated (▲ minus ▼).
 - **A page per game**, `/games/<id>`: its screenshots, description, players, length, tags,
   votes, its creator, and Host this game. Catalogue cards open it (lobby cards still just
   choose).

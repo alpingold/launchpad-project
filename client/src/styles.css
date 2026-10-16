@@ -533,11 +533,54 @@ select {
   accent-color: var(--accent); /* radio buttons and checkboxes in the site's color */
 }
 
+/* §16: the top of every page. Home on the left; the site's links and ⚙ on the right. */
+.site-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 0.75rem 0;
+}
+
+.site-header-right {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-left: auto;
+}
+
+.site-nav {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.1rem;
+}
+
+.site-nav a {
+  white-space: nowrap;
+  padding: 0.4rem 0.6rem;
+  border-radius: 1rem;
+  color: var(--text);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.site-nav a:hover {
+  background: var(--chip);
+}
+
+.site-nav a[aria-current='page'] {
+  color: var(--link);
+}
+
+/* While a game is on screen (GameFrame.jsx), only ⚙ and home stay. */
+body.in-game .site-nav {
+  display: none;
+}
+
 /* M6b: settings button and panel */
 .settings-button {
-  position: absolute;
-  top: 0.75rem;
-  right: 0.75rem;
+  flex: none;
   width: 2.5rem;
   height: 2.5rem;
   border: 1px solid var(--border);
@@ -553,10 +596,9 @@ select {
   color: var(--text);
 }
 
-/* "← BoilerGames" in the top-left corner (every page but the home page), level with the ⚙ button.
-   In the page flow, not absolute like ⚙: page titles start at the left edge and would sit under it. */
+/* "← BoilerGames" in the top-left corner (every page but the home page), in the header. */
 .home-nav {
-  padding: 0.75rem 0.75rem 0;
+  flex: none;
 }
 
 .home-link {
@@ -1078,4 +1120,207 @@ code {
   border: 2px solid var(--input-border);
   border-radius: 0.5rem;
   box-sizing: border-box;
+}
+
+/* §16: catalogue cards open their game's page: the title's link covers the whole card, and
+   the links inside it (the creator, Host this game) sit above that. */
+.game-card-link {
+  position: relative;
+}
+
+.game-card-title {
+  color: inherit;
+  text-decoration: none;
+}
+
+.game-card-title::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+}
+
+.game-card-link:hover {
+  border-color: var(--accent);
+}
+
+.game-card-link .game-creator a,
+.game-card-link .game-card-action {
+  position: relative;
+  z-index: 1;
+}
+
+.game-card-by {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin: 0;
+}
+
+/* §16: a game's own page */
+.game-page {
+  max-width: 52rem;
+}
+
+.game-page h1 {
+  margin-bottom: 0.2rem;
+}
+
+.game-page-by {
+  margin-top: 0;
+}
+
+.game-page-shots {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.game-page-shot {
+  display: block;
+  width: 100%;
+  border-radius: 0.75rem;
+  border: 1px solid var(--border);
+  background: var(--chip);
+}
+
+.game-page-shot.shot-phone {
+  width: auto;
+  max-width: 100%;
+  max-height: 32rem;
+  align-self: center;
+}
+
+.game-page-shot-choices {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.game-page-shot-choices button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.3rem;
+  border: 2px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.game-page-shot-choices button[aria-pressed='true'] {
+  border-color: var(--accent);
+}
+
+.game-page-shot-choices img {
+  height: 4rem;
+  border-radius: 0.3rem;
+}
+
+.game-page-description {
+  font-size: 1.15rem;
+}
+
+.game-page-about,
+.profile-bio {
+  white-space: pre-wrap; /* line breaks as typed; still plain text */
+  overflow-wrap: anywhere;
+}
+
+.game-page-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+  margin: 1.25rem 0;
+}
+
+.game-page-votes {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.vote-button {
+  font: inherit;
+  padding: 0.45rem 0.8rem;
+  border-radius: 999px;
+  border: 2px solid var(--input-border);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.vote-button[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: var(--chip);
+}
+
+.vote-button:disabled {
+  cursor: default;
+}
+
+.game-page-form input,
+.game-page-form textarea {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  padding: 0.45rem 0.6rem;
+  border: 2px solid var(--input-border);
+  border-radius: 0.5rem;
+}
+
+.game-page-form fieldset {
+  border: none;
+  padding: 0;
+  margin: 0.5rem 0;
+}
+
+.game-page-minutes label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-right: 1rem;
+}
+
+.game-page-minutes input {
+  width: 5rem;
+}
+
+/* §16: phones: the header stays on one line. */
+@media (max-width: 30rem) {
+  .site-header {
+    padding: 0.5rem 0.5rem 0;
+    gap: 0.25rem;
+  }
+
+  .home-link {
+    padding: 0 0.7rem;
+    font-size: 0.9rem;
+  }
+
+  .site-nav {
+    flex-wrap: nowrap;
+  }
+
+  .site-nav a {
+    padding: 0.35rem 0.35rem;
+    font-size: 0.9rem;
+  }
+}
+
+/* The narrowest phones (e.g. 320 px): the home link is just "←" (its name is still read out). */
+@media (max-width: 23rem) {
+  .home-link-text {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
 }

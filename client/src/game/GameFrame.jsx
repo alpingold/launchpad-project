@@ -62,6 +62,12 @@ export default function GameFrame({ run, role, me = null, roomPlayers, send, onB
   Object.assign(live.current, { players, theme, send, role, me, onBroken });
   const [broken, setBroken] = useState(false);
 
+  // While a game is on screen, the site's links at the top stay out of the way (plan §16).
+  useEffect(() => {
+    document.body.classList.add('in-game');
+    return () => document.body.classList.remove('in-game');
+  }, []);
+
   useEffect(() => {
     const state = live.current;
     const frameWindow = () => iframeRef.current?.contentWindow;
