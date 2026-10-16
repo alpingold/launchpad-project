@@ -7,6 +7,7 @@ import Admin from './pages/Admin.jsx';
 import Kit from './pages/Kit.jsx';
 import Games from './pages/Games.jsx';
 import Create from './pages/Create.jsx';
+import CreateGame from './pages/CreateGame.jsx';
 import Account from './pages/Account.jsx';
 import GamePage from './pages/GamePage.jsx';
 import Profile from './pages/Profile.jsx';
@@ -35,10 +36,11 @@ function currentPath() {
   return path === '' ? '/' : path;
 }
 
-/** Pages with a name in the address (plan §16): /games/<id> and /u/<username>. */
+/** Pages with a name in the address (plan §16, §19): /games/<id>, /u/<username> and /create/<id>. */
 const PAGES_WITH_A_NAME = [
   [/^\/games\/([^/]+)$/, (name) => <GamePage id={name} />],
   [/^\/u\/([^/]+)$/, (name) => <Profile username={name} />],
+  [/^\/create\/([^/]+)$/, (name) => <CreateGame id={name} />],
 ];
 
 /** The page for this address. */
