@@ -1612,8 +1612,11 @@ during the button. The user's decisions on the design:
 - The big screen never shows a role or the prompt during a test (it would tell the aliens the
   humans' prompt); only the humans' prompt, at the reveal.
 - Each phone gets its own `setState`, never `'all'`. The role card is covered until tapped.
-- Humans tap the crew grid to mark suspects (private notes); aliens tap the same grid to hack.
-  Both look the same, so a peek at a neighbour's phone gives nothing away.
+- Everyone taps the crew grid to mark suspects (private marks), at any time. For an alien during
+  a captain's pick, a mark is also a hack (unmarking takes it back); which marks are hacks, the
+  hacks left and the other aliens appear only on the covered role card. So every phone looks
+  and reacts the same (a review found an alien's taps did nothing outside the pick, which gave
+  them away; fixed, and an e2e test compares a covered alien phone with a human's).
 - The big screen redraws only when something public changed, so a note or a hack doesn't
   make it flicker. Phones make no sound; the big screen plays sounds only for public moments.
 

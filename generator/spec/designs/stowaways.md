@@ -37,8 +37,11 @@ No sounds on phones (a neighbour could hear a secret). Your colour and name at t
 - **The button:** a big red button at the bottom while you have it and pushing is allowed.
   Then pick exactly as many players as there are aliens (not yourself), and **Accuse** (25 s).
 - **Captain picks:** test type (Write, Draw, Opinion), then tap the players, then **Start test**.
-- **Everyone else, during the pick:** the crew grid. Humans tap to mark suspects (private
-  notes); aliens tap to place a hack. Both look the same, so tapping gives nothing away.
+- **The crew grid (everyone but the captain, outside tests and votes):** a tap toggles your
+  private mark on a crewmate, for every role, always. For an alien during a pick (from the
+  second test), marking also hacks them if it can, and unmarking takes the hack back; which
+  marks are hacks is listed only on the covered role card. So every phone looks and reacts
+  the same, and all role text stays on the role card.
 - **Being tested:** your prompt and `party.ui.timer`. Write: `textInput` (60 chars). Draw:
   `drawPad`. Opinion: 4 big buttons (Strongly disagree … Strongly agree).
 - **Not tested:** "Sam, Ana and Lee are being tested" and your notes.
