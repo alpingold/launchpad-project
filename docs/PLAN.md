@@ -1327,7 +1327,7 @@ of it may be copying.
 - **Screenshots:** all 12 games show a working screen and controls; C/C2 look as good as A. The
   RPG's 4×4 view comes from the fixed design, not the variant.
 
-**Decision (proposed):** drop the example game's code from the build step (`exampleGame: false`
+**Decision (made 2026-10-16):** drop the example game's code from the build step (`exampleGame: false`
 by default). C2 matched or beat A on every measure with about half the prompt, which also
 leaves more of the 65K context for fixes and bigger games. Keep the example game as an option
 for retries. Next: a few more C2-style runs over time, and a short combined kit sample in the
