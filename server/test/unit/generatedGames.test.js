@@ -187,6 +187,9 @@ test('loadGeneratedGames: live versions load under their ids (published: g-…, 
       [publishedId, 'published', 1],
       [`${publishedId}-v2`, 'playtest', 2],
     ].sort(byId),
+  );  assert.ok(
+    registry.list({ userId: admin.id }).every((g) => typeof g.addedAt === 'number'),
+    'when it was made, for the catalogue\'s "newest"',
   );
 });
 

@@ -5,6 +5,7 @@ import { GameRegistry } from '../../src/games/registry.js';
 import { readFrameGame, validateFrameGame, frameGameReport } from '../../src/games/frameGame.js';
 import { createDefaultRegistry, OFFICIAL_GAMES } from '../../src/games/index.js';
 import { config } from '../../src/config.js';
+import { GAME_TAGS } from '../../src/games/tags.js';
 import { tapGame, TAP_SOURCE } from '../helpers/frameGames.js';
 
 // Frame game files (plan §13c) and the registry that offers them.
@@ -20,6 +21,12 @@ test('readFrameGame: reads the info block with JSON.parse; the id comes from out
     { id: 'my-id', name: 'Tap Test', description: 'First to 3 taps wins. Test-only.', minPlayers: 1, maxPlayers: 12, source: undefined },
   );
   assert.equal(result.game.source, TAP_SOURCE, 'the whole file is kept, to send to browsers');
+});
+
+test('readFrameGame: tags and minutes are optional, for the catalogue (plan §14)', () => {
+  const result = readFrameGame(withInfo('{ "name": "A", "description": "", "minPlayers": 1, "maxPlayers": 2, "tags": ["racing", "co-op"], "minutes": [5, 5] }'), 'x');
+  assert.equal(result.ok, true, result.problems?.join('; '));
+  assert.deepEqual([result.game.tags, result.game.minutes], [['racing', 'co-op'], [5, 5]]);
 });
 
 test('readFrameGame: the attributes may come in either order', () => {
@@ -39,6 +46,12 @@ test('readFrameGame reports each problem readably', () => {
     [withInfo('{ "name": "A", "description": "", "minPlayers": 0, "maxPlayers": 2 }'), /minPlayers must be/],
     [withInfo('{ "name": "A", "description": "", "minPlayers": 1, "maxPlayers": 13 }'), /maxPlayers must be an integer of at most 12/],
     [withInfo('{ "name": "A", "description": "", "minPlayers": 4, "maxPlayers": 2 }'), /maxPlayers must be at least minPlayers/],
+    [withInfo('{ "name": "A", "description": "", "minPlayers": 1, "maxPlayers": 2, "tags": [] }'), /tags must be a list of 1–4/],
+    [withInfo('{ "name": "A", "description": "", "minPlayers": 1, "maxPlayers": 2, "tags": ["action", "action"] }'), /tags must be a list of 1–4 different/],
+    [withInfo('{ "name": "A", "description": "", "minPlayers": 1, "maxPlayers": 2, "tags": ["platforming"] }'), /unknown tag "platforming" \(allowed: action/],
+    [withInfo('{ "name": "A", "description": "", "minPlayers": 1, "maxPlayers": 2, "minutes": 10 }'), /minutes must be \[low, high\]/],
+    [withInfo('{ "name": "A", "description": "", "minPlayers": 1, "maxPlayers": 2, "minutes": [10, 5] }'), /minutes must be/],
+    [withInfo('{ "name": "A", "description": "", "minPlayers": 1, "maxPlayers": 2, "minutes": [0, 5] }'), /minutes must be/],
     [TAP_SOURCE + ' '.repeat(config.FRAME_GAME_MAX_BYTES), /the limit is/],
   ];
   for (const [source, pattern] of cases) {
@@ -80,6 +93,9 @@ test('register + get + list (list leaves out the game files)', () => {
       description: 'First to 3 taps wins. Test-only.',
       minPlayers: 1,
       maxPlayers: 12,
+      tags: [],
+      minutes: null,
+      addedAt: null,
       source: 'official',
     },
   ]);
@@ -116,4 +132,14 @@ test('the default registry offers the official games, each read from its game.ht
   const blobs = createDefaultRegistry().get('bumper-blobs');
   assert.deepEqual([blobs.name, blobs.minPlayers, blobs.maxPlayers], ['Bumper Blobs', 2, 12]);
   assert.match(blobs.source, /party\.ready/);
+  for (const g of createDefaultRegistry().list()) {
+    assert.ok(g.tags.length > 0 && g.minutes, `${g.id} has tags and a length for the catalogue`);
+  }
+});
+
+test("the rulebook lists exactly the allowed tags, in the same order (the AI reads it)", () => {
+  const spec = readFileSync(new URL('../../../generator/spec/GAME_SPEC.md', import.meta.url), 'utf8');
+  const line = /1–4 of exactly these words: ([^.]+)\./.exec(spec.replace(/\s+/g, ' '));
+  assert.ok(line, 'the tags line is in GAME_SPEC.md');
+  assert.deepEqual(line[1].split(', '), GAME_TAGS);
 });

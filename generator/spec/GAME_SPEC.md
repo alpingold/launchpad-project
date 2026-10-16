@@ -18,7 +18,8 @@ phases or screens. A game must start, react to its players, and end with `party.
 
 ```html
 <script type="application/json" id="game-info">
-  { "name": "Star Catch", "description": "Steer your dot and catch the stars. First to 5 wins.", "minPlayers": 1, "maxPlayers": 12 }
+  { "name": "Star Catch", "description": "Steer your dot and catch the stars. First to 5 wins.", "minPlayers": 1, "maxPlayers": 12,
+    "tags": ["action"], "minutes": [1, 3] }
 </script>
 <style>
   /* the game's own styles */
@@ -33,8 +34,12 @@ phases or screens. A game must start, react to its players, and end with `party.
 ```
 
 - **It starts with the game-info block**, exactly as above: `name` (1–40 characters),
-  `description` (at most 200), `minPlayers` (at least 1) and `maxPlayers` (at most 12). No
-  other fields.
+  `description` (at most 200), `minPlayers` (at least 1), `maxPlayers` (at most 12), `tags`
+  and `minutes`. No other fields. The game catalogue shows and filters by these.
+  - `tags`: 1–4 of exactly these words: action, racing, platformer, adventure, rpg, board,
+    strategy, puzzle, drawing, words, trivia, voting, bluffing, co-op, teams, minigame.
+  - `minutes`: how long one whole game usually takes, low and high, in whole minutes:
+    the total from the design's Length section (e.g. `[8, 12]`).
 - It's a fragment that goes inside `<body>`: no `<html>`, `<head>` or `<body>` tags. The
   `party` SDK, its helpers and the base styles are already loaded before your code runs.
 - **At most 100 KB.** Everything is in this one file: no other files exist.

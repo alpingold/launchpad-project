@@ -28,7 +28,7 @@ export async function registerVersion(registry, game, version, as, { replace = f
   }
   const id = liveGameId(game.id, as, version.version);
   const frameGame = frameGameOrThrow(version.source, id);
-  const meta = { source: 'generated', status: as, ownerUserId: game.ownerUserId, version: version.version };
+  const meta = { source: 'generated', status: as, ownerUserId: game.ownerUserId, version: version.version, addedAt: game.createdAt };
   registry.register(frameGame, meta, { replace });
   return id;
 }

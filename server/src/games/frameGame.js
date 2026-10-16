@@ -1,5 +1,6 @@
 import { config } from '../config.js';
 import { staticCheck } from './staticCheck.js';
+import { GAME_TAGS, MAX_GAME_TAGS, MAX_GAME_MINUTES } from './tags.js';
 
 // FRAME GAMES (plan §13c): a game is ONE HTML file. The same page runs on the big screen
 // (the referee: rules, timers, scores, the big picture) and on every phone (the
@@ -9,8 +10,11 @@ import { staticCheck } from './staticCheck.js';
 // with JSON.parse:
 //
 //   <script type="application/json" id="game-info">
-//     { "name": "Bumper Blobs", "description": "…", "minPlayers": 2, "maxPlayers": 12 }
+//     { "name": "Bumper Blobs", "description": "…", "minPlayers": 2, "maxPlayers": 12,
+//       "tags": ["action"], "minutes": [3, 8] }
 //   </script>
+//
+// tags and minutes are optional (plan §14: they're for the catalogue).
 //
 // The id isn't in the file: an official game's id is its folder name, and a generated
 // game's id is given by the database. A game can never pick its own id.
@@ -24,13 +28,15 @@ import { staticCheck } from './staticCheck.js';
  * @property {string} description
  * @property {number} minPlayers
  * @property {number} maxPlayers
+ * @property {string[]} [tags]      from GAME_TAGS (tags.js)
+ * @property {[number, number]} [minutes]  how long a typical game takes, low to high
  * @property {string} source        the whole HTML file
  */
 
 const GAME_ID_RE = /^[a-z0-9-]{1,40}$/;
 // The game-info block: a <script> with id="game-info" and type="application/json", in either order.
 const GAME_INFO_RE = /<script\b(?=[^>]*\bid=["']game-info["'])(?=[^>]*\btype=["']application\/json["'])[^>]*>([\s\S]*?)<\/script>/i;
-const INFO_FIELDS = ['name', 'description', 'minPlayers', 'maxPlayers'];
+const INFO_FIELDS = ['name', 'description', 'minPlayers', 'maxPlayers', 'tags', 'minutes'];
 
 /**
  * Reads a game file's info and checks it.
@@ -60,6 +66,8 @@ export function readFrameGame(source, id) {
   }
 
   const game = { id, name: info.name, description: info.description, minPlayers: info.minPlayers, maxPlayers: info.maxPlayers, source };
+  if (info.tags !== undefined) game.tags = info.tags;
+  if (info.minutes !== undefined) game.minutes = info.minutes;
   const problems = Object.keys(info)
     .filter((key) => !INFO_FIELDS.includes(key))
     .map((key) => `the game info has an unknown field "${key}" (allowed: ${INFO_FIELDS.join(', ')})`);
@@ -93,6 +101,22 @@ export function validateFrameGame(game) {
     problems.push(`maxPlayers must be an integer of at most ${config.MAX_PLAYERS}`);
   } else if (Number.isInteger(minPlayers) && maxPlayers < minPlayers) {
     problems.push('maxPlayers must be at least minPlayers');
+  }
+
+  const { tags, minutes } = game;
+  if (tags !== undefined) {
+    if (!Array.isArray(tags) || tags.length < 1 || tags.length > MAX_GAME_TAGS || new Set(tags).size !== tags.length) {
+      problems.push(`tags must be a list of 1–${MAX_GAME_TAGS} different tags`);
+    } else {
+      const unknown = tags.filter((t) => !GAME_TAGS.includes(t));
+      if (unknown.length > 0) problems.push(`unknown tag ${unknown.map((t) => JSON.stringify(t)).join(', ')} (allowed: ${GAME_TAGS.join(', ')})`);
+    }
+  }
+  if (minutes !== undefined) {
+    const ok = (n) => Number.isInteger(n) && n >= 1 && n <= MAX_GAME_MINUTES;
+    if (!Array.isArray(minutes) || minutes.length !== 2 || !minutes.every(ok) || minutes[0] > minutes[1]) {
+      problems.push(`minutes must be [low, high]: whole minutes from 1 to ${MAX_GAME_MINUTES}, low first (e.g. [5, 10])`);
+    }
   }
 
   if (typeof game.source !== 'string' || game.source.length === 0) problems.push('source must be the game file');
