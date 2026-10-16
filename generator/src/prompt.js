@@ -172,9 +172,9 @@ function currentGame({ idea, design, source, earlierRequests = [] }) {
 
 /**
  * @param {string | null | undefined} design
- * @param {{ exampleGame?: boolean }} [opts]  exampleGame: false leaves the example game out (plan §13o)
+ * @param {{ exampleGame?: boolean }} [opts]  exampleGame: true adds the example game (off by default, plan §13o)
  */
-function buildSystemPrompt(design, { exampleGame = true } = {}) {
+function buildSystemPrompt(design, { exampleGame = false } = {}) {
   const template = pickTemplate(design);
   const example = exampleGame ? pickExample(design) : null;
   const parts = [`You write party games for BoilerGames from an approved design. Follow these instructions exactly.`, read('../spec/GAME_SPEC.md')];
@@ -215,7 +215,7 @@ const BUILD_ANSWER = `Reply with the complete game file in ONE \`\`\`html code b
  * Building a new game from its approved design.
  * @param {string} idea
  * @param {string} design
- * @param {{ exampleGame?: boolean }} [opts]  exampleGame: false leaves the example game out (plan §13o)
+ * @param {{ exampleGame?: boolean }} [opts]  exampleGame: true adds the example game (off by default, plan §13o)
  * @returns {import('./llm.js').Message[]}
  */
 export function buildMessages(idea, design, opts) {

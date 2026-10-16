@@ -54,7 +54,7 @@ import { describeProblem } from '../../server/src/games/frameGame.js';
  *   a change to an existing game; build: `plan` is the approved plan (null: a small fix)
  * @property {{ draft: string, feedback: string }} [redraft]  design: a new draft of `draft`
  * @property {boolean} [examples]         design: add the example designs (off by default)
- * @property {boolean} [exampleGame]      build: false leaves the example game out (plan §13o)
+ * @property {boolean} [exampleGame]      build: add the example game's design and code (off by default, plan §13o)
  * @property {number} [maxAttempts]       build
  */
 
@@ -178,7 +178,7 @@ async function build(job, model, { chatFn = chat, check = checkGame, onStep = ()
   // The conversation is the prompt plus, after a failed attempt, ONLY that attempt and its
   // problems: earlier attempts are dropped. Each one is a whole game (~10K tokens), and the
   // model's context is 65K (plan §13n): keeping them all would overflow by attempt 4.
-  const prompt = change ? changeBuildMessages({ idea: job.idea, ...change }, change.plan ?? null) : buildMessages(job.idea, job.design, { exampleGame: job.exampleGame ?? true });
+  const prompt = change ? changeBuildMessages({ idea: job.idea, ...change }, change.plan ?? null) : buildMessages(job.idea, job.design, { exampleGame: job.exampleGame ?? false });
   let messages = prompt;
   const result = { ok: false, model, source: null, report: null, changelog: null, attempts: [] };
 

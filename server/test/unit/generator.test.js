@@ -175,17 +175,17 @@ test('template and example come from the design (with sensible fallbacks)', () =
   assert.deepEqual([pickTemplate('no sections at all'), pickExample('no sections at all')], [null, 'bumper-blobs']);
 });
 
-test('the build prompt: the template and the example (with its design) the design picked', () => {
+test('the build prompt: the template the design picked; its example game only when asked', () => {
   const design = DESIGN.replace(/## Template[\s\S]*?## Edge/, '## Template\n`turns`: yes\n\n## Closest example\n`tower-dash`: a platformer\n\n## Edge');
-  const [system, user] = buildMessages('Run and jump', design);
+  const [system, user] = buildMessages('Run and jump', design, { exampleGame: true });
   assert.match(system.content, /starter template the design chose: turns/);
   assert.match(system.content, /"name": "Treasure Hunt"/, 'the turns template');
   assert.match(system.content, /"name": "Tower Dash"/, 'the example game');
   assert.doesNotMatch(system.content, /"name": "Bumper Blobs"/);
   assert.match(user.content, /<design>\n# Tower Dash/);
 
-  const [noExample] = buildMessages('Run and jump', design, { exampleGame: false });
-  assert.doesNotMatch(noExample.content, /"name": "Tower Dash"/, 'plan §13o: the example game can be left out');
+  const [noExample] = buildMessages('Run and jump', design);
+  assert.doesNotMatch(noExample.content, /"name": "Tower Dash"/, 'plan §13o: no example game by default');
   assert.match(noExample.content, /"name": "Treasure Hunt"/, 'the template stays');
 });
 
