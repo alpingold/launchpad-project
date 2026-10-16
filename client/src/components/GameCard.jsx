@@ -38,39 +38,24 @@ export function VoteCount({ votes }) {
 
 /**
  * One game in the catalogue (plan §14, §16): its picture, name, creator, description, players,
- * length, votes and tags.
- * - Browsing (no `onSelect`): the whole card opens the game's page; the creator's name opens
- *   their profile.
- * - Choosing (the host lobby, with `onSelect`): a radio button, and the whole card chooses it.
- *   No links there, so a click never leaves the room page.
- * `action` is shown at the bottom (e.g. a "Host this game" link).
+ * length, votes and tags. The whole card opens the game's page; the creator's name opens their
+ * profile. `action` is shown at the bottom (e.g. a "Host this game" link).
  *
- * @param {{ game: import('../net/useGames.js').GameInfo, selected?: boolean,
- *   onSelect?: (id: string) => void, misfit?: boolean, action?: import('react').ReactNode }} props
- *   misfit: the room has too few or too many players for it
+ * @param {{ game: import('../net/useGames.js').GameInfo, action?: import('react').ReactNode }} props
  */
-export default function GameCard({ game, selected = false, onSelect, misfit = false, action }) {
+export default function GameCard({ game, action }) {
   const length = minutesText(game.minutes);
-  const browsing = !onSelect;
-  const classes = ['card', 'game-card', browsing ? 'game-card-link' : 'game-card-pickable', selected && 'game-card-selected', misfit && 'game-card-misfit'];
   return (
-    <li className={classes.filter(Boolean).join(' ')} onClick={onSelect ? () => onSelect(game.id) : undefined}>
+    <li className="card game-card game-card-link">
       <GameThumb game={game} />
       <h3>
-        {onSelect && (
-          <input type="radio" name="game" value={game.id} checked={selected} onChange={() => onSelect(game.id)} aria-label={game.name} />
-        )}
-        {browsing ? (
-          <a className="game-card-title" href={gamePath(game)}>
-            {game.name}
-          </a>
-        ) : (
-          game.name
-        )}
+        <a className="game-card-title" href={gamePath(game)}>
+          {game.name}
+        </a>
         <AiBadge game={game} />
       </h3>
       <p className="muted small game-card-by">
-        <Creator game={game} link={browsing} />
+        <Creator game={game} />
         <VoteCount votes={game.votes} />
       </p>
       <p className="game-card-description">{game.description}</p>

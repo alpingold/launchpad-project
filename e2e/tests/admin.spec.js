@@ -1,4 +1,4 @@
-import { test, expect, chooseGame, gameCard } from './helpers.js';
+import { test, expect } from './helpers.js';
 import { ADMIN } from '../server/accounts.js';
 
 // The admin page for AI-made games (plan §11, A6). The test server's generator is a fake
@@ -41,6 +41,8 @@ async function buildWhenDesigned(page, version = 1) {
 }
 
 const detail = (page) => page.locator('.gen-detail');
+/** A game's card in the catalogue (/games), by its id. */
+const catalogCard = (page, id) => page.locator('.game-card', { has: page.locator(`a.game-card-title[href="/games/${id}"]`) });
 
 // Each test leaves the admin with no job running, so the next one may start its own.
 test.afterEach(async ({ playwright, baseURL }) => {
@@ -114,19 +116,20 @@ test('design → new draft → edit → build → read it → playtest with phon
   await expect(v1.locator('pre.gen-code').last()).toContainText('id="game-info"'); // the version's code, as text
   const gameId = (await detail(page).getByText(/^g-[a-z0-9]{8}$/).textContent()).trim();
 
-  // Playtest v1: in the admin's own game picker (as "-v1"), and nobody else's.
+  // Playtest v1: in the admin's own catalogue (as "-v1"), and nobody else's.
   await detail(page).getByRole('button', { name: 'Playtest v1' }).click();
   await expect(detail(page).getByText('Playtest (only you)')).toBeVisible();
   const otherHost = await people.host();
-  await expect(otherHost.page.locator(`.game-picker input[name="game"][value^="${gameId}"]`)).toHaveCount(0);
+  await otherHost.page.goto('/games');
+  await expect(otherHost.page.locator('.game-card').first()).toBeVisible();
+  await expect(catalogCard(otherHost.page, `${gameId}-v1`)).toHaveCount(0);
 
-  // The admin hosts a room and plays it with two phones.
+  // The admin hosts a room for it and plays it with two phones.
   const hostPage = await admin.context.newPage();
-  await hostPage.goto('/host');
+  await hostPage.goto(`/host?game=${gameId}-v1`);
   const code = await hostPage.locator('.room-code').textContent();
   const alex = await people.player(code, 'Alex');
   await people.player(code, 'Blake');
-  await chooseGame(hostPage, `${gameId}-v1`);
   await expect(hostPage.locator('.game-picker')).toContainText('AI-made · v1 playtest, only you');
   await hostPage.getByRole('button', { name: 'Start game' }).click();
   await expect(alex.page.frameLocator('iframe.game-frame').getByRole('button', { name: '3', exact: true })).toBeVisible(); // pick a number
@@ -135,11 +138,7 @@ test('design → new draft → edit → build → read it → playtest with phon
   await detail(page).getByRole('button', { name: 'Publish v1' }).click();
   await expect(detail(page).getByText('Everyone plays v1.')).toBeVisible();
   await otherHost.page.reload();
-  await expect(gameCard(otherHost.page, gameId).locator('h3')).toHaveText(/^Robot Majority\s*AI-made$/);
-  await otherHost.page.goto('/games');
-  await expect(otherHost.page.locator('.game-card', { hasText: 'Robot Majority' })).toContainText('AI-made');
-  await otherHost.page.goto('/host'); // back before the room's host grace period runs out
-  await expect(otherHost.page.locator('.room-code')).toHaveText(/^[A-Z]{4}$/);
+  await expect(catalogCard(otherHost.page, gameId).locator('h3')).toHaveText(/^Robot Majority\s*AI-made$/);
 
   // Ask for changes: version 2's plan first, then built, with the AI's list of changes and the changed lines.
   await detail(page).getByLabel('Ask for changes').fill('Rename it to Robot Majority 2, please');
@@ -160,29 +159,25 @@ test('design → new draft → edit → build → read it → playtest with phon
   // Playtest v2: the admin gets both versions; other hosts keep v1.
   await v2.getByRole('button', { name: 'Playtest v2' }).click();
   await expect(detail(page).getByText("You're playtesting v2.")).toBeVisible();
-  // (The admin's room is still playing v1: end it and start a fresh one to see the picker.)
-  hostPage.on('dialog', (dialog) => dialog.accept());
-  await hostPage.getByRole('button', { name: 'End room' }).click();
-  await hostPage.getByRole('button', { name: 'Start a new room' }).click();
-  await expect(hostPage.locator('.room-code')).toHaveText(/^[A-Z]{4}$/);
-  await expect(gameCard(hostPage, gameId).locator('h3')).toHaveText(/^Robot Majority\s*AI-made$/);
-  await expect(gameCard(hostPage, `${gameId}-v2`).locator('h3')).toHaveText(/^Robot Majority 2\s*AI-made · v2 playtest, only you$/);
+  await hostPage.goto('/games');
+  await expect(catalogCard(hostPage, gameId).locator('h3')).toHaveText(/^Robot Majority\s*AI-made$/);
+  await expect(catalogCard(hostPage, `${gameId}-v2`).locator('h3')).toHaveText(/^Robot Majority 2\s*AI-made · v2 playtest, only you$/);
   await otherHost.page.reload();
-  await expect(otherHost.page.locator('.room-code')).toHaveText(/^[A-Z]{4}$/);
-  await expect(otherHost.page.locator(`.game-picker input[name="game"][value^="${gameId}"]`)).toHaveCount(1);
+  await expect(catalogCard(otherHost.page, gameId)).toHaveCount(1);
+  await expect(catalogCard(otherHost.page, `${gameId}-v2`)).toHaveCount(0);
 
   // Publish v2: it replaces v1 for everyone.
   await detail(page).getByRole('button', { name: 'Publish v2' }).click();
   await expect(detail(page).getByText('Everyone plays v2.')).toBeVisible();
   await otherHost.page.reload();
-  await expect(gameCard(otherHost.page, gameId).locator('h3')).toHaveText(/^Robot Majority 2\s*AI-made$/);
+  await expect(catalogCard(otherHost.page, gameId).locator('h3')).toHaveText(/^Robot Majority 2\s*AI-made$/);
 
-  // Delete: gone from the list and from the game pickers.
+  // Delete: gone from the list and from the catalogue.
   await detail(page).getByRole('button', { name: 'Delete game' }).click();
   await expect(detail(page)).toHaveCount(0);
   await otherHost.page.reload();
-  await expect(otherHost.page.locator('.room-code')).toHaveText(/^[A-Z]{4}$/);
-  await expect(otherHost.page.locator(`.game-picker input[name="game"][value^="${gameId}"]`)).toHaveCount(0);
+  await expect(otherHost.page.locator('.game-card').first()).toBeVisible();
+  await expect(catalogCard(otherHost.page, gameId)).toHaveCount(0);
   await admin.context.close();
 });
 

@@ -231,31 +231,47 @@ body {
 }
 
 /* M5: game picker and status */
-/* §14: the lobby picks from the catalogue; the chosen game and Start stay on top. */
-.game-picker {
-  margin: 1.5rem 0;
-  text-align: left;
-}
-
-.game-picker-bar {
-  display: flex;
-  flex-wrap: wrap;
+/* §17: the lobby shows the game this room is for, with Start and Change game. */
+.chosen-game {
+  display: grid;
+  grid-template-columns: minmax(8rem, 14rem) 1fr;
+  gap: 1rem;
   align-items: center;
-  gap: 0.5rem 1rem;
-  margin-bottom: 1rem;
+  margin: 1.5rem 0;
+  padding: 1rem;
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 1rem;
 }
 
-.game-picker-bar h2 {
-  margin: 0;
-  flex: 1 1 12rem;
+.chosen-game .game-thumb {
+  border-radius: 0.5rem;
+}
+
+.chosen-game h2 {
+  margin: 0 0 0.3rem;
   font-size: 1.2rem;
 }
 
-.game-picker-bar p {
-  margin: 0;
+.chosen-game p {
+  margin: 0.2rem 0;
 }
 
-/* §14: the game catalogue (/games and the lobby) */
+.chosen-game-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+}
+
+@media (max-width: 30rem) {
+  .chosen-game {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* §14: the game catalogue (/games) */
 .games-page {
   max-width: 64rem;
 }
@@ -377,18 +393,6 @@ body {
   font-size: 1rem;
 }
 
-.game-card-pickable {
-  cursor: pointer;
-}
-
-.game-card-selected {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent);
-}
-
-.game-card-misfit {
-  opacity: 0.6;
-}
 
 /* During a game the big screen uses the whole width of the TV, not the narrow page column. */
 .host-game {

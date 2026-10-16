@@ -1,4 +1,4 @@
-import { test, expect, chooseGame } from './helpers.js';
+import { test, expect } from './helpers.js';
 
 // Dungeon Party (plan §13j): a turn-based co-op ASCII RPG. Alex is the Knight, Blake the Mage.
 test.setTimeout(60_000);
@@ -6,10 +6,9 @@ test.setTimeout(60_000);
 const frame = (page) => page.frameLocator('iframe.game-frame');
 
 test('vote on a door, then take turns: attack a chosen goblin, cast a fireball; a reload carries on', async ({ people }) => {
-  const host = await people.host();
+  const host = await people.host({ game: 'dungeon-party' });
   const alex = await people.player(host.code, 'Alex');
   const blake = await people.player(host.code, 'Blake');
-  await chooseGame(host.page, 'dungeon-party');
   await host.page.getByRole('button', { name: 'Start game' }).click();
 
   await expect(frame(alex.page).getByText('Alex the Knight')).toBeVisible();

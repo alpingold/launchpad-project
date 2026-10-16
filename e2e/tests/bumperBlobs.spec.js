@@ -11,7 +11,7 @@ test('steer with the joystick, fall off the ice, lose three rounds; the last blo
   const host = await people.host();
   const alex = await people.player(host.code, 'Alex');
   const blake = await people.player(host.code, 'Blake');
-  await expect(host.page.getByRole('radio', { name: 'Bumper Blobs' })).toBeChecked();
+  await expect(host.page.getByRole('heading', { name: 'Next game: Bumper Blobs' })).toBeVisible();
   await host.page.getByRole('button', { name: 'Start game' }).click();
 
   // Each phone is a controller in its own colour; the big screen draws the arena.

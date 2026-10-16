@@ -1,4 +1,4 @@
-import { test, expect, chooseGame } from './helpers.js';
+import { test, expect } from './helpers.js';
 
 // The generator's starter templates (generator/templates/, plan §13i): each one is a tiny
 // working game. Play each a little (or all the way through) with one phone.
@@ -7,9 +7,8 @@ test.setTimeout(60_000);
 const frame = (page) => page.frameLocator('iframe.game-frame');
 
 async function start(people, gameId) {
-  const host = await people.host();
+  const host = await people.host({ game: gameId });
   const alex = await people.player(host.code, 'Alex');
-  await chooseGame(host.page, gameId);
   await host.page.getByRole('button', { name: 'Start game' }).click();
   return { host, alex };
 }

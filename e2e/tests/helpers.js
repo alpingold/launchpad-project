@@ -20,8 +20,8 @@ export const test = base.extend({
     }
 
     const people = {
-      /** Opens the host screen and waits for a room code. */
-      async host() {
+      /** Opens the host screen for a game (a room is always for one game: plan §17) and waits for a room code. */
+      async host({ game = 'bumper-blobs' } = {}) {
         const { context, page } = await newPage();
         // Hosting needs an account. context.request shares this browser context's cookies,
         // so signing up here logs the page in too.
@@ -29,7 +29,7 @@ export const test = base.extend({
           data: { username: uniqueUsername(), password: 'test-password-123' },
         });
         expect(res.status()).toBe(201);
-        await page.goto('/host');
+        await page.goto(`/host?game=${encodeURIComponent(game)}`);
         const codeEl = page.locator('.room-code');
         await expect(codeEl).toHaveText(/^[A-Z]{4}$/);
         return { context, page, code: await codeEl.textContent() };
@@ -115,12 +115,3 @@ export function hostPlayers(hostPage) {
   return hostPage.locator('.player-list li');
 }
 
-/** Chooses a game in the host lobby's catalogue (plan §14), by its id. */
-export async function chooseGame(hostPage, gameId) {
-  await hostPage.locator(`.game-picker input[name="game"][value="${gameId}"]`).check();
-}
-
-/** A game's card in the host lobby's catalogue, by its id. */
-export function gameCard(hostPage, gameId) {
-  return hostPage.locator('.game-picker .game-card', { has: hostPage.locator(`input[name="game"][value="${gameId}"]`) });
-}

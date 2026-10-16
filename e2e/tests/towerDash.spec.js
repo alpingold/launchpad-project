@@ -1,4 +1,4 @@
-import { test, expect, chooseGame } from './helpers.js';
+import { test, expect } from './helpers.js';
 
 // Tower Dash (plan §13j): an ASCII platformer. Level 1 is a flat run, so holding ◀▶'s
 // right button is enough to reach the exit.
@@ -7,9 +7,8 @@ test.setTimeout(60_000);
 const frame = (page) => page.frameLocator('iframe.game-frame');
 
 test('hold right to run to the exit; the phone counts down the distance and says who finished', async ({ people }) => {
-  const host = await people.host();
+  const host = await people.host({ game: 'tower-dash' });
   const alex = await people.player(host.code, 'Alex');
-  await chooseGame(host.page, 'tower-dash');
   await host.page.getByRole('button', { name: 'Start game' }).click();
 
   await expect(frame(host.page).getByRole('heading', { name: 'Level 1 of 3: Warm-up run' })).toBeVisible();

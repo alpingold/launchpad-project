@@ -348,7 +348,7 @@ function GameDetail({ summary, info, onChanged, onDeleted }) {
       {summary.progress && <Progress progress={summary.progress} />}
       {playtest !== null && (
         <p className="banner" role="status">
-          Only you can start v{playtest}: it's in your game picker on the <a href="/host">host page</a>
+          Only you can start v{playtest}: <a href={`/host?game=${encodeURIComponent(`${summary.id}-v${playtest}`)}`}>host it</a>
           {published !== null && <>, next to v{published}, which everyone else keeps playing</>}. Try it with real
           phones, then {info.isAdmin ? 'publish it' : 'ask the site admin if it can be published for everyone'}.
         </p>

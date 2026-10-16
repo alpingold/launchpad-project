@@ -1424,6 +1424,19 @@ minting needs the admin's Purdue login on the server.)
   `PUT /api/account/profile { bio }`.
 - Official games also ship `phone.jpg` (the checker's phone screenshot).
 
+## 17. A room is for one game (decided and built 2026-10-16)
+
+**Decided with the user:** you pick a game in the catalogue *before* opening a room, instead
+of the lobby loading the whole catalogue. The lobby shows only that game (picture, players,
+length) with Start game and **Change game**, which warns that it ends the room (everyone has to
+join the new one), ends it, and opens the catalogue.
+
+**How:** `/host?game=<id>` (from "Host this game"); `/host` without a game goes to `/games`.
+The page loads just that game (`GET /api/games/:id`) before opening the room, so a game that
+isn't there (or isn't yours to playtest) never gets a room. The server didn't change: a room
+was never tied to a game; the page keeps the choice in its address, so a reload keeps it.
+After logging in without a `next`, you land on `/games`. The lobby's card picker is gone.
+
 ---
 
 ## Verification (how to confirm the plan worked once built)

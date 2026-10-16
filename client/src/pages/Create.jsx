@@ -32,7 +32,7 @@ export default function Create() {
         <p className="muted">
           Describe a game and the AI designs it: read the design, ask for changes, then press Build it. The AI writes the
           game and tests it in a hidden browser. It runs on <a href="/account">your own GenAI Studio key</a>, one game at a
-          time. Your games are only for you: start them from the <a href="/host">host page</a>. The site admin decides
+          time. Your games are only for you: host them from their page in the <a href="/games">catalogue</a>. The site admin decides
           which ones everyone can play.
         </p>
       }

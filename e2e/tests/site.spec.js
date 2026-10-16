@@ -1,5 +1,5 @@
 import { devices } from '@playwright/test';
-import { test, expect, chooseGame } from './helpers.js';
+import { test, expect } from './helpers.js';
 
 // Getting around (plan §16): the links on every page, game pages, votes, creators editing
 // their game's page, and profiles. The test server fakes GenAI Studio ("sk-good…" keys work)
@@ -17,12 +17,11 @@ test('every page has Games, Docs and Sign up at the top; Account once logged in;
   await expect(page.getByRole('heading', { name: 'Create a host account' })).toBeVisible();
   await expect(page).toHaveURL('/login?mode=signup&next=%2Fkit');
 
-  const host = await people.host();
+  const host = await people.host({ game: 'probe' });
   const nav = host.page.getByRole('navigation', { name: 'Pages' });
   await expect(nav.getByRole('link')).toHaveText(['Games', 'Docs', 'Account']);
   // Once a game starts, the links step aside (⚙ stays).
   await people.player(host.code, 'Alex');
-  await chooseGame(host.page, 'probe');
   await host.page.getByRole('button', { name: 'Start game' }).click();
   await expect(host.page.locator('iframe.game-frame')).toBeVisible();
   await expect(nav).toBeHidden();

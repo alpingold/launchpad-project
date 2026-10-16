@@ -57,11 +57,11 @@ export default function Home() {
 
         <div className="card">
           <h2>Host a game</h2>
-          <p className="muted">Open a room on a laptop or TV everyone can see.</p>
+          <p className="muted">Pick a game, then open a room on a laptop or TV everyone can see.</p>
           {user ? (
             <>
-              <a className="primary-button" href="/host">
-                Host a game
+              <a className="primary-button" href="/games">
+                Pick a game
               </a>
               <p className="muted small">
                 Logged in as {user.username} · <a href="/create">Make a game with AI</a> · <a href="/account">Account</a> ·{' '}
@@ -84,7 +84,7 @@ export default function Home() {
             </>
           ) : (
             <>
-              <a className="primary-button" href="/login?next=/host">
+              <a className="primary-button" href="/login?next=/games">
                 Log in to host
               </a>
               <p className="muted small">Hosts need a free account. Players don't.</p>
@@ -97,14 +97,14 @@ export default function Home() {
         <h2 id="how-it-works">How it works</h2>
         <ol className="steps">
           <li>
-            <strong>The host opens a room</strong> on a big screen. It shows a 4-letter room code.
+            <strong>The host picks a game and opens a room</strong> on a big screen. It shows a 4-letter room code.
           </li>
           <li>
             <strong>Everyone else joins from their phone</strong> at <span className="mono">{window.location.host}/join</span>{' '}
             with the code and a name.
           </li>
           <li>
-            <strong>The host picks a game</strong>, and your phone becomes the controller.
+            <strong>The host starts the game</strong>, and your phone becomes the controller.
           </li>
         </ol>
       </section>

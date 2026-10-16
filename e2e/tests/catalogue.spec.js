@@ -56,23 +56,29 @@ test('"Host this game": logged out it goes through the login, then the lobby has
   await page.getByRole('link', { name: 'Host Tower Dash' }).click();
   await expect(page).toHaveURL('/host?game=tower-dash');
   await expect(page.getByRole('heading', { name: 'Next game: Tower Dash' })).toBeVisible();
-  await expect(page.getByRole('radio', { name: 'Tower Dash' })).toBeChecked();
 });
 
-roomTest('in the lobby, clicking a card chooses it; games that do not fit the room are dimmed', async ({ people }) => {
-  const host = await people.host();
-  await people.player(host.code, 'Alex');
-  await host.page.locator('.game-card', { hasText: 'Dungeon Party' }).click();
+roomTest('the lobby shows only its game; Change game warns, ends the room, and opens the catalogue', async ({ people }) => {
+  const host = await people.host({ game: 'dungeon-party' });
+  const alex = await people.player(host.code, 'Alex');
   await expect(host.page.getByRole('heading', { name: 'Next game: Dungeon Party' })).toBeVisible();
+  await expect(host.page.locator('.game-card')).toHaveCount(0); // no catalogue in the lobby
   await expect(host.page.getByRole('button', { name: 'Start game' })).toBeEnabled();
-  // Bumper Blobs needs 2: dimmed, and choosing it disables Start.
-  const blobs = host.page.locator('.game-card', { hasText: 'Bumper Blobs' });
-  await expect(blobs).toHaveClass(/game-card-misfit/);
-  await host.page.getByRole('radio', { name: 'Bumper Blobs' }).check();
-  await expect(host.page.getByText('Needs 2–12 players.')).toBeVisible();
-  await expect(host.page.getByRole('button', { name: 'Start game' })).toBeDisabled();
-  // The room's size is offered as a filter.
-  await expect(host.page.getByRole('combobox', { name: 'Players' }).locator('option', { hasText: '1 player (this room)' })).toHaveCount(1);
+
+  const asked = new Promise((resolve) => host.page.once('dialog', (d) => resolve(d.message())));
+  await host.page.getByRole('button', { name: 'Change game' }).click(); // (people's pages accept dialogs)
+  expect(await asked).toBe('Change the game? This ends this room. Everyone will have to join the new room with its new code.');
+  await expect(host.page).toHaveURL('/games');
+  await expect(alex.page.getByText('The host ended the room.')).toBeVisible();
+});
+
+roomTest("/host without a game goes to the catalogue; a game you can't see isn't hosted", async ({ people }) => {
+  const host = await people.host();
+  await host.page.goto('/host');
+  await expect(host.page).toHaveURL('/games');
+  await host.page.goto('/host?game=no-such-game');
+  await expect(host.page.getByRole('heading', { name: "That game isn't available" })).toBeVisible();
+  await expect(host.page.locator('.room-code')).toHaveCount(0);
 });
 
 test('/games fits a phone screen without sideways scrolling', async ({ browser }) => {

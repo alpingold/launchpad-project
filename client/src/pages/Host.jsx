@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { connectSocket } from '../net/socket.js';
 import { loadSession, saveSession, clearSession } from '../net/storage.js';
 import PlayerList from '../components/PlayerList.jsx';
-import GamePicker from '../components/GamePicker.jsx';
+import ChosenGame from '../components/ChosenGame.jsx';
 import GameFrame from '../game/GameFrame.jsx';
 import LastGameResults from '../game/LastGameResults.jsx';
 import { useGameMessages } from '../game/useGameMessages.js';
@@ -22,32 +22,65 @@ const ENDED_TEXT = {
 // Back to this page after logging in, with ?game=… if the /games page sent us.
 const LOGIN_URL = `/login?next=${encodeURIComponent(`/host${window.location.search}`)}`;
 
+/** Where you pick a game (plan §17): a room is always opened for one game. */
+const CATALOGUE_URL = '/games';
+
 /**
- * The big-screen page. Hosting needs an account (M7): check the login first, and only then
- * connect. Logged-out visitors are sent to the login page and come back here afterwards.
+ * The big-screen page, for the game in ?game= (chosen in the catalogue first: plan §17).
+ * Hosting needs an account (M7): check the login first, then that the game exists, and only
+ * then connect. Logged-out visitors are sent to the login page and come back here afterwards.
  */
 export default function Host() {
   usePageTitle('Host');
+  const gameId = new URLSearchParams(window.location.search).get('game');
   const user = useCurrentUser();
+  const [game, setGame] = useState(undefined); // undefined: loading; null: no such game (for you)
 
   useEffect(() => {
-    if (user === null) window.location.replace(LOGIN_URL);
-  }, [user]);
+    if (!gameId) window.location.replace(CATALOGUE_URL);
+    else if (user === null) window.location.replace(LOGIN_URL);
+  }, [gameId, user]);
 
-  if (!user) {
+  useEffect(() => {
+    if (!gameId || !user) return;
+    fetch(`/api/games/${encodeURIComponent(gameId)}`)
+      .then((res) => (res.ok ? res.json() : { game: null }))
+      .then((data) => setGame(data.game))
+      .catch(() => setGame(null));
+  }, [gameId, user]);
+
+  if (!gameId) {
     return (
       <main className="page">
-        <h1>Checking your login…</h1>
+        <h1>Pick a game first…</h1>
       </main>
     );
   }
-  return <HostRoom user={user} />;
+  if (!user || game === undefined) {
+    return (
+      <main className="page">
+        <h1>{user ? 'Getting the game ready…' : 'Checking your login…'}</h1>
+      </main>
+    );
+  }
+  if (game === null) {
+    return (
+      <main className="page">
+        <h1>That game isn't available</h1>
+        <p>It may have been taken down, or it's someone else's game in testing.</p>
+        <a className="primary-button" href={CATALOGUE_URL}>
+          Pick a game
+        </a>
+      </main>
+    );
+  }
+  return <HostRoom user={user} chosenGame={game} />;
 }
 
 // Creates a room on first load; after a refresh or a dropped connection it reclaims the
 // same room with the saved host token (host:resume). The server also gives a logged-in
 // host their existing room back if they open /host again in another tab.
-function HostRoom({ user }) {
+function HostRoom({ user, chosenGame }) {
   const [connected, setConnected] = useState(false);
   const [room, setRoom] = useState(null); // latest room:state
   const [ended, setEnded] = useState(null); // why the room ended, or null while it's alive
@@ -56,9 +89,15 @@ function HostRoom({ user }) {
   const [game, handleGameMessage, runRef] = useGameMessages();
   const socketRef = useRef(null);
   const endedRef = useRef(false); // readable inside socket callbacks without re-subscribing
+  const changingGameRef = useRef(false); // "Change game": once the room has closed, go to the catalogue
 
   useEffect(() => {
     function end(reason) {
+      if (changingGameRef.current) {
+        clearSession(SESSION_KEY);
+        window.location.assign(CATALOGUE_URL);
+        return;
+      }
       endedRef.current = true;
       clearSession(SESSION_KEY);
       setEnded(reason);
@@ -119,8 +158,21 @@ function HostRoom({ user }) {
     if (window.confirm('End the room for everyone?')) socketRef.current.send({ type: 'room:leave' });
   }
 
-  function startGame(gameId) {
-    socketRef.current.send({ type: 'host:start_game', gameId });
+  function startGame() {
+    socketRef.current.send({ type: 'host:start_game', gameId: chosenGame.id });
+  }
+
+  /** Another game means another room (plan §17): this one ends, for everyone. */
+  function changeGame() {
+    const who = room.players.length > 0 ? ' Everyone will have to join the new room with its new code.' : '';
+    if (!window.confirm(`Change the game? This ends this room.${who}`)) return;
+    changingGameRef.current = true;
+    socketRef.current.send({ type: 'room:leave' });
+    // The server answers with room:closed (see end()); if that never comes, go anyway.
+    setTimeout(() => {
+      clearSession(SESSION_KEY);
+      window.location.assign(CATALOGUE_URL);
+    }, 2000);
   }
 
   function stopGame() {
@@ -222,7 +274,7 @@ function HostRoom({ user }) {
         </p>
       )}
       <LastGameResults results={game.lastResults} players={room.players} />
-      <GamePicker playerCount={room.players.length} onStart={startGame} disabled={!connected} initialGameId={new URLSearchParams(window.location.search).get('game')} />
+      <ChosenGame game={chosenGame} playerCount={room.players.length} onStart={startGame} onChange={changeGame} disabled={!connected} />
       {endRoomButton}
       <p className="muted small">Hosting as {user.username}</p>
     </main>

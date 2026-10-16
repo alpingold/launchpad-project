@@ -1,22 +1,17 @@
 import { useState } from 'react';
 import GameCard from './GameCard.jsx';
-import { NO_FILTERS, filterGames, fits, tagsInUse } from './catalogue.js';
+import { NO_FILTERS, filterGames, tagsInUse } from './catalogue.js';
 
 const MAX_PLAYERS = 12;
 
 /**
  * The game catalogue (plan §14): search, tag chips, a player count and a sort order above
- * a grid of game cards. Used by the /games page (browse, each card with an action) and by
- * the host lobby (pick one: pass `selectedId` and `onSelect`).
+ * a grid of game cards, each with an action (e.g. "Host this game"). The /games page.
  *
  * @param {{ games: import('../net/useGames.js').GameInfo[],
- *   roomPlayers?: number,
- *   selectedId?: string | null, onSelect?: (id: string) => void,
  *   action?: (game: import('../net/useGames.js').GameInfo) => import('react').ReactNode }} props
- *   roomPlayers: in the lobby, how many people are in the room (offered as a filter, and
- *   cards that don't fit it are dimmed)
  */
-export default function GameCatalogue({ games, roomPlayers, selectedId = null, onSelect, action }) {
+export default function GameCatalogue({ games, action }) {
   const [filters, setFilters] = useState(NO_FILTERS);
   const set = (change) => setFilters((f) => ({ ...f, ...change }));
   const shown = filterGames(games, filters);
@@ -39,7 +34,7 @@ export default function GameCatalogue({ games, roomPlayers, selectedId = null, o
             <option value="">Any number of players</option>
             {Array.from({ length: MAX_PLAYERS }, (_, i) => i + 1).map((n) => (
               <option key={n} value={n}>
-                {n === roomPlayers ? `${n} player${n === 1 ? '' : 's'} (this room)` : `${n} player${n === 1 ? '' : 's'}`}
+                {`${n} player${n === 1 ? '' : 's'}`}
               </option>
             ))}
           </select>
@@ -86,16 +81,9 @@ export default function GameCatalogue({ games, roomPlayers, selectedId = null, o
       {shown.length === 0 ? (
         <p className="muted">No games match.</p>
       ) : (
-        <ul className="game-cards" role={onSelect ? 'radiogroup' : undefined} aria-label={onSelect ? 'Game' : undefined}>
+        <ul className="game-cards">
           {shown.map((game) => (
-            <GameCard
-              key={game.id}
-              game={game}
-              selected={game.id === selectedId}
-              onSelect={onSelect}
-              misfit={roomPlayers !== undefined && !fits(game, roomPlayers)}
-              action={action?.(game)}
-            />
+            <GameCard key={game.id} game={game} action={action?.(game)} />
           ))}
         </ul>
       )}

@@ -49,7 +49,7 @@ export function useCurrentUser() {
  * otherwise a link like /login?next=https://evil.example would send people to another
  * site right after they typed their password ("open redirect").
  */
-export function safeNextPath(raw, fallback = '/host') {
+export function safeNextPath(raw, fallback = '/games') {
   if (typeof raw !== 'string' || !raw.startsWith('/') || raw.startsWith('//') || raw.startsWith('/\\')) {
     return fallback;
   }

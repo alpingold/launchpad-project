@@ -128,7 +128,6 @@ test('host "End room" closes it for everyone', async ({ people }) => {
 test('host sees the game picker; Start is disabled until enough players join', async ({ people }) => {
   const host = await people.host();
   await expect(host.page.getByRole('heading', { name: 'Next game: Bumper Blobs' })).toBeVisible();
-  await expect(host.page.getByRole('radio', { name: 'Bumper Blobs' })).toBeChecked();
   await expect(host.page.getByText('Needs 2–12 players.')).toBeVisible();
   await expect(host.page.getByRole('button', { name: 'Start game' })).toBeDisabled();
 

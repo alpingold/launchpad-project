@@ -7,20 +7,22 @@ async function fillAndSubmit(page, username, password, button) {
   await page.getByRole('button', { name: button }).click();
 }
 
-test('visiting /host logged out sends you to the login page', async ({ page }) => {
+test('visiting /host logged out sends you to the login page; without a game, to the catalogue first', async ({ page }) => {
   await page.goto('/host');
-  await expect(page).toHaveURL('/login?next=%2Fhost');
+  await expect(page).toHaveURL('/games');
+  await page.goto('/host?game=tower-dash');
+  await expect(page).toHaveURL('/login?next=%2Fhost%3Fgame%3Dtower-dash');
   await expect(page.getByRole('heading', { name: 'Log in to host' })).toBeVisible();
 });
 
 test('create an account, land on the host page, log out, log back in', async ({ page }) => {
   const username = uniqueUsername();
-  await page.goto('/host');
+  await page.goto('/host?game=tower-dash');
   await page.getByRole('button', { name: 'Create one' }).click();
   await expect(page.getByRole('heading', { name: 'Create a host account' })).toBeVisible();
   await fillAndSubmit(page, username, 'a good password', 'Create account');
 
-  await expect(page).toHaveURL('/host');
+  await expect(page).toHaveURL('/host?game=tower-dash');
   await expect(page.locator('.room-code')).toHaveText(/^[A-Z]{4}$/);
   await expect(page.getByText(`Hosting as ${username}`)).toBeVisible();
 
@@ -33,7 +35,7 @@ test('create an account, land on the host page, log out, log back in', async ({ 
   // Log back in.
   await page.getByRole('link', { name: 'Log in to host' }).click();
   await fillAndSubmit(page, username, 'a good password', 'Log in');
-  await expect(page).toHaveURL('/host');
+  await expect(page).toHaveURL('/games'); // pick a game to host (plan §17)
 });
 
 test('wrong password shows a message and stays on the page', async ({ page, request }) => {
@@ -57,13 +59,13 @@ test('sign-up problems are explained', async ({ page }) => {
 test('?next= only redirects within the site (no open redirect)', async ({ browser }) => {
   for (const next of ['https://evil.example', '//evil.example', '/\\evil.example']) {
     // A fresh browser context each time: reusing one page raced with the previous
-    // iteration's /host page, which can still be redirecting when the next goto starts.
+    // iteration's page, which can still be redirecting when the next goto starts.
     const context = await browser.newContext();
     const page = await context.newPage();
     await page.goto(`/login?next=${encodeURIComponent(next)}`);
     await page.getByRole('button', { name: 'Create one' }).click();
     await fillAndSubmit(page, uniqueUsername(), 'a good password', 'Create account');
-    await expect(page).toHaveURL('/host'); // the safe default, not the other site
+    await expect(page).toHaveURL('/games'); // the safe default, not the other site
     await context.close();
   }
 });
@@ -72,7 +74,7 @@ test('the login cookie is HttpOnly: page JavaScript cannot read it', async ({ pa
   await page.goto('/login');
   await page.getByRole('button', { name: 'Create one' }).click();
   await fillAndSubmit(page, uniqueUsername(), 'a good password', 'Create account');
-  await expect(page).toHaveURL('/host');
+  await expect(page).toHaveURL('/games');
   expect(await page.evaluate(() => document.cookie)).not.toContain('sid=');
   const cookies = await page.context().cookies();
   const sid = cookies.find((c) => c.name === 'sid');
@@ -83,12 +85,12 @@ test('the login cookie is HttpOnly: page JavaScript cannot read it', async ({ pa
 test('opening /host in a second tab gives the same room back', async ({ context }) => {
   await context.request.post('/api/signup', { data: { username: uniqueUsername(), password: 'a good password' } });
   const tab1 = await context.newPage();
-  await tab1.goto('/host');
+  await tab1.goto('/host?game=tower-dash');
   await expect(tab1.locator('.room-code')).toHaveText(/^[A-Z]{4}$/); // wait for the room first
   const code = await tab1.locator('.room-code').textContent();
 
   const tab2 = await context.newPage();
-  await tab2.goto('/host');
+  await tab2.goto('/host?game=tower-dash');
   await expect(tab2.locator('.room-code')).toHaveText(code);
   await expect(tab1.getByText('This room is now open in another tab or window.')).toBeVisible();
 });

@@ -1,4 +1,4 @@
-import { test, expect, chooseGame } from './helpers.js';
+import { test, expect } from './helpers.js';
 
 // Frame games (plan §13): each game is its own page in a sandboxed iframe. The big screen's
 // frame is the referee; phones' frames are controllers; the server only relays events.
@@ -8,9 +8,8 @@ const frame = (page) => page.frameLocator('iframe.game-frame');
 
 /** A room with the host and one phone, playing Probe. */
 async function startProbe(people, { controllable = false } = {}) {
-  const host = await people.host();
+  const host = await people.host({ game: 'probe' });
   const alex = await people.player(host.code, 'Alex', { controllable });
-  await chooseGame(host.page, 'probe');
   await host.page.getByRole('button', { name: 'Start game' }).click();
   await expect(frame(host.page).getByRole('heading', { name: 'Big screen' })).toBeVisible();
   await expect(frame(alex.page).getByRole('heading', { name: 'Phone Alex' })).toBeVisible();
@@ -42,7 +41,7 @@ test('the walls hold: no cookies, storage, network, eval or way into the page, o
     // Sorted: the async tries finish in any order.
     expect((await walls.allTextContents()).sort()).toEqual(expected.map((name) => `${name}: blocked`).sort());
   }
-  await expect(host.page).toHaveURL('/host'); // still on our page
+  await expect(host.page).toHaveURL('/host?game=probe'); // still on our page
   await expect(alex.page).toHaveURL('/join');
 });
 
@@ -71,7 +70,7 @@ test('the host can stop a game; a big screen that reloads before its game saved 
   await expect(alex.page.getByRole('heading', { name: "You're in!" })).toBeVisible();
   await expect(alex.page.getByText('The host stopped the game.')).toBeVisible();
 
-  await chooseGame(host.page, 'probe'); // the picker starts over
+  // The room is still for Probe: start it again.
   await host.page.getByRole('button', { name: 'Start game' }).click();
   await expect(frame(alex.page).getByRole('heading', { name: 'Phone Alex' })).toBeVisible();
   await host.page.reload(); // Probe saves after each event, and there hasn't been one

@@ -33,7 +33,7 @@ test('joining with an empty code box just opens the join page', async ({ page })
 test('logged out, the host card asks you to log in', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('link', { name: 'Log in to host' }).click();
-  await expect(page).toHaveURL('/login?next=/host');
+  await expect(page).toHaveURL('/login?next=/games'); // pick a game first (plan §17)
 });
 
 test('unknown addresses show "Page not found" with a way home', async ({ page }) => {
