@@ -241,7 +241,7 @@ test('plan job: a change gets a plan with the plan headings', async () => {
   assert.match(model.calls[0][0].content, /Writing a change plan/);
 });
 
-test('build job: write → check → fix until it passes; the report goes back to the model', async () => {
+test('build job (edit mode off): write → check → fix until it passes; the report goes back to the model', async () => {
   const broken = GAME.replace('party.ready(', 'fetch("/x"); party.ready(');
   const model = fakeModel([fenced('html', broken), 'no code, sorry', fenced('html', GAME)]);
   let checks = 0;
@@ -251,17 +251,19 @@ test('build job: write → check → fix until it passes; the report goes back t
       ? { ok: false, problems: [{ rule: 'network', line: 12, message: '`fetch` is blocked.', code: 'fetch("/x");', screen: 'big screen' }], warnings: [] }
       : passing();
   };
-  const result = await runJob({ step: 'build', idea: 'A racing platformer for friends', design: DESIGN }, { chatFn: model.chatFn, check });
+  const result = await runJob({ step: 'build', idea: 'A racing platformer for friends', design: DESIGN, edits: false }, { chatFn: model.chatFn, check });
   assert.equal(result.ok, true);
   assert.equal(checks, 2);
+  assert.deepEqual(result.attempts.map((a) => a.mode), ['whole', 'whole', 'whole']);
   assert.deepEqual(result.attempts.map((a) => a.ok), [false, false, true]);
   // Every attempt keeps its code and report (for the version's history).
   assert.match(result.attempts[0].source, /fetch\("\/x"\)/);
   assert.equal(result.attempts[0].report.problems[0].rule, 'network');
   assert.deepEqual([result.attempts[1].source, result.attempts[1].report.problems], [null, ['The reply had no game file.']]);
-  // Each request carries the prompt plus only the latest attempt (the context is 65K tokens).
-  assert.deepEqual(model.calls.map((c) => c.length), [2, 4, 4]);
-  assert.equal(model.calls[2][2].content, 'no code, sorry', 'the second attempt, not the first');
+  // Each request carries the prompt plus only the latest file (the context is 65K tokens);
+  // a reply with no code is answered in the same conversation, so the problems stay in it.
+  assert.deepEqual(model.calls.map((c) => c.length), [2, 4, 6]);
+  assert.equal(model.calls[2][4].content, 'no code, sorry');
   const fix = model.calls[1].at(-1).content;
   assert.match(fix, /line 12: `fetch` is blocked\.\n {4}code: fetch\("\/x"\); \(on the big screen\)/);
   assert.match(model.calls[2].at(-1).content, /no game file/);
@@ -297,7 +299,9 @@ test('bad jobs are refused before any model call', async () => {
     [{ step: 'build', idea: 'A long enough idea' }, /needs the approved design/],
     [{ step: 'dance', idea: 'A long enough idea' }, /must be "design" or "build"/],
     [{ step: 'design', idea: 'A long enough idea', change: { request: 'Make it better please', source: '' } }, /current game file/],
-    [{ step: 'design', idea: 'A long enough idea', change: { request: 'Make it better please', source: 'x'.repeat(100_001) } }, /too big for the AI to change \(100K characters; at most 100K/],
+    [{ step: 'design', idea: 'A long enough idea', change: { request: 'Make it better please', source: 'x'.repeat(110_000) } }, /too big for the AI to change \(107 KB; at most 100 KB fits/],
+    [{ step: 'build', idea: 'A long enough idea', edits: false, change: { request: 'Make it better please', source: 'x'.repeat(70_000) } }, /\(68 KB; at most 60 KB fits/],
+    [{ step: 'build', idea: 'A long enough idea', design: 'd', edits: 'yes' }, /edits must be true or false/],
     [{ step: 'design', idea: 'A long enough idea', redraft: { draft: 'x' } }, /last draft/],
     [{ step: 'design', idea: 'A long enough idea', examples: 'no' }, /examples must be true or false/],
   ];

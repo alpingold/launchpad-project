@@ -14,29 +14,35 @@
 //         in a headless browser) → if it fails, show the model the problems and ask again.
 //   { "step": "build", ..., "change": { ..., "plan": "<the approved plan>" | null } }
 //       → the changed game file (plan null: a small fix with no plan).
+//   Builds use EDIT MODE (plan §23): once there's a file, the model sends changes to it
+//   (edits.js), not the whole file again. "edits": false turns it off.
 //
 // Progress lines go to stderr: "STEP ..." adds a step; "STEP~ ..." replaces the last one
 // (how far a reply has streamed in, every ~15 s). The result is one JSON line on stdout:
 //   design: { ok, model, design, attempts, error? }
 //   build:  { ok, model, source, report, changelog, attempts, error? }
 //           Each build attempt keeps its code and check report (without screenshots, which
-//           only the final report has), so a version's history can be read and studied later.
+//           only the final report has), so a version's history can be read and studied later,
+//           and its mode: "whole" (the model wrote the file) or "edits" (plan §23).
 
 import { pathToFileURL } from 'node:url';
 import { chat } from './llm.js';
 import { extractGameFile, extractDesign, extractChangelog, missingHeadings } from './extract.js';
+import { applyReply, hasEdits, withoutEdits } from './edits.js';
 import {
   designMessages,
   planMessages,
   buildMessages,
   changeBuildMessages,
   fixMessage,
+  editsFailedMessage,
   missingHeadingsMessage,
   NO_CODE_MESSAGE,
   DESIGN_HEADINGS,
   PLAN_HEADINGS,
   MAX_IDEA_LENGTH,
   MAX_SOURCE_LENGTH,
+  MAX_WHOLE_FILE_LENGTH,
   MAX_GAME_BYTES,
 } from './prompt.js';
 import { DEFAULT_MODEL, isAllowedModel } from './models.js';
@@ -56,11 +62,13 @@ import { describeProblem } from '../../server/src/games/frameGame.js';
  * @property {boolean} [examples]         design: add the example designs (off by default)
  * @property {boolean} [exampleGame]      build: add the example game's design and code (off by default, plan §13o)
  * @property {number} [maxAttempts]       build
+ * @property {boolean} [edits]            build: false turns edit mode off (on by default, plan §23)
  */
 
 /**
- * One build attempt, as the result lists it.
- * @typedef {{ attempt: number, ok: boolean, problems: number, seconds: number,
+ * One build attempt, as the result lists it. mode: how the model answered (plan §23). An
+ * "edits" attempt whose edits didn't fit the file has no source; its report lists why.
+ * @typedef {{ attempt: number, mode?: 'whole' | 'edits', ok: boolean, problems: number, seconds: number,
  *   usage: { prompt_tokens?: number, completion_tokens?: number } | null,
  *   source?: string | null, report?: import('../../server/src/games/frameGame.js').CheckReport }} AttemptResult
  */
@@ -106,8 +114,10 @@ export async function runJob(job, deps = {}) {
   if (change !== undefined) {
     if (!isText(change?.request, 10)) return fail(`the change request must be 10–${MAX_IDEA_LENGTH} characters`);
     if (typeof change.source !== 'string' || change.source.length === 0) return fail('a change needs the current game file');
-    if (change.source.length > MAX_SOURCE_LENGTH) {
-      return fail(`the game is too big for the AI to change (${Math.round(change.source.length / 1000)}K characters; at most ${MAX_SOURCE_LENGTH / 1000}K fit in the model's context)`);
+    // Without edit mode, the old game and the new one must both fit (prompt.js explains the numbers).
+    const limit = job.edits === false ? MAX_WHOLE_FILE_LENGTH : MAX_SOURCE_LENGTH;
+    if (change.source.length > limit) {
+      return fail(`the game is too big for the AI to change (${Math.round(change.source.length / 1024)} KB; at most ${limit / 1024} KB fits in the model's context)`);
     }
   }
   if (redraft !== undefined && (typeof redraft?.draft !== 'string' || !isText(redraft.feedback, 3))) {
@@ -115,6 +125,7 @@ export async function runJob(job, deps = {}) {
   }
   if (job.examples !== undefined && typeof job.examples !== 'boolean') return fail('examples must be true or false');
   if (job.exampleGame !== undefined && typeof job.exampleGame !== 'boolean') return fail('exampleGame must be true or false');
+  if (job.edits !== undefined && typeof job.edits !== 'boolean') return fail('edits must be true or false');
 
   if (job.step === 'design') return design(job, model, deps);
   if (job.step === 'build') {
@@ -167,6 +178,14 @@ async function design(job, model, { chatFn = chat, onStep = () => {} }) {
 
 /**
  * Step 2: the game file, through the check → fix loop.
+ *
+ * Edit mode (plan §23): once there is a file (a change's old game, or a first build's
+ * failed attempt), the model replies with EDITS to it (edits.js), not the whole file: much
+ * shorter replies, room for bigger games, and no chance to garble code it wasn't asked to
+ * touch. If its edits can't be applied twice in a row, it's asked for the whole file instead
+ * (today's way), as long as the game is small enough for that; it stays that way for the
+ * rest of the job. job.edits === false turns edit mode off (to compare the two, plan §23).
+ *
  * @param {GeneratorJob} job
  * @param {string} model
  * @param {{ chatFn?: typeof chat, check?: typeof checkGame, onStep?: OnStep }} deps
@@ -175,15 +194,30 @@ async function design(job, model, { chatFn = chat, onStep = () => {} }) {
 async function build(job, model, { chatFn = chat, check = checkGame, onStep = () => {} }) {
   const maxAttempts = job.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
   const { change } = job;
+  let edits = job.edits !== false;
+  const plan = change?.plan ?? null;
   // The conversation is the prompt plus, after a failed attempt, ONLY that attempt and its
-  // problems: earlier attempts are dropped. Each one is a whole game (~10K tokens), and the
-  // model's context is 65K (plan §13n): keeping them all would overflow by attempt 4.
-  const prompt = change ? changeBuildMessages({ idea: job.idea, ...change }, change.plan ?? null) : buildMessages(job.idea, job.design, { exampleGame: job.exampleGame ?? false });
+  // problems: earlier attempts are dropped. Each one can be a whole game (~10K tokens), and
+  // the model's context is 65K (plan §13n): keeping them all would overflow by attempt 4.
+  const prompt = change ? changeBuildMessages({ idea: job.idea, ...change }, plan, { edits }) : buildMessages(job.idea, job.design, { exampleGame: job.exampleGame ?? false });
+  // A fix shows the model its last file as its own reply. For a change, that file replaces
+  // the old one in the prompt (withCode: false), so the game is in the conversation once.
+  const fixPrompt = (asEdits) => (change ? changeBuildMessages({ idea: job.idea, ...change }, plan, { edits: asEdits, withCode: false }) : prompt);
+  const fixMessages = (source, reportText, asEdits) => [...fixPrompt(asEdits), { role: 'assistant', content: `\`\`\`html\n${source}\`\`\`` }, { role: 'user', content: fixMessage(reportText, { edits: asEdits }) }];
+
   let messages = prompt;
+  /** The file edits apply to: the old game, then the last file that was checked. */
+  let current = change ? change.source : null;
+  /** What the checks found in `current` (null: nothing yet, e.g. a change's old game). */
+  let currentProblems = null;
+  let failedInARow = 0;
+  let changelog = null;
   const result = { ok: false, model, source: null, report: null, changelog: null, attempts: [] };
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    const asking = `attempt ${attempt}/${maxAttempts}: asking ${model}`;
+    // Edits need a file to apply to: a new game's first attempt is always a whole file.
+    const mode = edits && current !== null ? 'edits' : 'whole';
+    const asking = `attempt ${attempt}/${maxAttempts}${mode === 'edits' ? ' (edits)' : ''}: asking ${model}`;
     onStep(asking);
     let reply;
     try {
@@ -191,29 +225,61 @@ async function build(job, model, { chatFn = chat, check = checkGame, onStep = ()
     } catch (err) {
       return { ...result, error: err.message };
     }
+    // The list of changes comes with the first answer that has one (fixes don't repeat it).
+    if (change) changelog ??= extractChangelog(withoutEdits(reply.content));
 
-    const source = extractGameFile(reply.content);
-    // The list of changes comes with the first answer that has code (fixes don't repeat it).
-    if (change && source && result.changelog === null) result.changelog = extractChangelog(reply.content);
+    let source;
+    let attemptMode = mode;
+    const record = (fields) => result.attempts.push({ attempt, mode: attemptMode, seconds: reply.seconds, usage: reply.usage, ...fields });
+    if (mode === 'edits' && !hasEdits(reply.content) && extractGameFile(reply.content)) {
+      // Asked for edits, sent the whole file anyway: that's fine, use it.
+      source = extractGameFile(reply.content);
+      attemptMode = 'whole';
+    } else if (mode === 'edits') {
+      const applied = applyReply(current, reply.content);
+      if (!applied.ok) {
+        // Nothing was applied: the file is as it was. Say what didn't fit, and ask again.
+        failedInARow += 1;
+        const problems = applied.failures;
+        record({ ok: false, problems: problems.length, source: null, report: { ok: false, problems, warnings: [] } });
+        onStep(`attempt ${attempt}/${maxAttempts}: ${problems.length} edit(s) didn't fit the file`);
+        if (failedInARow >= 2 && current.length <= MAX_WHOLE_FILE_LENGTH) {
+          edits = false;
+          onStep('edits failed twice: asking for the whole file instead');
+          messages = currentProblems === null ? changeBuildMessages({ idea: job.idea, ...change }, plan, { edits: false }) : fixMessages(current, currentProblems, false);
+        } else {
+          messages = [...messages, { role: 'assistant', content: reply.content }, { role: 'user', content: editsFailedMessage(problems) }];
+        }
+        continue;
+      }
+      source = applied.source;
+    } else {
+      source = extractGameFile(reply.content);
+    }
+    failedInARow = 0;
+
     if (!source) {
       const report = { ok: false, problems: ['The reply had no game file.'], warnings: [] };
-      result.attempts.push({ attempt, seconds: reply.seconds, ok: false, problems: 1, usage: reply.usage, source: null, report });
-      messages = [...prompt, { role: 'assistant', content: reply.content }, { role: 'user', content: NO_CODE_MESSAGE }];
+      record({ ok: false, problems: 1, source: null, report });
+      messages = [...messages, { role: 'assistant', content: reply.content }, { role: 'user', content: NO_CODE_MESSAGE }];
       continue;
     }
+    if (change && result.changelog === null) result.changelog = changelog;
 
     onStep(`attempt ${attempt}/${maxAttempts}: checking the game (static check, then ${PLAYTEST_SECONDS} s of play in a browser)`);
     const report = await checkWithSize(source, check, onStep);
     result.source = source;
     result.report = report;
-    result.attempts.push({ attempt, seconds: reply.seconds, ok: report.ok, problems: report.problems.length, usage: reply.usage, source, report: withoutScreenshots(report) });
+    record({ ok: report.ok, problems: report.problems.length, source, report: withoutScreenshots(report) });
     if (report.ok) {
       onStep(`attempt ${attempt}/${maxAttempts}: passed`);
       return { ...result, ok: true };
     }
     onStep(`attempt ${attempt}/${maxAttempts}: ${report.problems.length} problem(s)`);
+    current = source;
+    currentProblems = formatReport(report);
     // Only the game file goes back (not the model's chatter around it), to keep it short.
-    messages = [...prompt, { role: 'assistant', content: `\`\`\`html\n${source}\`\`\`` }, { role: 'user', content: fixMessage(formatReport(report)) }];
+    messages = fixMessages(current, currentProblems, edits);
   }
   return { ...result, error: `no passing game after ${maxAttempts} attempts` };
 }

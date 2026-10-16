@@ -20,13 +20,39 @@ const read = (relative) => readFileSync(new URL(relative, import.meta.url), 'utf
 /** Longest idea, change request or feedback we accept (the server checks this too). */
 export const MAX_IDEA_LENGTH = 1000;
 /**
- * The model's context is 65,536 tokens (qwen3.8:27b on GenAI Studio), and a change request
- * has to hold the old game AND the new one: about 100 KB each (~25–30K tokens) is the most
- * that fits. So that's the limit for AI-written games, and for a game the AI may change.
- * (Hand-made games may be bigger: the server allows 1 MB.)
+ * How big a game the AI may CHANGE (plan §23). The model's context is 65,536 tokens
+ * (qwen3.8:27b on GenAI Studio), and everything in one call must fit in it: the prompt, the
+ * game, the model's thinking and its reply. Measured on our own games (generator/out, plan
+ * §23): game code is about 2.8 bytes per token (prose is closer to 3.7).
+ *
+ * Edit mode (the default): the game is in the conversation ONCE, and the reply is only
+ * the changes. The budget, in tokens:
+ *     65,536  the context
+ *   −  6,000  the rulebook and art library (~4K), the design, plan and request (~2K)
+ *   −  1,000  the problems the checks found (in a fix)
+ *   − 20,000  the model's thinking and its edits (changes measured ~2–9K; a big one more)
+ *   = 38,500  for the game: × 2.8 bytes ≈ 108 KB.
+ * So the limit is 100 KB, the same as the rulebook's limit for any game the AI writes
+ * (MAX_GAME_BYTES): every AI-made game can be changed, and a change can't grow it past it.
+ *
+ * (Until plan §23 the model wrote the whole file again, so the old game AND the new one had
+ * to fit: at 2.8 bytes per token only ~60 KB really did. That's now just the fallback.)
+ * Hand-made games may be bigger: the server allows 1 MB, but the AI can't change those.
  */
-export const MAX_SOURCE_LENGTH = 100_000;
-/** The size limit the rulebook gives the model. */
+export const MAX_SOURCE_LENGTH = 100 * 1024;
+/**
+ * The fallback (and edit mode turned off): the model writes the whole file again, so the
+ * game is in the conversation twice (in a fix: our copy, then the model's new one):
+ *   65,536 − 6,000 (prompt) − 1,000 (problems) − 10,000 (thinking) = 48,500 tokens for
+ *   two copies: ~24K tokens each, × 2.8 bytes ≈ 68 KB. 60 KB leaves some room.
+ */
+export const MAX_WHOLE_FILE_LENGTH = 60 * 1024;
+/**
+ * The size limit the rulebook gives the model, for every game it writes (a first build
+ * too). A first build has no old game in the conversation: prompt (~6K tokens) + thinking
+ * (measured up to ~22K) + a 100 KB game (~36K tokens) ≈ 64K: it just fits, and real games
+ * are 15–35 KB. So it stays as it was.
+ */
 export const MAX_GAME_BYTES = 100 * 1024;
 
 /** The headings every design has, in order (generator/spec/DESIGN.md). */
@@ -141,14 +167,15 @@ export function planMessages(change, redraft) {
 /**
  * The game as it is now: its idea, earlier changes, design (if it has one) and code.
  * @param {{ idea: string, design?: string | null, source: string, earlierRequests?: string[] }} game
+ * @param {{ withCode?: boolean }} [opts]  withCode false: a fix, where the code follows as the model's own reply
  */
-function currentGame({ idea, design, source, earlierRequests = [] }) {
+function currentGame({ idea, design, source, earlierRequests = [] }, { withCode = true } = {}) {
   const earlier = earlierRequests.map((r) => `- ${String(r).trim().slice(0, MAX_IDEA_LENGTH)}`).join('\n');
   return [
     `The game was first made from this idea:\n\n${data('game-idea', idea)}`,
     earlier ? `Changes already made, oldest first:\n\n<earlier-changes>\n${earlier}\n</earlier-changes>` : null,
     design ? `Its design:\n\n<design>\n${String(design).trim()}\n</design>` : null,
-    `Its code now:\n\n\`\`\`html\n${String(source).slice(0, MAX_SOURCE_LENGTH)}\n\`\`\``,
+    withCode ? `Its code now:\n\n\`\`\`html\n${String(source).slice(0, MAX_SOURCE_LENGTH)}\n\`\`\`` : null,
   ]
     .filter(Boolean)
     .join('\n\n');
@@ -202,34 +229,91 @@ export function buildMessages(idea, design, opts) {
   ];
 }
 
+// --- Edit mode (plan §23) ------------------------------------------------------------------
+
+/**
+ * How to reply with edits instead of a whole file (generator/src/edits.js applies them).
+ * Short and concrete, with one example: the model is mid-sized, and rules it has to
+ * interpret are rules it gets wrong.
+ */
+export const EDIT_FORMAT = `Reply with EDITS, not the whole file. Each edit is one block like this:
+
+<<<<<<< SEARCH
+lines copied exactly from the file
+=======
+the lines that replace them
+>>>>>>> REPLACE
+
+Rules:
+- SEARCH is copied from the file exactly: every character, the same indentation. Use whole lines, usually 2–6: enough that they appear in only ONE place in the file.
+- REPLACE is the new text for those lines (leave it empty to delete them).
+- To ADD code, SEARCH for the line just before where it goes, and REPLACE with that same line followed by the new code.
+- Edits are applied in order, top to bottom. Two edits must never touch the same lines: make them one edit.
+- Only change what the task needs. Don't send the whole file.
+
+Example (a 90-second round instead of 60, and a sound when it ends):
+
+<<<<<<< SEARCH
+const ROUND_SECONDS = 60;
+=======
+const ROUND_SECONDS = 90;
+>>>>>>> REPLACE
+
+<<<<<<< SEARCH
+function endRound() {
+  state.phase = 'results';
+=======
+function endRound() {
+  party.ui.sound('win');
+  state.phase = 'results';
+>>>>>>> REPLACE`;
+
 /**
  * Building a change from its approved plan (or, for a small fix, from the request alone).
  * @param {{ idea: string, design?: string | null, source: string, request: string, earlierRequests?: string[] }} change
  * @param {string | null} plan
+ * @param {{ edits?: boolean, withCode?: boolean }} [opts]
+ *   edits (default true): reply with edits (plan §23); false: the whole new file.
+ *   withCode false: leave the code out (a fix: it follows as the model's own last reply).
  * @returns {import('./llm.js').Message[]}
  */
-export function changeBuildMessages(change, plan) {
+export function changeBuildMessages(change, plan, { edits = true, withCode = true } = {}) {
   const task = plan
     ? `Make this change. The plan was approved by the game's owner:\n\n${data('change-request', change.request)}\n\n<plan>\n${String(plan).trim()}\n</plan>`
     : `Make this small change:\n\n${data('change-request', change.request)}`;
+  const changes = "1. A line `CHANGES:`, then one short `- ` line per change you made, in plain words for the game's owner (at most 6 lines).";
+  const answer = edits
+    ? `Keep everything else the same. Reply in this order:\n${changes}\n2. Your edits to the code.\n\n${EDIT_FORMAT}`
+    : `Keep everything else the same. Reply in this order:\n${changes}\n2. The complete new game file in ONE \`\`\`html code block.`;
   return [
     { role: 'system', content: buildSystemPrompt(change.design) },
-    {
-      role: 'user',
-      content: `${currentGame(change)}\n\n${task}\n\nKeep everything else the same. Reply in this order:
-1. A line \`CHANGES:\`, then one short \`- \` line per change you made, in plain words for the game's owner (at most 6 lines).
-2. The complete new game file in ONE \`\`\`html code block.`,
-    },
+    { role: 'user', content: `${currentGame(change, { withCode })}\n\n${task}\n\n${answer}` },
   ];
 }
 
-/** What to say after a failed attempt, so the model can fix it. */
-export function fixMessage(reportText) {
-  return `The automatic checks found problems with that game:
+/**
+ * What to say after a failed attempt, so the model can fix it.
+ * @param {string} reportText  formatReport's text
+ * @param {{ edits?: boolean }} [opts]  edits: ask for edits to that file (plan §23), not the whole file
+ */
+export function fixMessage(reportText, { edits = false } = {}) {
+  const answer = edits
+    ? `Fix every problem. Your file above is the code now.\n\n${EDIT_FORMAT}`
+    : 'Fix every problem and reply with the complete corrected game file in ONE ```html code block.';
+  return `The automatic checks found problems with that game:\n\n${reportText}\n\n${answer}`;
+}
 
-${reportText}
+/**
+ * What to say when edits couldn't be applied (edits.js): nothing was changed, so ALL of
+ * them must come again, with the failing ones fixed.
+ * @param {string[]} failures  e.g. 'edit 3: this text isn't in the file: ...'
+ */
+export function editsFailedMessage(failures) {
+  return `None of your edits were applied, because some of them didn't fit the file:
 
-Fix every problem and reply with the complete corrected game file in ONE \`\`\`html code block.`;
+${failures.map((f) => `- ${f}`).join('\n')}
+
+The file is unchanged. Reply with ALL your edits again (also the ones that were fine), with these fixed. Copy each SEARCH exactly from the file.`;
 }
 
 export const NO_CODE_MESSAGE =
