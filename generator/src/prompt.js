@@ -169,13 +169,28 @@ function currentGame({ idea, design, source, earlierRequests = [] }) {
 // --- Step 2: the build -------------------------------------------------------------------
 
 /**
- * @param {string | null | undefined} design
- * @param {{ exampleGame?: boolean }} [opts]  exampleGame: true adds the example game (off by default, plan §13o)
+ * The rulebook without party.kit (an experiment, plan §20): its section, and the lines that
+ * point at it, are left out. (The kit is still loaded in every frame; the model just isn't told.)
  */
-function buildSystemPrompt(design, { exampleGame = false } = {}) {
-  const template = pickTemplate(design);
+export function rulebookWithoutKit() {
+  const spec = read('../spec/GAME_SPEC.md');
+  const start = spec.indexOf('## `party.kit`');
+  const end = spec.indexOf('\n## ', start + 1);
+  return (spec.slice(0, start) + spec.slice(end + 1))
+    .replace(/^party\.kit .*\n/m, '')
+    .replace(' (`party.kit.colorOf(id)`)', '');
+}
+
+/**
+ * @param {string | null | undefined} design
+ * @param {{ exampleGame?: boolean, helpers?: boolean }} [opts]  exampleGame: true adds the example game (off by default, plan §13o)
+ *   helpers: false leaves out party.kit and the starter template, so the game is written from the
+ *   rulebook and the design alone (an experiment, plan §20; the templates are built on party.kit)
+ */
+function buildSystemPrompt(design, { exampleGame = false, helpers = true } = {}) {
+  const template = helpers ? pickTemplate(design) : null;
   const example = exampleGame ? pickExample(design) : null;
-  const parts = [`You write party games for BoilerGames from an approved design. Follow these instructions exactly.`, read('../spec/GAME_SPEC.md')];
+  const parts = [`You write party games for BoilerGames from an approved design. Follow these instructions exactly.`, helpers ? read('../spec/GAME_SPEC.md') : rulebookWithoutKit()];
   parts.push(`## The art library (the only allowed \`party.asset\` ids)\n\n${describeAssets()}`);
   if (template) {
     parts.push(`## The starter template the design chose: ${template}
@@ -213,7 +228,7 @@ const BUILD_ANSWER = `Reply with the complete game file in ONE \`\`\`html code b
  * Building a new game from its approved design.
  * @param {string} idea
  * @param {string} design
- * @param {{ exampleGame?: boolean }} [opts]  exampleGame: true adds the example game (off by default, plan §13o)
+ * @param {{ exampleGame?: boolean, helpers?: boolean }} [opts]  see buildSystemPrompt
  * @returns {import('./llm.js').Message[]}
  */
 export function buildMessages(idea, design, opts) {

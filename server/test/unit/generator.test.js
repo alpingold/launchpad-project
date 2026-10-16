@@ -189,6 +189,15 @@ test('the build prompt: the template the design picked; its example game only wh
   assert.match(noExample.content, /"name": "Treasure Hunt"/, 'the template stays');
 });
 
+test('the build prompt without helpers (plan §20): no party.kit section and no starter template', () => {
+  const design = DESIGN.replace(/## Template[\s\S]*?## Edge/, '## Template\n`turns`: yes\n\n## Edge');
+  const [free] = buildMessages('Run and jump', design, { helpers: false });
+  assert.doesNotMatch(free.content, /party\.kit/);
+  assert.doesNotMatch(free.content, /starter template/);
+  assert.match(free.content, /## `party\.ui`/, 'party.ui stays');
+  assert.match(free.content, /## How to draw/);
+});
+
 test('change prompts: the plan sees the design, code and request; the build gets the approved plan', () => {
   const change = { idea: 'Run and jump', design: DESIGN, source: GAME, request: 'Add a fourth level', earlierRequests: ['Make it faster'] };
   const [, plan] = planMessages(change);
