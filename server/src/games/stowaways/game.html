@@ -478,20 +478,24 @@
       const now = party.now();
       const alien = g.roles[from] === 'alien';
 
+      // A tap on the crew grid toggles your private mark, for every role, in every phase: the
+      // same thing happens on every phone, so a glance at one says nothing about its role.
+      // For an alien, during a captain's pick (from the second test on), marking a crewmate
+      // also hacks them if it can, and unmarking takes back their own hack. The covered role
+      // card lists which marks are hacks.
       if ('note' in data && isId(data.note)) {
+        const t = data.note;
         const mine = g.notes[from] ?? [];
-        g.notes[from] = mine.includes(data.note) ? mine.filter((x) => x !== data.note) : [...mine, data.note];
-        return changed();
-      }
-      if ('hack' in data && isId(data.hack)) {
-        if (!alien || g.phase !== 'pick' || g.testNo === 0) return;
-        const by = g.hacks[data.hack];
-        if (by === from) {
-          delete g.hacks[data.hack];
-          g.hacksLeft[from] += 1;
-        } else if (!by && g.hacksLeft[from] > 0) {
-          g.hacks[data.hack] = from;
-          g.hacksLeft[from] -= 1;
+        const marking = !mine.includes(t);
+        g.notes[from] = marking ? [...mine, t] : mine.filter((x) => x !== t);
+        if (alien && g.phase === 'pick' && g.testNo > 0) {
+          if (marking && !g.hacks[t] && g.hacksLeft[from] > 0) {
+            g.hacks[t] = from;
+            g.hacksLeft[from] -= 1;
+          } else if (!marking && g.hacks[t] === from) {
+            delete g.hacks[t];
+            g.hacksLeft[from] += 1;
+          }
         }
         return changed();
       }
@@ -559,7 +563,6 @@
       const role = g.roles[id];
       const alien = role === 'alien';
       const [color, colorName] = colorOf(id);
-      const hackTime = alien && g.testNo > 0;
       const s = {
         phase: g.phase,
         endsAt: g.endsAt,
@@ -574,12 +577,12 @@
         lastCall: g.phase === 'lastcall' || g.back?.phase === 'lastcall',
         hasButton: g.buttons[id],
         crew: ids.map((p) => ({ id: p, name: nameOf(p), color: colorOf(p)[0], away: !connected(p) })),
-        marks: hackTime ? Object.keys(g.hacks) : g.notes[id] ?? [],
-        tap: hackTime ? (g.phase === 'pick' ? 'hack' : 'none') : 'note',
+        marks: g.notes[id] ?? [],
       };
       if (alien) {
         s.allies = ids.filter((p) => p !== id && g.roles[p] === 'alien').map(nameOf);
         s.hacksLeft = g.hacksLeft[id];
+        s.hacked = Object.entries(g.hacks).map(([t, by]) => `${nameOf(t)}${by === id ? '' : ` (by ${nameOf(by)})`}`);
       }
       if (g.phase === 'pick' && s.isCaptain) s.k = Math.max(1, Math.min(testSize(ids.length), ids.filter(connected).length));
       if (g.phase === 'test') {
@@ -891,7 +894,8 @@
         lines.push(el('b', {}, 'You are an ALIEN'));
         lines.push(el('span', { class: 'fine' }, 'Your tests are a little different. Blend in, and keep them from ejecting you.'));
         if (s.allies?.length) lines.push(el('span', { class: 'fine' }, `The other ${s.allies.length === 1 ? 'alien is' : 'aliens are'} ${listNames(s.allies)}.`));
-        lines.push(el('span', { class: 'fine' }, s.testNo === 0 ? 'Hacks: 2. From the second test on, tap crewmates while the captain picks: their next test gets the other prompt.' : `Hacks left for you: ${s.hacksLeft}. While the captain picks, tap a crewmate to hack (tap again to undo).`));
+        lines.push(el('span', { class: 'fine' }, `Hacks left: ${s.hacksLeft}. ${s.testNo === 0 ? 'From the second test on, while' : 'While'} the captain picks, marking a crewmate also hacks them: their next test gets the other prompt. Unmark to take it back.`));
+        if (s.hacked?.length) lines.push(el('span', { class: 'fine' }, `Hacked now: ${listNames(s.hacked)}.`));
       } else {
         lines.push(el('b', {}, 'You are HUMAN'));
         lines.push(el('span', { class: 'fine' }, `Find the ${plural(s.aliens, 'alien')}. Answer honestly; look for answers that are off.`));
@@ -910,10 +914,7 @@
           onClick: () => onTap(c.id),
         }, el('span', { class: 'dot', style: { background: c.color } }), c.name + (c.away ? ' (away)' : ''))));
     }
-    const crewGrid = () => grid((id) => {
-      if (s.tap === 'note') party.send({ note: id });
-      else if (s.tap === 'hack') party.send({ hack: id });
-    }, s.marks);
+    const crewGrid = () => grid((id) => party.send({ note: id }), s.marks);
     const timerBox = () => {
       const box = el('div');
       timer(box, { endsAt: s.endsAt });
@@ -924,7 +925,7 @@
     /** The main part of the phone: rebuilt only when what it shows changes. */
     function view() {
       const p = s.phase;
-      const crewKey = JSON.stringify([s.crew.map((c) => c.away), s.marks, s.tap]);
+      const crewKey = JSON.stringify([s.crew.map((c) => c.away), s.marks]);
       const pickFor = `${p}-${s.testNo}-${s.endsAt}`;
       if (local.for !== pickFor) local = { for: pickFor, type: null, picked: [], accused: [] };
 

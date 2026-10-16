@@ -145,17 +145,39 @@ test("a drawing test, then an alien's hack: the hacked human gets the aliens' pr
   await expect(big.getByRole('img', { name: `${humans[0]}'s drawing` })).toBeVisible();
 
   // The captain moves on (allowed 20 s into the discussion), and the next player is captain.
-  await cap1.getByRole('button', { name: 'Next test' }).click({ timeout: 30_000 });
-  await expect(cap1.getByText("You're the captain!")).toHaveCount(0);
-  const captain = await findCaptain(phones);
-  expect(captain).not.toBe(first);
-  const cap = frame(phones[captain].page);
+  // If that's the alien, it runs a quick opinion test first: the alien hacks while someone else picks.
+  let cap = cap1;
+  let captain = first;
+  for (;;) {
+    await cap.getByRole('button', { name: 'Next test' }).click({ timeout: 30_000 });
+    await expect(cap.getByText("You're the captain!")).toHaveCount(0);
+    const before = captain;
+    captain = await findCaptain(phones);
+    expect(captain).not.toBe(before);
+    cap = frame(phones[captain].page);
+    if (captain !== alien) break;
+    await cap.getByRole('button', { name: 'Opinion', exact: true }).click();
+    for (const name of humans.slice(0, 2)) await cap.getByRole('button', { name, exact: true }).click();
+    await cap.getByRole('button', { name: 'Start test' }).click();
+    for (const name of humans.slice(0, 2)) await frame(phones[name].page).getByRole('button', { name: 'Strongly agree' }).click();
+    await expect(big.getByText('The crew was asked how much they agree:')).toBeVisible();
+  }
 
-  // While the captain picks, the alien quietly hacks a human (the screen shows nothing).
-  const target = humans.find((n) => n !== captain) ?? humans[0];
+  // With role cards covered, an alien's phone and a human's phone look the same.
+  const bystander = humans.find((n) => n !== captain);
   const alienPhone = frame(phones[alien].page);
+  await expect(alienPhone.getByText(`Captain ${captain} is choosing a test.`)).toBeVisible();
+  await expect.poll(() => coveredText(phones[alien])).toEqual(await coveredText(phones[bystander]));
+
+  // While the captain picks, the alien quietly marks (and so hacks) a human. The mark looks like
+  // a human's mark, and the big screen shows nothing.
+  const target = humans.find((n) => n !== captain) ?? humans[0];
   await alienPhone.getByRole('button', { name: target, exact: true }).click();
   await expect(alienPhone.getByRole('button', { name: target, exact: true })).toHaveAttribute('aria-pressed', 'true');
+  const bystanderPhone = frame(phones[bystander].page);
+  await bystanderPhone.getByRole('button', { name: target, exact: true }).click();
+  await expect(bystanderPhone.getByRole('button', { name: target, exact: true })).toHaveAttribute('aria-pressed', 'true');
+  expect(await coveredText(phones[alien])).toEqual(await coveredText(phones[bystander]));
 
   // The captain tests the hacked human and another human with an opinion.
   const other = humans.find((n) => n !== target);
@@ -175,4 +197,17 @@ test("a drawing test, then an alien's hack: the hacked human gets the aliens' pr
   // The big screen shows only the humans' statement: the fair one.
   await expect(big.getByText('The crew was asked how much they agree:')).toBeVisible();
   await expect(big.locator('.asked b')).toHaveText(`"${fairPrompt}"`);
+
+  // During the discussion too, a covered alien phone reads like a human's (neither is captain).
+  await expect(alienPhone.getByText('Talk it out! Whose answer was off?')).toBeVisible();
+  await expect.poll(() => coveredText(phones[alien])).toEqual(await coveredText(phones[bystander]));
 });
+
+/** What a phone shows with its role card covered, minus its own name and the timer's seconds. */
+async function coveredText(phone) {
+  return frame(phone.page).locator('#phone').evaluate((root) => {
+    const copy = root.cloneNode(true);
+    for (const node of copy.querySelectorAll('.me, .pu-timer-seconds')) node.remove();
+    return copy.textContent.replace(/\s+/g, ' ').trim();
+  });
+}
