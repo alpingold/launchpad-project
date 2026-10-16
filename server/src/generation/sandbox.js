@@ -7,6 +7,11 @@
 //   3. sandbox delete  always, even if something failed
 // (`sandbox create` doesn't forward stdin, so the job goes in through `exec`.)
 //
+// A job with a user's own key (plan §15) first makes a provider just for it, and deletes it
+// at the end: `provider create --from-existing` reads the key from that one command's
+// environment (never its arguments, which other programs on the machine can see). The
+// sandbox only ever sees a placeholder, as with the server's own key.
+//
 // Commands are started with spawn() and an argument list, never through a shell, and the
 // game idea travels on stdin, never as an argument: a prompt can't become a command.
 
@@ -19,12 +24,13 @@ import { config } from '../config.js';
  * couldn't be started at all (e.g. openshell isn't installed).
  * @param {string} bin
  * @param {string[]} args
- * @param {{ input?: string, timeoutMs: number, onStderrLine?: (line: string) => void }} opts
+ * @param {{ input?: string, timeoutMs: number, onStderrLine?: (line: string) => void, env?: NodeJS.ProcessEnv }} opts
+ *   env: the program's environment (default: this process's)
  * @returns {Promise<{ code: number | null, stdout: string, stderr: string, timedOut: boolean }>}
  */
-export function runCommand(bin, args, { input, timeoutMs, onStderrLine = () => {} }) {
+export function runCommand(bin, args, { input, timeoutMs, onStderrLine = () => {}, env = process.env }) {
   return new Promise((resolve, reject) => {
-    const child = spawn(bin, args, { stdio: ['pipe', 'pipe', 'pipe'] });
+    const child = spawn(bin, args, { stdio: ['pipe', 'pipe', 'pipe'], env });
     let stdout = '';
     let stderr = '';
     let partial = '';
@@ -53,17 +59,30 @@ export function runCommand(bin, args, { input, timeoutMs, onStderrLine = () => {
 /**
  * Generates a game in a fresh sandbox.
  * @param {import('../../../generator/src/run.js').GeneratorJob} job  sent to the generator as it is
- * @param {{ onStep?: import('../../../generator/src/run.js').OnStep, cfg?: typeof config, run?: typeof runCommand }} [deps]
+ * @param {{ onStep?: import('../../../generator/src/run.js').OnStep, cfg?: typeof config, run?: typeof runCommand, apiKey?: string }} [deps]
  *   onStep: the generator's progress; `replace` updates the last step (a streaming reply)
+ *   apiKey: the job owner's own GenAI Studio key (plan §15); without it, the server's provider
  * @returns {Promise<import('../../../generator/src/run.js').GeneratorResult>}
  */
-export async function runGeneratorInSandbox(job, { onStep = () => {}, cfg = config, run = runCommand } = {}) {
-  const name = `bg-gen-${randomBytes(4).toString('hex')}`; // OpenShell allows at most 19 characters
+export async function runGeneratorInSandbox(job, { onStep = () => {}, cfg = config, run = runCommand, apiKey } = {}) {
+  const hex = randomBytes(4).toString('hex');
+  const name = `bg-gen-${hex}`; // OpenShell allows at most 19 characters
+  const keyProvider = apiKey ? `bg-key-${hex}` : null;
   const bin = cfg.OPENSHELL_BIN;
   const limitSeconds = Math.ceil(cfg.GENERATION_TIMEOUT_MS / 1000);
-  const failed = (error) => ({ ok: false, model: job.model ?? null, source: null, report: null, attempts: [], error });
+  // No error message may ever contain the key, even if a command printed it back.
+  const hideKey = (text) => (apiKey ? text.split(apiKey).join('[key]') : text);
+  const failed = (error) => ({ ok: false, model: job.model ?? null, source: null, report: null, attempts: [], error: hideKey(error) });
 
   try {
+    if (keyProvider) {
+      onStep('setting up your GenAI Studio key');
+      const made = await run(bin, ['provider', 'create', '--name', keyProvider, '--type', cfg.GENERATOR_PROVIDER_TYPE, '--from-existing'], {
+        timeoutMs: 60_000,
+        env: { ...process.env, GENAI_API_KEY: apiKey },
+      });
+      if (made.code !== 0) return failed(`could not set up your key in OpenShell: ${lastLines(made.stderr || made.stdout)}`);
+    }
     onStep('starting the sandbox');
     const created = await run(
       bin,
@@ -73,7 +92,7 @@ export async function runGeneratorInSandbox(job, { onStep = () => {}, cfg = conf
         '--detach',
         '--no-keep', // safety net: if we never get to `delete`, it goes away when `sleep` ends
         '--from', cfg.GENERATOR_IMAGE,
-        '--provider', cfg.GENERATOR_PROVIDER,
+        '--provider', keyProvider ?? cfg.GENERATOR_PROVIDER,
         '--policy', cfg.GENERATOR_POLICY_PATH,
         '--', 'sleep', String(limitSeconds + 120),
       ],
@@ -104,6 +123,7 @@ export async function runGeneratorInSandbox(job, { onStep = () => {}, cfg = conf
     return failed(err.code === 'ENOENT' ? `"${bin}" isn't installed on this machine (generator/README.md)` : err.message);
   } finally {
     await run(bin, ['sandbox', 'delete', name], { timeoutMs: 60_000 }).catch(() => {});
+    if (keyProvider) await run(bin, ['provider', 'delete', keyProvider], { timeoutMs: 60_000 }).catch(() => {});
   }
 }
 

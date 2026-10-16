@@ -121,6 +121,8 @@ export const config = {
   OPENSHELL_BIN: process.env.OPENSHELL_BIN || 'openshell',
   GENERATOR_IMAGE: process.env.GENERATOR_IMAGE || 'boilergames-generator:local',
   GENERATOR_PROVIDER: process.env.GENERATOR_PROVIDER || 'genai-studio',
+  // The profile a per-job provider is made from, for a user's own key (plan §15).
+  GENERATOR_PROVIDER_TYPE: process.env.GENERATOR_PROVIDER_TYPE || 'genai-studio',
   GENERATOR_POLICY_PATH:
     process.env.GENERATOR_POLICY_PATH ||
     fileURLToPath(new URL('../../generator/openshell/policy.yaml', import.meta.url)),

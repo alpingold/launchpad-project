@@ -12,8 +12,8 @@ const RESULT = { ok: true, model: 'qwen3.8:27b', source: 'export default {};\n',
 function fakeOpenshell(answers = {}) {
   const calls = [];
   const run = async (bin, args, opts) => {
-    calls.push({ bin, args, input: opts.input });
-    const sub = args[1];
+    calls.push({ bin, args, input: opts.input, env: opts.env });
+    const sub = args[0] === 'sandbox' ? args[1] : args.slice(0, 2).join(' '); // 'create', 'exec', … or 'provider create'
     const answer = answers[sub] ?? { code: 0, stdout: '', stderr: '' };
     if (answer instanceof Error) throw answer;
     if (sub === 'exec') for (const line of (answer.stderr ?? '').split('\n')) opts.onStderrLine?.(line);
@@ -107,4 +107,39 @@ test('runCommand: passes stdin, collects output, reports stderr lines, and kills
   const stuck = await runCommand(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { timeoutMs: 300 });
   assert.equal(stuck.timedOut, true);
   await assert.rejects(runCommand('definitely-not-a-real-program', [], { timeoutMs: 1000 }), { code: 'ENOENT' });
+});
+
+test("a user's own key (plan §15): a provider just for this job, the key only in its environment, deleted after", async () => {
+  const KEY = 'sk-user-own-key-0123456789abcdef';
+  const { run, calls } = fakeOpenshell({ exec: { code: 0, stdout: JSON.stringify(RESULT) } });
+  const result = await runGeneratorInSandbox(job, { run, apiKey: KEY });
+  assert.deepEqual(result, RESULT);
+  assert.deepEqual(calls.map((c) => c.args.slice(0, 2).join(' ')), ['provider create', 'sandbox create', 'sandbox exec', 'sandbox delete', 'provider delete']);
+  const [provider, create] = calls;
+  const name = provider.args[provider.args.indexOf('--name') + 1];
+  assert.match(name, /^bg-key-[0-9a-f]{8}$/);
+  assert.deepEqual(provider.args.slice(4), ['--type', 'genai-studio', '--from-existing']);
+  assert.equal(provider.env.GENAI_API_KEY, KEY, 'the key travels in the environment');
+  assert.equal(create.args[create.args.indexOf('--provider') + 1], name, 'the sandbox uses that provider');
+  assert.deepEqual(calls.at(-1).args, ['provider', 'delete', name]);
+  for (const call of calls) assert.ok(!call.args.join(' ').includes(KEY), 'never in any argument list');
+  assert.ok(!calls[2].input.includes(KEY), 'never in the job');
+  for (const call of calls.slice(1)) assert.equal(call.env?.GENAI_API_KEY, undefined, 'only the provider command gets it');
+
+  // Failing to make the provider: nothing else runs, it's still cleaned up, and the key never shows.
+  const broken = fakeOpenshell({ 'provider create': { code: 1, stderr: `invalid credential ${KEY}` } });
+  const failed = await runGeneratorInSandbox(job, { run: broken.run, apiKey: KEY });
+  assert.match(failed.error, /could not set up your key in OpenShell: invalid credential \[key\]/);
+  assert.deepEqual(broken.calls.map((c) => c.args.slice(0, 2).join(' ')), ['provider create', 'sandbox delete', 'provider delete']);
+
+  // Without a key: the server's own provider, as before.
+  const plain = fakeOpenshell({ exec: { code: 0, stdout: JSON.stringify(RESULT) } });
+  await runGeneratorInSandbox(job, { run: plain.run });
+  assert.equal(plain.calls[0].args[plain.calls[0].args.indexOf('--provider') + 1], 'genai-studio');
+  assert.ok(!plain.calls.some((c) => c.args[0] === 'provider'));
+});
+
+test('runCommand: passes the environment it is given', async () => {
+  const out = await runCommand(process.execPath, ['-e', 'process.stdout.write(process.env.ONLY_HERE ?? "none")'], { timeoutMs: 5000, env: { ...process.env, ONLY_HERE: 'yes' } });
+  assert.equal(out.stdout, 'yes');
 });
