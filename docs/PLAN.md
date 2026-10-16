@@ -1333,6 +1333,34 @@ leaves more of the 65K context for fixes and bigger games. Keep the example game
 for retries. Next: a few more C2-style runs over time, and a short combined kit sample in the
 rulebook if games keep skipping the kit.
 
+## 14. The game catalogue (decided 2026-10-16)
+
+The host picks a game from a dropdown today. With more (AI-made) games that stops working:
+you can't see what a game looks like, what kind it is, or whether it fits your group.
+
+**Decided with the user:** a public **`/games`** page anyone can browse, and the same cards
+replacing the dropdown in the host lobby. Each card: a **screenshot**, name, description,
+**players and length**, **tags**, and the AI-made badge. Filters: **search** by name,
+**tag** chips, **how many players** (in the lobby: the people in the room), and **sort**
+(A–Z, newest; "most played" and "best rated" once player signals exist).
+
+**How:**
+- **Two new optional game-info fields:** `"tags": ["platformer", "racing"]` (1–4 from a
+  fixed list in `server/src/games/tags.js`, so filters stay useful and the AI can't invent
+  near-duplicates) and `"minutes": [5, 15]` (a typical game's length, low to high). Optional,
+  so games made before keep working; the cards just show less. The rulebook asks the AI for
+  both, and the design's Length section already works the number out.
+- **Screenshots:** an official game ships `thumb.jpg` next to `game.html` (taken with
+  `npm run check-game -- … --shots`, the playtest's big-screen picture). An AI-made game uses
+  the big-screen screenshot its final check already saved in the version's report. Served by
+  `GET /api/games/:id/thumb` (same visibility as the game; cached by the browser). No
+  screenshot (imported games): a coloured tile with the game's initial.
+- `GET /api/games` adds `tags`, `minutes` and `addedAt` (generated games: when they were made;
+  official games: none, so they sort last under "newest").
+- **Client:** one `GameCatalogue` component (cards + filters) used by `/games` (a "Host this
+  game" button → `/host?game=<id>`, which preselects it) and by the lobby (pick a card, then
+  Start). Filters are worked out in the browser: the list is small.
+
 ---
 
 ## Verification (how to confirm the plan worked once built)
