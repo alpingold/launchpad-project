@@ -7,7 +7,8 @@
 // SQLite keeps a number in the file itself, `PRAGMA user_version`. On startup we run every
 // migration numbered above it, each in a transaction (all of it happens, or none of it),
 // and then store the new number. A brand-new database runs them all; an existing one only
-// runs the ones it's missing. Adding a feature = adding a migration at the end.
+// runs the ones it's missing. Adding a feature = adding a migration at the end, then
+// `npm run schema` to update SCHEMA.md (the whole schema in one place; a test checks it).
 
 /** @type {{ version: number, description: string, sql: string }[]} */
 export const MIGRATIONS = [

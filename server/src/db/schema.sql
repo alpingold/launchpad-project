@@ -2,6 +2,7 @@
 -- This file is never changed. Every table and column added since (AI-made games, their
 -- versions and build attempts, GenAI Studio keys, game pages, votes, bios) comes from a
 -- migration in migrations.js, which brings any database up to date on startup.
+-- The whole schema as it is today: SCHEMA.md (generated: npm run schema).
 -- Rooms and running games are not stored at all; they live in memory and last minutes.
 -- Every statement is "IF NOT EXISTS", so this runs safely on every server start.
 
