@@ -25,17 +25,37 @@ export const TABLE_NOTES = {
 function columnExtras(tableSql, column) {
   for (const line of tableSql.split('\n')) {
     const [code, ...comment] = line.split('--');
-    const match = /^\s*"?(\w+)"?\s/.exec(code);
-    if (match && match[1] === column) {
-      const check = /CHECK\s*(\(.*\))/i.exec(code);
+    // A column added later (ALTER TABLE ... ADD COLUMN) is appended to the LAST line, after
+    // a comma: so each line is split into its column definitions first (commas outside brackets).
+    const parts = splitTopLevel(code);
+    const part = parts.find((p) => /^\s*"?(\w+)"?\s/.exec(p)?.[1] === column);
+    if (part !== undefined) {
+      const check = /CHECK\s*(\(.*\))/i.exec(part);
       return {
-        comment: comment.join('--').trim(),
+        comment: part === parts[0] ? comment.join('--').trim() : '', // a line's comment is about its first column
         check: check ? `check ${check[1].replace(/\)\s*,?\s*$/, ')')}` : null,
-        nocase: /COLLATE\s+NOCASE/i.test(code),
+        nocase: /COLLATE\s+NOCASE/i.test(part),
       };
     }
   }
   return { comment: '', check: null, nocase: false };
+}
+
+/** "a INTEGER, b TEXT CHECK (b IN ('x', 'y'))" → ["a INTEGER", " b TEXT CHECK (b IN ('x', 'y'))"] */
+function splitTopLevel(code) {
+  const parts = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < code.length; i++) {
+    if (code[i] === '(') depth++;
+    else if (code[i] === ')') depth--;
+    else if (code[i] === ',' && depth === 0) {
+      parts.push(code.slice(start, i));
+      start = i + 1;
+    }
+  }
+  parts.push(code.slice(start));
+  return parts;
 }
 
 /** @returns {string} the whole SCHEMA.md */
