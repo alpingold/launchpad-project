@@ -1,0 +1,1037 @@
+<script type="application/json" id="game-info">
+  {
+    "name": "Stowaways",
+    "description": "Aliens are hiding in the crew. Take little tests on your phones, argue over the answers, and eject the aliens before the clock runs out. Every vote must be unanimous.",
+    "minPlayers": 4,
+    "maxPlayers": 10,
+    "tags": ["bluffing", "voting", "drawing", "words"],
+    "minutes": [8, 17]
+  }
+</script>
+<!--
+  STOWAWAYS: a hidden-role game (plan §24; design: generator/spec/designs/stowaways.md).
+  One file, two roles:
+   - the big screen (role "host") is the referee. It deals the roles, runs the clock and every
+     phase's timer, picks the prompts, applies the aliens' hacks, counts the votes, and draws
+     the station for the room. It never shows a secret.
+   - each phone (role "player") shows ONLY its own state (party.setState per player): your role
+     card (covered until you tap it), the captain's choices, your test, the vote. Phones make no
+     sound, so a neighbour can't hear a secret.
+  Everything that matters lives in one plain-JSON object `g`, saved with party.save after
+  every change, so a big-screen reload carries on where it was (deadlines are server times).
+-->
+<style>
+  /* ---- The station's palette (the same in light and dark: it's the scene) ---- */
+  :root {
+    --navy: #0b1d33;
+    --navy2: #10294a;
+    --cyan: #4fd1ff;
+    --paper: #eef4ff;
+    --amber: #ffc94a;
+    --alarm: #ff3b5c;
+    --ink: #0b1d33;
+  }
+  body.host, body.player {
+    --bg: #0b1d33; --surface: #13294a; --text: #e8f1ff; --muted: #8fb3d9; --border: #2a4a75;
+    --accent: #4fd1ff; --on-accent: #06182b; --good: #5be49b; --bad: #ff6b81; --gold: #ffc94a;
+    background: var(--navy); color: var(--text); color-scheme: dark;
+  }
+  [hidden] { display: none !important; }
+  body.host { overflow: hidden; }
+  /* Sized by the frame's width AND height, so every phase fits a wide TV or a short window. */
+  :root[data-role='host'] { font-size: clamp(11px, min(1.6vw, 2.7vh), 34px); }
+
+  /* ---- Big screen ---- */
+  #sky { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
+  #host { position: fixed; inset: 0; display: grid; grid-template-rows: auto 1fr auto; padding: 1.2vh 2vw; box-sizing: border-box; }
+  .top { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 1rem; }
+  .brand { font-weight: 900; letter-spacing: 0.25em; color: var(--cyan); font-size: 1.1rem; text-shadow: 0 0 12px rgba(79, 209, 255, 0.6); }
+  .brand small { display: block; letter-spacing: 0.1em; color: var(--muted); font-weight: 700; font-size: 0.75rem; }
+  .clock { font: 900 3.2rem/1 var(--mono); padding: 0.15em 0.5em; border: 3px solid var(--cyan); border-radius: 0.4em; color: var(--paper); box-shadow: 0 0 18px rgba(79, 209, 255, 0.35), inset 0 0 14px rgba(79, 209, 255, 0.2); background: rgba(11, 29, 51, 0.7); }
+  .clock.paused { opacity: 0.6; }
+  .clock.low { color: var(--alarm); border-color: var(--alarm); box-shadow: 0 0 22px rgba(255, 59, 92, 0.6); animation: throb 1s infinite; }
+  @keyframes throb { 50% { transform: scale(1.05); } }
+  .aboard { justify-self: end; display: flex; align-items: center; gap: 0.5rem; font-weight: 800; font-size: 1.1rem; }
+  .blip { width: 1.1rem; height: 1.1rem; border-radius: 50% 50% 45% 45%; background: #7dff9b; box-shadow: 0 0 10px #7dff9b; clip-path: polygon(50% 0, 100% 35%, 85% 100%, 15% 100%, 0 35%); }
+
+  .stage { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.9rem; text-align: center; min-height: 0; overflow: hidden; padding: 0.6rem 0; }
+  .stage > * { flex-shrink: 0; }
+  .stage.shake { animation: shake 0.5s; }
+  @keyframes shake { 20% { transform: translate(-14px, 4px); } 40% { transform: translate(12px, -6px); } 60% { transform: translate(-8px, 2px); } 80% { transform: translate(5px, -2px); } }
+  .headline { font-size: 2.6rem; font-weight: 900; margin: 0; line-height: 1.1; text-shadow: 0 2px 0 rgba(0, 0, 0, 0.4); }
+  .sub { font-size: 1.3rem; color: var(--muted); margin: 0; }
+  .alarm-text { color: var(--alarm); text-shadow: 0 0 20px rgba(255, 59, 92, 0.7); }
+  .gold { color: var(--amber); }
+  .bar { width: min(60vw, 40rem); height: 0.7rem; border: 2px solid var(--cyan); border-radius: 1rem; overflow: hidden; }
+  .bar > i { display: block; height: 100%; width: 100%; background: var(--cyan); }
+  .bar.red { border-color: var(--alarm); } .bar.red > i { background: var(--alarm); }
+
+  .tests { display: flex; gap: 1.5rem; }
+  .ttile { width: 9rem; height: 7rem; border: 3px solid var(--cyan); border-radius: 1rem; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.4rem; font-weight: 800; color: var(--cyan); opacity: 0.55; }
+  .ticon { width: 3rem; height: 2.4rem; position: relative; }
+  .ticon.write { border-bottom: 4px solid currentColor; } .ticon.write::after { content: ''; position: absolute; left: 0.3rem; right: 1rem; top: 0.9rem; border-top: 4px solid currentColor; }
+  .ticon.draw::before { content: ''; position: absolute; inset: 0.2rem 0.5rem; border: 4px solid currentColor; border-radius: 50% 10% 50% 10%; transform: rotate(-15deg); }
+  .ticon.opinion::before { content: ''; position: absolute; left: 0; right: 0; top: 1rem; border-top: 4px solid currentColor; }
+  .ticon.opinion::after { content: ''; position: absolute; left: 1.7rem; top: 0.45rem; width: 1rem; height: 1rem; border-radius: 50%; background: currentColor; }
+
+  /* Crew capsules: a pill in the player's colour with a visor. */
+  .crew { display: flex; justify-content: center; gap: 0.6vw; flex-wrap: nowrap; padding: 1.4rem 0 0.2rem; border-top: 2px solid rgba(79, 209, 255, 0.35); }
+  .cap { position: relative; display: flex; flex-direction: column; align-items: center; gap: 0.25rem; width: 5.4rem; transition: opacity 0.4s; }
+  /* A round space helmet: a dome in the player's colour, a round visor, an antenna. */
+  .pod { position: relative; width: 4rem; height: 4rem; border-radius: 50%; box-shadow: inset -0.4rem -0.45rem 0 rgba(0, 0, 0, 0.22), 0 0 0 3px rgba(255, 255, 255, 0.18); }
+  .pod::before { content: ''; position: absolute; left: 50%; top: -0.75rem; width: 0.22rem; height: 0.75rem; margin-left: -0.11rem; background: #cfe3ff; box-shadow: 0 -0.3rem 0 0.15rem var(--cyan); border-radius: 0.2rem; }
+  .pod::after { content: ''; position: absolute; inset: 0.75rem; border-radius: 50%; border: 0.22rem solid rgba(255, 255, 255, 0.55); background: radial-gradient(circle at 35% 30%, #d9f3ff 0 14%, #1d3d66 18% 70%, #0d2340); }
+  .cap .nm { font-weight: 800; font-size: 0.95rem; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cap.away { opacity: 0.35; }
+  .cap.dim { opacity: 0.3; }
+  .cap .star { position: absolute; top: -0.4rem; left: 0.2rem; z-index: 1; width: 1.3rem; height: 1.3rem; background: var(--amber); clip-path: polygon(50% 0, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%); }
+  .cap .btn { position: absolute; right: 0.7rem; top: 2.9rem; width: 0.9rem; height: 0.9rem; border-radius: 50%; background: var(--alarm); border: 2px solid #fff; }
+  .cap .tag { font-size: 0.75rem; font-weight: 900; letter-spacing: 0.08em; padding: 0.1em 0.5em; border-radius: 0.4em; background: var(--paper); color: var(--ink); }
+  .cap .tag.alien { background: #7dff9b; }
+  .cap .tag.no { background: var(--alarm); color: #fff; }
+  .cap.big .pod { width: 6rem; height: 6rem; }
+  .cap.big .pod::after { inset: 1.1rem; }
+  .cap.big { width: 8rem; }
+  .cap.big .nm { font-size: 1.2rem; }
+  .row-caps { display: flex; gap: 2rem; justify-content: center; }
+  .check { width: 1.6rem; height: 1.6rem; border-radius: 50%; background: var(--good); position: relative; }
+  .check::after { content: ''; position: absolute; left: 0.5rem; top: 0.25rem; width: 0.4rem; height: 0.75rem; border: solid var(--ink); border-width: 0 0.22rem 0.22rem 0; transform: rotate(45deg); }
+  .wait { width: 1.6rem; height: 1.6rem; border-radius: 50%; border: 3px dashed var(--muted); animation: spin 3s linear infinite; box-sizing: border-box; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Answer cards: paper on the blueprint. */
+  .asked { font-size: 1.2rem; color: var(--muted); margin: 0; }
+  .asked b { display: block; color: var(--paper); font-size: 1.9rem; }
+  .cards { display: flex; flex-wrap: wrap; gap: 1.2rem; justify-content: center; max-width: 92vw; }
+  .card-a { background: var(--paper); color: var(--ink); border-radius: 0.8rem; padding: 0.7rem 1rem 0.8rem; min-width: 12rem; max-width: 22rem; box-shadow: 0 0.4rem 0 rgba(0, 0, 0, 0.35); border-top: 0.6rem solid #888; animation: deal 0.55s cubic-bezier(0.2, 1.4, 0.4, 1) both; text-align: left; }
+  .card-a .who { font-weight: 900; font-size: 1rem; color: #3a5577; }
+  .card-a .say { font-size: 1.7rem; font-weight: 800; line-height: 1.15; overflow-wrap: anywhere; }
+  .card-a .none { font-style: italic; color: #7a8ca5; font-size: 1.3rem; }
+  .card-a.drawn { width: min(14rem, 20vw); }
+  .cards.drawn-row { flex-wrap: nowrap; }
+  .card-a.drawn .pic { width: 100%; aspect-ratio: 4 / 3; border-radius: 0.4rem; overflow: hidden; border: 2px solid #c9d6ea; }
+  .card-a.drawn canvas { display: block; width: 100%; height: 100%; }
+  .scale { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.25rem; margin-top: 0.4rem; }
+  .scale span { height: 1.1rem; border-radius: 0.3rem; background: #d3deef; }
+  .scale span.on { box-shadow: 0 0 0 2px var(--ink); }
+  .scale-l { display: flex; justify-content: space-between; font-size: 0.75rem; font-weight: 800; color: #50688a; margin-top: 0.2rem; gap: 1rem; }
+  @keyframes deal { from { transform: translate(40vw, -20vh) rotate(18deg); opacity: 0; } to { transform: none; opacity: 1; } }
+
+  /* The airlock: a chamber with two outer doors. */
+  .lock { position: relative; width: min(70vw, 46rem); height: 11rem; border: 4px solid var(--cyan); border-radius: 1.5rem; overflow: hidden; background: radial-gradient(circle at 50% 40%, #1b3b66, #081426); box-shadow: 0 0 30px rgba(79, 209, 255, 0.3); }
+  .lock .space { position: absolute; inset: 0; background: radial-gradient(circle at 12% 30%, #fff 0 1px, transparent 2px), radial-gradient(circle at 34% 72%, #fff 0 1.5px, transparent 2.5px), radial-gradient(circle at 58% 22%, #cfe3ff 0 1px, transparent 2px), radial-gradient(circle at 76% 60%, #fff 0 1px, transparent 2px), radial-gradient(circle at 90% 18%, #fff 0 1.5px, transparent 2.5px), radial-gradient(circle at 47% 48%, #ffe9b0 0 1px, transparent 2px), #02060d; }
+  .lock .door { position: absolute; top: 0; bottom: 0; width: 50%; background: repeating-linear-gradient(90deg, #17375f 0 2.4rem, #12304f 2.4rem 2.6rem); transition: transform 1.4s cubic-bezier(0.6, 0, 0.3, 1); }
+  .lock .door.l { left: 0; border-right: 3px solid var(--alarm); }
+  .lock .door.r { right: 0; border-left: 3px solid var(--alarm); }
+  .lock.open .door.l { transform: translateX(-100%); }
+  .lock.open .door.r { transform: translateX(100%); }
+  .lock .inside { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 2rem; }
+  .lock .inside .cap { animation: slidein 0.7s cubic-bezier(0.2, 1.3, 0.4, 1) both; }
+  .lock.open .inside .cap { animation: drift 3s 1.8s ease-in forwards; }
+  @keyframes slidein { from { transform: translateX(-60vw); } }
+  @keyframes drift { to { transform: translate(8rem, -12rem) rotate(200deg) scale(0.3); opacity: 0; } }
+  .flip { animation: flip 0.6s both; }
+  @keyframes flip { from { transform: rotateY(90deg); } to { transform: none; } }
+  .votes { display: flex; gap: 0.8rem; flex-wrap: wrap; justify-content: center; }
+  .vchip { display: flex; align-items: center; gap: 0.45rem; padding: 0.3rem 0.7rem; border-radius: 2rem; background: rgba(11, 29, 51, 0.8); border: 2px solid var(--border); font-weight: 800; }
+  .vchip .dot { width: 1rem; height: 1rem; border-radius: 50%; }
+  .vchip .check, .vchip .wait { width: 1.3rem; height: 1.3rem; }
+  .vchip .check::after { left: 0.4rem; top: 0.18rem; width: 0.32rem; height: 0.62rem; }
+  .win-h { font-size: 3.4rem; }
+  .flash { position: fixed; inset: 0; background: var(--alarm); pointer-events: none; animation: flash 0.9s ease-out forwards; }
+  @keyframes flash { from { opacity: 0.6; } to { opacity: 0; } }
+
+  /* ---- Phones ---- */
+  body.player { user-select: none; -webkit-user-select: none; }
+  .ph { gap: 0.8rem; }
+  .me { display: flex; align-items: center; gap: 0.6rem; font-weight: 900; font-size: 1.2rem; }
+  .me .dot { width: 1.5rem; height: 1.5rem; border-radius: 50%; border: 3px solid rgba(255, 255, 255, 0.4); }
+  .role { width: 100%; text-align: left; min-height: 3.6rem; border-radius: 0.9rem; border: 2px dashed var(--cyan); background: repeating-linear-gradient(135deg, #10294a 0 12px, #0d2340 12px 24px); color: var(--cyan); font-weight: 800; }
+  .role.open { border-style: solid; background: var(--paper); color: var(--ink); font-weight: 600; }
+  .role.open.alien { background: #c8ffd6; }
+  .role b { display: block; font-size: 1.5rem; font-weight: 900; }
+  .role .fine { display: block; font-size: 0.95rem; margin-top: 0.3rem; }
+  .say-big { font-size: 1.35rem; font-weight: 800; margin: 0; }
+  .prompt { background: var(--paper); color: var(--ink); border-radius: 0.9rem; padding: 0.8rem 1rem; font-size: 1.4rem; font-weight: 900; }
+  .prompt small { display: block; font-size: 0.85rem; color: #50688a; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; }
+  .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.5rem; }
+  .grid button { min-height: 3.3rem; display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0.6rem; text-align: left; font-size: 1.05rem; background: var(--surface); color: var(--text); border: 2px solid var(--border); }
+  .grid button .dot { flex: none; width: 1.1rem; height: 1.1rem; border-radius: 50%; }
+  .grid button.on { border-color: var(--cyan); box-shadow: inset 0 0 0 2px var(--cyan); }
+  .grid button.on::after { content: ''; margin-left: auto; flex: none; width: 0.8rem; height: 0.8rem; border-radius: 50%; background: var(--cyan); }
+  .grid button.pick.on { background: var(--cyan); color: var(--ink); }
+  .types { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; }
+  .types button { padding: 0.4rem; font-size: 1.05rem; }
+  .types button.on { background: var(--amber); color: var(--ink); }
+  .types button:not(.on) { background: var(--surface); color: var(--text); border: 2px solid var(--border); }
+  .redbtn { width: 100%; min-height: 5rem; border-radius: 2.5rem; background: radial-gradient(circle at 50% 35%, #ff7088, var(--alarm) 60%, #b3122f); color: #fff; font-size: 1.6rem; font-weight: 900; letter-spacing: 0.06em; box-shadow: 0 0.45rem 0 #7a0c20; }
+  .redbtn:active { transform: translateY(0.3rem); box-shadow: 0 0.15rem 0 #7a0c20; }
+  .opts { display: grid; gap: 0.5rem; }
+  .vote2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; }
+  .vote2 .eject { background: var(--alarm); color: #fff; }
+  .vote2 .keep { background: var(--surface); color: var(--text); border: 2px solid var(--border); }
+  .pu-paper { touch-action: none; }
+</style>
+
+<canvas id="sky" hidden></canvas>
+<div id="host" hidden></div>
+<div class="screen ph" id="phone" hidden></div>
+
+<script>
+  'use strict';
+
+  // ---- Shared ---------------------------------------------------------------------------
+  const COLORS = [
+    ['#ff5a5f', 'Red'], ['#ffb400', 'Yellow'], ['#3ec300', 'Green'], ['#2f9bff', 'Blue'], ['#b06cff', 'Purple'],
+    ['#ff7eb6', 'Pink'], ['#00d1b2', 'Teal'], ['#ff8c42', 'Orange'], ['#c0ca33', 'Lime'], ['#f4f4f4', 'White'],
+  ];
+  const TYPES = ['write', 'draw', 'opinion'];
+  const TYPE_NAME = { write: 'Write', draw: 'Draw', opinion: 'Opinion' };
+  const TEST_MS = { write: 45000, draw: 60000, opinion: 20000 };
+  const OPINION = ['Strongly disagree', 'Slightly disagree', 'Slightly agree', 'Strongly agree'];
+  const WRITE_MAX = 60;
+  const DRAW_MAX_BYTES = 20000;
+  const ROLES_MS = 10000, PICK_MS = 25000, CARD_MS = 1200, DISCUSS_MS = 60000, NEXT_AFTER_MS = 20000;
+  const PRESS_MS = 25000, ARGUE_MS = 15000, VOTE_MS = 20000, VERDICT_MS = 5000, LASTCALL_MS = 30000, END_MS = 12000;
+  const aliensFor = (n) => (n >= 9 ? 3 : n >= 6 ? 2 : 1);
+  const testSize = (n) => (n >= 9 ? 4 : n >= 6 ? 3 : 2);
+  const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+  function shuffle(list) {
+    const a = [...list];
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+  const listNames = (names) => (names.length <= 1 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`);
+
+  // Prompt pairs: [what the humans get, what the aliens get]. Close, but not the same.
+  const PROMPTS = {
+    write: [
+      ['Name a pizza topping', 'Name something you put on toast'],
+      ['Name something you find at the beach', 'Name something you find in a park'],
+      ['The best snack at the movies', 'The best snack at a picnic'],
+      ['A job that needs a uniform', 'A job you can do from home'],
+      ['Something that is always cold', 'Something that is always wet'],
+      ['What you would bring to a desert island', 'What you would bring on a long car trip'],
+      ['A sound that wakes you up', 'A sound that annoys you'],
+      ['Name a fruit', 'Name a vegetable'],
+      ['A good name for a dog', 'A good name for a goldfish'],
+      ['Something with wheels', 'Something with wings'],
+      ['Something in a kitchen drawer', 'Something in a bathroom cabinet'],
+      ['A superpower you would want', 'A skill you wish you had'],
+      ['What you do on a rainy day', 'What you do on a snow day'],
+      ['Something sticky', 'Something slimy'],
+      ['Something you see at a wedding', 'Something you see at a birthday party'],
+      ['Name a board game', 'Name a card game'],
+      ['The worst thing to step on barefoot', 'The worst thing to find in your shoe'],
+      ['Something people collect', 'Something people lose all the time'],
+      ['A breakfast food', 'A late-night snack'],
+      ['A reason to be late for class', 'A reason to leave a party early'],
+      ['Something in a classroom', 'Something in an office'],
+      ['A place to go on a first date', 'A place to go with your grandparents'],
+    ],
+    draw: [
+      ['a cat', 'a fox'], ['a pizza', 'a pie'], ['a rocket', 'an airplane'], ['a snowman', 'a scarecrow'],
+      ['a house', 'a castle'], ['a tree', 'a cactus'], ['a car', 'a bus'], ['the sun', 'the moon'],
+      ['a guitar', 'a violin'], ['an ice cream cone', 'a cupcake'], ['a dog', 'a horse'], ['a bicycle', 'a skateboard'],
+      ['a spider', 'an octopus'], ['a crown', 'a top hat'], ['an umbrella', 'a mushroom'], ['a lighthouse', 'a windmill'],
+      ['a snail', 'a turtle'], ['a robot', 'an astronaut'], ['a hot dog', 'a burrito'], ['a ghost', 'a jellyfish'],
+      ['a sailboat', 'a submarine'],
+    ],
+    opinion: [
+      ['Breakfast is the best meal of the day', 'Cereal counts as a soup'],
+      ['Dogs are better than cats', 'Cats are better than dogs'],
+      ['Pineapple belongs on pizza', 'Ketchup belongs on eggs'],
+      ['Mornings are the best part of the day', 'Staying up late is worth it'],
+      ['Homework should be banned', 'School should start later'],
+      ['Summer is the best season', 'Winter is the best season'],
+      ['Texting is better than calling', 'Voice messages are annoying'],
+      ['Movies are better in a theater', 'Movies are better at home'],
+      ['Socks with sandals are fine', 'Crocs are stylish'],
+      ['It is OK to recline your seat on a plane', 'It is OK to take both armrests on a plane'],
+      ['A hot dog is a sandwich', 'A taco is a sandwich'],
+      ['Spiders are cute', 'Snakes are cute'],
+      ['Video games are a sport', 'Chess is a sport'],
+      ['Being too hot beats being too cold', 'Being too cold beats being too hot'],
+      ['Aliens have visited Earth', 'People will live on Mars one day'],
+      ['Road trips are fun', 'Flying is fun'],
+      ['Board games bring out the worst in people', 'Group projects bring out the worst in people'],
+      ['Spicy food is the best food', 'Sweet food is the best food'],
+      ['Leftovers taste better the next day', 'Cold pizza beats hot pizza'],
+      ['You should make your bed every day', 'You should do the dishes right away'],
+    ],
+  };
+
+  party.ready(({ role, me, restored }) => {
+    document.body.className = role;
+    if (role === 'host') bigScreen(restored);
+    else phone(me);
+  });
+
+  // ---- The big screen: the referee and the station --------------------------------------
+  function bigScreen(restored) {
+    const { el, sound } = party.ui;
+    const ids = party.players.map((p) => p.id);
+    const nameOf = (id) => party.players.find((p) => p.id === id)?.name ?? '?';
+    const colorOf = (id) => COLORS[Math.max(0, ids.indexOf(id)) % COLORS.length];
+    const connected = (id) => party.players.find((p) => p.id === id)?.connected !== false;
+    const A = aliensFor(ids.length);
+    const CLOCK_MS = (3 + ids.length) * 60000;
+
+    /** The whole game, as plain JSON (party.save). */
+    let g = restored && restored.v === 1 && restored.roles ? restored : newGame();
+    let ended = false;
+
+    function newGame() {
+      const now = party.now();
+      const aliens = shuffle(ids).slice(0, A);
+      const roles = Object.fromEntries(ids.map((id) => [id, aliens.includes(id) ? 'alien' : 'human']));
+      return {
+        v: 1,
+        roles,
+        hacksLeft: Object.fromEntries(aliens.map((id) => [id, 2])),
+        hacks: {}, // target id → the alien who placed it; used up when the target is tested
+        notes: {}, // id → the ids they marked as suspects (private)
+        buttons: Object.fromEntries(ids.map((id) => [id, true])),
+        lastPushed: {}, // in last call, everyone gets one more push
+        captain: Math.floor(Math.random() * ids.length),
+        testNo: 0,
+        used: { write: [], draw: [], opinion: [] },
+        phase: 'roles',
+        at: now,
+        endsAt: now + ROLES_MS,
+        clockLeft: CLOCK_MS,
+        clockAt: now,
+        clockRun: false,
+        test: null, // { type, pair, picked, swapped, answers, done }
+        dealAt: 0,
+        nextAt: 0,
+        press: null, // { by, accused, from }
+        votes: {},
+        back: null, // where a cancelled or failed button returns to
+        verdict: null, // { passed, no: [ids], votes }
+        result: null, // { ejected: [ids], humansWin }
+      };
+    }
+
+    // -- The clock: runs during picks, tests and discussions; paused for the button. --
+    const clockNow = (now) => (g.clockRun ? Math.max(0, g.clockLeft - (now - g.clockAt)) : g.clockLeft);
+    function runClock(on, now) {
+      if (on === g.clockRun) return;
+      g.clockLeft = clockNow(now);
+      g.clockAt = now;
+      g.clockRun = on;
+    }
+
+    const captainId = () => ids[g.captain];
+    function nextCaptain() {
+      for (let step = 1; step <= ids.length; step++) {
+        const i = (g.captain + step) % ids.length;
+        if (connected(ids[i])) {
+          g.captain = i;
+          return;
+        }
+      }
+    }
+
+    function enter(phase, ms, now = party.now()) {
+      g.phase = phase;
+      g.at = now;
+      g.endsAt = now + ms;
+      changed();
+      cue(phase);
+    }
+
+    function startPick(now = party.now()) {
+      g.test = null;
+      runClock(true, now);
+      enter('pick', PICK_MS, now);
+    }
+
+    function choosePair(type) {
+      const all = PROMPTS[type];
+      if (g.used[type].length >= all.length) g.used[type] = [];
+      const free = all.map((_, i) => i).filter((i) => !g.used[type].includes(i));
+      const i = free[Math.floor(Math.random() * free.length)];
+      g.used[type].push(i);
+      return all[i];
+    }
+
+    function lockPick(type, picked) {
+      const swapped = picked.filter((id) => g.hacks[id]);
+      for (const id of swapped) delete g.hacks[id];
+      g.test = { type, pair: choosePair(type), picked, swapped, answers: {}, done: {} };
+      g.testNo += 1;
+      enter('test', TEST_MS[type]);
+    }
+
+    function randomPick() {
+      const live = ids.filter(connected);
+      const k = Math.max(1, Math.min(testSize(ids.length), live.length));
+      lockPick(TYPES[Math.floor(Math.random() * TYPES.length)], shuffle(live.length ? live : ids).slice(0, k));
+    }
+
+    /** Humans get the humans' prompt, unless hacked; aliens the aliens' one, unless hacked. */
+    const getsHumanPrompt = (id) => (g.roles[id] === 'human') !== g.test.swapped.includes(id);
+    const promptFor = (id) => g.test.pair[getsHumanPrompt(id) ? 0 : 1];
+
+    function endTest(now = party.now()) {
+      if (clockNow(now) <= 0) return startLastCall(now);
+      g.dealAt = now;
+      const deal = g.test.picked.length * CARD_MS;
+      g.nextAt = now + deal + NEXT_AFTER_MS;
+      enter('discuss', deal + DISCUSS_MS, now);
+    }
+
+    function startLastCall(now = party.now()) {
+      runClock(false, now);
+      g.clockLeft = 0;
+      g.dealAt = 0;
+      enter('lastcall', LASTCALL_MS, now);
+    }
+
+    const canPush = (id) =>
+      connected(id) && ((g.phase === 'lastcall' && !g.lastPushed[id]) || ((g.phase === 'pick' || g.phase === 'discuss') && g.buttons[id]));
+
+    function push(id, now = party.now()) {
+      g.back = { phase: g.phase, left: Math.max(0, g.endsAt - now), nextLeft: Math.max(0, g.nextAt - now) };
+      runClock(false, now);
+      g.press = { by: id, accused: [] };
+      g.votes = {};
+      enter('press', PRESS_MS, now);
+    }
+
+    /** Back to where the button was pushed (it was cancelled, or a vote failed in last call). */
+    function goBack(now = party.now()) {
+      const b = g.back ?? { phase: 'pick', left: PICK_MS, nextLeft: 0 };
+      g.press = null;
+      g.back = null;
+      if (b.phase !== 'lastcall') runClock(true, now);
+      g.phase = b.phase;
+      g.at = now;
+      g.endsAt = now + Math.max(3000, b.left);
+      g.nextAt = now + b.nextLeft;
+      changed();
+    }
+
+    function finishVote(now = party.now()) {
+      const accused = g.press.accused;
+      const voters = ids.filter((id) => !accused.includes(id) && (connected(id) || id in g.votes));
+      const no = voters.filter((id) => g.votes[id] !== true);
+      g.verdict = { passed: voters.length > 0 && no.length === 0, no, voters };
+      enter('verdict', VERDICT_MS, now);
+    }
+
+    function finishGame(ejected, now = party.now()) {
+      const humansWin = ejected.length > 0 && ejected.every((id) => g.roles[id] === 'alien');
+      g.result = { ejected, humansWin };
+      runClock(false, now);
+      enter('end', END_MS, now);
+    }
+
+    function timeUp(now) {
+      switch (g.phase) {
+        case 'roles': return startPick(now);
+        case 'pick': return randomPick();
+        case 'test': return endTest(now);
+        case 'discuss': nextCaptain(); return startPick(now);
+        case 'press': return goBack(now); // nobody accused: the button isn't spent
+        case 'argue': g.votes = {}; return enter('vote', VOTE_MS, now);
+        case 'vote': return finishVote(now);
+        case 'verdict':
+          if (g.verdict.passed) return finishGame(g.press.accused, now);
+          if (g.back?.phase === 'lastcall') return goBack(now);
+          g.press = null;
+          g.back = null;
+          nextCaptain();
+          return startPick(now);
+        case 'lastcall': return finishGame([], now);
+        case 'end':
+          if (ended) return;
+          ended = true;
+          g.phase = 'over';
+          party.save(g);
+          {
+            const winners = ids.filter((id) => (g.roles[id] === 'human') === g.result.humansWin);
+            const losers = ids.filter((id) => !winners.includes(id));
+            party.end({ rankings: [...winners, ...losers], scores: Object.fromEntries(ids.map((id) => [id, winners.includes(id) ? 1 : 0])) });
+          }
+      }
+    }
+
+    // Early ends: everyone tested answered; every voter voted.
+    function checkEarly() {
+      const now = party.now();
+      if (g.phase === 'test' && g.test.picked.filter(connected).every((id) => g.test.done[id])) endTest(now);
+      else if (g.phase === 'vote') {
+        const voters = ids.filter((id) => !g.press.accused.includes(id) && connected(id));
+        if (voters.every((id) => id in g.votes)) finishVote(now);
+      }
+    }
+
+    // -- What phones send: every event is checked. --
+    const isId = (x) => typeof x === 'string' && ids.includes(x);
+    party.on('event', (from, data) => {
+      if (!ids.includes(from) || !data || typeof data !== 'object' || ended) return;
+      const now = party.now();
+      const alien = g.roles[from] === 'alien';
+
+      // A tap on the crew grid toggles your private mark, for every role, in every phase: the
+      // same thing happens on every phone, so a glance at one says nothing about its role.
+      // For an alien, during a captain's pick (from the second test on), marking a crewmate
+      // also hacks them if it can, and unmarking takes back their own hack. The covered role
+      // card lists which marks are hacks.
+      if ('note' in data && isId(data.note)) {
+        const t = data.note;
+        const mine = g.notes[from] ?? [];
+        const marking = !mine.includes(t);
+        g.notes[from] = marking ? [...mine, t] : mine.filter((x) => x !== t);
+        if (alien && g.phase === 'pick' && g.testNo > 0) {
+          if (marking && !g.hacks[t] && g.hacksLeft[from] > 0) {
+            g.hacks[t] = from;
+            g.hacksLeft[from] -= 1;
+          } else if (!marking && g.hacks[t] === from) {
+            delete g.hacks[t];
+            g.hacksLeft[from] += 1;
+          }
+        }
+        return changed();
+      }
+      if (data.pick && g.phase === 'pick' && from === captainId()) {
+        const { type, players } = data.pick;
+        const k = Math.max(1, Math.min(testSize(ids.length), ids.filter(connected).length));
+        if (!TYPES.includes(type) || !Array.isArray(players) || players.length !== k) return;
+        if (!players.every(isId) || new Set(players).size !== k) return;
+        return lockPick(type, players);
+      }
+      if ('answer' in data && g.phase === 'test' && g.test.picked.includes(from) && !g.test.done[from]) {
+        const t = g.test;
+        const a = data.answer;
+        if (t.type === 'write') {
+          if (typeof a !== 'string' || !a.trim()) return;
+          t.answers[from] = a.trim().slice(0, WRITE_MAX);
+          t.done[from] = true;
+        } else if (t.type === 'opinion') {
+          if (!Number.isInteger(a) || a < 0 || a > 3) return;
+          t.answers[from] = a;
+          t.done[from] = true;
+        } else {
+          if (!validDrawing(a)) return;
+          t.answers[from] = a;
+          if (data.done === true) t.done[from] = true;
+        }
+        changed();
+        return checkEarly();
+      }
+      if (data.push === true && canPush(from)) return push(from, now);
+      if (Array.isArray(data.accuse) && g.phase === 'press' && from === g.press.by) {
+        const acc = data.accuse;
+        if (acc.length !== A || !acc.every(isId) || new Set(acc).size !== A || acc.includes(from)) return;
+        if (g.back?.phase === 'lastcall') g.lastPushed[from] = true;
+        else g.buttons[from] = false;
+        g.press.accused = acc;
+        sound('pop');
+        return enter('argue', ARGUE_MS, now);
+      }
+      if (typeof data.vote === 'boolean' && g.phase === 'vote' && !g.press.accused.includes(from) && !(from in g.votes)) {
+        g.votes[from] = data.vote;
+        sound('tick');
+        changed();
+        return checkEarly();
+      }
+      if (data.next === true && g.phase === 'discuss' && from === captainId() && now >= g.nextAt) {
+        nextCaptain();
+        return startPick(now);
+      }
+    });
+
+    function validDrawing(a) {
+      if (!Array.isArray(a) || a.length > 400) return false;
+      if (JSON.stringify(a).length > DRAW_MAX_BYTES) return false;
+      return a.every((s) => Array.isArray(s) && typeof s[0] === 'string' && s[0].length < 16 && Array.isArray(s[1]) && s[1].every((n) => Number.isFinite(n)));
+    }
+
+    party.on('players', () => {
+      changed();
+      checkEarly();
+    });
+
+    // -- Every phone: only its own state. --
+    function phoneState(id) {
+      const role = g.roles[id];
+      const alien = role === 'alien';
+      const [color, colorName] = colorOf(id);
+      const s = {
+        phase: g.phase,
+        endsAt: g.endsAt,
+        color,
+        colorName,
+        role,
+        aliens: A,
+        captain: nameOf(captainId()),
+        isCaptain: id === captainId(),
+        testNo: g.testNo,
+        canPush: canPush(id) && !ended,
+        lastCall: g.phase === 'lastcall' || g.back?.phase === 'lastcall',
+        hasButton: g.buttons[id],
+        crew: ids.map((p) => ({ id: p, name: nameOf(p), color: colorOf(p)[0], away: !connected(p) })),
+        marks: g.notes[id] ?? [],
+      };
+      if (alien) {
+        s.allies = ids.filter((p) => p !== id && g.roles[p] === 'alien').map(nameOf);
+        s.hacksLeft = g.hacksLeft[id];
+        s.hacked = Object.entries(g.hacks).map(([t, by]) => `${nameOf(t)}${by === id ? '' : ` (by ${nameOf(by)})`}`);
+      }
+      if (g.phase === 'pick' && s.isCaptain) s.k = Math.max(1, Math.min(testSize(ids.length), ids.filter(connected).length));
+      if (g.phase === 'test') {
+        s.tested = g.test.picked.map(nameOf);
+        s.type = g.test.type;
+        if (g.test.picked.includes(id)) {
+          s.prompt = promptFor(id);
+          s.done = Boolean(g.test.done[id]);
+        }
+      }
+      if (g.phase === 'discuss') s.nextAt = g.nextAt;
+      if (g.press && ['press', 'argue', 'vote', 'verdict'].includes(g.phase)) {
+        s.presser = nameOf(g.press.by);
+        s.choosing = g.press.by === id;
+        s.accused = g.press.accused.map(nameOf);
+        s.accusedMe = g.press.accused.includes(id);
+        if (id in g.votes) s.voted = g.votes[id];
+      }
+      if (g.phase === 'verdict') s.verdict = { passed: g.verdict.passed, no: g.verdict.no.map(nameOf) };
+      if (g.phase === 'end' || g.phase === 'over') {
+        s.humansWin = g.result.humansWin;
+        s.won = (role === 'human') === g.result.humansWin;
+        s.ejected = g.result.ejected.map(nameOf);
+        s.alienNames = ids.filter((p) => g.roles[p] === 'alien').map(nameOf);
+      }
+      return s;
+    }
+
+    // The big screen redraws only when something PUBLIC changed: a private note or a hack
+    // must not make it flicker (the room would see that someone tapped).
+    let shownKey = '';
+    const publicKey = () => JSON.stringify([g.phase, g.at, g.endsAt, g.captain, g.testNo, g.buttons, g.test?.done, g.press, Object.keys(g.votes), g.verdict, g.result, party.players.map((p) => p.connected)]);
+    function changed() {
+      for (const id of ids) party.setState(id, phoneState(id));
+      party.save(g);
+      const key = publicKey();
+      if (key !== shownKey) {
+        shownKey = key;
+        render();
+      }
+    }
+
+    // -- Sounds: public moments only. --
+    let lastCue = '';
+    function cue(phase) {
+      const key = `${phase}-${g.at}`;
+      if (key === lastCue) return;
+      lastCue = key;
+      if (phase === 'test') sound('go');
+      else if (phase === 'discuss') g.test.picked.forEach((_, i) => setTimeout(() => sound('blip'), i * CARD_MS + 250));
+      else if (phase === 'press') { sound({ notes: [880, 440, 880, 440], ms: 140, type: 'square', volume: 0.25 }); flash(); }
+      else if (phase === 'verdict') sound(g.verdict.passed ? 'coin' : 'buzz');
+      else if (phase === 'lastcall') { sound({ notes: [880, 440, 880, 440], ms: 140, type: 'square', volume: 0.25 }); flash(); }
+      else if (phase === 'end') setTimeout(() => sound(g.result.humansWin ? 'win' : 'lose'), 2600);
+    }
+    function flash() {
+      document.body.append(el('div', { class: 'flash' }));
+      setTimeout(() => document.querySelector('.flash')?.remove(), 1000);
+      stage?.classList.remove('shake');
+      void stage?.offsetWidth;
+      stage?.classList.add('shake');
+    }
+
+    // -- Drawing the big screen: HTML and CSS for the show, a canvas for the station behind. --
+    const root = document.getElementById('host');
+    root.hidden = false;
+    let stage = null;
+    let clockEl = null;
+
+    function capsule(id, { big = false, tag = null, tagClass = '', star = false, button = false, dim = false } = {}) {
+      return el('div', { class: `cap${big ? ' big' : ''}${connected(id) ? '' : ' away'}${dim ? ' dim' : ''}` },
+        star ? el('div', { class: 'star' }) : null,
+        el('div', { class: 'pod', style: { background: colorOf(id)[0] } }),
+        button ? el('div', { class: 'btn', title: 'Has the button' }) : null,
+        el('div', { class: 'nm' }, nameOf(id)),
+        tag ? el('div', { class: `tag ${tagClass}` }, tag) : null);
+    }
+    function bar(red = false) {
+      return el('div', { class: `bar${red ? ' red' : ''}`, 'data-bar': '1' }, el('i'));
+    }
+    function airlock(accused, open = false, tags = false) {
+      const lock = el('div', { class: `lock${open ? ' open' : ''}` },
+        el('div', { class: 'space' }),
+        el('div', { class: 'door l' }), el('div', { class: 'door r' }),
+        el('div', { class: 'inside' }, accused.map((id) => {
+          const c = capsule(id, { big: true, tag: tags ? (g.roles[id] === 'alien' ? 'ALIEN' : 'HUMAN') : null, tagClass: g.roles[id] === 'alien' ? 'alien' : '' });
+          if (tags) c.querySelector('.tag').classList.add('flip');
+          return c;
+        })));
+      return lock;
+    }
+    function answerCard(id, i) {
+      const t = g.test;
+      const a = t.answers[id];
+      const delay = i * CARD_MS - (party.now() - g.dealAt);
+      const card = el('div', { class: `card-a${t.type === 'draw' ? ' drawn' : ''}`, style: { borderTopColor: colorOf(id)[0], animationDelay: `${delay}ms` } },
+        el('div', { class: 'who' }, nameOf(id)));
+      if (a === undefined) card.append(el('div', { class: 'none' }, '(no answer)'));
+      else if (t.type === 'write') card.append(el('div', { class: 'say' }, a));
+      else if (t.type === 'opinion') {
+        card.append(el('div', { class: 'say' }, OPINION[a]),
+          el('div', { class: 'scale' }, OPINION.map((_, k) => el('span', { class: k === a ? 'on' : '', style: k === a ? { background: colorOf(id)[0] } : null }))),
+          el('div', { class: 'scale-l' }, el('span', {}, 'Disagree'), el('span', {}, 'Agree')));
+      } else {
+        const pic = el('div', { class: 'pic' });
+        card.append(pic);
+        requestAnimationFrame(() => party.ui.drawing(pic, a, { label: `${nameOf(id)}'s drawing` }));
+      }
+      return card;
+    }
+    function cards() {
+      const t = g.test;
+      return el('div', { class: 'stack center' },
+        el('p', { class: 'asked' }, t.type === 'draw' ? 'The crew was asked to draw:' : t.type === 'opinion' ? 'The crew was asked how much they agree:' : 'The crew was asked:', el('b', {}, t.type === 'draw' ? t.pair[0] : `"${t.pair[0]}"`)),
+        el('div', { class: `cards${t.type === 'draw' ? ' drawn-row' : ''}` }, t.picked.map(answerCard)));
+    }
+
+    function render() {
+      const now = party.now();
+      const p = g.phase;
+      const inLock = g.press && ['argue', 'vote', 'verdict'].includes(p) ? g.press.accused : [];
+      const showEnd = p === 'end' || p === 'over';
+      clockEl = el('div', { class: 'clock', role: 'timer', 'aria-label': 'Station clock' });
+      const top = el('div', { class: 'top' },
+        el('div', { class: 'brand' }, 'STOWAWAYS', el('small', {}, p === 'roles' ? 'Roll call' : `Test ${Math.max(1, g.testNo + (p === 'pick' ? 1 : 0))}`)),
+        clockEl,
+        el('div', { class: 'aboard' }, Array.from({ length: A }, () => el('span', { class: 'blip' })), `${plural(A, 'alien')} aboard`));
+      stage = el('div', { class: 'stage' });
+      const crew = el('div', { class: 'crew' }, ids.map((id) => capsule(id, {
+        star: id === captainId() && !showEnd,
+        button: g.buttons[id] && !showEnd,
+        dim: inLock.includes(id),
+        tag: showEnd ? (g.roles[id] === 'alien' ? 'ALIEN' : 'HUMAN') : g.phase === 'verdict' && g.verdict.no.includes(id) ? 'NO' : null,
+        tagClass: showEnd ? (g.roles[id] === 'alien' ? 'alien flip' : 'flip') : 'no',
+      })));
+
+      const add = (...nodes) => stage.append(...nodes);
+      if (p === 'roles') {
+        add(el('h1', { class: 'headline' }, 'Check your phone.'),
+          el('p', { class: 'sub' }, 'Tap the card to see your role. Keep it to yourself!'),
+          el('p', { class: 'headline gold' }, `${plural(A, 'alien')} ${A === 1 ? 'is' : 'are'} hiding in this crew.`), bar());
+      } else if (p === 'pick') {
+        add(el('h1', { class: 'headline' }, 'Captain ', el('span', { class: 'gold' }, nameOf(captainId())), ' is choosing a test.'),
+          el('div', { class: 'tests' }, TYPES.map((t) => el('div', { class: 'ttile' }, el('div', { class: `ticon ${t}` }), TYPE_NAME[t]))),
+          el('p', { class: 'sub' }, 'Suspicious? Anyone can hit the red button on their phone.'), bar());
+      } else if (p === 'test') {
+        const t = g.test;
+        add(el('h1', { class: 'headline' }, `${TYPE_NAME[t.type]} test`),
+          el('p', { class: 'sub' }, 'Answer on your phone. Everyone else: watch closely.'),
+          el('div', { class: 'row-caps' }, t.picked.map((id) => el('div', { class: 'stack center' }, capsule(id, { big: true }), el('div', { class: t.done[id] ? 'check' : 'wait', 'aria-label': t.done[id] ? 'Done' : 'Answering' })))),
+          bar());
+      } else if (p === 'discuss') {
+        add(cards(), el('p', { class: 'headline', style: { fontSize: '1.9rem' } }, 'Discuss! Whose answer is off?'), bar());
+      } else if (p === 'press') {
+        add(el('h1', { class: 'headline alarm-text' }, `${nameOf(g.press.by)} hit the button!`),
+          el('p', { class: 'sub' }, `They're choosing who to accuse (${plural(A, 'player')}).`), bar(true));
+      } else if (p === 'argue') {
+        add(el('h1', { class: 'headline alarm-text' }, `${nameOf(g.press.by)} accuses ${listNames(inLock.map(nameOf))}!`),
+          airlock(inLock), el('p', { class: 'headline' }, 'Make your case!'), bar(true));
+      } else if (p === 'vote') {
+        const voters = ids.filter((id) => !inLock.includes(id));
+        add(el('h1', { class: 'headline' }, 'Eject them? Vote on your phones.'),
+          el('p', { class: 'sub' }, 'Everyone must say yes. One "keep" and they stay.'),
+          airlock(inLock),
+          el('div', { class: 'votes' }, voters.map((id) => el('div', { class: 'vchip' }, el('span', { class: 'dot', style: { background: colorOf(id)[0] } }), nameOf(id), el('span', { class: id in g.votes ? 'check' : 'wait' })))),
+          bar(true));
+      } else if (p === 'verdict') {
+        const v = g.verdict;
+        add(el('h1', { class: `headline ${v.passed ? 'alarm-text' : ''}` }, v.passed ? 'Unanimous. Ejecting!' : 'Vote failed.'),
+          v.passed ? airlock(inLock) : el('p', { class: 'headline gold' }, v.no.length ? `Kept by ${listNames(v.no.map(nameOf))}.` : 'Nobody voted.'),
+          v.passed ? null : el('p', { class: 'sub' }, g.back?.phase === 'lastcall' ? 'Back to last call!' : 'A new captain takes over.'));
+      } else if (p === 'lastcall') {
+        add(el('h1', { class: 'headline alarm-text', style: { fontSize: '4rem' } }, 'LAST CALL'),
+          el('p', { class: 'headline' }, 'Time is up. Anyone can hit the button one more time.'),
+          g.test && g.dealAt === 0 && Object.keys(g.test.answers).length ? cards() : null, bar(true));
+      } else if (showEnd) {
+        const r = g.result;
+        add(r.ejected.length ? airlock(r.ejected, true, true) : el('p', { class: 'headline alarm-text' }, 'Nobody was ejected in time.'),
+          el('h1', { class: 'headline win-h flip', style: { animationDelay: '2.4s' } }, r.humansWin ? 'The humans win!' : 'The aliens win!'),
+          el('p', { class: 'sub flip', style: { animationDelay: '2.6s' } }, `The ${A === 1 ? 'alien was' : 'aliens were'} ${listNames(ids.filter((id) => g.roles[id] === 'alien').map(nameOf))}.`));
+      }
+      root.replaceChildren(top, stage, crew);
+      frame(now);
+    }
+
+    // -- Every frame: the clock, the bars, the station behind. --
+    const sky = document.getElementById('sky');
+    sky.hidden = false;
+    const ctx = sky.getContext('2d');
+    let lastSecond = -1;
+    function frame(now = party.now()) {
+      const left = g.phase === 'roles' ? CLOCK_MS : clockNow(now);
+      if (clockEl) {
+        const s = Math.ceil(left / 1000);
+        clockEl.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+        clockEl.classList.toggle('low', (left < 60000 && g.clockRun) || g.phase === 'lastcall');
+        clockEl.classList.toggle('paused', !g.clockRun && g.phase !== 'lastcall');
+        const tickLeft = g.phase === 'lastcall' ? g.endsAt - now : g.clockRun ? left : Infinity;
+        const sec = Math.ceil(tickLeft / 1000);
+        if (sec <= 10 && sec > 0 && sec !== lastSecond) sound('tick');
+        lastSecond = sec;
+      }
+      const total = Math.max(1, g.endsAt - g.at);
+      const frac = Math.max(0, Math.min(1, (g.endsAt - now) / total));
+      for (const b of root.querySelectorAll('[data-bar] > i')) b.style.width = `${frac * 100}%`;
+    }
+    function drawSky(t) {
+      const dpr = window.devicePixelRatio || 1;
+      const w = sky.clientWidth, h = sky.clientHeight;
+      if (sky.width !== Math.round(w * dpr) || sky.height !== Math.round(h * dpr)) {
+        sky.width = Math.round(w * dpr);
+        sky.height = Math.round(h * dpr);
+      }
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const alarm = ['press', 'argue', 'vote', 'lastcall'].includes(g.phase);
+      const bg = ctx.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, Math.max(w, h) * 0.75);
+      bg.addColorStop(0, alarm ? '#2a1430' : '#12305a');
+      bg.addColorStop(1, '#0b1d33');
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, w, h);
+      // The blueprint grid.
+      const step = Math.max(24, Math.min(w, h) / 18);
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = 'rgba(79, 209, 255, 0.09)';
+      ctx.beginPath();
+      for (let x = (w / 2) % step; x < w; x += step) { ctx.moveTo(x, 0); ctx.lineTo(x, h); }
+      for (let y = (h / 2) % step; y < h; y += step) { ctx.moveTo(0, y); ctx.lineTo(w, y); }
+      ctx.stroke();
+      // A station hull outline behind everything.
+      ctx.strokeStyle = 'rgba(79, 209, 255, 0.16)';
+      ctx.lineWidth = 2;
+      const r = Math.min(w, h) * 0.42;
+      ctx.beginPath();
+      ctx.arc(w / 2, h / 2, r, 0, Math.PI * 2);
+      ctx.moveTo(w / 2 + r * 0.62, h / 2);
+      ctx.arc(w / 2, h / 2, r * 0.62, 0, Math.PI * 2);
+      for (let k = 0; k < 6; k++) {
+        const a = (k * Math.PI) / 3 + t / 40000;
+        ctx.moveTo(w / 2 + Math.cos(a) * r * 0.62, h / 2 + Math.sin(a) * r * 0.62);
+        ctx.lineTo(w / 2 + Math.cos(a) * r, h / 2 + Math.sin(a) * r);
+      }
+      ctx.stroke();
+      // The scan line sweeping down.
+      const y = ((t / 6000) % 1) * h;
+      const scan = ctx.createLinearGradient(0, y - 60, 0, y);
+      scan.addColorStop(0, 'rgba(79, 209, 255, 0)');
+      scan.addColorStop(1, alarm ? 'rgba(255, 59, 92, 0.22)' : 'rgba(79, 209, 255, 0.16)');
+      ctx.fillStyle = scan;
+      ctx.fillRect(0, y - 60, w, 60);
+    }
+    function loop(t) {
+      drawSky(t);
+      frame();
+      requestAnimationFrame(loop);
+    }
+    requestAnimationFrame(loop);
+
+    // -- The referee's heartbeat: deadlines and the clock. --
+    setInterval(() => {
+      if (ended || g.phase === 'over') return;
+      const now = party.now();
+      if (g.clockRun && clockNow(now) <= 0 && (g.phase === 'pick' || g.phase === 'discuss')) return startLastCall(now);
+      if (now >= g.endsAt) timeUp(now);
+    }, 250);
+
+    if (g.phase === 'over') {
+      // Reloaded after the end: show the end again and finish.
+      g.phase = 'end';
+      g.endsAt = party.now() + 3000;
+    }
+    changed();
+    cue(g.phase);
+  }
+
+  // ---- A phone: the controller, and the keeper of your secret ---------------------------
+  function phone(me) {
+    const { el, textInput, timer, drawPad } = party.ui;
+    const root = document.getElementById('phone');
+    root.hidden = false;
+    let s = null;
+    let peek = false;
+    let mainKey = '';
+    let local = { for: '', type: null, picked: [], accused: [] };
+
+    const head = el('div', { class: 'me' });
+    const roleCard = el('button', { class: 'role', type: 'button', onClick: () => { peek = !peek; drawRole(); } });
+    const main = el('div', { class: 'stack' });
+    const foot = el('div', { class: 'stack' });
+    root.append(head, roleCard, main, el('div', { class: 'grow' }), foot);
+    head.append(el('span', { class: 'dot' }), el('span', {}, party.players.find((p) => p.id === me)?.name ?? 'You'));
+    roleCard.append('Waiting for the big screen…');
+
+    party.on('state', (state) => {
+      s = state;
+      draw();
+    });
+
+    function drawRole() {
+      if (!s) return;
+      const alien = s.role === 'alien';
+      roleCard.className = `role${peek ? ' open' : ''}${peek && alien ? ' alien' : ''}`;
+      roleCard.setAttribute('aria-label', peek ? 'Your role (tap to hide)' : 'Your role (tap to show)');
+      if (!peek) {
+        roleCard.replaceChildren('Your secret role: tap to show');
+        return;
+      }
+      const lines = [];
+      if (alien) {
+        lines.push(el('b', {}, 'You are an ALIEN'));
+        lines.push(el('span', { class: 'fine' }, 'Your tests are a little different. Blend in, and keep them from ejecting you.'));
+        if (s.allies?.length) lines.push(el('span', { class: 'fine' }, `The other ${s.allies.length === 1 ? 'alien is' : 'aliens are'} ${listNames(s.allies)}.`));
+        lines.push(el('span', { class: 'fine' }, `Hacks left: ${s.hacksLeft}. ${s.testNo === 0 ? 'From the second test on, while' : 'While'} the captain picks, marking a crewmate also hacks them: their next test gets the other prompt. Unmark to take it back.`));
+        if (s.hacked?.length) lines.push(el('span', { class: 'fine' }, `Hacked now: ${listNames(s.hacked)}.`));
+      } else {
+        lines.push(el('b', {}, 'You are HUMAN'));
+        lines.push(el('span', { class: 'fine' }, `Find the ${plural(s.aliens, 'alien')}. Answer honestly; look for answers that are off.`));
+      }
+      lines.push(el('span', { class: 'fine' }, '(Tap to hide)'));
+      roleCard.replaceChildren(...lines);
+    }
+
+    function grid(onTap, chosen, { pickMode = false, disabledAway = false, notMe = false } = {}) {
+      return el('div', { class: 'grid' }, s.crew.filter((c) => !notMe || c.id !== me).map((c) =>
+        el('button', {
+          type: 'button',
+          class: `${chosen.includes(c.id) ? 'on' : ''}${pickMode ? ' pick' : ''}`,
+          disabled: disabledAway && c.away,
+          'aria-pressed': chosen.includes(c.id) ? 'true' : 'false',
+          onClick: () => onTap(c.id),
+        }, el('span', { class: 'dot', style: { background: c.color } }), c.name + (c.away ? ' (away)' : ''))));
+    }
+    const crewGrid = () => grid((id) => party.send({ note: id }), s.marks);
+    const timerBox = () => {
+      const box = el('div');
+      timer(box, { endsAt: s.endsAt });
+      return box;
+    };
+    const say = (text) => el('p', { class: 'say-big' }, text);
+
+    /** The main part of the phone: rebuilt only when what it shows changes. */
+    function view() {
+      const p = s.phase;
+      const crewKey = JSON.stringify([s.crew.map((c) => c.away), s.marks]);
+      const pickFor = `${p}-${s.testNo}-${s.endsAt}`;
+      if (local.for !== pickFor) local = { for: pickFor, type: null, picked: [], accused: [] };
+
+      if (p === 'roles') return ['roles', () => [say('Tap your card to see your role. Keep it secret!'), timerBox()]];
+      if (p === 'pick' && s.isCaptain) {
+        return ['cap' + JSON.stringify(local) + crewKey, () => {
+          const ready = local.type && local.picked.length === s.k;
+          return [
+            say(`You're the captain! Choose a test and ${plural(s.k, 'player')}.`),
+            el('div', { class: 'types' }, TYPES.map((t) => el('button', { type: 'button', class: local.type === t ? 'on' : '', onClick: () => { local.type = t; draw(true); } }, TYPE_NAME[t]))),
+            grid((id) => {
+              local.picked = local.picked.includes(id) ? local.picked.filter((x) => x !== id) : [...local.picked, id].slice(-s.k);
+              draw(true);
+            }, local.picked, { pickMode: true, disabledAway: true }),
+            el('button', { class: 'big', type: 'button', disabled: !ready, onClick: () => party.send({ pick: { type: local.type, players: local.picked } }) }, 'Start test'),
+            timerBox(),
+          ];
+        }];
+      }
+      if (p === 'test' && s.prompt) {
+        return ['ans' + s.testNo + s.done, () => {
+          if (s.done) return [say('Answer sent. Now act natural.'), timerBox()];
+          const box = el('div', { class: 'stack' });
+          const label = s.type === 'draw' ? 'Draw' : s.type === 'opinion' ? 'How much do you agree?' : 'Answer';
+          const nodes = [el('div', { class: 'prompt' }, el('small', {}, label), s.type === 'opinion' ? `"${s.prompt}"` : s.prompt), box, timerBox()];
+          if (s.type === 'write') {
+            textInput(box, { placeholder: 'Your answer', maxLength: WRITE_MAX, onSubmit: (text) => party.send({ answer: text }) });
+          } else if (s.type === 'opinion') {
+            box.append(el('div', { class: 'opts' }, OPINION.map((o, i) => el('button', { type: 'button', class: 'big', onClick: () => party.send({ answer: i }) }, o))));
+          } else {
+            let strokes = [];
+            drawPad(box, { colors: ['black', 'red', 'blue', 'green', 'yellow', 'brown'], onChange: (st) => { strokes = st; party.send({ answer: st }); } });
+            box.append(el('button', { class: 'big', type: 'button', onClick: () => party.send({ answer: strokes, done: true }) }, "I'm done"));
+          }
+          return nodes;
+        }];
+      }
+      if (p === 'pick' || p === 'test' || p === 'discuss' || p === 'lastcall') {
+        let line;
+        if (p === 'pick') line = `Captain ${s.captain} is choosing a test.`;
+        else if (p === 'test') line = `${listNames(s.tested)} ${s.tested.length === 1 ? 'is' : 'are'} being tested.`;
+        else if (p === 'discuss') line = 'Talk it out! Whose answer was off?';
+        else line = 'LAST CALL! Hit the button now if you are sure.';
+        const showNext = p === 'discuss' && s.isCaptain;
+        return [p + s.testNo + crewKey + showNext + s.captain, () => {
+          const nodes = [say(line), el('p', { class: 'muted' }, 'Crew (tap to mark):'), crewGrid(), timerBox()];
+          if (showNext) {
+            const next = el('button', { class: 'big secondary', type: 'button', disabled: party.now() < s.nextAt, onClick: () => party.send({ next: true }) }, 'Next test');
+            if (party.now() < s.nextAt) setTimeout(() => (next.disabled = false), s.nextAt - party.now());
+            nodes.push(next);
+          }
+          return nodes;
+        }];
+      }
+      if (p === 'press') {
+        if (!s.choosing) return ['press', () => [say(`${s.presser} hit the button! They're choosing who to accuse.`), timerBox()]];
+        return ['acc' + JSON.stringify(local.accused) + crewKey, () => [
+          say(`Who are the ${plural(s.aliens, 'alien')}? Pick ${s.aliens}.`),
+          grid((id) => {
+            local.accused = local.accused.includes(id) ? local.accused.filter((x) => x !== id) : [...local.accused, id].slice(-s.aliens);
+            draw(true);
+          }, local.accused, { pickMode: true, notMe: true }),
+          el('button', { class: 'big', type: 'button', disabled: local.accused.length !== s.aliens, style: { background: 'var(--alarm)', color: '#fff' }, onClick: () => party.send({ accuse: local.accused }) }, 'Accuse'),
+          timerBox(),
+        ]];
+      }
+      if (p === 'argue') return ['argue', () => [say(s.accusedMe ? "You're accused! Make your case, out loud." : `${s.presser} accuses ${listNames(s.accused)}. Hear them out!`), timerBox()]];
+      if (p === 'vote') {
+        return ['vote' + s.voted, () => {
+          if (s.accusedMe) return [say("You're accused. The crew is voting."), timerBox()];
+          if (s.voted !== undefined) return [say(`You voted ${s.voted ? 'EJECT' : 'KEEP'}.`), timerBox()];
+          return [say(`Eject ${listNames(s.accused)}?`), el('p', { class: 'muted' }, 'Everyone must vote Eject. One Keep and they stay.'),
+            el('div', { class: 'vote2' },
+              el('button', { class: 'big eject', type: 'button', onClick: () => party.send({ vote: true }) }, 'Eject'),
+              el('button', { class: 'big keep', type: 'button', onClick: () => party.send({ vote: false }) }, 'Keep')),
+            timerBox()];
+        }];
+      }
+      if (p === 'verdict') {
+        return ['verdict', () => [say(s.verdict.passed ? `Unanimous! ${listNames(s.accused)} ${s.accused.length === 1 ? 'is' : 'are'} ejected.` : `Vote failed${s.verdict.no.length ? `: kept by ${listNames(s.verdict.no)}` : ''}.`)]];
+      }
+      if (p === 'end' || p === 'over') {
+        return ['end', () => [
+          el('p', { class: 'say-big', style: { fontSize: '2rem' } }, s.won ? 'Your team wins!' : 'Your team lost.'),
+          say(s.humansWin ? 'The humans win!' : 'The aliens win!'),
+          el('p', { class: 'muted' }, `The ${s.alienNames.length === 1 ? 'alien was' : 'aliens were'} ${listNames(s.alienNames)}.`),
+        ]];
+      }
+      return ['wait', () => [say('…')]];
+    }
+
+    function draw(force = false) {
+      if (!s) return;
+      head.querySelector('.dot').style.background = s.color;
+      drawRole();
+      const [key, build] = view();
+      if (force || key !== mainKey) {
+        mainKey = key;
+        main.replaceChildren(...build().filter(Boolean));
+      }
+      foot.replaceChildren();
+      if (s.canPush) {
+        foot.append(el('button', { class: 'redbtn', type: 'button', onClick: () => party.send({ push: true }) }, s.lastCall ? 'LAST CALL: ACCUSE' : 'THE BUTTON'));
+      } else if (s.hasButton === false && s.phase !== 'end' && s.phase !== 'over') {
+        foot.append(el('p', { class: 'muted center' }, 'You have used your button.'));
+      }
+    }
+  }
+</script>

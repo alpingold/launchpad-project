@@ -1698,6 +1698,56 @@ modes in parallel from the same plan). Subjects: Bumper Blobs (18 KB), "Realm Pa
 files stay as the fallback and for a new game's first attempt. Worth watching in real use:
 how often edits fail to apply (the admin page shows each attempt's mode and problems).
 
+## 24. Stowaways: a hidden-role game (official) (decided and built 2026-10-16)
+
+**Why:** §22's "bluffing, secrets, hidden roles" had no game yet. The user asked for a
+hand-written official one inspired by Jackbox Party Pack 6's _Push The Button_ (its mechanics,
+not its name, text or art). It is the second official game after Bumper Blobs, and the first
+that keeps secrets on the phones.
+
+**The design** (`generator/spec/designs/stowaways.md`, reviewed by the user first): 4–10
+players; 1 alien at 4–5, 2 at 6–8, 3 at 9–10. A captain picks a test (Write, Draw, Opinion) and
+2–4 players; aliens get a close but different prompt. The answers go up on the big screen and
+the room argues. Anyone can hit the button once per game to accuse as many players as there are
+aliens; everyone else votes, and only a unanimous Eject ejects them. One ejection ends the game:
+the humans win only if exactly the aliens went out. Clock: 3 min + 1 min per player, paused
+during the button. The user's decisions on the design:
+- **Hacks frame, they don't convert** (as in the original): an alien's hack gives a human the
+  aliens' prompt for their next test (or an alien the humans' one, as cover). Two per alien,
+  from the second test. Conversion would make "who's an alien" a moving target.
+- **Two additions of ours:** _last call_ (at 0:00, 30 s in which everyone gets one more push)
+  and _public votes_ (the screen names who voted Keep).
+- **Three tests in v1** (Write, Draw, Opinion); Deliberation (aliens see only the options) later.
+- The design is ~1,300 words, over DESIGN.md's ~600: it's hand-written, not an AI example.
+
+**How it keeps secrets:**
+- The big screen never shows a role or the prompt during a test (it would tell the aliens the
+  humans' prompt); only the humans' prompt, at the reveal.
+- Each phone gets its own `setState`, never `'all'`. The role card is covered until tapped.
+- Everyone taps the crew grid to mark suspects (private marks), at any time. For an alien during
+  a captain's pick, a mark is also a hack (unmarking takes it back); which marks are hacks, the
+  hacks left and the other aliens appear only on the covered role card. So every phone looks
+  and reacts the same (a review found an alien's taps did nothing outside the pick, which gave
+  them away; fixed, and an e2e test compares a covered alien phone with a human's).
+- The big screen redraws only when something public changed, so a note or a hack doesn't
+  make it flicker. Phones make no sound; the big screen plays sounds only for public moments.
+
+**Built:** `server/src/games/stowaways/game.html` (~58 KB: HTML and CSS for the station's
+helmets, cards and airlock, a canvas for the blueprint grid and scan line, ~60 prompt pairs),
+in `OFFICIAL_GAMES`, with catalogue shots from `check-game --players 10` (PASSED). One
+plain-JSON object is saved after every change; deadlines are server times, so a big-screen
+reload carries on. Tests: the static check's list of official games, and
+`e2e/tests/stowaways.spec.js` (four phones: roles → a writing test → the reveal → the button →
+a unanimous vote → the humans win; a big-screen reload; a drawing test, then a hack that gives
+a human the aliens' prompt).
+
+**Small changes made while building:** you can't accuse yourself; the voters show as small
+chips (not helmets) to leave room for the airlock; a font size on the big screen that follows the
+frame's height too, so every phase fits a short window as well as a TV.
+
+**Next:** play-tests with real groups (balance: test sizes, hack count, clock length), then
+Deliberation as a fourth test.
+
 ---
 
 ## Verification (how to confirm the plan worked once built)
