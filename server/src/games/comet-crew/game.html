@@ -1,0 +1,1120 @@
+<script type="application/json" id="game-info">
+  {
+    "name": "Comet Crew",
+    "description": "Crew one little ship through a comet field: steer, shoot, hold the shield and put out fires, together. Swap stations every wave and get her home.",
+    "minPlayers": 2,
+    "maxPlayers": 8,
+    "tags": ["action", "co-op"],
+    "minutes": [3, 5]
+  }
+</script>
+<!--
+  COMET CREW: an official co-op action game (design: generator/spec/designs/comet-crew.md).
+   - The big screen is the referee and the ship: it runs the flight at 60 frames a second on a
+     <canvas>, spawns rocks and comets, and tells each phone which station it's on and what
+     that station needs to know (party.setState, only when it changed).
+   - Each phone is one station: Helm (joystick), Gunner (joystick aim), Shields (4 arrows),
+     Engineer (room tiles), Navigator (early warnings + tractor beam). Stations nobody is on,
+     or whose phone dropped out, fly on autopilot, badly.
+   - Everything forgiving: slow rocks, generous hitboxes, comets announced 2.6 s ahead and a
+     shield check that looks back 0.35 s, because a phone's tap arrives 0.05–0.15 s late.
+   - party.save after every change that matters: a reload restarts the wave that was cut off.
+-->
+<style>
+  body.host { background: #140b2e; overflow: hidden; color: #fff; }
+  body.host #sky { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
+  .hud { position: fixed; top: 0; left: 0; right: 0; display: flex; align-items: flex-start; gap: 1.2rem; padding: 0.7rem 1rem; pointer-events: none; text-shadow: 0 2px 0 #140b2e; }
+  .hud-wave { min-width: 12rem; }
+  .hud-wave b, .hud-hull b, .hud-score b { display: block; font-size: 1.15rem; font-weight: 900; letter-spacing: 0.02em; }
+  .bar { height: 0.6rem; border-radius: 1rem; background: rgba(255, 255, 255, 0.15); overflow: hidden; margin-top: 0.3rem; }
+  .bar i { display: block; height: 100%; width: 100%; border-radius: inherit; background: #5ce1ff; transition: width 0.2s linear; }
+  .hud-hull { flex: 1; max-width: 26rem; margin: 0 auto; }
+  .hud-hull .bar { height: 1rem; border: 2px solid rgba(255, 255, 255, 0.5); }
+  .hud-hull .bar i { background: #3ddc84; }
+  .hud-hull.low .bar i { background: #ff3b5c; }
+  .hud-score { text-align: right; min-width: 9rem; }
+  .crew { position: fixed; left: 0; right: 0; bottom: 0; display: flex; justify-content: center; flex-wrap: wrap; gap: 0.5rem; padding: 0.6rem; pointer-events: none; }
+  .chip { display: flex; align-items: center; gap: 0.45rem; padding: 0.3rem 0.8rem 0.3rem 0.35rem; border-radius: 2rem; background: rgba(20, 11, 46, 0.78); border: 2px solid rgba(255, 255, 255, 0.18); font-size: 0.8rem; font-weight: 700; }
+  .chip .st { padding: 0.1rem 0.55rem; border-radius: 1rem; color: #140b2e; font-weight: 900; }
+  .chip.auto { opacity: 0.6; }
+  .chip.burn { border-color: #ff7a3d; box-shadow: 0 0 0.6rem #ff7a3d; }
+  .pops { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
+  .pop { position: absolute; transform: translate(-50%, -50%); font-weight: 900; font-size: 1.3rem; white-space: nowrap; text-shadow: 0 3px 0 #140b2e; animation: rise 1.3s ease-out forwards; }
+  @keyframes rise { from { opacity: 1; margin-top: 0; } 70% { opacity: 1; } to { opacity: 0; margin-top: -3rem; } }
+  .banner { position: fixed; inset: 0; display: grid; place-items: center; pointer-events: none; }
+  .banner-card { max-width: 40rem; padding: 1.4rem 2rem; border-radius: 1.4rem; background: rgba(20, 11, 46, 0.86); border: 3px solid #ffe7c2; text-align: center; animation: drop 0.45s cubic-bezier(0.3, 1.4, 0.5, 1); }
+  @keyframes drop { from { transform: translateY(-1.5rem) scale(0.95); opacity: 0; } }
+  .banner h1 { font-size: 2.6rem; font-weight: 900; margin: 0 0 0.3rem; color: #ffd23f; }
+  .banner p { font-size: 1.15rem; margin: 0 0 0.6rem; }
+  .banner .lineup { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.4rem 1rem; font-size: 1rem; font-weight: 700; }
+  .banner table { margin: 0.4rem auto 0; border-collapse: collapse; font-size: 0.9rem; }
+  .banner td, .banner th { padding: 0.15rem 0.7rem; text-align: right; }
+  .banner th { color: #c9bfff; font-weight: 600; }
+  .banner td:first-child, .banner th:first-child { text-align: left; font-weight: 800; }
+  .banner .count { font-size: 0.95rem; color: #c9bfff; }
+
+  body.player { overflow: hidden; user-select: none; -webkit-user-select: none; }
+  .phone { gap: 0.6rem; }
+  .who { display: flex; align-items: center; gap: 0.5rem; font-weight: 800; }
+  .who .dot { width: 1.3rem; height: 1.3rem; border-radius: 50%; border: 3px solid rgba(0, 0, 0, 0.25); }
+  .station { border-radius: 1rem; padding: 0.7rem 0.9rem; color: #140b2e; }
+  .station small { display: block; font-weight: 700; opacity: 0.75; }
+  .station b { display: block; font-size: 2rem; font-weight: 900; line-height: 1.1; }
+  .station p { margin: 0.25rem 0 0; font-size: 0.95rem; font-weight: 600; }
+  .alert { margin: 0; min-height: 1.4em; font-weight: 800; color: var(--bad); text-align: center; }
+  .controls { display: flex; flex-direction: column; gap: 0.6rem; }
+  .controls .pu-joystick { height: 42vh; }
+  .heat { height: 0.9rem; border-radius: 1rem; background: var(--border); overflow: hidden; }
+  .heat i { display: block; height: 100%; background: #ff7a3d; transition: width 0.15s; }
+  .heat.hot i { background: #ff3b5c; }
+  .cross { display: grid; grid-template-columns: 1fr 1fr 1fr; grid-template-rows: repeat(3, 4.6rem); gap: 0.4rem; }
+  .cross button { font-size: 1.15rem; padding: 0.2rem; background: var(--surface); color: var(--text); border: 3px solid var(--border); }
+  .cross button.on { background: #5ce1ff; color: #140b2e; border-color: #140b2e; }
+  .cross .top { grid-column: 2; grid-row: 1; } .cross .back { grid-column: 1; grid-row: 2; }
+  .cross .front { grid-column: 3; grid-row: 2; } .cross .bottom { grid-column: 2; grid-row: 3; }
+  .cross .hub { grid-column: 2; grid-row: 2; display: grid; place-items: center; border-radius: 50%; background: #ffe7c2; color: #140b2e; font-weight: 900; font-size: 0.8rem; margin: 0.6rem; }
+  .warns { display: flex; flex-direction: column; gap: 0.35rem; min-height: 2.6rem; }
+  .calm { margin: 0; font-weight: 700; text-align: center; }
+  .warn { padding: 0.45rem 0.7rem; border-radius: 0.7rem; background: #ff3b5c; color: #fff; font-weight: 900; font-size: 1.2rem; }
+  .warn.soon { animation: blink 0.4s steps(2) infinite; }
+  @keyframes blink { 50% { background: #140b2e; } }
+  .rooms { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.5rem; }
+  .rooms button { min-height: 8rem; display: flex; flex-direction: column; justify-content: space-between; align-items: stretch; padding: 0.6rem 0.4rem; background: var(--surface); color: var(--text); border: 3px solid var(--border); }
+  .rooms button.burn { background: #ff7a3d; color: #140b2e; border-color: #140b2e; }
+  .flames { display: flex; gap: 2px; height: 0.8rem; }
+  .flames i { flex: 1; border-radius: 2px; background: rgba(0, 0, 0, 0.12); }
+  .flames i.lit { background: #ffd23f; }
+  .over-card { text-align: center; }
+  .over-card b { display: block; font-size: 2rem; font-weight: 900; }
+</style>
+
+<div id="host" hidden>
+  <canvas id="sky"></canvas>
+  <div class="hud">
+    <div class="hud-wave"><b id="wave-text"></b><div class="bar"><i id="wave-bar"></i></div></div>
+    <div class="hud-hull" id="hull-box"><b id="hull-text"></b><div class="bar"><i id="hull-bar"></i></div></div>
+    <div class="hud-score"><b id="score-text"></b></div>
+  </div>
+  <div class="pops" id="pops"></div>
+  <div class="crew" id="crew"></div>
+  <div class="banner" id="banner" hidden></div>
+</div>
+
+<div class="screen phone" id="phone" hidden>
+  <div class="who"><span class="dot" id="dot"></span><span id="pname"></span></div>
+  <div class="station" id="station"></div>
+  <p class="alert" id="alert" role="status"></p>
+  <div class="grow"></div>
+  <div class="controls" id="controls"></div>
+</div>
+
+<script>
+  'use strict';
+
+  // ---- Shared ---------------------------------------------------------------------------
+  const WAVES = 6;
+  const WAVE_MS = 35000;
+  const BREAK_MS = 7000;
+  const FIRST_BREAK_MS = 10000;
+  const RESUME_MS = 5000;
+  const END_MS = 8000;
+  const COLORS = ['#ff5a5f', '#ffb400', '#3ec300', '#00a6ed', '#a259ff', '#ff7eb6', '#00c2a8', '#ff8c42'];
+  // In the order they're crewed (design: Players).
+  const STATIONS = ['helm', 'gun', 'shield', 'engineer', 'nav', 'gun2', 'engineer2', 'gun3'];
+  const CORE = STATIONS.slice(0, 4);
+  const INFO = {
+    helm: { name: 'Helm', color: '#ffd23f', tip: 'Steer the ship. Dodge rocks, fly into stars and repair kits.' },
+    gun: { name: 'Gunner', color: '#ff7a3d', tip: 'Point the stick to aim and shoot. Let go now and then, or it overheats.' },
+    gun2: { name: 'Back gunner', color: '#ff7a3d', tip: 'Point the stick to aim and shoot. Let go now and then, or it overheats.' },
+    gun3: { name: 'Belly gunner', color: '#ff7a3d', tip: 'Point the stick to aim and shoot. Let go now and then, or it overheats.' },
+    shield: { name: 'Shields', color: '#5ce1ff', tip: 'Turn the shield to the side the next comet comes from.' },
+    engineer: { name: 'Engineer', color: '#3ddc84', tip: 'Tap a burning room to put the fire out. Nothing burning? Patch the hull.' },
+    engineer2: { name: 'Engineer 2', color: '#3ddc84', tip: 'Tap a burning room to put the fire out. Nothing burning? Patch the hull.' },
+    nav: { name: 'Navigator', color: '#c58cff', tip: 'You see comets first: shout where they come from! Tractor beam: once a wave.' },
+  };
+  const ROOMS = ['engine', 'guns', 'shields'];
+  const ROOM_NAME = { engine: 'Engine', guns: 'Guns', shields: 'Shields' };
+  const SIDES = ['top', 'bottom', 'front', 'back'];
+  const SIDE = {
+    top: { arrow: '▲', word: 'TOP', dx: 0, dy: -1 },
+    bottom: { arrow: '▼', word: 'BOTTOM', dx: 0, dy: 1 },
+    front: { arrow: '▶', word: 'FRONT', dx: 1, dy: 0 },
+    back: { arrow: '◀', word: 'BACK', dx: -1, dy: 0 },
+  };
+  const NEWS = [
+    'Shoot the rocks, dodge what you miss, grab the stars.',
+    "Comets! They can't be shot: turn the shield to meet them.",
+    'Repair kits show up: fly into them to fix the hull.',
+    'Rocks from above and below, and comets from behind.',
+    'Comets come two at a time now.',
+    'The last stretch: a comet storm. Get her home!',
+  ];
+
+  /** Who's on which station in a wave: { station: playerId }. Everyone moves one along per wave. */
+  function crewFor(wave) {
+    const ids = party.players.map((p) => p.id);
+    const n = ids.length;
+    const crew = {};
+    if (n >= 4) {
+      const st = STATIONS.slice(0, n);
+      ids.forEach((id, i) => (crew[st[(i + wave - 1) % n]] = id));
+    } else {
+      // 1–3 players: a different 1–3 of the four core stations each wave; the rest fly themselves.
+      ids.forEach((id, i) => (crew[CORE[(wave - 1 + i) % 4]] = id));
+    }
+    return crew;
+  }
+  /** The stations this ship has: the core four, plus the extra ones a big crew fills. */
+  function stationsOf() {
+    const n = party.players.length;
+    return n >= 4 ? STATIONS.slice(0, n) : CORE;
+  }
+
+  party.ready(({ role, restored }) => {
+    document.body.className = role;
+    if (role === 'host') bigScreen(restored);
+    else phone();
+  });
+
+  // ---- The big screen -------------------------------------------------------------------
+  function bigScreen(restored) {
+    const { el, sound } = party.ui;
+    const W = 1600, H = 900;
+    const K = 1.35; // the ship's size: drawn at this scale, so it reads on a TV
+    const SHIP_HW = 78 * K, SHIP_HH = 36 * K; // hitbox half-sizes: a bit smaller than the drawing
+    const TURRET = { gun: [8, -40], gun2: [-72, 0], gun3: [8, 40] };
+    const ROOM_X = { engine: -48, guns: -2, shields: 40 };
+    const WARN_MS = 2600, NAV_MS = 5000, COMET_FLY_MS = 700, SHIELD_GRACE_MS = 350;
+
+    document.getElementById('host').hidden = false;
+    const canvas = document.getElementById('sky');
+    const ctx = canvas.getContext('2d');
+    const players = party.players;
+    const byId = new Map(players.map((p, i) => [p.id, { ...p, color: COLORS[i % COLORS.length] }]));
+    const connected = new Set(players.filter((p) => p.connected !== false).map((p) => p.id));
+
+    const blankLog = () => Object.fromEntries(players.map((p) => [p.id, { rocks: 0, blocks: 0, fires: 0, stars: 0 }]));
+    // Everything that survives a reload (party.save): plain JSON only.
+    let g = restored ?? {
+      phase: 'brief', wave: 1, endsAt: 0, hull: 100, score: 0,
+      fires: { engine: 0, guns: 0, shields: 0 },
+      log: blankLog(), patches: 12, tractor: 1, side: 'front', result: null, resumed: false,
+    };
+    // The flight itself (not saved: a cut-off wave starts again).
+    let crew = crewFor(g.wave);
+    let rocks = [], comets = [], bullets = [], pickups = [];
+    const ship = { x: 420, y: 450, vx: 0, vy: 0 };
+    let guns = {};
+    const input = {}; // playerId → { x, y } from the joystick
+    let sideHistory = [];
+    let nextRockAt = 0, nextCometAt = 0, nextStarAt = 0, nextKitAt = 0, nextAutoGun = 0, nextAutoFix = 0;
+    let autoShield = null; // { side, at }
+    let shake = 0, shieldFlash = 0, lastTap = {}, cometId = 0;
+    const stars = Array.from({ length: 140 }, () => ({ x: Math.random() * W, y: Math.random() * H, z: 0.2 + Math.random() * 0.8 }));
+
+    const who = (station) => {
+      const id = crew[station];
+      return id && connected.has(id) ? id : null;
+    };
+    const stationOf = (id) => Object.keys(crew).find((s) => crew[s] === id) ?? null;
+    const hasStation = (s) => stationsOf().includes(s);
+    const rand = (a, b) => a + Math.random() * (b - a);
+    const cfg = (w) => ({
+      rockEvery: [2200, 1900, 1600, 1400, 1200, 1000][w - 1],
+      cometEvery: [0, 9000, 7500, 6000, 5000, 4000][w - 1],
+      doubleComets: w >= 5,
+      sides: w >= 4 ? SIDES : w >= 2 ? ['top', 'bottom', 'front'] : [],
+      edgeRocks: w >= 4,
+      kits: w >= 3,
+      speed: 1 + (w - 1) * 0.08,
+    });
+
+    // ---- Saving (at most once a second, at once on a phase change) ----
+    let dirty = false, savedAt = 0;
+    function save(now = party.now()) {
+      party.save(g);
+      dirty = false;
+      savedAt = now;
+    }
+
+    // ---- Phases ----
+    function resetFlight() {
+      rocks = []; comets = []; bullets = []; pickups = []; sideHistory = []; autoShield = null;
+      Object.assign(ship, { x: 420, y: 450, vx: 0, vy: 0 });
+      guns = {};
+      for (const s of ['gun', 'gun2', 'gun3']) if (hasStation(s)) guns[s] = { angle: 0, heat: 0, overUntil: 0, lastShot: 0 };
+    }
+    function startBrief(wave, ms, now = party.now()) {
+      g.phase = 'brief';
+      g.wave = wave;
+      g.endsAt = now + ms;
+      g.patches = 12;
+      g.tractor = 1;
+      g.fires = { engine: 0, guns: 0, shields: 0 }; // the crew patches up between waves
+      crew = crewFor(wave);
+      for (const id of Object.keys(input)) input[id] = { x: 0, y: 0 };
+      resetFlight();
+      showBanner();
+      buildCrewStrip();
+      tellPhones(true);
+      save(now);
+    }
+    function startWave(now) {
+      g.phase = 'wave';
+      g.resumed = false;
+      g.endsAt = now + WAVE_MS;
+      nextRockAt = now + 1200;
+      nextCometAt = now + 3000;
+      nextStarAt = now + 2500;
+      nextKitAt = now + 9000;
+      showBanner();
+      sound('go');
+      tellPhones(true);
+      save(now);
+    }
+    function endGame(result, now) {
+      g.phase = 'over';
+      g.result = result;
+      g.endsAt = now + END_MS;
+      if (result === 'home') g.score += Math.round(g.hull);
+      resetFlight();
+      showBanner();
+      sound(result === 'home' ? 'win' : 'lose');
+      tellPhones(true);
+      save(now);
+    }
+    function advance(now) {
+      if (g.phase === 'brief' && now >= g.endsAt) startWave(now);
+      else if (g.phase === 'wave' && now >= g.endsAt) {
+        g.score += 100;
+        if (g.wave >= WAVES) endGame('home', now);
+        else startBrief(g.wave + 1, BREAK_MS, now);
+      } else if (g.phase === 'over' && now >= g.endsAt && !g.ended) {
+        g.ended = true;
+        save(now);
+        party.end({ rankings: players.map((p) => p.id), scores: Object.fromEntries(players.map((p) => [p.id, g.score])) });
+      }
+    }
+
+    // ---- Phones ----
+    party.on('event', (from, data) => {
+      if (g.phase !== 'wave' || !data || typeof data !== 'object') return;
+      const station = stationOf(from);
+      if (!station) return;
+      const now = party.now();
+      if (Array.isArray(data.stick) && (station === 'helm' || station.startsWith('gun'))) {
+        let x = Number(data.stick[0]), y = Number(data.stick[1]);
+        if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+        const len = Math.hypot(x, y);
+        if (len > 1) { x /= len; y /= len; }
+        input[from] = { x, y };
+      } else if (station === 'shield' && SIDES.includes(data.shield)) {
+        g.side = data.shield;
+        sideHistory.push({ side: data.shield, at: now });
+        tellPhones();
+      } else if (station.startsWith('engineer') && (now - (lastTap[from] ?? 0) > 80)) {
+        lastTap[from] = now;
+        if (ROOMS.includes(data.douse)) douse(data.douse, from);
+        else if (data.patch === true && !anyFire() && g.patches > 0 && g.hull < 100) {
+          g.patches -= 1;
+          g.hull = Math.min(100, g.hull + 1);
+          dirty = true;
+          tellPhones();
+        }
+      } else if (station === 'nav' && data.tractor === true && g.tractor > 0) {
+        g.tractor -= 1;
+        for (const p of pickups) p.pulled = true;
+        pop(ship.x, ship.y - 90, 'Tractor beam!', '#c58cff');
+        sound('blip');
+        dirty = true;
+        tellPhones();
+      }
+    });
+    party.on('left', (id) => {
+      connected.delete(id);
+      input[id] = { x: 0, y: 0 };
+      buildCrewStrip();
+      tellPhones(true);
+    });
+    party.on('back', (id) => {
+      connected.add(id);
+      buildCrewStrip();
+      tellPhones(true);
+    });
+
+    const anyFire = () => ROOMS.some((r) => g.fires[r] > 0);
+    function douse(room, by) {
+      if (g.fires[room] <= 0) return;
+      g.fires[room] -= 1;
+      if (g.fires[room] === 0) {
+        if (by && g.log[by]) g.log[by].fires += 1;
+        pop(ship.x + ROOM_X[room] * K, ship.y - 90, 'Fire out!', '#3ddc84');
+        buildCrewStrip();
+      }
+      dirty = true;
+      tellPhones();
+    }
+    function ignite(room) {
+      g.fires[room] = g.fires[room] > 0 ? Math.min(6, g.fires[room] + 2) : 6;
+      buildCrewStrip();
+      tellPhones();
+    }
+
+    const sent = {}; // playerId → the JSON of its last state
+    let toldAt = 0;
+    function phoneState(p) {
+      const station = stationOf(p.id);
+      const base = { phase: g.phase, wave: g.wave, waves: WAVES, endsAt: g.endsAt, color: p.color, station, news: NEWS[g.wave - 1], resumed: g.resumed };
+      if (g.phase === 'over') {
+        const l = g.log[p.id];
+        return { ...base, result: g.result, score: g.score, mine: `You shot ${l.rocks} rock${l.rocks === 1 ? '' : 's'}, blocked ${l.blocks} comet${l.blocks === 1 ? '' : 's'}, put out ${l.fires} fire${l.fires === 1 ? '' : 's'} and caught ${l.stars} star${l.stars === 1 ? '' : 's'}.` };
+      }
+      if (g.phase !== 'wave' || !station) return base;
+      const now = party.now();
+      const s = { ...base, alert: '' };
+      if (station === 'helm' && g.fires.engine > 0) s.alert = 'Engine on fire: the ship is slow! Tell the engineer.';
+      if (station.startsWith('gun')) {
+        const gun = guns[station];
+        s.heat = Math.round((gun?.heat ?? 0) * 10);
+        s.over = Boolean(gun && now < gun.overUntil);
+        if (g.fires.guns > 0) s.alert = 'Guns jammed: fire in the gun room!';
+        else if (s.over) s.alert = 'Overheated! Let go to cool down.';
+      }
+      if (station === 'shield') {
+        s.side = g.side;
+        s.comets = comets.filter((c) => !c.done && now >= c.warnAt).map((c) => ({ side: c.side, at: c.impactAt }));
+        if (g.fires.shields > 0) s.alert = 'Shields offline: fire in the shield room!';
+      }
+      if (station.startsWith('engineer')) {
+        s.fires = { ...g.fires };
+        s.patches = g.patches;
+        s.canPatch = !anyFire() && g.patches > 0 && g.hull < 100;
+        if (anyFire()) s.alert = 'Fire! Tap the burning room.';
+      }
+      if (station === 'nav') {
+        s.comets = comets.filter((c) => !c.done && now >= c.navAt).map((c) => ({ side: c.side, at: c.impactAt }));
+        s.tractor = g.tractor;
+      }
+      return s;
+    }
+    function tellPhones(force) {
+      if (!force) return void (toldAt = 0); // soon: the frame loop sends it (one update per change burst)
+      toldAt = party.now();
+      for (const p of byId.values()) {
+        const state = phoneState(p);
+        const json = JSON.stringify(state);
+        if (sent[p.id] === json) continue;
+        sent[p.id] = json;
+        party.setState(p.id, state);
+      }
+    }
+
+    // ---- The flight ----
+    function spawnRock(now, c) {
+      const big = Math.random() < 0.65;
+      const r = big ? rand(44, 58) : rand(26, 34);
+      let x = W + 70, y = rand(100, H - 100), vx = -rand(80, 140) * c.speed, vy = rand(-30, 30);
+      if (c.edgeRocks && Math.random() < 0.3) {
+        const fromTop = Math.random() < 0.5;
+        x = rand(700, 1500);
+        y = fromTop ? -70 : H + 70;
+        vx = -rand(40, 90) * c.speed;
+        vy = (fromTop ? 1 : -1) * rand(70, 110) * c.speed;
+      }
+      rocks.push(makeRock(x, y, vx, vy, r));
+    }
+    function makeRock(x, y, vx, vy, r) {
+      return { x, y, vx, vy, r, a: Math.random() * 6, spin: rand(-1, 1), shape: Array.from({ length: 9 }, () => rand(0.78, 1.08)) };
+    }
+    function spawnComets(now, c) {
+      const first = c.sides[Math.floor(Math.random() * c.sides.length)];
+      const impact = now + NAV_MS + 200;
+      addComet(first, impact);
+      if (c.doubleComets) {
+        const others = c.sides.filter((s) => s !== first);
+        addComet(others[Math.floor(Math.random() * others.length)], impact + 900);
+      }
+    }
+    function addComet(side, impactAt) {
+      comets.push({ id: ++cometId, side, impactAt, warnAt: impactAt - WARN_MS, navAt: impactAt - NAV_MS, done: false, warned: false });
+    }
+
+    function hit(dmg, x, y, fire) {
+      g.hull = Math.max(0, g.hull - dmg);
+      shake = 18;
+      sound('buzz');
+      pop(x, y, `Hull hit! −${dmg}`, '#ff3b5c');
+      if (fire) ignite(ROOMS[Math.floor(Math.random() * ROOMS.length)]);
+      dirty = true;
+      tellPhones();
+    }
+
+    function fly(dt, now) {
+      const c = cfg(g.wave);
+      // Spawns.
+      if (now >= nextRockAt) { spawnRock(now, c); nextRockAt = now + c.rockEvery * rand(0.75, 1.25); }
+      if (c.cometEvery && now >= nextCometAt && now < g.endsAt - NAV_MS - 1200) { spawnComets(now, c); nextCometAt = now + c.cometEvery * rand(0.85, 1.15); }
+      if (now >= nextStarAt) { pickups.push({ kind: 'star', x: W + 40, y: rand(130, H - 130), vx: -110, vy: 0 }); nextStarAt = now + rand(2500, 4500); }
+      if (c.kits && now >= nextKitAt) { pickups.push({ kind: 'kit', x: W + 40, y: rand(160, H - 160), vx: -100, vy: 0 }); nextKitAt = now + rand(10000, 13000); }
+
+      // Helm.
+      const helmId = who('helm');
+      let tx, ty;
+      if (helmId) ({ x: tx, y: ty } = input[helmId] ?? { x: 0, y: 0 });
+      else {
+        // Autopilot: back to the middle, and a half-hearted dodge of the nearest rock ahead.
+        tx = Math.max(-0.5, Math.min(0.5, (420 - ship.x) / 300));
+        ty = Math.max(-0.5, Math.min(0.5, (450 - ship.y) / 300));
+        const threat = rocks.filter((r) => r.x > ship.x && r.x - ship.x < 400 && Math.abs(r.y - ship.y) < 140).sort((a, b) => a.x - b.x)[0];
+        if (threat) ty = threat.y > ship.y ? -0.6 : 0.6;
+      }
+      const speed = 420 * (g.fires.engine > 0 ? 0.35 : 1);
+      const k = Math.min(1, dt * 6);
+      ship.vx += (tx * speed - ship.vx) * k;
+      ship.vy += (ty * speed - ship.vy) * k;
+      ship.x = Math.max(140, Math.min(1000, ship.x + ship.vx * dt));
+      ship.y = Math.max(130, Math.min(H - 130, ship.y + ship.vy * dt));
+
+      // Turrets.
+      for (const [st, gun] of Object.entries(guns)) {
+        const id = who(st);
+        const over = now < gun.overUntil;
+        let firing = false;
+        if (id) {
+          const s = input[id] ?? { x: 0, y: 0 };
+          const len = Math.hypot(s.x, s.y);
+          if (len > 0.3) gun.angle = Math.atan2(s.y, s.x);
+          firing = len > 0.55;
+        } else if (now >= nextAutoGun && st === 'gun') {
+          // Autopilot: a slow, sloppy shot at the nearest rock.
+          nextAutoGun = now + 1200;
+          const target = rocks.filter((r) => r.x > ship.x - 100).sort((a, b) => Math.hypot(a.x - ship.x, a.y - ship.y) - Math.hypot(b.x - ship.x, b.y - ship.y))[0];
+          if (target) { gun.angle = Math.atan2(target.y - ship.y, target.x - ship.x) + rand(-0.18, 0.18); firing = true; gun.lastShot = 0; }
+        }
+        if (firing && !over && g.fires.guns === 0 && now - gun.lastShot >= 220) {
+          gun.lastShot = now;
+          const [ox, oy] = TURRET[st];
+          bullets.push({ x: ship.x + ox * K + Math.cos(gun.angle) * 40, y: ship.y + oy * K + Math.sin(gun.angle) * 40, vx: Math.cos(gun.angle) * 1100, vy: Math.sin(gun.angle) * 1100, until: now + 1000, by: id });
+          if (id) {
+            gun.heat += 0.1;
+            if (gun.heat >= 1) { gun.heat = 1; gun.overUntil = now + 2000; tellPhones(); }
+          }
+        }
+        if (!firing || over) gun.heat = Math.max(0, gun.heat - dt * (over ? 0.5 : 0.45));
+      }
+
+      // Bullets and rocks.
+      for (const b of bullets) { b.x += b.vx * dt; b.y += b.vy * dt; }
+      for (const r of rocks) { r.x += r.vx * dt; r.y += r.vy * dt; r.a += r.spin * dt; }
+      const born = [];
+      for (const b of bullets) {
+        if (b.dead) continue;
+        for (const r of rocks) {
+          if (r.dead || Math.hypot(b.x - r.x, b.y - r.y) > r.r + 16) continue;
+          b.dead = r.dead = true;
+          g.score += 10;
+          if (b.by && g.log[b.by]) g.log[b.by].rocks += 1;
+          dirty = true;
+          if (r.r > 40) for (const s of [-1, 1]) born.push(makeRock(r.x, r.y, r.vx * 0.9 + 30, r.vy + s * 90, r.r * 0.58));
+          pop(r.x, r.y, '+10', '#ffd23f');
+          break;
+        }
+      }
+      for (const r of rocks) {
+        if (r.dead) continue;
+        const cx = Math.max(ship.x - SHIP_HW, Math.min(ship.x + SHIP_HW, r.x));
+        const cy = Math.max(ship.y - SHIP_HH, Math.min(ship.y + SHIP_HH, r.y));
+        if (Math.hypot(r.x - cx, r.y - cy) < r.r * 0.85) {
+          r.dead = true;
+          hit(r.r > 40 ? 12 : 6, r.x, r.y, Math.random() < 0.5);
+        }
+      }
+      rocks = rocks.filter((r) => !r.dead && r.x > -150 && r.y > -200 && r.y < H + 200).concat(born);
+      bullets = bullets.filter((b) => !b.dead && now < b.until);
+
+      // Pickups.
+      for (const p of pickups) {
+        if (p.pulled) {
+          const d = Math.hypot(ship.x - p.x, ship.y - p.y) || 1;
+          p.vx = ((ship.x - p.x) / d) * 900;
+          p.vy = ((ship.y - p.y) / d) * 900;
+        }
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        if (Math.hypot(p.x - ship.x, p.y - ship.y) < 95) {
+          p.dead = true;
+          const credit = p.pulled ? who('nav') : helmId;
+          if (p.kind === 'star') {
+            g.score += 25;
+            if (credit && g.log[credit]) g.log[credit].stars += 1;
+            pop(p.x, p.y - 30, '+1 star', '#ffd23f');
+            sound('coin');
+          } else {
+            g.hull = Math.min(100, g.hull + 15);
+            pop(p.x, p.y - 30, 'Repaired +15', '#3ddc84');
+            sound('coin');
+          }
+          dirty = true;
+        }
+      }
+      pickups = pickups.filter((p) => !p.dead && p.x > -80);
+
+      // Comets: the warning, the autopilot shield, the impact.
+      const shieldId = who('shield');
+      for (const c of comets) {
+        if (c.done) continue;
+        if (!c.warned && now >= c.warnAt) {
+          c.warned = true;
+          sound('blip');
+          tellPhones();
+          if (!shieldId && Math.random() < 0.55) autoShield = { side: c.side, at: c.impactAt - rand(400, 1500) };
+        }
+        if (now >= c.impactAt) {
+          c.done = true;
+          const recent = sideHistory.some((h) => h.side === c.side && now - h.at <= SHIELD_GRACE_MS);
+          const blocked = g.fires.shields === 0 && (g.side === c.side || recent);
+          const hx = ship.x + SIDE[c.side].dx * 150, hy = ship.y + SIDE[c.side].dy * 110;
+          if (blocked) {
+            g.score += 20;
+            if (shieldId && g.log[shieldId]) g.log[shieldId].blocks += 1;
+            shieldFlash = 1;
+            pop(hx, hy, 'Blocked!', '#5ce1ff');
+            sound('pop');
+            dirty = true;
+            tellPhones();
+          } else {
+            hit(15, hx, hy, true);
+          }
+        }
+      }
+      comets = comets.filter((c) => !c.done || now - c.impactAt < 400);
+      if (autoShield && now >= autoShield.at) {
+        if (!who('shield')) { g.side = autoShield.side; sideHistory.push({ side: g.side, at: now }); }
+        autoShield = null;
+      }
+      sideHistory = sideHistory.filter((h) => now - h.at <= SHIELD_GRACE_MS);
+
+      // Fires burn the hull; the autopilot engineer works slowly.
+      const burning = ROOMS.filter((r) => g.fires[r] > 0).length;
+      if (burning) { g.hull = Math.max(0, g.hull - burning * dt); dirty = true; }
+      if (!who('engineer') && !who('engineer2') && burning && now >= nextAutoFix) {
+        nextAutoFix = now + 1300;
+        douse([...ROOMS].sort((a, b) => g.fires[b] - g.fires[a])[0], null);
+      }
+      if (g.hull <= 0) endGame('lost', now);
+    }
+
+    // ---- Drawing: the canvas scene ----
+    let view = { s: 1, ox: 0, oy: 0 };
+    function draw(now, dt) {
+      const dpr = window.devicePixelRatio || 1;
+      const w = canvas.clientWidth, h = canvas.clientHeight;
+      if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
+        canvas.width = Math.round(w * dpr);
+        canvas.height = Math.round(h * dpr);
+      }
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const bg = ctx.createLinearGradient(0, 0, 0, h);
+      bg.addColorStop(0, '#140b2e');
+      bg.addColorStop(1, '#2a1150');
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, w, h);
+
+      // Fit the world (1600 × 900) to the screen; the background fills any margin.
+      const s = Math.min(w / W, h / H);
+      view = { s, ox: (w - W * s) / 2, oy: (h - H * s) / 2 };
+      shake = Math.max(0, shake - dt * 60);
+      const jx = shake ? rand(-shake, shake) : 0, jy = shake ? rand(-shake, shake) : 0;
+      ctx.setTransform(dpr * s, 0, 0, dpr * s, dpr * (view.ox + jx), dpr * (view.oy + jy));
+
+      // Stars streaming past (faster in a wave).
+      const flow = g.phase === 'wave' ? 1 : 0.3;
+      for (const st of stars) {
+        st.x -= st.z * 120 * flow * dt;
+        if (st.x < -10) { st.x = W + 10; st.y = Math.random() * H; }
+        ctx.fillStyle = `rgba(255, 255, 255, ${0.25 + st.z * 0.6})`;
+        ctx.fillRect(st.x, st.y, st.z * 3.5, st.z * 3.5);
+      }
+
+      for (const p of pickups) drawPickup(p, now);
+      for (const r of rocks) drawRock(r);
+      for (const b of bullets) {
+        ctx.fillStyle = '#ffd23f';
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, 7, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      if (g.phase !== 'over' || g.result === 'home') drawShip(now);
+      for (const c of comets) drawComet(c, now);
+      for (const c of comets) if (!c.done && now >= c.warnAt) drawWarning(c, now);
+
+      // Low hull: the edges pulse red.
+      if (g.phase === 'wave' && g.hull < 30) {
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        const a = 0.25 + 0.2 * Math.sin(now / 150);
+        const v = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.35, w / 2, h / 2, Math.max(w, h) * 0.7);
+        v.addColorStop(0, 'rgba(255, 59, 92, 0)');
+        v.addColorStop(1, `rgba(255, 59, 92, ${a})`);
+        ctx.fillStyle = v;
+        ctx.fillRect(0, 0, w, h);
+      }
+    }
+
+    function outlined(fill, line = '#140b2e', width = 5) {
+      ctx.fillStyle = fill;
+      ctx.fill();
+      ctx.lineWidth = width;
+      ctx.strokeStyle = line;
+      ctx.stroke();
+    }
+    function roundRect(x, y, w, h, r) {
+      ctx.beginPath();
+      ctx.roundRect(x, y, w, h, r);
+    }
+
+    function drawShip(now) {
+      const { x, y } = ship;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.scale(K, K);
+      ctx.translate(-x, -y);
+      // Engine glow.
+      const flick = 0.75 + 0.25 * Math.sin(now / 40);
+      ctx.fillStyle = g.fires.engine > 0 ? '#ff7a3d88' : '#5ce1ffaa';
+      ctx.beginPath();
+      ctx.ellipse(x - 98, y, 26 * flick, 16, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // Hull: a fat capsule.
+      roundRect(x - 92, y - 44, 184, 88, 44);
+      outlined('#ffe7c2');
+      ctx.fillStyle = '#ff7a3d';
+      ctx.fillRect(x - 70, y + 14, 120, 12);
+      // Cockpit.
+      ctx.beginPath();
+      ctx.arc(x + 62, y - 4, 22, 0, Math.PI * 2);
+      outlined('#9be8ff');
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+      ctx.beginPath();
+      ctx.arc(x + 55, y - 11, 7, 0, Math.PI * 2);
+      ctx.fill();
+      // Rooms, with their fires.
+      for (const room of ROOMS) {
+        const rx = x + ROOM_X[room];
+        roundRect(rx - 15, y - 22, 30, 26, 6);
+        outlined(g.fires[room] > 0 ? '#ff7a3d' : '#d9c3a2', '#140b2e', 3);
+        ctx.fillStyle = '#140b2e';
+        ctx.font = '900 16px system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(ROOM_NAME[room][0], rx, y - 9);
+        if (g.fires[room] > 0) drawFlames(rx, y - 24, g.fires[room], now);
+      }
+      // Turrets.
+      for (const [st, gun] of Object.entries(guns)) {
+        const [ox, oy] = TURRET[st];
+        const tx = x + ox, ty = y + oy;
+        ctx.save();
+        ctx.translate(tx, ty);
+        ctx.rotate(gun.angle);
+        roundRect(0, -7, 42, 14, 6);
+        outlined(now < gun.overUntil ? '#ff3b5c' : '#8a7f9e', '#140b2e', 4);
+        ctx.restore();
+        ctx.beginPath();
+        ctx.arc(tx, ty, 15, 0, Math.PI * 2);
+        outlined(who(st) ? '#ff7a3d' : '#8a7f9e', '#140b2e', 4);
+      }
+      // The shield: an arc on its side; gone while the shield room burns.
+      if (g.fires.shields === 0 && g.phase === 'wave') {
+        const base = Math.atan2(SIDE[g.side].dy, SIDE[g.side].dx);
+        shieldFlash = Math.max(0, shieldFlash - 0.03);
+        ctx.lineCap = 'round';
+        ctx.strokeStyle = shieldFlash > 0 ? '#ffffff' : 'rgba(92, 225, 255, 0.95)';
+        ctx.lineWidth = 12 + shieldFlash * 14;
+        ctx.shadowColor = '#5ce1ff';
+        ctx.shadowBlur = 25;
+        ctx.beginPath();
+        ctx.ellipse(x, y, 140, 100, 0, base - 0.85, base + 0.85);
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+      }
+      ctx.restore();
+    }
+    function drawFlames(x, y, level, now) {
+      for (let i = 0; i < Math.min(3, Math.ceil(level / 2)); i++) {
+        const fx = x - 10 + i * 10, hgt = 16 + level * 3 + 6 * Math.sin(now / 70 + i * 2);
+        ctx.fillStyle = i % 2 ? '#ffd23f' : '#ff7a3d';
+        ctx.beginPath();
+        ctx.moveTo(fx - 8, y);
+        ctx.quadraticCurveTo(fx - 6, y - hgt * 0.6, fx, y - hgt);
+        ctx.quadraticCurveTo(fx + 6, y - hgt * 0.6, fx + 8, y);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+    function drawRock(r) {
+      ctx.beginPath();
+      r.shape.forEach((k, i) => {
+        const a = r.a + (i / r.shape.length) * Math.PI * 2;
+        const px = r.x + Math.cos(a) * r.r * k, py = r.y + Math.sin(a) * r.r * k;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      });
+      ctx.closePath();
+      ctx.lineJoin = 'round';
+      outlined('#8a7f9e', '#2a1f3d', 5);
+      ctx.fillStyle = '#6e6383';
+      for (const [cx, cy, cr] of [[-0.3, -0.2, 0.22], [0.25, 0.3, 0.16]]) {
+        ctx.beginPath();
+        ctx.arc(r.x + Math.cos(r.a) * cx * r.r - Math.sin(r.a) * cy * r.r, r.y + Math.sin(r.a) * cx * r.r + Math.cos(r.a) * cy * r.r, cr * r.r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    function drawPickup(p, now) {
+      if (p.kind === 'star') {
+        const R = 22 + 3 * Math.sin(now / 160 + p.y);
+        ctx.beginPath();
+        for (let i = 0; i < 10; i++) {
+          const a = -Math.PI / 2 + (i * Math.PI) / 5, rr = i % 2 ? R * 0.45 : R;
+          ctx.lineTo(p.x + Math.cos(a) * rr, p.y + Math.sin(a) * rr);
+        }
+        ctx.closePath();
+        ctx.lineJoin = 'round';
+        outlined('#ffd23f', '#140b2e', 4);
+      } else {
+        roundRect(p.x - 22, p.y - 22, 44, 44, 10);
+        outlined('#3ddc84', '#140b2e', 4);
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(p.x - 4, p.y - 14, 8, 28);
+        ctx.fillRect(p.x - 14, p.y - 4, 28, 8);
+      }
+    }
+    /** Where a comet comes from: far off on its side, in line with the ship. */
+    function cometStart(c) {
+      const d = SIDE[c.side];
+      return { x: ship.x + d.dx * 1100 + (d.dx === 0 ? 180 : 0), y: ship.y + d.dy * 700 };
+    }
+    function drawComet(c, now) {
+      if (now < c.impactAt - COMET_FLY_MS) return;
+      if (c.done) {
+        const t = (now - c.impactAt) / 400;
+        const d = SIDE[c.side];
+        ctx.strokeStyle = `rgba(255, 255, 255, ${1 - t})`;
+        ctx.lineWidth = 6;
+        ctx.beginPath();
+        ctx.arc(ship.x + d.dx * 160, ship.y + d.dy * 115, 20 + t * 60, 0, Math.PI * 2);
+        ctx.stroke();
+        return;
+      }
+      const t = 1 - (c.impactAt - now) / COMET_FLY_MS;
+      const from = cometStart(c);
+      const d = SIDE[c.side];
+      const tx = ship.x + d.dx * 175, ty = ship.y + d.dy * 128;
+      const x = from.x + (tx - from.x) * t, y = from.y + (ty - from.y) * t;
+      const ang = Math.atan2(y - from.y, x - from.x);
+      const tail = ctx.createLinearGradient(x, y, x - Math.cos(ang) * 260, y - Math.sin(ang) * 260);
+      tail.addColorStop(0, 'rgba(155, 232, 255, 0.95)');
+      tail.addColorStop(1, 'rgba(155, 232, 255, 0)');
+      ctx.strokeStyle = tail;
+      ctx.lineWidth = 22;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x - Math.cos(ang) * 260, y - Math.sin(ang) * 260);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(x, y, 18, 0, Math.PI * 2);
+      outlined('#ffffff', '#5ce1ff', 5);
+    }
+    function drawWarning(c, now) {
+      const d = SIDE[c.side];
+      const left = Math.max(0, c.impactAt - now);
+      // On the screen's edge, in line with the ship, pointing at it.
+      const x = d.dx > 0 ? W - 70 : d.dx < 0 ? 70 : ship.x;
+      const y = d.dy > 0 ? H - 150 : d.dy < 0 ? 150 : ship.y;
+      const pulse = 1 + 0.12 * Math.sin(now / 80);
+      const ang = Math.atan2(-d.dy, -d.dx);
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.beginPath();
+      ctx.arc(0, 0, 40 + 60 * (left / WARN_MS), 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(255, 59, 92, 0.8)';
+      ctx.lineWidth = 6;
+      ctx.stroke();
+      ctx.rotate(ang);
+      ctx.scale(pulse, pulse);
+      ctx.beginPath();
+      ctx.moveTo(38, 0);
+      ctx.lineTo(-24, -32);
+      ctx.lineTo(-12, 0);
+      ctx.lineTo(-24, 32);
+      ctx.closePath();
+      ctx.lineJoin = 'round';
+      outlined('#ff3b5c', '#ffffff', 5);
+      ctx.restore();
+      ctx.font = '900 44px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.lineWidth = 8;
+      ctx.strokeStyle = '#140b2e';
+      const ly = d.dy > 0 ? y - 95 : y + 95;
+      ctx.strokeText(`${SIDE[c.side].word}!`, x - d.dx * 40, ly);
+      ctx.fillStyle = '#ff3b5c';
+      ctx.fillText(`${SIDE[c.side].word}!`, x - d.dx * 40, ly);
+    }
+
+    // ---- HTML over the scene: HUD, crew, pop-ups, banners ----
+    const $ = (id) => document.getElementById(id);
+    function setText(id, text) {
+      const node = $(id);
+      if (node.textContent !== text) node.textContent = text;
+    }
+    function hud(now) {
+      setText('wave-text', g.phase === 'over' ? 'Journey over' : `Wave ${g.wave} of ${WAVES}`);
+      const total = g.phase === 'wave' ? WAVE_MS : g.wave === 1 ? FIRST_BREAK_MS : BREAK_MS;
+      $('wave-bar').style.width = g.phase === 'wave' ? `${Math.max(0, Math.min(100, ((g.endsAt - now) / total) * 100))}%` : '100%';
+      const hull = Math.ceil(g.hull);
+      setText('hull-text', `Hull ${hull}%`);
+      $('hull-bar').style.width = `${hull}%`;
+      $('hull-box').classList.toggle('low', hull < 30);
+      setText('score-text', `Score ${g.score}`);
+    }
+    function pop(x, y, text, color) {
+      const node = el('div', { class: 'pop', style: { left: `${view.ox + x * view.s}px`, top: `${view.oy + y * view.s}px`, color } }, text);
+      $('pops').append(node);
+      setTimeout(() => node.remove(), 1400);
+    }
+    function buildCrewStrip() {
+      const strip = $('crew');
+      strip.replaceChildren();
+      for (const st of stationsOf()) {
+        const id = crew[st];
+        const p = id ? byId.get(id) : null;
+        const auto = !id || !connected.has(id);
+        const room = st === 'helm' ? 'engine' : st.startsWith('gun') ? 'guns' : st === 'shield' ? 'shields' : null;
+        strip.append(
+          el('div', { class: `chip${auto ? ' auto' : ''}${room && g.fires[room] > 0 && g.phase === 'wave' ? ' burn' : ''}` },
+            el('span', { class: 'st', style: { background: INFO[st].color } }, INFO[st].name),
+            el('span', { style: { color: auto ? '#c9bfff' : p.color } }, auto ? 'autopilot' : p.name)),
+        );
+      }
+    }
+    function showBanner() {
+      const box = $('banner');
+      box.replaceChildren();
+      box.hidden = g.phase === 'wave';
+      if (g.phase === 'brief') {
+        const lineup = stationsOf().filter((st) => crew[st]).map((st) => el('span', {}, `${byId.get(crew[st]).name} → ${INFO[st].name}`));
+        box.append(el('div', { class: 'banner-card' },
+          el('h1', {}, g.resumed ? `Back on course: wave ${g.wave}` : `Wave ${g.wave} of ${WAVES}`),
+          el('p', {}, g.resumed ? 'The wave starts again. Same crew, same hull.' : NEWS[g.wave - 1]),
+          el('div', { class: 'lineup' }, ...lineup),
+          el('p', { class: 'count', id: 'brief-count' }, '')));
+      } else if (g.phase === 'over') {
+        const rows = players.map((p) => {
+          const l = g.log[p.id];
+          return el('tr', {}, el('td', { style: { color: byId.get(p.id).color } }, p.name), el('td', {}, String(l.rocks)), el('td', {}, String(l.blocks)), el('td', {}, String(l.fires)), el('td', {}, String(l.stars)));
+        });
+        box.append(el('div', { class: 'banner-card' },
+          el('h1', {}, g.result === 'home' ? 'Home safe!' : `The ship was lost in wave ${g.wave}`),
+          el('p', {}, `Team score: ${g.score}`),
+          el('table', {}, el('tr', {}, el('th', {}, 'Crew'), el('th', {}, 'Rocks'), el('th', {}, 'Blocks'), el('th', {}, 'Fires out'), el('th', {}, 'Stars')), ...rows)));
+      }
+    }
+
+    // ---- The loop ----
+    let last = performance.now();
+    function tick(t) {
+      const dt = Math.min(0.05, (t - last) / 1000);
+      last = t;
+      const now = party.now();
+      if (g.phase === 'wave') fly(dt, now);
+      if (!g.ended) advance(now);
+      if (g.phase === 'brief') {
+        const count = $('brief-count');
+        if (count) count.textContent = `Starting in ${Math.max(0, Math.ceil((g.endsAt - now) / 1000))} s`;
+      }
+      if (now - toldAt > 100) tellPhones(true); // gun heat, comets coming into view, …
+      if (dirty && now - savedAt > 1000) save(now);
+      draw(now, dt);
+      hud(now);
+      requestAnimationFrame(tick);
+    }
+
+    if (restored) {
+      // The big screen reloaded: the flight wasn't saved, so the wave starts again.
+      if (g.phase === 'over') {
+        g.endsAt = party.now() + END_MS;
+        g.ended = false;
+        crew = crewFor(g.wave);
+        resetFlight();
+        showBanner();
+        buildCrewStrip();
+        tellPhones(true);
+      } else {
+        g.resumed = true;
+        startBrief(g.wave, RESUME_MS);
+      }
+    } else {
+      startBrief(1, FIRST_BREAK_MS);
+    }
+    requestAnimationFrame(tick);
+  }
+
+  // ---- A phone: one station --------------------------------------------------------------
+  function phone() {
+    const { el, joystick, sound } = party.ui;
+    document.getElementById('phone').hidden = false;
+    const me = party.players.find((p) => p.id === party.me);
+    document.getElementById('pname').textContent = me ? me.name : 'You';
+    const controls = document.getElementById('controls');
+    let built = ''; // which controls are on screen ("wave:3:shield")
+    let parts = {}; // the live pieces of the current controls
+    let state = null;
+
+    function clearControls() {
+      parts.stick?.destroy();
+      parts = {};
+      controls.replaceChildren();
+    }
+
+    function stationCard(st, small, tip) {
+      const box = document.getElementById('station');
+      box.style.background = st ? INFO[st].color : 'var(--surface)';
+      box.style.color = st ? '#140b2e' : 'var(--text)';
+      box.replaceChildren(el('small', {}, small), el('b', {}, st ? INFO[st].name : '…'), el('p', {}, tip));
+    }
+
+    function build(s) {
+      clearControls();
+      const st = s.station;
+      if (st === 'helm' || st?.startsWith('gun')) {
+        const pad = el('div');
+        controls.append(pad);
+        parts.stick = joystick(pad, { color: s.color, label: st === 'helm' ? 'Steer the ship' : 'Aim and fire', onChange: (x, y) => party.send({ stick: [x, y] }) });
+        if (st !== 'helm') {
+          parts.heat = el('i');
+          parts.heatBar = el('div', { class: 'heat', 'aria-hidden': 'true' }, parts.heat);
+          controls.append(parts.heatBar);
+        }
+      } else if (st === 'shield') {
+        parts.warns = el('div', { class: 'warns' });
+        parts.sides = {};
+        const cross = el('div', { class: 'cross' });
+        for (const side of SIDES) {
+          const b = el('button', { class: side, 'aria-label': `Shield ${side}`, 'aria-pressed': 'false', onClick: () => {
+            party.send({ shield: side });
+            sound('tap');
+            mark(side);
+          } }, `${SIDE[side].arrow} ${SIDE[side].word[0]}${SIDE[side].word.slice(1).toLowerCase()}`);
+          parts.sides[side] = b;
+          cross.append(b);
+        }
+        cross.append(el('div', { class: 'hub', 'aria-hidden': 'true' }, 'SHIP'));
+        controls.append(parts.warns, cross);
+      } else if (st?.startsWith('engineer')) {
+        parts.rooms = {};
+        const grid = el('div', { class: 'rooms' });
+        for (const room of ROOMS) {
+          const flames = el('div', { class: 'flames' }, ...Array.from({ length: 6 }, () => el('i')));
+          const b = el('button', { 'aria-label': `Put out the ${ROOM_NAME[room]} fire`, onClick: () => {
+            party.send({ douse: room });
+            sound('tap');
+          } }, el('span', {}, ROOM_NAME[room]), flames);
+          parts.rooms[room] = { b, flames };
+          grid.append(b);
+        }
+        parts.patch = el('button', { class: 'big secondary', onClick: () => {
+          party.send({ patch: true });
+          sound('tap');
+        } }, 'Patch hull');
+        controls.append(grid, parts.patch);
+      } else if (st === 'nav') {
+        parts.warns = el('div', { class: 'warns' });
+        parts.tractor = el('button', { class: 'big', onClick: () => {
+          party.send({ tractor: true });
+          sound('tap');
+        } }, 'Tractor beam');
+        controls.append(parts.warns, parts.tractor);
+      }
+    }
+    function mark(side) {
+      for (const [k, b] of Object.entries(parts.sides ?? {})) {
+        b.classList.toggle('on', k === side);
+        b.setAttribute('aria-pressed', String(k === side));
+      }
+    }
+
+    party.on('state', (s) => {
+      state = s;
+      document.getElementById('dot').style.background = s.color;
+      const alert = document.getElementById('alert');
+      if (s.phase === 'over') {
+        if (built !== 'over') {
+          built = 'over';
+          clearControls();
+          stationCard(null, 'Journey over', '');
+          controls.append(el('div', { class: 'over-card' },
+            el('b', {}, s.result === 'home' ? 'Home safe!' : 'The ship was lost.'),
+            el('p', {}, `Team score: ${s.score}`), el('p', { class: 'muted' }, s.mine)));
+        }
+        alert.textContent = '';
+        return;
+      }
+      if (s.phase === 'brief') {
+        if (built !== `brief:${s.wave}:${s.station}`) {
+          built = `brief:${s.wave}:${s.station}`;
+          clearControls();
+          stationCard(s.station, s.resumed ? `Back on course: wave ${s.wave}` : `Wave ${s.wave} of ${s.waves}: you're on`, s.station ? INFO[s.station].tip : 'Watch the big screen.');
+          controls.append(el('p', { class: 'muted center' }, s.news));
+        }
+        alert.textContent = '';
+        return;
+      }
+      const key = `wave:${s.wave}:${s.station}`;
+      if (built !== key) {
+        built = key;
+        stationCard(s.station, `Wave ${s.wave} of ${s.waves}`, s.station ? INFO[s.station].tip : '');
+        build(s);
+      }
+      alert.textContent = s.alert ?? '';
+      if (parts.heat) {
+        parts.heat.style.width = `${(s.heat ?? 0) * 10}%`;
+        parts.heatBar.classList.toggle('hot', Boolean(s.over));
+      }
+      if (parts.sides && s.side) mark(s.side);
+      if (parts.rooms) {
+        for (const room of ROOMS) {
+          const level = s.fires?.[room] ?? 0;
+          parts.rooms[room].b.classList.toggle('burn', level > 0);
+          [...parts.rooms[room].flames.children].forEach((f, i) => f.classList.toggle('lit', i < level));
+        }
+        parts.patch.disabled = !s.canPatch;
+        parts.patch.textContent = `Patch hull (${s.patches} left)`;
+      }
+      if (parts.tractor) {
+        parts.tractor.disabled = !s.tractor;
+        parts.tractor.textContent = s.tractor ? 'Tractor beam' : 'Tractor beam used';
+      }
+    });
+
+    // The warnings count down on their own between states.
+    function warnLoop() {
+      if (parts.warns && state?.comets) {
+        const now = party.now();
+        const list = state.comets.filter((c) => c.at > now - 300).sort((a, b) => a.at - b.at);
+        const text = list.map((c) => {
+          const secs = Math.ceil((c.at - now) / 1000);
+          return { side: c.side, text: `${SIDE[c.side].arrow} ${SIDE[c.side].word} ${secs > 0 ? `in ${secs} s` : 'now!'}`, soon: c.at - now < 1500 };
+        });
+        const sig = text.map((t) => t.text + t.soon).join('|');
+        if (parts.warns.dataset.sig !== sig) {
+          parts.warns.dataset.sig = sig;
+          parts.warns.replaceChildren(...text.map((t) => el('div', { class: `warn${t.soon ? ' soon' : ''}`, 'data-side': t.side }, t.text)));
+          if (!text.length) parts.warns.append(el('p', { class: 'muted calm' }, state.station === 'nav' ? 'No comets on the scanner. Watch the rocks and stars: tractor when lots of stars are out.' : 'No comet coming. Listen for the navigator!'));
+        }
+      }
+      requestAnimationFrame(warnLoop);
+    }
+    requestAnimationFrame(warnLoop);
+  }
+</script>
