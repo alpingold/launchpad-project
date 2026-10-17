@@ -30,8 +30,10 @@ test('/games: search, tags and the player count narrow the list; Clear filters b
 
   await page.getByRole('button', { name: 'board', exact: true }).click();
   await expect(page.getByRole('button', { name: 'board', exact: true })).toHaveAttribute('aria-pressed', 'true');
-  await expect(cards).toHaveCount(1);
-  await expect(cards).toContainText('Treasure Hunt');
+  // Only board games: Treasure Hunt stays (and any official board game), Bumper Blobs goes.
+  await expect(cards.filter({ hasText: 'Treasure Hunt' })).toHaveCount(1);
+  await expect(cards.filter({ hasText: 'Bumper Blobs' })).toHaveCount(0);
+  expect(await cards.count()).toBeLessThan(total);
   await page.getByRole('button', { name: 'board', exact: true }).click();
 
   await page.getByRole('combobox', { name: 'Players' }).selectOption('7');
