@@ -7,6 +7,11 @@ export const config = {
   // Port the HTTP + WebSocket server listens on. Override with PORT=4000 npm run dev:server
   PORT: Number(process.env.PORT) || 3000,
 
+  // Which network address to listen on. Unset: every one (development, so phones on the
+  // LAN can reach a dev server). In production HOST=127.0.0.1: only Caddy, on the same
+  // machine, can reach Node; even an open firewall port 3000 would lead nowhere.
+  HOST: process.env.HOST || undefined,
+
   // Largest JSON body Express will accept on /api routes. Small on purpose:
   // our requests are tiny (login forms), and a cap stops huge uploads early.
   HTTP_JSON_LIMIT: '10kb',

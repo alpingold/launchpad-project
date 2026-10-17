@@ -19,7 +19,7 @@ const keySecret = loadKeySecret({ file: config.KEY_SECRET_PATH });
 
 const server = createGameServer({}, { db, games, keySecret });
 
-server.httpServer.listen(config.PORT, () => {
+server.httpServer.listen(config.PORT, config.HOST, () => {
   console.log(`[server] listening on http://localhost:${config.PORT} (WebSocket path ${config.WS_PATH})`);
 });
 

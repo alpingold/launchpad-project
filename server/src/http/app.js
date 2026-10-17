@@ -28,6 +28,29 @@ import { kitGuide } from '../games/kitGuide.js';
 export function createApp({ games = new GameRegistry(), db = openDatabase(':memory:'), cfg = config, generation, userKeys } = {}) {
   const app = express();
   app.set('trust proxy', cfg.TRUST_PROXY);
+  app.disable('x-powered-by'); // no need to tell visitors what the server runs
+
+  // Security headers on every response (M8). The policy (CSP) only uses rules that don't
+  // touch scripts: a game's srcdoc iframe inherits our page's policy, so a script rule here
+  // would block the games' inline scripts (frame/template.js). What it does:
+  //  - frame-ancestors 'none' + X-Frame-Options: no other site may show ours in a frame
+  //    (so nobody can trick a visitor into clicking our buttons through a disguise)
+  //  - object-src 'none', base-uri 'self': no plugins, no rewriting where links point
+  //  - nosniff: browsers trust our Content-Types instead of guessing
+  //  - Referrer-Policy: other sites only see that a visitor came from us, not which page
+  //  - Permissions-Policy: no camera, microphone or location, for us or any game
+  //  - HSTS (production only, where it's always HTTPS): browsers use HTTPS from then on
+  app.use((_req, res, next) => {
+    res.set({
+      'Content-Security-Policy': "frame-ancestors 'none'; object-src 'none'; base-uri 'self'",
+      'X-Frame-Options': 'DENY',
+      'X-Content-Type-Options': 'nosniff',
+      'Referrer-Policy': 'strict-origin-when-cross-origin',
+      'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+    });
+    if (cfg.COOKIE_SECURE) res.set('Strict-Transport-Security', 'max-age=31536000');
+    next();
+  });
 
   // Parse JSON request bodies, rejecting anything over the size limit.
   app.use(express.json({ limit: config.HTTP_JSON_LIMIT }));

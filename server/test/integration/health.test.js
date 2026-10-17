@@ -56,3 +56,17 @@ test('GET /api/kit returns the game kit guide: the same text the AI reads', asyn
   assert.match(sections[0].markdown, /^# How a BoilerGames game works/);
   assert.match(sections[1].markdown, /^# Writing a game design/);
 });
+
+test('security headers on every response (M8); no "X-Powered-By"', async () => {
+  for (const path of ['/api/health', '/api/nope']) {
+    const res = await fetch(`${baseUrl}${path}`);
+    assert.equal(res.headers.get('x-powered-by'), null);
+    assert.equal(res.headers.get('x-frame-options'), 'DENY');
+    assert.equal(res.headers.get('x-content-type-options'), 'nosniff');
+    // No script rules: game frames (srcdoc) inherit the page's policy and use inline scripts.
+    const csp = res.headers.get('content-security-policy');
+    assert.match(csp, /frame-ancestors 'none'/);
+    assert.doesNotMatch(csp, /script-src|default-src/);
+    assert.equal(res.headers.get('strict-transport-security'), null, 'HSTS only in production');
+  }
+});
