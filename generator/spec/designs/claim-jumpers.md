@@ -19,8 +19,10 @@ shape that tells them apart without colour (see Art), and six shapes read clearl
 1. **Camps.** Each player starts with one square, their **camp**, spread evenly around the
    ring one square in from the edge (random seat order). A camp can never be taken, so
    nobody is ever knocked out of the game.
-2. **Gold.** A few squares near the middle hold a gold nugget (3 on 6 × 6, 4 on 7 × 7, 6 on
-   8 × 8). Gold is placed symmetrically around the centre so no camp starts closer to it.
+2. **Gold.** A few squares near the middle hold a gold nugget: 2 on 6 × 6 (the two centre
+   squares between the camps), 5 on 7 × 7 (a plus in the centre), 8 on 8 × 8 (the centre four
+   and four around them). Gold is placed symmetrically around the centre and never on the camp
+   ring, so no camp starts on or right next to it.
 3. **A turn (20 s):** every player picks one square on their phone:
    - an **empty** square next to (up, down, left, right) a square they own: a **claim**;
    - a square **another player owns** (not a camp) that touches theirs **on 2 or more sides**:

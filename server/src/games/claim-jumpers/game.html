@@ -1,0 +1,714 @@
+<script type="application/json" id="game-info">
+  {
+    "name": "Claim Jumpers",
+    "description": "A gold rush on one map. Everyone secretly picks a square at the same time: claim land, jump a rival's claim, and grab the gold. Pick the same square and nobody gets it.",
+    "minPlayers": 2,
+    "maxPlayers": 6,
+    "tags": ["board", "strategy"],
+    "minutes": [4, 7]
+  }
+</script>
+<!--
+  CLAIM JUMPERS: a simultaneous-move board game (design: generator/spec/designs/claim-jumpers.md).
+  One file, two roles:
+   - the big screen (role "host") is the referee. It holds the board, runs each turn's timer,
+     collects everyone's secret pick, and reveals them all at once: one picker gets the square,
+     two or more clash and nobody does. It draws the map for the room.
+   - each phone (role "player") shows the same board with the squares it may pick glowing, and
+     sends one pick per turn (changeable until time's up).
+  Everything that matters lives in one plain-JSON object `g`, saved with party.save after
+  every change, so a big-screen reload carries on where it was (deadlines are server times).
+-->
+<style>
+  /* ---- The map's palette (the same in light and dark: it's the scene) ---- */
+  :root {
+    --sea: #123238;
+    --sea2: #0d262b;
+    --land: #6f8f6a;
+    --land2: #5f7d5b;
+    --nugget: #ffcc33;
+    --jump: #ff4d5e;
+    --paper: #f3efe2;
+    --ink: #10201f;
+  }
+  body.host, body.player {
+    --bg: #123238; --surface: #1a4048; --text: #f3efe2; --muted: #a9c3bd; --border: #2d5a62;
+    --accent: #ffcc33; --on-accent: #10201f; --good: #8be28b; --bad: #ff6b78; --gold: #ffcc33;
+    background: var(--sea); color: var(--text); color-scheme: dark;
+  }
+  [hidden] { display: none !important; }
+  body.host { overflow: hidden; }
+  :root[data-role='host'] { font-size: clamp(11px, min(1.5vw, 2.6vh), 32px); }
+
+  /* ---- The board: shared by the big screen and the phones ---- */
+  .board { display: grid; gap: var(--gap, 0.35rem); padding: var(--gap, 0.35rem); background: var(--sea2); border-radius: 1rem; box-sizing: border-box; aspect-ratio: 1; box-shadow: 0 0 0 3px rgba(243, 239, 226, 0.15), 0 1rem 3rem rgba(0, 0, 0, 0.35); }
+  .cell { position: relative; display: grid; place-items: center; border: none; padding: 0; margin: 0; min-width: 0; min-height: 0; border-radius: 18%; background: var(--land); box-shadow: inset 0 -0.18em 0 var(--land2); font: inherit; color: inherit; }
+  .cell.owned { background: var(--c); box-shadow: inset 0 -0.2em 0 rgba(0, 0, 0, 0.25); }
+  .cell .shape { display: none; width: 52%; height: 52%; background: var(--ink); }
+  .cell.owned .shape, .cell.picked .shape { display: block; }
+  .cell.camp { box-shadow: inset 0 0 0 0.32em var(--ink), inset 0 0 0 0.5em var(--c); }
+  .cell.camp .shape { width: 50%; height: 50%; }
+  .cell .nugget { display: none; position: absolute; width: 46%; height: 40%; background: var(--nugget); clip-path: polygon(18% 12%, 62% 0, 96% 30%, 88% 78%, 52% 100%, 8% 86%, 0 40%); filter: drop-shadow(0 0 0.12em rgba(0, 0, 0, 0.6)); }
+  .cell.gold .nugget { display: block; }
+  .cell.gold.owned .nugget, .cell.gold.picked .nugget { width: 30%; height: 26%; top: 6%; right: 6%; }
+
+  /* Shapes: every player has one, so nobody needs colour to find their land. */
+  .s-circle { border-radius: 50%; }
+  .s-square { border-radius: 10%; transform: scale(0.88); }
+  .s-triangle { clip-path: polygon(50% 4%, 97% 92%, 3% 92%); }
+  .s-diamond { clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%); }
+  .s-star { clip-path: polygon(50% 0, 62% 34%, 98% 35%, 69% 57%, 80% 92%, 50% 71%, 20% 92%, 31% 57%, 2% 35%, 38% 34%); }
+  .s-plus { clip-path: polygon(34% 0, 66% 0, 66% 34%, 100% 34%, 100% 66%, 66% 66%, 66% 100%, 34% 100%, 34% 66%, 0 66%, 0 34%, 34% 34%); }
+  .chip { display: inline-grid; place-items: center; width: 1.6em; height: 1.6em; border-radius: 0.35em; background: var(--c); flex: none; }
+  .chip .shape { display: block; width: 62%; height: 62%; background: var(--ink); }
+
+  /* The reveal. */
+  .cell.pop { animation: pop 0.55s cubic-bezier(0.2, 1.6, 0.4, 1) both; }
+  @keyframes pop { from { transform: scale(0.2); } }
+  .cell.flip { animation: flip 0.7s ease-out both; }
+  @keyframes flip { 0% { transform: rotateY(0) scale(1.1); background: var(--from); } 50% { transform: rotateY(90deg) scale(1.15); background: var(--from); } 100% { transform: none; } }
+  .cell.clash { animation: shake 0.6s both; }
+  @keyframes shake { 20% { transform: translate(-12%, 4%); } 40% { transform: translate(12%, -6%); } 60% { transform: translate(-8%, 2%); } 80% { transform: translate(5%, -2%); } }
+  .burst { position: absolute; inset: -18%; pointer-events: none; z-index: 2; animation: burst 1.6s ease-out forwards; }
+  .burst::before { content: ''; position: absolute; inset: 0; background: var(--jump); clip-path: polygon(20% 0, 50% 30%, 80% 0, 100% 20%, 70% 50%, 100% 80%, 80% 100%, 50% 70%, 20% 100%, 0 80%, 30% 50%, 0 20%); }
+  .burst i { position: absolute; width: 34%; height: 34%; border-radius: 50%; background: var(--c); border: 0.12em solid var(--ink); }
+  @keyframes burst { 0% { transform: scale(0.3) rotate(-30deg); opacity: 0; } 20% { transform: scale(1.1); opacity: 1; } 75% { opacity: 1; } 100% { transform: scale(0.9); opacity: 0; } }
+
+  /* ---- Big screen ---- */
+  #map { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
+  #host { position: fixed; inset: 0; display: grid; grid-template-columns: 1fr 24rem; grid-template-rows: auto 1fr auto; gap: 0.6rem 2rem; padding: 1.4vh 2.5vw; box-sizing: border-box; }
+  .top { grid-column: 1 / -1; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 2rem; }
+  .brand { font-weight: 900; font-size: 1.6rem; color: var(--nugget); letter-spacing: 0.02em; text-shadow: 0 0.15rem 0 var(--sea2); }
+  .turn { font-weight: 900; font-size: 1.8rem; justify-self: end; }
+  .bar { height: 0.8rem; border-radius: 1rem; background: rgba(243, 239, 226, 0.15); overflow: hidden; }
+  .bar > i { display: block; height: 100%; width: 100%; background: var(--nugget); border-radius: 1rem; }
+  .bar.off { visibility: hidden; }
+  .stage { position: relative; min-height: 0; display: flex; align-items: center; justify-content: center; }
+  .stage .board { height: 100%; max-width: 100%; --gap: 0.45rem; font-size: 1.4rem; }
+  .side { min-height: 0; display: flex; flex-direction: column; gap: 0.6rem; justify-content: center; }
+  .row { display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 0.7rem; padding: 0.55rem 0.8rem; border-radius: 0.8rem; background: rgba(13, 38, 43, 0.85); border: 2px solid var(--border); font-size: 1.35rem; font-weight: 800; transition: transform 0.4s; }
+  .row .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row .pts { font-size: 1.7rem; font-weight: 900; min-width: 2ch; text-align: right; }
+  .row .au { display: flex; align-items: center; gap: 0.3rem; color: var(--nugget); font-size: 1.1rem; }
+  .row .au::before { content: ''; width: 0.9rem; height: 0.8rem; background: var(--nugget); clip-path: polygon(18% 12%, 62% 0, 96% 30%, 88% 78%, 52% 100%, 8% 86%, 0 40%); }
+  .row.lead { border-color: var(--nugget); box-shadow: 0 0 1.2rem rgba(255, 204, 51, 0.35); }
+  .row.away { opacity: 0.45; }
+  .row .chip { font-size: 1.3rem; }
+  .tick { width: 1.4rem; height: 1.4rem; border-radius: 50%; position: relative; box-sizing: border-box; }
+  .tick.on { background: var(--good); }
+  .tick.on::after { content: ''; position: absolute; left: 0.45rem; top: 0.2rem; width: 0.35rem; height: 0.7rem; border: solid var(--ink); border-width: 0 0.2rem 0.2rem 0; transform: rotate(45deg); }
+  .tick.off { border: 3px dashed var(--muted); animation: spin 3s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .say { grid-column: 1 / -1; text-align: center; font-size: 1.7rem; font-weight: 900; min-height: 2.2rem; margin: 0; }
+  .say .clash { color: var(--jump); }
+  .overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1.2rem; background: rgba(13, 38, 43, 0.9); border-radius: 1.2rem; text-align: center; padding: 2rem; animation: fade 0.5s both; }
+  @keyframes fade { from { opacity: 0; transform: scale(0.96); } }
+  .overlay h1 { margin: 0; font-size: 4.2rem; font-weight: 900; color: var(--nugget); line-height: 1; }
+  .overlay h2 { margin: 0; font-size: 3rem; font-weight: 900; line-height: 1.1; }
+  .rules { list-style: none; padding: 0; margin: 0; display: grid; gap: 1rem; text-align: left; font-size: 1.6rem; font-weight: 700; }
+  .rules li { display: flex; align-items: center; gap: 1rem; }
+  .mini { display: grid; grid-template-columns: repeat(3, 2.2rem); gap: 0.25rem; flex: none; font-size: 0.9rem; }
+  .mini .cell { width: 2.2rem; height: 2.2rem; }
+  .mini .hint { box-shadow: inset 0 0 0 0.2rem var(--paper); }
+  .mini .hint-jump { outline: 0.18rem dashed var(--jump); outline-offset: -0.2rem; }
+  .mini .cross::after { content: ''; position: absolute; inset: 15%; background: var(--jump); clip-path: polygon(20% 0, 50% 30%, 80% 0, 100% 20%, 70% 50%, 100% 80%, 80% 100%, 50% 70%, 20% 100%, 0 80%, 30% 50%, 0 20%); }
+
+  /* ---- Phones ---- */
+  body.player { user-select: none; -webkit-user-select: none; }
+  .ph { gap: 0.7rem; }
+  .me { display: flex; align-items: center; gap: 0.6rem; font-weight: 900; font-size: 1.25rem; }
+  .me .chip { font-size: 1.3rem; }
+  .me .pts { margin-left: auto; font-size: 1.5rem; }
+  .me .pts small { font-size: 0.85rem; color: var(--muted); font-weight: 700; margin-left: 0.25rem; }
+  .status { font-weight: 800; font-size: 1.15rem; margin: 0; }
+  .ph .board { width: 100%; --gap: 0.25rem; font-size: 0.9rem; }
+  .ph .cell:disabled { opacity: 1; cursor: default; }
+  .ph .cell.legal { cursor: pointer; box-shadow: inset 0 0 0 0.22em var(--paper); animation: glow 1.4s ease-in-out infinite; }
+  .ph .cell.legal.jump { box-shadow: none; outline: 0.2em dashed var(--jump); outline-offset: -0.24em; }
+  @keyframes glow { 50% { filter: brightness(1.25); } }
+  .ph .cell.picked { background: var(--c); animation: none; filter: none; box-shadow: inset 0 0 0 0.22em var(--paper), 0 0 0 0.18em var(--paper); }
+  .ph .cell.picked .shape { opacity: 0.75; }
+  .ph .cell.mine:not(.picked) { outline: 0.14em solid rgba(243, 239, 226, 0.6); outline-offset: -0.14em; }
+  .note { margin: 0; font-size: 1.05rem; font-weight: 700; min-height: 1.4em; }
+  .note.bad { color: var(--bad); }
+  .note.good { color: var(--good); }
+  .legend { display: flex; gap: 1rem; flex-wrap: wrap; font-size: 0.85rem; color: var(--muted); margin: 0; }
+  .legend span { display: inline-flex; align-items: center; gap: 0.35rem; }
+  .legend i { display: inline-block; width: 0.9rem; height: 0.9rem; border-radius: 0.2rem; }
+  .legend .l1 { box-shadow: inset 0 0 0 2px var(--paper); background: var(--land); }
+  .legend .l2 { outline: 2px dashed var(--jump); outline-offset: -2px; background: var(--land); }
+  .result { text-align: center; }
+  .result b { display: block; font-size: 2.2rem; font-weight: 900; color: var(--nugget); }
+</style>
+
+<canvas id="map" hidden></canvas>
+<div id="host" hidden></div>
+<div class="screen ph" id="phone" hidden></div>
+
+<script>
+  'use strict';
+
+  // ---- Shared: the rules (pure functions of the board) ----------------------------------
+  const COLORS = [
+    ['#ff8a1f', 'circle', 'Orange'], ['#3db8ff', 'square', 'Blue'], ['#ff5fa2', 'triangle', 'Pink'],
+    ['#b8e02e', 'diamond', 'Lime'], ['#a77bff', 'star', 'Violet'], ['#f1f1f1', 'plus', 'White'],
+  ];
+  const TURNS = 15;
+  const INTRO_MS = 10000, PICK_MS = 20000, REVEAL_MS = 4200, END_MS = 12000;
+  const sizeFor = (n) => (n <= 2 ? 6 : n <= 4 ? 7 : 8);
+
+  /** The up/down/left/right neighbours of square i on a size × size board. */
+  function around(i, size) {
+    const r = Math.floor(i / size), c = i % size;
+    const out = [];
+    if (r > 0) out.push(i - size);
+    if (r < size - 1) out.push(i + size);
+    if (c > 0) out.push(i - 1);
+    if (c < size - 1) out.push(i + 1);
+    return out;
+  }
+
+  /**
+   * What player p may pick on this board: { [square]: 'claim' | 'jump' }.
+   * claim: an empty square next to p's land. jump: another player's square (not a camp) that
+   * touches p's land on 2 or more sides.
+   */
+  function movesFor(b, p) {
+    const out = {};
+    for (let i = 0; i < b.cells.length; i++) {
+      const owner = b.cells[i];
+      if (owner === p) continue;
+      const touching = around(i, b.size).filter((j) => b.cells[j] === p).length;
+      if (owner === -1 && touching >= 1) out[i] = 'claim';
+      else if (owner !== -1 && touching >= 2 && b.camps[owner] !== i) out[i] = 'jump';
+    }
+    return out;
+  }
+
+  /** Points: 1 per square, 3 for a gold square. */
+  function pointsOf(b, p) {
+    let pts = 0;
+    for (let i = 0; i < b.cells.length; i++) if (b.cells[i] === p) pts += b.gold.includes(i) ? 3 : 1;
+    return pts;
+  }
+  const goldOf = (b, p) => b.gold.filter((i) => b.cells[i] === p).length;
+
+  /** Everyone, best first: points, then gold, then seat. */
+  function standings(b, n) {
+    return [...Array(n).keys()].sort((a, c) => pointsOf(b, c) - pointsOf(b, a) || goldOf(b, c) - goldOf(b, a) || a - c);
+  }
+
+  /**
+   * Resolves one turn's picks ({ [player]: square }) all at once, on the board as it was at the
+   * start of the turn. Returns the new cells and what happened.
+   */
+  function resolve(b, picks) {
+    const by = {};
+    for (const [p, i] of Object.entries(picks)) (by[i] ??= []).push(Number(p));
+    const cells = [...b.cells];
+    const claims = []; // [square, player, previous owner (-1: it was empty)]
+    const clashes = []; // [square, [players]]
+    for (const [i, ps] of Object.entries(by)) {
+      const sq = Number(i);
+      if (ps.length > 1) clashes.push([sq, ps.sort((a, c) => a - c)]);
+      else {
+        claims.push([sq, ps[0], b.cells[sq]]);
+        cells[sq] = ps[0];
+      }
+    }
+    return { cells, claims, clashes };
+  }
+
+  /** The ring one square in from the edge, clockwise from its top-left corner. */
+  function ring(size) {
+    const lo = 1, hi = size - 2, out = [];
+    for (let c = lo; c < hi; c++) out.push(lo * size + c);
+    for (let r = lo; r < hi; r++) out.push(r * size + hi);
+    for (let c = hi; c > lo; c--) out.push(hi * size + c);
+    for (let r = hi; r > lo; r--) out.push(r * size + lo);
+    return out;
+  }
+
+  /** Gold squares: in the middle, the same distance from every side. */
+  function goldFor(size) {
+    const at = (r, c) => r * size + c;
+    if (size === 6) return [at(2, 3), at(3, 2)];
+    if (size === 7) return [at(3, 3), at(2, 3), at(4, 3), at(3, 2), at(3, 4)];
+    return [at(3, 3), at(3, 4), at(4, 3), at(4, 4), at(2, 2), at(2, 5), at(5, 2), at(5, 5)];
+  }
+
+  function shuffle(list) {
+    const a = [...list];
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+  const plural = (n, word, many = `${word}s`) => `${n} ${n === 1 ? word : many}`;
+  /** Sets a player colour on an element (style objects can't hold CSS variables). */
+  const tint = (node, color) => (node.style.setProperty('--c', color), node);
+  const ordinal = (n) => `${n}${['th', 'st', 'nd', 'rd'][n % 100 > 10 && n % 100 < 14 ? 0 : Math.min(n % 10, 4) % 4] ?? 'th'}`;
+
+  // ---- Shared: drawing the board ----------------------------------------------------------
+  /** A board element with size × size squares (buttons on a phone, so they can be tapped). */
+  function makeBoard(size, tag) {
+    const { el } = party.ui;
+    const board = el('div', { class: 'board', style: { gridTemplateColumns: `repeat(${size}, 1fr)`, gridTemplateRows: `repeat(${size}, 1fr)` } });
+    const cells = [];
+    for (let i = 0; i < size * size; i++) {
+      const cell = el(tag, { class: 'cell', 'data-i': String(i), ...(tag === 'button' ? { type: 'button', disabled: '' } : {}) }, el('span', { class: 'nugget' }), el('span', { class: 'shape' }));
+      cells.push(cell);
+      board.append(cell);
+    }
+    return { board, cells };
+  }
+
+  /** Paints the board's squares from the game: owners, camps, gold. */
+  function paint(cells, b) {
+    cells.forEach((cell, i) => {
+      const owner = b.cells[i];
+      const shape = cell.querySelector('.shape');
+      cell.className = 'cell';
+      shape.className = 'shape';
+      cell.style.removeProperty('--c');
+      if (b.gold.includes(i)) cell.classList.add('gold');
+      if (owner >= 0) {
+        cell.classList.add('owned');
+        cell.style.setProperty('--c', COLORS[owner][0]);
+        shape.classList.add(`s-${COLORS[owner][1]}`);
+        if (b.camps[owner] === i) cell.classList.add('camp');
+      }
+    });
+  }
+
+  function chip(p) {
+    const { el } = party.ui;
+    return tint(el('span', { class: 'chip' }, el('span', { class: `shape s-${COLORS[p][1]}` })), COLORS[p][0]);
+  }
+
+  party.ready(({ role, me, restored }) => {
+    document.body.className = role;
+    if (role === 'host') bigScreen(restored);
+    else phone(me);
+  });
+
+  // ---- The big screen: the referee and the map ------------------------------------------
+  function bigScreen(restored) {
+    const { el, sound } = party.ui;
+    const ids = party.players.map((p) => p.id);
+    const n = ids.length;
+    const nameOf = (p) => party.players[p]?.name ?? '?';
+    const connected = (p) => party.players[p]?.connected !== false;
+
+    /** The whole game, as plain JSON (party.save). */
+    let g = restored && restored.v === 1 && Array.isArray(restored.cells) ? restored : newGame();
+    let ended = false;
+
+    function newGame() {
+      const size = sizeFor(n);
+      const spots = ring(size);
+      const camps = shuffle([...Array(n).keys()].map((k) => spots[Math.round((k * spots.length) / n) % spots.length]));
+      const cells = Array(size * size).fill(-1);
+      camps.forEach((sq, p) => (cells[sq] = p));
+      const now = party.now();
+      return { v: 1, size, cells, camps, gold: goldFor(size), turn: 0, phase: 'intro', at: now, endsAt: now + INTRO_MS, picks: {}, last: null };
+    }
+
+    function enter(phase, ms, now = party.now()) {
+      g.phase = phase;
+      g.at = now;
+      g.endsAt = now + ms;
+      changed();
+    }
+
+    function startPick(now = party.now()) {
+      g.turn += 1;
+      g.picks = {};
+      enter('pick', PICK_MS, now);
+    }
+
+    function reveal(now = party.now()) {
+      const { cells, claims, clashes } = resolve(g, g.picks);
+      g.cells = cells;
+      g.last = { claims, clashes, picks: g.picks };
+      enter('reveal', REVEAL_MS, now);
+    }
+
+    function timeUp(now) {
+      if (g.phase === 'intro') return startPick(now);
+      if (g.phase === 'pick') return reveal(now);
+      if (g.phase === 'reveal') return g.turn >= TURNS ? enter('end', END_MS, now) : startPick(now);
+      if (g.phase === 'end' && !ended) {
+        ended = true;
+        g.phase = 'over';
+        party.save(g);
+        const order = standings(g, n);
+        party.end({ rankings: order.map((p) => ids[p]), scores: Object.fromEntries(order.map((p) => [ids[p], pointsOf(g, p)])) });
+      }
+    }
+
+    /** A player is done picking when they picked, or there's nowhere they can go. */
+    const isDone = (p) => p in g.picks || Object.keys(movesFor(g, p)).length === 0;
+    function checkEarly() {
+      if (g.phase !== 'pick') return;
+      const here = [...Array(n).keys()].filter(connected);
+      if (here.length > 0 && here.every(isDone)) reveal();
+    }
+
+    // -- What phones send: every pick is checked. --
+    party.on('event', (from, data) => {
+      const p = ids.indexOf(from);
+      if (p < 0 || ended || g.phase !== 'pick' || !data || typeof data !== 'object') return;
+      const sq = data.pick;
+      if (!Number.isInteger(sq) || !(sq in movesFor(g, p))) return;
+      g.picks[p] = sq;
+      changed();
+      checkEarly();
+    });
+
+    party.on('players', () => {
+      changed();
+      checkEarly();
+    });
+
+    // -- Every phone: the public board, plus its own moves, pick and news. --
+    function newsFor(p) {
+      if (!g.last) return null;
+      const bits = [];
+      let tone = '';
+      for (const [sq, who, prev] of g.last.claims) {
+        if (who === p && prev === -1) bits.push(g.gold.includes(sq) ? 'You struck gold! +3' : 'You claimed a square.');
+        else if (who === p) { bits.push(`You jumped ${nameOf(prev)}'s ${g.gold.includes(sq) ? 'gold' : 'square'}!`); tone = 'good'; }
+        else if (prev === p) { bits.push(`${nameOf(who)} jumped one of yours.`); tone = 'bad'; }
+      }
+      for (const [, ps] of g.last.clashes) {
+        if (ps.includes(p)) {
+          const others = ps.filter((q) => q !== p).map(nameOf);
+          bits.push(`Clash with ${others.join(' and ')}: nobody got it.`);
+          tone = 'bad';
+        }
+      }
+      if (!(p in g.last.picks) && bits.length === 0) bits.push('You skipped this turn.');
+      return bits.length ? { text: bits.join(' '), tone } : null;
+    }
+
+    function phoneState(id) {
+      const p = ids.indexOf(id);
+      const s = {
+        phase: g.phase,
+        at: g.at,
+        endsAt: g.endsAt,
+        turn: g.turn,
+        turns: TURNS,
+        size: g.size,
+        cells: g.cells,
+        camps: g.camps,
+        gold: g.gold,
+        me: p,
+        points: pointsOf(g, p),
+        gotGold: goldOf(g, p),
+      };
+      if (g.phase === 'pick') {
+        s.moves = movesFor(g, p);
+        s.picked = g.picks[p] ?? null;
+      }
+      if (g.phase === 'reveal') s.news = newsFor(p);
+      if (g.phase === 'end' || g.phase === 'over') {
+        const order = standings(g, n);
+        s.place = order.indexOf(p) + 1;
+        const top = order.filter((q) => pointsOf(g, q) === pointsOf(g, order[0]) && goldOf(g, q) === goldOf(g, order[0]));
+        s.won = top.includes(p);
+        s.tied = s.won && top.length > 1;
+      }
+      return s;
+    }
+
+    function changed() {
+      for (const id of ids) party.setState(id, phoneState(id));
+      party.save(g);
+      render();
+    }
+
+    // -- Drawing the room's screen. --
+    const root = document.getElementById('host');
+    const mapCanvas = document.getElementById('map');
+    root.hidden = false;
+    mapCanvas.hidden = false;
+    const turnEl = el('div', { class: 'turn' });
+    const barEl = el('div', { class: 'bar', 'data-bar': '' }, el('i'));
+    root.append(el('div', { class: 'top' }, el('div', { class: 'brand' }, 'Claim Jumpers'), barEl, turnEl));
+    const stage = el('div', { class: 'stage' });
+    const side = el('div', { class: 'side' });
+    const say = el('p', { class: 'say' });
+    root.append(stage, side, say);
+    const { board, cells } = makeBoard(g.size, 'div');
+    stage.append(board);
+    let overlay = null;
+    let shown = '';
+
+    function render() {
+      paint(cells, g);
+      turnEl.textContent = g.turn > 0 ? `Turn ${Math.min(g.turn, TURNS)} of ${TURNS}` : '';
+      barEl.classList.toggle('off', g.phase !== 'pick');
+
+      // The side panel: everyone by points; during a pick, a tick once they've picked.
+      const order = standings(g, n);
+      const lead = pointsOf(g, order[0]);
+      const allTied = order.every((p) => pointsOf(g, p) === lead);
+      side.replaceChildren(
+        ...order.map((p) =>
+          el(
+            'div',
+            { class: `row${pointsOf(g, p) === lead && !allTied ? ' lead' : ''}${connected(p) ? '' : ' away'}` },
+            chip(p),
+            el('span', { class: 'name' }, nameOf(p)),
+            el('span', { class: 'au' }, String(goldOf(g, p))),
+            g.phase === 'pick' ? el('span', { class: `tick ${isDone(p) ? 'on' : 'off'}`, 'aria-label': isDone(p) ? 'picked' : 'picking' }) : el('span', { class: 'pts' }, String(pointsOf(g, p))),
+          ),
+        ),
+      );
+
+      const key = `${g.phase}-${g.at}`;
+      const fresh = key !== shown;
+      shown = key;
+      if (g.phase === 'pick') {
+        const picked = Object.keys(g.picks).length;
+        say.textContent = `Pick a square on your phone (${picked} of ${n} picked)`;
+      }
+      if (!fresh) return;
+
+      overlay?.remove();
+      overlay = null;
+      if (g.phase === 'intro') {
+        // Tiny pictures of the rules: [player or -1, extra classes] per square.
+        const mini = (squares) =>
+          el('div', { class: 'mini' }, ...squares.map(([p, cls = '']) => {
+            const owned = p >= 0 ? ` owned` : '';
+            const cell = el('div', { class: `cell${owned} ${cls}` }, el('span', { class: 'nugget' }), el('span', { class: `shape s-${COLORS[Math.max(p, 0)][1]}` }));
+            return p >= 0 ? tint(cell, COLORS[p][0]) : cell;
+          }));
+        overlay = el(
+          'div',
+          { class: 'overlay' },
+          el('h1', {}, 'Claim Jumpers'),
+          el(
+            'ul',
+            { class: 'rules' },
+            el('li', {}, mini([[0], [-1, 'hint'], [-1]]), 'Each turn, everyone secretly picks a square next to their land.'),
+            el('li', {}, mini([[-1], [-1, 'gold'], [-1]]), 'Gold squares are worth 3 points.'),
+            el('li', {}, mini([[0], [-1, 'hint cross'], [1]]), 'Two people pick the same square? Nobody gets it.'),
+            el('li', {}, mini([[0], [1, 'hint-jump'], [0]]), 'Touch a rival’s square on 2 sides to jump it. Camps are safe.'),
+          ),
+        );
+        stage.append(overlay);
+        say.textContent = `${TURNS} turns. Most points wins.`;
+      } else if (g.phase === 'pick') {
+        if (g.turn === TURNS) sound('go');
+      } else if (g.phase === 'reveal') {
+        animateReveal();
+      } else if (g.phase === 'end' || g.phase === 'over') {
+        const winners = order.filter((p) => pointsOf(g, p) === lead && goldOf(g, p) === goldOf(g, order[0]));
+        overlay = el(
+          'div',
+          { class: 'overlay' },
+          el('h2', {}, winners.length > 1 ? `${winners.map(nameOf).join(' and ')} tie!` : `${nameOf(winners[0])} wins!`),
+          el('div', { class: 'row lead', style: { fontSize: '1.8rem' } }, chip(winners[0]), el('span', { class: 'name' }, nameOf(winners[0])), el('span', { class: 'au' }, String(goldOf(g, winners[0]))), el('span', { class: 'pts' }, `${lead} points`)),
+        );
+        stage.append(overlay);
+        say.textContent = 'Final map';
+        setTimeout(() => sound('win'), 300);
+      }
+    }
+
+    function animateReveal() {
+      const { claims, clashes } = g.last;
+      const jumps = claims.filter(([, , prev]) => prev >= 0);
+      const parts = [plural(claims.length - jumps.length, 'claim'), plural(jumps.length, 'jump'), plural(clashes.length, 'clash', 'clashes')];
+      say.replaceChildren(...[0, 1, 2].flatMap((k) => [k ? ', ' : '', el('span', { class: k === 2 && clashes.length ? 'clash' : '' }, parts[k])]));
+      claims.forEach(([sq, , prev], k) => {
+        const cell = cells[sq];
+        const delay = k * 90;
+        cell.style.animationDelay = `${delay}ms`;
+        if (prev >= 0) {
+          cell.style.setProperty('--from', COLORS[prev][0]);
+          cell.classList.add('flip');
+          setTimeout(() => sound({ notes: [300, 600], ms: 90, type: 'square', volume: 0.3 }), delay);
+        } else {
+          cell.classList.add('pop');
+          setTimeout(() => sound(g.gold.includes(sq) ? 'coin' : 'pop'), delay);
+        }
+      });
+      clashes.forEach(([sq, ps], k) => {
+        const cell = cells[sq];
+        cell.classList.add('clash');
+        const burst = el('span', { class: 'burst' }, ...ps.slice(0, 4).map((p, j) => tint(el('i', { style: { left: `${[0, 66, 0, 66][j]}%`, top: `${[0, 0, 66, 66][j]}%` } }), COLORS[p][0])));
+        cell.append(burst);
+        setTimeout(() => burst.remove(), 1700);
+        setTimeout(() => sound('buzz'), 350 + k * 150);
+      });
+    }
+
+    // -- The map behind everything: slow contour lines. --
+    const ctx = mapCanvas.getContext('2d');
+    const hills = [[0.15, 0.25, 0.7], [0.85, 0.75, 0.9], [0.8, 0.15, 0.5], [0.2, 0.85, 0.6]];
+    function drawMap(t) {
+      const dpr = window.devicePixelRatio || 1;
+      const w = mapCanvas.clientWidth, h = mapCanvas.clientHeight;
+      if (mapCanvas.width !== Math.round(w * dpr) || mapCanvas.height !== Math.round(h * dpr)) {
+        mapCanvas.width = Math.round(w * dpr);
+        mapCanvas.height = Math.round(h * dpr);
+      }
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.fillStyle = '#123238';
+      ctx.fillRect(0, 0, w, h);
+      ctx.lineWidth = 1.5;
+      const unit = Math.min(w, h);
+      for (const [hx, hy, size] of hills) {
+        for (let k = 1; k <= 6; k++) {
+          ctx.strokeStyle = `rgba(169, 195, 189, ${0.05 + k * 0.012})`;
+          ctx.beginPath();
+          for (let a = 0; a <= 64; a++) {
+            const th = (a / 64) * Math.PI * 2;
+            const wob = 1 + 0.12 * Math.sin(th * 3 + k + t / 9000) + 0.06 * Math.sin(th * 5 - k * 0.7);
+            const r = (k / 6) * size * unit * 0.45 * wob;
+            const x = hx * w + Math.cos(th) * r, y = hy * h + Math.sin(th) * r * 0.8;
+            if (a === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+          }
+          ctx.stroke();
+        }
+      }
+    }
+    let lastSecond = -1;
+    function loop(t) {
+      drawMap(t);
+      const now = party.now();
+      const frac = Math.max(0, Math.min(1, (g.endsAt - now) / Math.max(1, g.endsAt - g.at)));
+      barEl.firstChild.style.width = `${frac * 100}%`;
+      if (g.phase === 'pick') {
+        const sec = Math.ceil((g.endsAt - now) / 1000);
+        if (sec <= 5 && sec > 0 && sec !== lastSecond) sound('tick');
+        lastSecond = sec;
+      }
+      requestAnimationFrame(loop);
+    }
+    requestAnimationFrame(loop);
+
+    // -- The referee's heartbeat: deadlines. --
+    setInterval(() => {
+      if (ended || g.phase === 'over') return;
+      if (party.now() >= g.endsAt) timeUp(party.now());
+    }, 200);
+
+    if (g.phase === 'over') {
+      // Reloaded after the end: show the end again and finish.
+      g.phase = 'end';
+      g.at = party.now();
+      g.endsAt = g.at + 3000;
+    }
+    changed();
+  }
+
+  // ---- A phone: your view of the map, and your secret pick ------------------------------
+  function phone(me) {
+    const { el, timer, sound } = party.ui;
+    const root = document.getElementById('phone');
+    root.hidden = false;
+    let s = null;
+    let built = null; // { size, board, cells }
+    let timerFor = null;
+    let tm = null;
+
+    const head = el('div', { class: 'me' });
+    const status = el('p', { class: 'status' });
+    const clock = el('div');
+    const boardBox = el('div');
+    const note = el('p', { class: 'note' });
+    const legend = el('p', { class: 'legend' }, el('span', {}, el('i', { class: 'l1' }), 'claim'), el('span', {}, el('i', { class: 'l2' }), 'jump (touching on 2 sides)'));
+    const result = el('div', { class: 'result' });
+    root.append(head, status, clock, boardBox, note, el('div', { class: 'grow' }), legend, result);
+    status.textContent = 'Waiting for the big screen…';
+    legend.hidden = true;
+
+    party.on('state', (state) => {
+      s = state;
+      draw();
+    });
+
+    function pick(sq) {
+      if (!s || s.phase !== 'pick' || !(sq in s.moves)) return;
+      sound('tap');
+      s.picked = sq; // show it at once; the big screen's state confirms it
+      draw();
+      party.send({ pick: sq });
+    }
+
+    function draw() {
+      const myName = party.players.find((p) => p.id === me)?.name ?? 'You';
+      head.replaceChildren(chip(s.me), el('span', {}, myName), el('span', { class: 'pts' }, String(s.points), el('small', {}, s.points === 1 ? 'point' : 'points')));
+
+      if (!built || built.size !== s.size) {
+        const { board, cells } = makeBoard(s.size, 'button');
+        cells.forEach((cell, i) => cell.addEventListener('click', () => pick(i)));
+        built = { size: s.size, board, cells };
+        boardBox.replaceChildren(board);
+      }
+      paint(built.cells, s);
+      const moves = s.phase === 'pick' ? s.moves : {};
+      built.cells.forEach((cell, i) => {
+        if (s.cells[i] === s.me) cell.classList.add('mine');
+        const kind = moves[i];
+        cell.disabled = !kind;
+        if (kind) {
+          cell.classList.add('legal');
+          if (kind === 'jump') cell.classList.add('jump');
+          const r = Math.floor(i / s.size) + 1, c = (i % s.size) + 1;
+          cell.setAttribute('aria-label', `${kind === 'jump' ? 'Jump' : 'Claim'} row ${r} column ${c}`);
+        } else cell.removeAttribute('aria-label');
+        if (s.picked === i) {
+          cell.classList.add('picked');
+          cell.style.setProperty('--c', COLORS[s.me][0]);
+          cell.querySelector('.shape').className = `shape s-${COLORS[s.me][1]}`;
+        }
+      });
+
+      // The clock: only while picking.
+      if (s.phase === 'pick') {
+        if (timerFor !== s.endsAt) {
+          tm?.destroy();
+          clock.replaceChildren();
+          tm = timer(clock, { endsAt: s.endsAt });
+          timerFor = s.endsAt;
+        }
+      } else if (tm) {
+        tm.destroy();
+        tm = null;
+        timerFor = null;
+        clock.replaceChildren();
+      }
+
+      const canMove = Object.keys(moves).length > 0;
+      legend.hidden = s.phase !== 'pick' || !canMove;
+      note.className = 'note';
+      result.replaceChildren();
+      if (s.phase === 'intro') {
+        status.textContent = 'Get ready!';
+        note.textContent = `Your camp is the big ${COLORS[s.me][1]}. Grow your land from it.`;
+      } else if (s.phase === 'pick') {
+        status.textContent = `Turn ${s.turn} of ${s.turns}: pick a square`;
+        if (!canMove) note.textContent = 'No square you can reach: you skip this turn.';
+        else if (s.picked !== null && s.picked !== undefined) note.textContent = 'Picked. You can change it until time’s up.';
+        else note.textContent = 'Tap a glowing square.';
+      } else if (s.phase === 'reveal') {
+        status.textContent = `Turn ${s.turn} of ${s.turns}: look up!`;
+        note.textContent = s.news?.text ?? 'Look at the big screen.';
+        if (s.news?.tone) note.classList.add(s.news.tone);
+      } else if (s.phase === 'end' || s.phase === 'over') {
+        status.textContent = 'Game over';
+        note.textContent = '';
+        result.append(el('b', {}, s.won ? (s.tied ? 'You tied for 1st!' : 'You win!') : `You came ${ordinal(s.place)}`), el('span', { class: 'muted' }, `${plural(s.points, 'point')}, ${plural(s.gotGold, 'gold square')}`));
+      }
+    }
+  }
+</script>
