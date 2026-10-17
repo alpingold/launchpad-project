@@ -1,0 +1,784 @@
+<script type="application/json" id="game-info">
+  {
+    "name": "Ballpark",
+    "description": "Nobody knows how many stitches are on a baseball. Guess anyway, then bet on whose guess is closest without going over. You can win without knowing a thing.",
+    "minPlayers": 2,
+    "maxPlayers": 10,
+    "tags": ["trivia", "strategy"],
+    "minutes": [6, 10]
+  }
+</script>
+<!--
+  BALLPARK: an estimation-and-betting game in the style of Wits & Wagers (design:
+  generator/spec/designs/ballpark.md). One file, two roles:
+   - the big screen (role "host") is the referee and the ballpark: it asks the questions, sorts
+     the guesses into an odds board, takes the bets, reveals the answer and pays out.
+   - each phone (role "player") shows only its own state: a keypad to guess, then the board to
+     bet on, then what it won.
+  Everything that matters lives in one plain-JSON object `g`, saved with party.save after every
+  change, so a big-screen reload carries on where it was (deadlines are server times).
+-->
+<style>
+  /* ---- The ballpark at night (the same in both themes: it's the scene) ---- */
+  body.host, body.player {
+    --field: #14532d; --field2: #166534; --board: #0c2418; --bulb: #ffb703; --cream: #f6eedb;
+    --ink: #1c2a21; --red: #e63946; --win: #ffd166;
+    --bg: #0c2418; --surface: #133626; --text: #f6eedb; --muted: #9fc3ad; --border: #2c5a41;
+    --accent: #ffb703; --on-accent: #1c2a21; --good: #74e3a0; --bad: #ff7b86; --gold: #ffd166;
+    background: var(--board); color: var(--text); color-scheme: dark;
+  }
+  [hidden] { display: none !important; }
+  body.host { overflow: hidden; }
+  :root[data-role='host'] { font-size: clamp(11px, min(1.5vw, 2.6vh), 34px); }
+
+  /* ---- Big screen ---- */
+  #host {
+    position: fixed; inset: 0; display: grid; grid-template-rows: auto 1fr auto; grid-template-columns: minmax(0, 1fr); box-sizing: border-box;
+    padding: 1.4vh 2vw 1vh;
+    background:
+      radial-gradient(ellipse at 50% -20%, rgba(255, 244, 214, 0.35), transparent 55%),
+      repeating-linear-gradient(90deg, var(--field) 0 6vw, var(--field2) 6vw 12vw);
+  }
+  .sb { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 1rem; background: var(--board); border: 0.3rem solid #23402f; border-radius: 0.8rem; padding: 0.5rem 1.2rem; box-shadow: 0 0.5rem 0 rgba(0, 0, 0, 0.35); }
+  .brand { font: 900 1.6rem/1 var(--mono); letter-spacing: 0.3em; color: var(--bulb); text-shadow: 0 0 0.5rem rgba(255, 183, 3, 0.7); }
+  .qno { justify-self: end; font: 800 1.3rem/1 var(--mono); color: var(--cream); }
+  .bulbs { font: 900 3rem/1 var(--mono); color: var(--bulb); text-shadow: 0 0 0.6rem rgba(255, 183, 3, 0.8); min-width: 9ch; text-align: center; letter-spacing: 0.05em; }
+  .bar { height: 0.6rem; border-radius: 1rem; background: rgba(0, 0, 0, 0.35); overflow: hidden; margin-top: 0.5rem; grid-column: 1 / -1; }
+  .bar > i { display: block; height: 100%; width: 100%; background: var(--bulb); }
+  .bar.low > i { background: var(--red); }
+
+  .stage { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1.4rem; text-align: center; min-height: 0; overflow: hidden; padding: 1rem 0; }
+  .stage > * { flex-shrink: 0; }
+  .question { font-size: 3rem; font-weight: 900; line-height: 1.12; max-width: 85vw; margin: 0; color: var(--cream); text-shadow: 0 0.2rem 0 rgba(0, 0, 0, 0.45); }
+  .hint { font-size: 1.5rem; font-weight: 800; color: var(--bulb); margin: 0; }
+  .sub { font-size: 1.4rem; color: var(--cream); opacity: 0.85; margin: 0; }
+  .rule { display: inline-block; background: var(--board); color: var(--cream); border-radius: 0.8rem; padding: 0.6rem 1.2rem; font-size: 1.6rem; font-weight: 800; }
+  .rule b { color: var(--bulb); }
+
+  /* The odds board: cream number plates on the grass. */
+  .plates { display: flex; gap: 0.8rem; justify-content: center; align-items: flex-end; width: 94vw; }
+  .plate { position: relative; flex: 1 1 0; min-width: 0; max-width: 14rem; display: flex; flex-direction: column; align-items: center; gap: 0.35rem; }
+  .chips { display: flex; flex-wrap: wrap-reverse; justify-content: center; gap: 0.25rem; min-height: 2.6rem; align-content: flex-start; }
+  .chip { width: 1.25rem; height: 1.25rem; border-radius: 50%; border: 0.18rem dashed rgba(255, 255, 255, 0.85); box-shadow: 0 0.15rem 0 rgba(0, 0, 0, 0.4); }
+  .chip.new { animation: drop 0.35s cubic-bezier(0.2, 1.6, 0.4, 1) both; }
+  @keyframes drop { from { transform: translateY(-2rem); opacity: 0; } }
+  .face { width: 100%; box-sizing: border-box; background: var(--cream); color: var(--ink); border-radius: 0.6rem; padding: 0.8rem 0.4rem 0.6rem; box-shadow: 0 0.45rem 0 #b9ab8a, 0 0.8rem 1rem rgba(0, 0, 0, 0.35); }
+  .face .num { font: 900 2.4rem/1 var(--mono); white-space: nowrap; overflow: hidden; }
+  .face .who { font-size: 0.95rem; font-weight: 800; color: #4b5d51; margin-top: 0.35rem; min-height: 1.2em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .plate.small .face { background: transparent; color: var(--cream); border: 0.22rem dashed var(--cream); box-shadow: none; }
+  .plate.small .face .num { font: 900 1.35rem/1.15 var(--font); white-space: normal; }
+  .plate.small .face .who { color: var(--cream); opacity: 0.8; }
+  .odds { margin-top: 0.45rem; padding: 0.3rem 0.8rem; border-radius: 1rem; background: var(--red); color: #fff; font: 900 1.25rem/1 var(--mono); border: 0.18rem solid #fff; }
+  .plate.over { animation: over 0.7s ease-in both; animation-delay: var(--d, 0ms); }
+  @keyframes over { 0% { transform: none; } 30% { transform: rotate(-4deg); } 100% { transform: translateY(1.2rem) rotate(6deg); opacity: 0.28; filter: grayscale(1); } }
+  .plate.over .face { background: #f3c9cb; }
+  .plate.win .face { animation: glow 1.4s ease-in-out infinite alternate; animation-delay: var(--d, 0ms); }
+  @keyframes glow { from { box-shadow: 0 0.45rem 0 #b9ab8a, 0 0 0 0 rgba(255, 209, 102, 0); } to { box-shadow: 0 0.45rem 0 #b9ab8a, 0 0 0 0.5rem var(--win), 0 0 2.5rem 0.8rem rgba(255, 209, 102, 0.7); } }
+  .plate.win { animation: lift 0.6s cubic-bezier(0.2, 1.5, 0.4, 1) both; animation-delay: var(--d, 0ms); }
+  @keyframes lift { to { transform: translateY(-0.8rem) scale(1.06); } }
+  .pays { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.6rem; min-height: 2.6rem; }
+  .pay { display: flex; align-items: center; gap: 0.4rem; padding: 0.25rem 0.8rem; border-radius: 2rem; background: var(--board); font-weight: 900; font-size: 1.3rem; animation: pop 0.5s cubic-bezier(0.2, 1.6, 0.4, 1) both; animation-delay: var(--d, 0ms); }
+  .pay .dot, .row .dot, .pl .dot { width: 1rem; height: 1rem; border-radius: 50%; flex: none; }
+  .pay.plus { color: var(--good); } .pay.minus { color: var(--bad); }
+  @keyframes pop { from { transform: scale(0.2); opacity: 0; } }
+  .answer-line { font-size: 1.6rem; font-weight: 900; color: var(--cream); margin: 0; animation: pop 0.5s both; animation-delay: var(--d, 0ms); }
+
+  /* Standings */
+  .table { display: grid; gap: 0.45rem; width: min(60vw, 42rem); }
+  .row { display: grid; grid-template-columns: 2.2rem 1.2rem 1fr auto auto; align-items: center; gap: 0.8rem; background: rgba(12, 36, 24, 0.85); border-radius: 0.6rem; padding: 0.45rem 1rem; font-size: 1.5rem; font-weight: 800; animation: slide 0.45s cubic-bezier(0.2, 1.3, 0.4, 1) both; }
+  .row .rk { font: 900 1.5rem/1 var(--mono); color: var(--bulb); }
+  .row .nm { text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row .pts { font: 900 1.7rem/1 var(--mono); color: var(--cream); }
+  .row .dl { font: 800 1.1rem/1 var(--mono); min-width: 3.5rem; text-align: right; }
+  .row.first { background: var(--bulb); color: var(--ink); } .row.first .rk, .row.first .pts { color: var(--ink); }
+  @keyframes slide { from { transform: translateX(-30vw); opacity: 0; } }
+  .champ { font-size: 3.6rem; font-weight: 900; color: var(--bulb); margin: 0; text-shadow: 0 0 1rem rgba(255, 183, 3, 0.6); }
+
+  /* The players' strip along the bottom: a little scoreboard. */
+  .strip { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.4rem 0.6vw; padding: 0.6rem 0.4rem; background: var(--board); border-radius: 0.8rem; border: 0.3rem solid #23402f; }
+  .pl { display: flex; align-items: center; gap: 0.5rem; padding: 0.3rem 0.7rem; border-radius: 0.5rem; background: #13321f; font-weight: 800; font-size: 1.05rem; min-width: 0; }
+  .pl .nm { max-width: 8rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pl .sc { font: 900 1.25rem/1 var(--mono); color: var(--bulb); }
+  .pl.away { opacity: 0.35; }
+  .tick, .wait { width: 1.1rem; height: 1.1rem; border-radius: 50%; flex: none; box-sizing: border-box; }
+  .tick { background: var(--good); position: relative; }
+  .tick::after { content: ''; position: absolute; left: 0.36rem; top: 0.16rem; width: 0.26rem; height: 0.52rem; border: solid var(--ink); border-width: 0 0.16rem 0.16rem 0; transform: rotate(45deg); }
+  .wait { border: 0.15rem dashed var(--muted); }
+
+  /* ---- Phones ---- */
+  body.player { user-select: none; -webkit-user-select: none; }
+  .ph { gap: 0.7rem; }
+  .me { display: flex; align-items: center; gap: 0.6rem; font-weight: 900; font-size: 1.15rem; }
+  .me .dot { width: 1.4rem; height: 1.4rem; border-radius: 50%; border: 3px solid rgba(255, 255, 255, 0.4); }
+  .me .score { margin-left: auto; font: 900 1.2rem/1 var(--mono); color: var(--bulb); }
+  .qcard { background: var(--cream); color: var(--ink); border-radius: 0.9rem; padding: 0.75rem 0.9rem; font-size: 1.15rem; font-weight: 800; line-height: 1.25; }
+  .qcard small { display: block; font-size: 0.8rem; font-weight: 900; color: #5b6b60; margin-bottom: 0.2rem; }
+  .say { font-size: 1.3rem; font-weight: 800; margin: 0; }
+  .display { font: 900 2.6rem/1.1 var(--mono); text-align: right; background: var(--board); color: var(--bulb); border: 3px solid var(--border); border-radius: 0.8rem; padding: 0.5rem 0.8rem; min-height: 1.1em; overflow: hidden; text-shadow: 0 0 0.4rem rgba(255, 183, 3, 0.6); }
+  .display.empty { color: var(--muted); text-shadow: none; font-size: 1.4rem; line-height: 2.2; }
+  .keys { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; }
+  .keys button { min-height: 3.6rem; font: 900 1.7rem/1 var(--mono); background: var(--surface); color: var(--text); border: 2px solid var(--border); border-radius: 0.8rem; }
+  .keys button:active { background: var(--border); }
+  .keys button.ok { background: var(--bulb); color: var(--ink); border-color: var(--bulb); font: 900 1.15rem/1 var(--font); }
+  .keys button.ok:disabled { opacity: 0.4; }
+  .slots { display: grid; gap: 0.45rem; }
+  .slot { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 0.3rem 0.6rem; min-height: 3.4rem; text-align: left; padding: 0.45rem 0.8rem; background: var(--cream); color: var(--ink); border: 3px solid transparent; border-radius: 0.8rem; }
+  .slot .v { font: 900 1.35rem/1.1 var(--mono); overflow-wrap: anywhere; }
+  .slot .o { font: 900 1rem/1 var(--mono); background: var(--red); color: #fff; border-radius: 1rem; padding: 0.3rem 0.55rem; }
+  .slot .g { grid-column: 1 / -1; font-size: 0.85rem; font-weight: 700; color: #4b5d51; display: flex; align-items: center; gap: 0.3rem; flex-wrap: wrap; }
+  .slot .mine { width: 0.95rem; height: 0.95rem; border-radius: 50%; border: 2px dashed #fff; box-shadow: 0 0 0 2px var(--ink); }
+  .slot.small { background: transparent; color: var(--text); border: 3px dashed var(--cream); }
+  .slot.small .g { color: var(--muted); }
+  .slot.on { border-color: var(--bulb); box-shadow: 0 0 0 3px var(--bulb); }
+  .bets { display: grid; gap: 0.45rem; }
+  .bet { display: grid; grid-template-columns: 1fr auto auto auto; align-items: center; gap: 0.4rem; background: var(--surface); border: 2px solid var(--border); border-radius: 0.8rem; padding: 0.35rem 0.5rem 0.35rem 0.8rem; font-weight: 800; }
+  .bet .lbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bet button { min-width: 3rem; min-height: 3rem; padding: 0; font: 900 1.5rem/1 var(--mono); background: var(--board); color: var(--text); border: 2px solid var(--border); }
+  .bet .n { font: 900 1.1rem/1 var(--mono); min-width: 4.5rem; text-align: center; color: var(--bulb); }
+  .two { display: grid; grid-template-columns: 1fr 2fr; gap: 0.5rem; }
+  .two button { font-size: 1.2rem; }
+  .two .secondary { background: var(--surface); color: var(--text); border: 2px solid var(--border); }
+  .result { font-size: 2.6rem; font-weight: 900; margin: 0; }
+  .result.plus { color: var(--good); } .result.minus { color: var(--bad); }
+</style>
+
+<div id="host" hidden></div>
+<div class="screen ph" id="phone" hidden></div>
+
+<script>
+  'use strict';
+
+  // ---- Shared ---------------------------------------------------------------------------
+  const COLORS = ['#ff5a5f', '#4dabf7', '#ffd43b', '#c084fc', '#ff922b', '#f783ac', '#22d3ee', '#a3e635', '#f8f9fa', '#94a3b8'];
+  const QUESTIONS_PER_GAME = 7;
+  const INTRO_MS = 7000, GUESS_MS = 40000, BET_MS = 30000, REVEAL_MS = 11000, SCORES_MS = 6000, END_MS = 10000;
+  const COUNT_MS = 2500, DROP_AT = 3000, WIN_AT = 3600, PAY_AT = 4400; // inside the reveal
+  const CLOSEST_BONUS = 3, SMALL_ODDS = 6, TOKENS = 2, MAX_DIGITS = 10;
+  const fmt = (n) => Number(n).toLocaleString('en-US');
+  const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+  const signed = (n) => (n > 0 ? `+${n}` : n < 0 ? `−${-n}` : '±0');
+  function shuffle(list) {
+    const a = [...list];
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  // [question, answer, what the number counts]. Stable facts only (no populations or records),
+  // every answer a whole number ≥ 1, so a 0–9 keypad is all anyone needs.
+  const QUESTIONS = [
+    ['How many keys are on a standard piano?', 88, 'keys'],
+    ['How many bones are in an adult human body?', 206, 'bones'],
+    ['How many countries are members of the United Nations?', 193, 'countries'],
+    ['How tall is Mount Everest?', 8849, 'meters'],
+    ['In what year did the Eiffel Tower open?', 1889, 'year'],
+    ['In what year did the Titanic sink?', 1912, 'year'],
+    ['In what year did people first walk on the Moon?', 1969, 'year'],
+    ['How far away is the Moon, on average?', 384400, 'kilometers'],
+    ['How many days does Mars take to go once around the Sun?', 687, 'days'],
+    ['How many squares are on a chessboard?', 64, 'squares'],
+    ['How many minutes are in a week?', 10080, 'minutes'],
+    ['How many seconds are in a day?', 86400, 'seconds'],
+    ['How many hours are in a leap year?', 8784, 'hours'],
+    ['How many teeth does an adult have, wisdom teeth included?', 32, 'teeth'],
+    ['How many hearts does an octopus have?', 3, 'hearts'],
+    ['How many lines are in a sonnet?', 14, 'lines'],
+    ['How long is a marathon?', 42195, 'meters'],
+    ['How wide is a soccer goal?', 24, 'feet'],
+    ['How high is a basketball hoop?', 120, 'inches'],
+    ['In what year did the first iPhone come out?', 2007, 'year'],
+    ['In what year did the Berlin Wall fall?', 1989, 'year'],
+    ['In what year was Purdue University founded?', 1869, 'year'],
+    ['How many amendments does the US Constitution have?', 27, 'amendments'],
+    ['How many elements are in the periodic table?', 118, 'elements'],
+    ['What is the atomic number of gold?', 79, 'its number'],
+    ['How many bones are in one human hand, wrist included?', 27, 'bones'],
+    ['How tall is the Statue of Liberty, from the ground to the tip of the torch?', 305, 'feet'],
+    ['How many feet are in a mile?', 5280, 'feet'],
+    ['How many fluid ounces are in a US gallon?', 128, 'ounces'],
+    ['How many stitches are on an official baseball?', 108, 'stitches'],
+    ['How far apart are the bases on a baseball diamond?', 90, 'feet'],
+    ["How far is it from the pitcher's rubber to home plate?", 726, 'inches'],
+    ['In what year were the first modern Olympic Games held?', 1896, 'year'],
+    ['How many countries are in Africa?', 54, 'countries'],
+    ['How many countries are in South America?', 12, 'countries'],
+    ['How tall is the Burj Khalifa, the tallest building in the world?', 828, 'meters'],
+    ['How tall is the Empire State Building, up to its roof?', 1250, 'feet'],
+    ['How many floors does the Empire State Building have?', 102, 'floors'],
+    ['In what year did the Golden Gate Bridge open?', 1937, 'year'],
+    ["How many colored stickers are on a classic Rubik's Cube?", 54, 'stickers'],
+    ['How many tiles are in a standard Scrabble set?', 100, 'tiles'],
+    ['How many squares are on a Scrabble board?', 225, 'squares'],
+    ['How many spaces are around a Monopoly board?', 40, 'spaces'],
+    ['How much money does each player start with in Monopoly (US edition)?', 1500, 'dollars'],
+    ['How many dominoes are in a double-six set?', 28, 'dominoes'],
+    ['How many dots are there in total on a double-six set of dominoes?', 168, 'dots'],
+    ['How many cards are in a tarot deck?', 78, 'cards'],
+    ['In what year did the Wright brothers first fly?', 1903, 'year'],
+    ['In what year did Columbus first reach the Americas?', 1492, 'year'],
+    ['In what year was William Shakespeare born?', 1564, 'year'],
+    ['How many symphonies did Beethoven write?', 9, 'symphonies'],
+    ['How many black keys are on a standard piano?', 36, 'black keys'],
+    ['How many strings does a concert harp have?', 47, 'strings'],
+    ['How many liters of water fit in a cubic meter?', 1000, 'liters'],
+    ['How tall is each face carved into Mount Rushmore?', 60, 'feet'],
+    ["How many bones are in a giraffe's neck?", 7, 'bones'],
+    ['How many eyes does a honeybee have?', 5, 'eyes'],
+    ['How many teeth does an adult dog have?', 42, 'teeth'],
+    ['How many chromosomes are in a human cell?', 46, 'chromosomes'],
+    ['How many US states does the Mississippi River touch?', 10, 'states'],
+    ['How many laps is the Indianapolis 500?', 200, 'laps'],
+    ['How many counties does Indiana have?', 92, 'counties'],
+    ['In what year did Indiana become a state?', 1816, 'year'],
+    ['What is the highest possible score in a game of bowling?', 300, 'points'],
+    ['How long is a regulation NBA game, not counting breaks?', 48, 'minutes'],
+    ['How long is an NHL hockey rink?', 200, 'feet'],
+    ['How many raised dots make up one Braille cell?', 6, 'dots'],
+    ['How many Oscars did the movie Titanic win?', 11, 'Oscars'],
+    ['In what year did the first Super Mario Bros. game come out in Japan?', 1985, 'year'],
+    ['How many Pokémon were in the original Pokédex?', 151, 'Pokémon'],
+    ['How many little squares are on a Sudoku grid?', 81, 'squares'],
+    ['How many people have walked on the Moon?', 12, 'people'],
+    ['How many bones are in the human skull?', 22, 'bones'],
+    ['How many baby teeth does a child have?', 20, 'teeth'],
+    ['In what year was the first Super Bowl played?', 1967, 'year'],
+    ['How many edges does a 12-sided die (a dodecahedron) have?', 30, 'edges'],
+    ['What do the inside angles of a hexagon add up to?', 720, 'degrees'],
+    ['How many prime numbers are there below 100?', 25, 'primes'],
+    ['What is 1 + 2 + 3 + … + 99 + 100?', 5050, 'the sum'],
+    ['How many seats are in the US House of Representatives?', 435, 'seats'],
+    ['How many white keys are on a standard piano?', 52, 'white keys'],
+    ['In what year was Google founded?', 1998, 'year'],
+    ['In what year was the first Harry Potter book published?', 1997, 'year'],
+    ['How many strings do a violin, a viola, a cello and a double bass have, all together?', 16, 'strings'],
+    ['In what year did Pac-Man come out in arcades?', 1980, 'year'],
+    ['How many players are on the field during a soccer match, both teams together?', 22, 'players'],
+    ['How many legs does a lobster have, claws included?', 10, 'legs'],
+  ];
+
+  party.ready(({ role, me, restored }) => {
+    document.body.className = role;
+    if (role === 'host') bigScreen(restored);
+    else phone(me);
+  });
+
+  // ---- The big screen: the referee and the ballpark --------------------------------------
+  function bigScreen(restored) {
+    const { el, sound } = party.ui;
+    const ids = party.players.map((p) => p.id);
+    const nameOf = (id) => party.players.find((p) => p.id === id)?.name ?? '?';
+    const colorOf = (id) => COLORS[Math.max(0, ids.indexOf(id)) % COLORS.length];
+    const connected = (id) => party.players.find((p) => p.id === id)?.connected !== false;
+
+    /** The whole game, as plain JSON (party.save). */
+    let g = restored && restored.v === 1 && Array.isArray(restored.qs) ? restored : newGame();
+    let ended = false;
+
+    function newGame() {
+      const now = party.now();
+      return {
+        v: 1,
+        qs: shuffle(QUESTIONS.map((_, i) => i)).slice(0, QUESTIONS_PER_GAME),
+        n: 0, // which question (0-based)
+        phase: 'intro',
+        at: now,
+        endsAt: now + INTRO_MS,
+        scores: Object.fromEntries(ids.map((id) => [id, 0])),
+        speed: Object.fromEntries(ids.map((id) => [id, 0])), // total ms to lock in guesses: the tiebreak
+        last: {}, // id → points won or lost on the last question
+        guesses: {}, // id → number, this question
+        board: [], // [{ value (null: smaller than all), ids, odds }], this question
+        bets: {}, // id → [{ slot, chips }], this question
+        locked: {}, // id → true once their bets are locked
+        win: -1, // the winning slot, at the reveal
+      };
+    }
+
+    const question = () => QUESTIONS[g.qs[g.n]];
+
+    function enter(phase, ms, now = party.now()) {
+      g.phase = phase;
+      g.at = now;
+      g.endsAt = now + ms;
+      changed();
+      cue();
+    }
+
+    function startGuess(now = party.now()) {
+      g.guesses = {};
+      g.board = [];
+      g.bets = {};
+      g.locked = {};
+      g.win = -1;
+      enter('guess', GUESS_MS, now);
+    }
+
+    /** The odds board: "smaller than all" (×6), then each different guess, smallest first. */
+    function buildBoard() {
+      const values = [...new Set(Object.values(g.guesses))].sort((a, b) => a - b);
+      const mid = (values.length - 1) / 2;
+      g.board = [{ value: null, ids: [], odds: SMALL_ODDS }].concat(values.map((value, i) => ({
+        value,
+        ids: ids.filter((id) => g.guesses[id] === value),
+        odds: Math.min(5, 2 + Math.floor(Math.abs(i - mid))),
+      })));
+    }
+
+    function endGuess(now = party.now()) {
+      for (const id of ids) if (!(id in g.guesses)) g.speed[id] += GUESS_MS;
+      buildBoard();
+      if (g.board.length === 1) return reveal(now); // nobody guessed: straight to the answer
+      enter('bets', BET_MS, now);
+    }
+
+    function reveal(now = party.now()) {
+      const answer = question()[1];
+      // The winning slot: the largest guess that isn't over the answer, else "smaller than all".
+      g.win = 0;
+      g.board.forEach((slot, i) => { if (i > 0 && slot.value <= answer) g.win = i; });
+      g.last = {};
+      for (const id of ids) {
+        let delta = 0;
+        for (const bet of g.bets[id] ?? []) delta += bet.slot === g.win ? g.board[bet.slot].odds * (1 + bet.chips) : -bet.chips;
+        if (g.win > 0 && g.board[g.win].ids.includes(id)) delta += CLOSEST_BONUS;
+        g.scores[id] = Math.max(0, g.scores[id] + delta);
+        g.last[id] = delta;
+      }
+      enter('reveal', REVEAL_MS, now);
+    }
+
+    function standings() {
+      return [...ids].sort((a, b) => g.scores[b] - g.scores[a] || g.speed[a] - g.speed[b]);
+    }
+
+    function timeUp(now) {
+      switch (g.phase) {
+        case 'intro': return startGuess(now);
+        case 'guess': return endGuess(now);
+        case 'bets': return reveal(now);
+        case 'reveal': return enter('scores', SCORES_MS, now);
+        case 'scores':
+          if (g.n + 1 >= g.qs.length) return enter('end', END_MS, now);
+          g.n += 1;
+          return startGuess(now);
+        case 'end':
+          if (ended) return;
+          ended = true;
+          g.phase = 'over';
+          party.save(g);
+          party.end({ rankings: standings(), scores: { ...g.scores } });
+      }
+    }
+
+    // Early ends: every connected phone has locked in its guess, or its bets.
+    function checkEarly() {
+      const live = ids.filter(connected);
+      if (!live.length) return;
+      if (g.phase === 'guess' && live.every((id) => id in g.guesses)) endGuess();
+      else if (g.phase === 'bets' && live.every((id) => g.locked[id])) reveal();
+    }
+
+    /** Bets from a phone, checked: at most two tokens, real slots, chips within their score. */
+    function validBets(id, list) {
+      if (!Array.isArray(list) || list.length > TOKENS) return null;
+      let chips = 0;
+      const out = [];
+      for (const b of list) {
+        if (!b || typeof b !== 'object') return null;
+        if (!Number.isInteger(b.slot) || b.slot < 0 || b.slot >= g.board.length) return null;
+        if (!Number.isInteger(b.chips) || b.chips < 0) return null;
+        chips += b.chips;
+        out.push({ slot: b.slot, chips: b.chips });
+      }
+      return chips <= g.scores[id] ? out : null;
+    }
+
+    party.on('event', (from, data) => {
+      if (!ids.includes(from) || !data || typeof data !== 'object' || ended) return;
+      const now = party.now();
+      if (g.phase === 'guess' && typeof data.guess === 'string' && !(from in g.guesses)) {
+        if (!/^\d{1,10}$/.test(data.guess)) return;
+        g.guesses[from] = Number(data.guess);
+        g.speed[from] += Math.max(0, Math.min(GUESS_MS, now - g.at));
+        sound('blip');
+        changed();
+        return checkEarly();
+      }
+      if (g.phase === 'bets' && 'bets' in data && !g.locked[from]) {
+        const bets = validBets(from, data.bets);
+        if (!bets) return;
+        g.bets[from] = bets;
+        if (data.lock === true) {
+          g.locked[from] = true;
+          sound('tick');
+        }
+        changed();
+        return checkEarly();
+      }
+    });
+
+    party.on('players', () => {
+      changed();
+      checkEarly();
+    });
+
+    // -- Every phone: only its own state. --
+    function phoneState(id) {
+      const [q, answer, unit] = question();
+      const s = {
+        phase: g.phase,
+        endsAt: g.endsAt,
+        color: colorOf(id),
+        score: g.scores[id],
+        qNo: g.n + 1,
+        qTotal: g.qs.length,
+        question: q,
+        unit,
+      };
+      if (g.phase === 'guess') s.guess = g.guesses[id] ?? null;
+      if (g.phase === 'bets' || g.phase === 'reveal') {
+        s.board = g.board.map((slot) => ({ value: slot.value, odds: slot.odds, names: slot.ids.map(nameOf) }));
+        s.bets = g.bets[id] ?? [];
+        s.locked = Boolean(g.locked[id]);
+      }
+      if (g.phase === 'reveal' || g.phase === 'scores') {
+        s.answer = answer;
+        s.delta = g.last[id] ?? 0;
+        s.won = g.win > 0 ? g.board[g.win].value : null;
+      }
+      if (g.phase === 'scores' || g.phase === 'end' || g.phase === 'over') {
+        s.place = standings().indexOf(id) + 1;
+        s.players = ids.length;
+      }
+      if (g.phase === 'end' || g.phase === 'over') s.winner = nameOf(standings()[0]);
+      return s;
+    }
+
+    function changed() {
+      for (const id of ids) party.setState(id, phoneState(id));
+      party.save(g);
+      render();
+    }
+
+    // -- Sounds: public moments only. --
+    let lastCue = '';
+    function cue() {
+      const key = `${g.phase}-${g.at}`;
+      if (key === lastCue) return;
+      lastCue = key;
+      const since = party.now() - g.at;
+      const later = (ms, fn) => ms >= since && setTimeout(fn, ms - since);
+      if (g.phase === 'guess') sound('go');
+      else if (g.phase === 'reveal') {
+        later(DROP_AT, () => g.board.some((s, i) => i > g.win && i > 0) && sound('pop'));
+        later(WIN_AT, () => sound(g.board.length > 1 ? 'coin' : 'buzz'));
+      } else if (g.phase === 'end') sound('win');
+    }
+
+    // -- Drawing the big screen --
+    const root = document.getElementById('host');
+    root.hidden = false;
+    let barEl = null;
+    let bulbsEl = null;
+    const seenChips = new Set(); // chips already on the board drop in once, not at every redraw
+
+    function plates(revealing) {
+      const since = party.now() - g.at;
+      return el('div', { class: 'plates' }, g.board.map((slot, i) => {
+        const small = slot.value === null;
+        const over = revealing && i > g.win;
+        const win = revealing && i === g.win;
+        const chips = el('div', { class: 'chips' }, ids.flatMap((id) => (g.bets[id] ?? []).filter((b) => b.slot === i).map((_, k) => {
+          const key = `${g.n}-${id}-${i}-${k}`;
+          const fresh = !seenChips.has(key);
+          seenChips.add(key);
+          return el('span', { class: `chip${fresh && !revealing ? ' new' : ''}`, style: { background: colorOf(id) }, title: nameOf(id) });
+        })));
+        return el('div', { class: `plate${small ? ' small' : ''}${over ? ' over' : ''}${win ? ' win' : ''}`, style: { '--d': `${(over ? DROP_AT : WIN_AT) - since}ms` } },
+          chips,
+          el('div', { class: 'face' },
+            el('div', { class: 'num' }, small ? 'Smaller than all' : fmt(slot.value)),
+            el('div', { class: 'who' }, small ? 'every guess too high' : slot.ids.map(nameOf).join(', '))),
+          el('div', { class: 'odds' }, `×${slot.odds}`));
+      }));
+    }
+
+    function payouts() {
+      const since = party.now() - g.at;
+      return el('div', { class: 'pays' }, ids.filter((id) => g.last[id]).map((id, k) =>
+        el('div', { class: `pay ${g.last[id] > 0 ? 'plus' : 'minus'}`, style: { '--d': `${PAY_AT + k * 120 - since}ms` } },
+          el('span', { class: 'dot', style: { background: colorOf(id) } }), nameOf(id), ` ${signed(g.last[id])}`)));
+    }
+
+    function table(final) {
+      const order = standings();
+      return el('div', { class: 'table' }, order.map((id, k) =>
+        el('div', { class: `row${k === 0 && final ? ' first' : ''}`, style: { animationDelay: `${k * 90}ms` } },
+          el('span', { class: 'rk' }, String(k + 1)),
+          el('span', { class: 'dot', style: { background: colorOf(id) } }),
+          el('span', { class: 'nm' }, nameOf(id)),
+          el('span', { class: 'pts' }, fmt(g.scores[id])),
+          el('span', { class: `dl ${(g.last[id] ?? 0) >= 0 ? 'good' : 'bad'}` }, final ? '' : signed(g.last[id] ?? 0)))));
+    }
+
+    function render() {
+      const p = g.phase;
+      const [q, answer, unit] = question();
+      barEl = el('div', { class: 'bar' }, el('i'));
+      bulbsEl = el('div', { class: 'bulbs', 'aria-live': 'off' });
+      const top = el('div', { class: 'sb' },
+        el('div', { class: 'brand' }, 'BALLPARK'),
+        bulbsEl,
+        el('div', { class: 'qno' }, p === 'intro' ? 'Play ball' : p === 'end' || p === 'over' ? 'Final' : `Question ${g.n + 1} of ${g.qs.length}`),
+        barEl);
+      const stage = el('div', { class: 'stage' });
+      const add = (...nodes) => stage.append(...nodes.filter(Boolean));
+      const waitingOn = p === 'guess' ? (id) => id in g.guesses : p === 'bets' ? (id) => g.locked[id] : null;
+
+      if (p === 'intro') {
+        add(el('h1', { class: 'question' }, 'Guess the number. Then bet on the best guess.'),
+          el('p', { class: 'rule' }, 'The winner is the guess ', el('b', {}, 'closest without going over'), '.'),
+          el('p', { class: 'sub' }, `${QUESTIONS_PER_GAME} questions. Two free bets each time, and you can stake your points on them.`));
+      } else if (p === 'guess') {
+        add(el('h1', { class: 'question' }, q), el('p', { class: 'hint' }, `Answer in ${unit}`),
+          el('p', { class: 'sub' }, `Guess on your phone. ${Object.keys(g.guesses).length} of ${ids.length} locked in.`));
+      } else if (p === 'bets') {
+        add(el('p', { class: 'sub' }, q), plates(false),
+          el('p', { class: 'rule' }, 'Bet on the guess ', el('b', {}, 'closest without going over'), '. Two free bets each.'));
+      } else if (p === 'reveal') {
+        const nobody = g.board.length === 1;
+        add(el('p', { class: 'sub' }, q),
+          nobody ? el('h1', { class: 'question' }, 'Nobody guessed!') : plates(true),
+          el('p', { class: 'answer-line', style: { '--d': `${WIN_AT - (party.now() - g.at)}ms` } },
+            nobody ? `The answer: ${fmt(answer)} ${unit}.` : g.win === 0 ? 'Every guess was too high!' : `${g.board[g.win].ids.map(nameOf).join(' and ')} ${g.board[g.win].ids.length === 1 ? 'was' : 'were'} closest: +${CLOSEST_BONUS}`),
+          payouts());
+      } else if (p === 'scores') {
+        add(el('h1', { class: 'question', style: { fontSize: '2.4rem' } }, g.n + 1 >= g.qs.length ? 'And the last question goes to…' : 'The standings'), table(false));
+      } else {
+        add(el('p', { class: 'champ' }, `${nameOf(standings()[0])} wins!`), table(true));
+      }
+      const strip = el('div', { class: 'strip' }, ids.map((id) =>
+        el('div', { class: `pl${connected(id) ? '' : ' away'}` },
+          el('span', { class: 'dot', style: { background: colorOf(id) } }),
+          el('span', { class: 'nm' }, nameOf(id)),
+          el('span', { class: 'sc' }, fmt(g.scores[id])),
+          waitingOn ? el('span', { class: waitingOn(id) ? 'tick' : 'wait', 'aria-label': waitingOn(id) ? 'Locked in' : 'Thinking' }) : null)));
+      root.replaceChildren(top, stage, strip);
+      fitPlates();
+      frame();
+    }
+
+    /** Shrinks a plate's number until it fits (a 10-digit guess among ten plates). */
+    function fitPlates() {
+      requestAnimationFrame(() => {
+        for (const num of root.querySelectorAll('.plate:not(.small) .num')) {
+          let size = 2.4;
+          num.style.fontSize = `${size}rem`;
+          while (num.scrollWidth > num.clientWidth && size > 0.8) {
+            size -= 0.15;
+            num.style.fontSize = `${size}rem`;
+          }
+        }
+      });
+    }
+
+    // -- Every frame: the timer bar, and the bulbs (the answer counting up at the reveal). --
+    let lastSecond = -1;
+    function frame() {
+      const now = party.now();
+      const total = Math.max(1, g.endsAt - g.at);
+      const left = g.endsAt - now;
+      if (barEl) {
+        const timed = g.phase === 'guess' || g.phase === 'bets';
+        barEl.style.visibility = timed ? 'visible' : 'hidden';
+        barEl.firstChild.style.width = `${Math.max(0, Math.min(1, left / total)) * 100}%`;
+        barEl.classList.toggle('low', left < 5000);
+        const sec = Math.ceil(left / 1000);
+        if (timed && sec <= 5 && sec > 0 && sec !== lastSecond) sound('tick');
+        lastSecond = sec;
+      }
+      if (bulbsEl) {
+        let text = '';
+        if (g.phase === 'guess' || g.phase === 'bets') text = String(Math.max(0, Math.ceil(left / 1000)));
+        else if (g.phase === 'reveal') {
+          const t = Math.max(0, Math.min(1, (now - g.at) / COUNT_MS));
+          const eased = 1 - (1 - t) ** 3;
+          text = fmt(Math.round(question()[1] * eased));
+        } else if (g.phase === 'scores') text = fmt(question()[1]);
+        if (bulbsEl.textContent !== text) bulbsEl.textContent = text;
+      }
+    }
+    (function loop() {
+      frame();
+      requestAnimationFrame(loop);
+    })();
+
+    // -- The referee's heartbeat: deadlines. --
+    setInterval(() => {
+      if (ended || g.phase === 'over') return;
+      const now = party.now();
+      if (now >= g.endsAt) timeUp(now);
+    }, 200);
+
+    if (g.phase === 'over') {
+      // Reloaded after the end: show the end again and finish.
+      g.phase = 'end';
+      g.endsAt = party.now() + 3000;
+    }
+    changed();
+    cue();
+  }
+
+  // ---- A phone: the keypad and the betting slip ----------------------------------------
+  function phone(me) {
+    const { el, timer, sound } = party.ui;
+    const root = document.getElementById('phone');
+    root.hidden = false;
+    let s = null;
+    let mainKey = '';
+    let typed = { for: '', digits: '' }; // what's on the keypad, for this question
+    let slip = { for: '', bets: [] }; // the bets being placed, for this question
+
+    const head = el('div', { class: 'me' }, el('span', { class: 'dot' }), el('span', {}, party.players.find((p) => p.id === me)?.name ?? 'You'), el('span', { class: 'score' }));
+    const main = el('div', { class: 'stack' });
+    const foot = el('div', { class: 'stack' });
+    root.append(head, main, el('div', { class: 'grow' }), foot);
+    main.append(el('p', { class: 'say' }, 'Waiting for the big screen…'));
+
+    party.on('state', (state) => {
+      s = state;
+      draw();
+    });
+
+    const qcard = () => el('div', { class: 'qcard' }, el('small', {}, `Question ${s.qNo} of ${s.qTotal}`), s.question);
+    const say = (text) => el('p', { class: 'say' }, text);
+    const timerBox = () => {
+      const box = el('div');
+      timer(box, { endsAt: s.endsAt });
+      return box;
+    };
+    const slotLabel = (slot) => (slot.value === null ? 'Smaller than all' : fmt(slot.value));
+    const chipsUsed = () => slip.bets.reduce((n, b) => n + b.chips, 0);
+    const sendBets = (lock = false) => party.send({ bets: slip.bets, lock });
+
+    // The keypad: digits, backspace, and Lock in. A physical keyboard works too.
+    function press(key) {
+      if (!s || s.phase !== 'guess' || s.guess !== null) return;
+      if (key === 'ok') {
+        if (!typed.digits) return;
+        party.send({ guess: typed.digits });
+        return;
+      }
+      if (key === 'del') typed.digits = typed.digits.slice(0, -1);
+      else if (typed.digits.length < MAX_DIGITS) typed.digits = typed.digits === '0' ? key : typed.digits + key;
+      sound('tap');
+      draw(true);
+    }
+    document.addEventListener('keydown', (e) => {
+      if (/^\d$/.test(e.key)) press(e.key);
+      else if (e.key === 'Backspace') press('del');
+      else if (e.key === 'Enter') press('ok');
+    });
+
+    function view() {
+      const p = s.phase;
+      const qid = `${s.qNo}`;
+      if (typed.for !== qid) typed = { for: qid, digits: '' };
+      if (slip.for !== qid && s.bets) slip = { for: qid, bets: s.bets.map((b) => ({ ...b })) };
+
+      if (p === 'intro') return ['intro', () => [say('Guess the number, then bet on the guess closest without going over.'), el('p', { class: 'muted' }, 'You get two free bets every question.')], () => []];
+      if (p === 'guess') {
+        if (s.guess !== null) return ['guessed' + qid, () => [qcard(), say(`You guessed ${fmt(s.guess)} ${s.unit}.`), el('p', { class: 'muted' }, 'Waiting for the others…'), timerBox()], () => []];
+        return ['guess' + qid + typed.digits, () => [qcard(), timerBox()], () => [
+          el('div', { class: `display${typed.digits ? '' : ' empty'}`, 'aria-label': 'Your guess', role: 'status' }, typed.digits ? fmt(typed.digits) : `Your guess, in ${s.unit}`),
+          el('div', { class: 'keys' },
+            ['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((d) => el('button', { type: 'button', onClick: () => press(d) }, d)),
+            el('button', { type: 'button', 'aria-label': 'Delete', onClick: () => press('del') }, '⌫'),
+            el('button', { type: 'button', onClick: () => press('0') }, '0'),
+            el('button', { type: 'button', class: 'ok', disabled: !typed.digits, onClick: () => press('ok') }, 'Lock in')),
+        ]];
+      }
+      if (p === 'bets') {
+        if (s.locked) return ['locked' + qid, () => [say('Bets locked.'), betList(false), timerBox()], () => []];
+        return ['bets' + qid + JSON.stringify(slip.bets) + s.score, () => [
+          say(`Tap a guess to bet on it (${TOKENS - slip.bets.length} free ${TOKENS - slip.bets.length === 1 ? 'bet' : 'bets'} left).`),
+          el('div', { class: 'slots' }, s.board.map((slot, i) => {
+            const mine = slip.bets.filter((b) => b.slot === i).length;
+            return el('button', {
+              type: 'button',
+              class: `slot${slot.value === null ? ' small' : ''}${mine ? ' on' : ''}`,
+              'aria-label': `${slotLabel(slot)}, pays ${slot.odds} to 1${mine ? `, your bets: ${mine}` : ''}`,
+              onClick: () => {
+                if (slip.bets.length >= TOKENS) return;
+                slip.bets.push({ slot: i, chips: 0 });
+                sound('tap');
+                sendBets();
+                draw(true);
+              },
+            },
+            el('span', { class: 'v' }, slotLabel(slot)),
+            el('span', { class: 'o' }, `×${slot.odds}`),
+            el('span', { class: 'g' }, Array.from({ length: mine }, () => el('span', { class: 'mine', style: { background: s.color } })), slot.value === null ? 'every guess too high' : slot.names.join(', ')));
+          })),
+          timerBox(),
+        ], () => [betList(true), el('div', { class: 'two' },
+          el('button', { type: 'button', class: 'big secondary', disabled: !slip.bets.length, onClick: () => { slip.bets = []; sendBets(); draw(true); } }, 'Take back'),
+          el('button', { type: 'button', class: 'big', onClick: () => sendBets(true) }, slip.bets.length ? 'Lock bets' : 'Skip betting'))]];
+      }
+      if (p === 'reveal' || p === 'scores') {
+        return ['res' + qid + p, () => [qcard(),
+          say(`The answer: ${fmt(s.answer)} ${s.unit}.`),
+          el('p', { class: `result ${s.delta > 0 ? 'plus' : s.delta < 0 ? 'minus' : ''}` }, signed(s.delta)),
+          el('p', { class: 'muted' }, s.won === null ? 'Every guess was too high.' : `The winning guess was ${fmt(s.won)}.`),
+          p === 'scores' ? say(`You're ${ordinal(s.place)} of ${s.players}.`) : null,
+        ], () => []];
+      }
+      if (p === 'end' || p === 'over') {
+        return ['end', () => [el('p', { class: 'result' }, s.place === 1 ? 'You win!' : `You're ${ordinal(s.place)}.`), say(`${s.winner} wins with the best score.`), el('p', { class: 'muted' }, `You finished with ${plural(s.score, 'point')}.`)], () => []];
+      }
+      return ['wait', () => [say('…')], () => []];
+    }
+
+    /** Your placed bets, each with a − chips + stepper (chips come from your score). */
+    function betList(editable) {
+      const bets = editable ? slip.bets : s.bets;
+      if (!bets.length) return el('p', { class: 'muted' }, editable ? 'No bets yet.' : 'You skipped betting.');
+      return el('div', { class: 'bets' }, bets.map((b, k) => {
+        const slot = s.board[b.slot];
+        const row = el('div', { class: 'bet' }, el('span', { class: 'lbl' }, `${slotLabel(slot)} ×${slot.odds}`));
+        if (!editable) {
+          row.append(el('span', { class: 'n' }, b.chips ? `+${plural(b.chips, 'chip')}` : ''));
+          return row;
+        }
+        const step = (d) => {
+          const next = b.chips + d;
+          if (next < 0 || chipsUsed() + d > s.score) return;
+          slip.bets[k] = { ...b, chips: next };
+          sendBets();
+          draw(true);
+        };
+        row.append(
+          el('button', { type: 'button', 'aria-label': `Fewer chips on ${slotLabel(slot)}`, disabled: b.chips === 0, onClick: () => step(-1) }, '−'),
+          el('span', { class: 'n', 'aria-label': `Chips on ${slotLabel(slot)}` }, plural(b.chips, 'chip')),
+          el('button', { type: 'button', 'aria-label': `More chips on ${slotLabel(slot)}`, disabled: chipsUsed() >= s.score, onClick: () => step(1) }, '+'));
+        return row;
+      }));
+    }
+
+    const ordinal = (n) => `${n}${n % 10 === 1 && n % 100 !== 11 ? 'st' : n % 10 === 2 && n % 100 !== 12 ? 'nd' : n % 10 === 3 && n % 100 !== 13 ? 'rd' : 'th'}`;
+
+    function draw(force = false) {
+      if (!s) return;
+      head.querySelector('.dot').style.background = s.color;
+      head.querySelector('.score').textContent = plural(s.score, 'point');
+      const [key, top, bottom] = view();
+      if (force || key !== mainKey) {
+        mainKey = key;
+        main.replaceChildren(...top().filter(Boolean));
+        foot.replaceChildren(...bottom().filter(Boolean));
+      }
+    }
+  }
+</script>
