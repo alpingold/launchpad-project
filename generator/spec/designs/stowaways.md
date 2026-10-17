@@ -38,10 +38,11 @@ No sounds on phones (a neighbour could hear a secret). Your colour and name at t
   Then pick exactly as many players as there are aliens (not yourself), and **Accuse** (25 s).
 - **Captain picks:** test type (Write, Draw, Opinion), then tap the players, then **Start test**.
 - **The crew grid (everyone but the captain, outside tests and votes):** a tap toggles your
-  private mark on a crewmate, for every role, always. For an alien during a pick (from the
-  second test), marking also hacks them if it can, and unmarking takes the hack back; which
-  marks are hacks is listed only on the covered role card. So every phone looks and reacts
-  the same, and all role text stays on the role card.
+  private mark on a crewmate, for every role, always. **Every pick starts with a clean grid**
+  on every phone. For an alien during a pick (from the second test), a mark is a hack (if one
+  is left, and nobody else hacked that player), and unmarking takes it back; the covered role
+  card lists every hack. So every phone looks and reacts the same, all role text stays on the
+  role card, and a human's suspect marks last one round.
 - **Being tested:** your prompt and `party.ui.timer`. Write: `textInput` (60 chars). Draw:
   `drawPad`. Opinion: 4 big buttons (Strongly disagree … Strongly agree).
 - **Not tested:** "Sam, Ana and Lee are being tested" and your notes.
@@ -51,9 +52,11 @@ No sounds on phones (a neighbour could hear a secret). Your colour and name at t
 1. Roles are dealt at random. 10 s to read them. The clock starts: 3 min + 1 min per player.
 2. The captain is a random player, then the next connected player in seat order after each test or failed vote.
 3. **Pick (25 s):** the captain picks a test type and players (themself allowed). Too slow: random.
-4. **Hacks (aliens, during the pick, not in the first test):** a hack sits on a player until they
-   are next tested, then that test gives them the other prompt: a human gets the alien prompt
-   (and doesn't know), an alien gets the human one (cover). Hacks lock when the pick locks.
+4. **Hacks (aliens, during the pick, not in the first test):** a hack is for the test being
+   picked: if the captain picks that player, their test gives them the other prompt (a human
+   gets the alien prompt and doesn't know; an alien gets the human one, as cover). Hacks lock
+   when the pick locks; a hack on a player who wasn't picked (or in a pick that was abandoned)
+   goes back to its alien.
 5. **Test:** Write 45 s, Draw 60 s, Opinion 20 s; ends early when all tested players answered.
    Humans get the prompt, aliens a close but different one (Write: "a pizza topping" vs
    "something you put on toast"; Draw: "a cat" vs "a fox"; Opinion: "Breakfast is the best

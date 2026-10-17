@@ -292,7 +292,7 @@
         v: 1,
         roles,
         hacksLeft: Object.fromEntries(aliens.map((id) => [id, 2])),
-        hacks: {}, // target id → the alien who placed it; used up when the target is tested
+        hacks: {}, // target id → the alien who placed it, for the test being picked now
         notes: {}, // id → the ids they marked as suspects (private)
         buttons: Object.fromEntries(ids.map((id) => [id, true])),
         lastPushed: {}, // in last call, everyone gets one more push
@@ -344,8 +344,22 @@
       cue(phase);
     }
 
+    // A hack only counts for the test whose pick it was placed in; one that wasn't used (the
+    // captain didn't pick that player, or the pick was abandoned) goes back to its alien.
+    function refundHacks(except = []) {
+      for (const [t, by] of Object.entries(g.hacks)) {
+        if (except.includes(t)) continue;
+        g.hacksLeft[by] += 1;
+        delete g.hacks[t];
+      }
+    }
+
     function startPick(now = party.now()) {
       g.test = null;
+      // A clean grid for everyone at every pick: marks clear on every phone at the same moment,
+      // so for an alien, what's marked during the pick is exactly what's hacked.
+      g.notes = {};
+      refundHacks();
       runClock(true, now);
       enter('pick', PICK_MS, now);
     }
@@ -362,6 +376,7 @@
     function lockPick(type, picked) {
       const swapped = picked.filter((id) => g.hacks[id]);
       for (const id of swapped) delete g.hacks[id];
+      refundHacks(); // the rest weren't picked
       g.test = { type, pair: choosePair(type), picked, swapped, answers: {}, done: {} };
       g.testNo += 1;
       enter('test', TEST_MS[type]);
@@ -480,9 +495,10 @@
 
       // A tap on the crew grid toggles your private mark, for every role, in every phase: the
       // same thing happens on every phone, so a glance at one says nothing about its role.
-      // For an alien, during a captain's pick (from the second test on), marking a crewmate
-      // also hacks them if it can, and unmarking takes back their own hack. The covered role
-      // card lists which marks are hacks.
+      // Every pick starts with a clean grid (startPick). For an alien, during a captain's pick
+      // (from the second test on), marking a crewmate also hacks them if it can, and unmarking
+      // takes the hack back. (A crewmate another alien already hacked stays theirs; the covered
+      // role card lists every hack.)
       if ('note' in data && isId(data.note)) {
         const t = data.note;
         const mine = g.notes[from] ?? [];
@@ -894,7 +910,7 @@
         lines.push(el('b', {}, 'You are an ALIEN'));
         lines.push(el('span', { class: 'fine' }, 'Your tests are a little different. Blend in, and keep them from ejecting you.'));
         if (s.allies?.length) lines.push(el('span', { class: 'fine' }, `The other ${s.allies.length === 1 ? 'alien is' : 'aliens are'} ${listNames(s.allies)}.`));
-        lines.push(el('span', { class: 'fine' }, `Hacks left: ${s.hacksLeft}. ${s.testNo === 0 ? 'From the second test on, while' : 'While'} the captain picks, marking a crewmate also hacks them: their next test gets the other prompt. Unmark to take it back.`));
+        lines.push(el('span', { class: 'fine' }, `Hacks left: ${s.hacksLeft}. ${s.testNo === 0 ? 'From the second test on, while' : 'While'} the captain picks, mark a crewmate to hack them: if they're picked, their test gets the other prompt. Unmark to take it back. Unused hacks come back to you.`));
         if (s.hacked?.length) lines.push(el('span', { class: 'fine' }, `Hacked now: ${listNames(s.hacked)}.`));
       } else {
         lines.push(el('b', {}, 'You are HUMAN'));

@@ -1713,8 +1713,10 @@ aliens; everyone else votes, and only a unanimous Eject ejects them. One ejectio
 the humans win only if exactly the aliens went out. Clock: 3 min + 1 min per player, paused
 during the button. The user's decisions on the design:
 - **Hacks frame, they don't convert** (as in the original): an alien's hack gives a human the
-  aliens' prompt for their next test (or an alien the humans' one, as cover). Two per alien,
-  from the second test. Conversion would make "who's an alien" a moving target.
+  aliens' prompt for the test being picked, if the captain picks them (or an alien the
+  humans' one, as cover). Two per alien, from the second test; a hack that isn't used (the
+  player wasn't picked, or the pick was abandoned) comes back. Conversion would make "who's an
+  alien" a moving target.
 - **Two additions of ours:** _last call_ (at 0:00, 30 s in which everyone gets one more push)
   and _public votes_ (the screen names who voted Keep).
 - **Three tests in v1** (Write, Draw, Opinion); Deliberation (aliens see only the options) later.
@@ -1724,11 +1726,13 @@ during the button. The user's decisions on the design:
 - The big screen never shows a role or the prompt during a test (it would tell the aliens the
   humans' prompt); only the humans' prompt, at the reveal.
 - Each phone gets its own `setState`, never `'all'`. The role card is covered until tapped.
-- Everyone taps the crew grid to mark suspects (private marks), at any time. For an alien during
-  a captain's pick, a mark is also a hack (unmarking takes it back); which marks are hacks, the
-  hacks left and the other aliens appear only on the covered role card. So every phone looks
-  and reacts the same (a review found an alien's taps did nothing outside the pick, which gave
-  them away; fixed, and an e2e test compares a covered alien phone with a human's).
+- Everyone taps the crew grid to mark suspects (private marks), at any time. **Every pick
+  starts with a clean grid** on every phone (decided with the user: so for an alien, what's
+  marked during a pick is exactly what's hacked; a human's marks last one round). For an alien
+  during a pick, a mark is a hack (unmarking takes it back); the hacks, hacks left and the
+  other aliens appear only on the covered role card. So every phone looks and reacts the same
+  (a review found an alien's taps did nothing outside the pick, which gave them away; fixed,
+  and an e2e test compares a covered alien phone with a human's).
 - The big screen redraws only when something public changed, so a note or a hack doesn't
   make it flicker. Phones make no sound; the big screen plays sounds only for public moments.
 

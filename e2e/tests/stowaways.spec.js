@@ -201,6 +201,33 @@ test("a drawing test, then an alien's hack: the hacked human gets the aliens' pr
   // During the discussion too, a covered alien phone reads like a human's (neither is captain).
   await expect(alienPhone.getByText('Talk it out! Whose answer was off?')).toBeVisible();
   await expect.poll(() => coveredText(phones[alien])).toEqual(await coveredText(phones[bystander]));
+
+  // The next pick starts with a clean grid on every phone; the hack that was used is gone.
+  await cap.getByRole('button', { name: 'Next test' }).click({ timeout: 30_000 });
+  const next = await findCaptain(phones);
+  for (const name of NAMES.filter((n) => n !== next)) {
+    await expect(frame(phones[name].page).locator('[aria-pressed="true"]')).toHaveCount(0);
+  }
+  if (next === alien) return; // the alien is captain: no hacking this pick
+  const hacksLeft = async () => {
+    await alienPhone.getByRole('button', { name: 'Your role (tap to show)' }).click();
+    const open = alienPhone.getByRole('button', { name: 'Your role (tap to hide)' });
+    const n = Number((await open.textContent()).match(/Hacks left: (\d)/)[1]);
+    await open.click();
+    return n;
+  };
+  expect(await hacksLeft()).toBe(1);
+
+  // A hack on someone the captain doesn't pick comes back to the alien when the pick locks.
+  const spare = humans.find((n) => n !== next);
+  await alienPhone.getByRole('button', { name: spare, exact: true }).click();
+  expect(await hacksLeft()).toBe(0);
+  const capN = frame(phones[next].page);
+  await capN.getByRole('button', { name: 'Opinion', exact: true }).click();
+  for (const name of NAMES.filter((n) => n !== spare).slice(0, 2)) await capN.getByRole('button', { name, exact: true }).click();
+  await capN.getByRole('button', { name: 'Start test' }).click();
+  await expect(capN.getByRole('button', { name: 'Start test' })).toHaveCount(0);
+  await expect.poll(hacksLeft).toBe(1);
 });
 
 /** What a phone shows with its role card covered, minus its own name and the timer's seconds. */
