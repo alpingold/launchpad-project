@@ -1837,14 +1837,25 @@ run at once; up to 4 more wait in line. One job per person stays (§15). The lim
 because two browser checks at the same moment use ~900 MB and both CPUs, and the checker
 measures timing, so a starved CPU could fail a good game.
 
-**Next, if queues form: a shared "browser slot".** Any number of jobs talk to the AI at
-once, and they take turns only for the browser check. Before starting Chrome, the job (in
-its sandbox) prints `BROWSER?` on stderr and waits; the server, which keeps the job's stdin
-open, answers `BROWSER!` when the slot is free; after the check the job prints `BROWSER done`.
-Safety rules: the slot is freed when a job ends for any reason, and after a maximum hold
-time; the game under test must never reach stderr (so it can't fake the messages); the
-server accepts them only in order. The sandbox can't reach the server any other way, so the
-job's own pipes are the channel.
+**The shared browser slot (built the same day, at the user's request).** Jobs talk to the AI
+in parallel and take turns only for the browser check, so the expensive part runs one at a
+time however many games are being made. `GENERATION_MAX_RUNNING` rose to 4 (default), and
+`GENERATION_BROWSER_CHECKS` (default 1) sets how many checks run at once.
+
+- **The channel:** the sandbox can't reach the server, so the job uses the pipes it already
+  has. The server sends the job as the first line of stdin, with a random token, and keeps
+  stdin open. Before each check the job prints `BROWSER? <token>` on stderr and waits; the
+  server answers `BROWSER! <token>` on stdin when the slot is free; afterwards the job prints
+  `BROWSER done <token>` (also if the check crashed). Verified first that `openshell sandbox
+  exec` passes stdin through live.
+- **Safety rules:** the slot is freed when a job ends for any reason; after 2 minutes of
+  holding it the server stops the job ("the browser check took longer than…") and the next
+  goes; lines without the job's own token, or out of order, are ignored. The token never
+  reaches the game under test, and the game's output never reaches stderr (every progress
+  line is one `STEP` line, line breaks removed), so a game can't fake the messages.
+- **Where:** `generator/src/browserGate.js` (the job's side), `server/src/generation/browserSlot.js`
+  (the slot), `slotGate` in `sandbox.js` (the conversation). Without a slot (the
+  `npm run generate` script) jobs check whenever they like, as before.
 
 ## Verification (how to confirm the plan worked once built)
 
