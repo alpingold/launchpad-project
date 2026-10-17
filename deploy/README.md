@@ -1,6 +1,6 @@
 # Deploying BoilerGames (milestone M8)
 
-One server on AWS EC2 runs everything:
+One AWS Lightsail server (2 GB, plan §28) runs everything, at **https://boilergames.party**:
 
 ```
 phone / laptop ──HTTPS + wss://──▶ Caddy (:443) ──▶ node server (:3000) ──▶ SQLite file
@@ -16,36 +16,40 @@ phone / laptop ──HTTPS + wss://──▶ Caddy (:443) ──▶ node server 
 Files in this folder: `Caddyfile`, `boilergames.service` (systemd), `boilergames.env.example`
 (the server's settings) and `backup.sh` (the nightly backup).
 
-## 1. The server (AWS console)
+## 1. The server (AWS Lightsail)
 
-1. **Launch an EC2 instance:** Ubuntu Server 24.04 LTS, 64-bit **x86** (not Arm: the
-   generator's Docker image and OpenShell are built for x86).
-   - **Size:** at least **4 GB of memory** if AI generation runs here: Docker, a sandbox and
-     a headless browser (the checker) run during each job. The site alone fits in 1 GB.
-     Pick a type the launch screen marks **Free tier eligible**.
-   - **Disk:** 30 GB (gp3). Docker images take a few GB.
-   - **Key pair:** create one and keep the `.pem` file; it's how you log in.
-2. **Security group (the firewall):** allow inbound **22** (SSH, from *My IP* only), **80** and
-   **443** (from anywhere). Port 3000 stays closed: only Caddy talks to Node.
-3. **Elastic IP:** allocate one and associate it with the instance, so the address survives a
-   stop/start. (AWS bills public IPv4 addresses; check whether your free tier covers it.)
-4. **Domain:** at your domain's DNS provider, add an **A record** pointing your domain
-   (or a subdomain like `play.yourdomain.com`) to the Elastic IP. Check it from your PC:
-   `nslookup play.yourdomain.com` should show the IP. HTTPS (step 5) only works once it does.
+1. **Create an instance** in **Ohio (us-east-2)**: Linux/Unix, "OS Only", **Ubuntu 24.04 LTS**,
+   the **$12 plan (2 GB memory, 2 vCPUs, 60 GB disk)**. 2 GB is enough for the site plus AI
+   generation: we measured ~1.1 GB at the busiest moment, and browser checks take turns
+   (plan §28). Download the SSH key Lightsail offers (`.pem`); it's how you log in.
+2. **Static IP** (Networking tab): create one and attach it, so the address never changes.
+   It's free while attached.
+3. **Firewall** (the instance's Networking tab, IPv4): **SSH 22** (restricted to your own IP
+   if you can), **HTTP 80**, **HTTPS 443**. Nothing else: Node's port 3000 stays closed, and
+   Node only listens on the machine itself anyway (`HOST=127.0.0.1`).
+4. **Domain (Cloudflare):** DNS → add an **A record**, name `@` (boilergames.party itself),
+   content: the static IP, **proxy status: DNS only (grey cloud)**, so Caddy can get its own
+   certificate. Check from your PC: `nslookup boilergames.party` shows the static IP.
+   HTTPS (step 5) only works once it does.
 
 ## 2. Log in and install the basics
 
 ```bash
-ssh -i ~/path/to/key.pem ubuntu@<elastic-ip>
+ssh -i ~/path/to/key.pem ubuntu@<static-ip>
 
 sudo apt update && sudo apt upgrade -y
+# 2 GB of swap: disk space used as spare memory if a busy moment ever needs more than 2 GB
+sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+free -h          # Swap: 2.0Gi
 # Node 24 (the version we develop with; Ubuntu's own is too old)
 curl -fsSL https://deb.nodesource.com/setup_24.x -o nodesource_setup.sh   # read it first
 sudo bash nodesource_setup.sh && sudo apt install -y nodejs build-essential git
 node --version   # v24.x
 ```
 
-`build-essential` is there because better-sqlite3 may need to compile on install.
+`build-essential` is there because better-sqlite3 may need to compile on install. Ubuntu
+installs security updates by itself (unattended-upgrades); leave that on.
 
 ## 3. The code
 
@@ -73,17 +77,18 @@ journalctl -u boilergames -f      # the server's log (Ctrl+C to stop watching)
 ```
 
 On first start the server creates `server/data/boilergames.db` and `server/data/key-secret`
-(the secret that opens saved API keys). **Never commit or share `key-secret`.**
+(the secret that opens saved API keys). **Never commit or share `key-secret`.** Make the
+folder private to you: `chmod 700 ~/boilergames/server/data`.
 
 ## 5. Caddy (HTTPS)
 
 ```bash
 sudo apt install -y caddy
-sed 's/play.example.com/play.yourdomain.com/' deploy/Caddyfile | sudo tee /etc/caddy/Caddyfile
+sudo cp deploy/Caddyfile /etc/caddy/Caddyfile
 sudo systemctl restart caddy
 ```
 
-Open `https://play.yourdomain.com` on your phone **on mobile data** (not Wi-Fi): that's the
+Open `https://boilergames.party` on your phone **on mobile data** (not Wi-Fi): that's the
 real test that it works from anywhere. If the certificate fails, `journalctl -u caddy` says
 why (almost always: the DNS record doesn't point here yet, or port 80/443 is closed).
 
@@ -92,7 +97,9 @@ why (almost always: the DNS record doesn't point here yet, or port 80/443 is clo
 
 ## 6. AI generation (Docker + OpenShell)
 
-The same as on your PC (`generator/README.md`, "One-time setup"), minus the WSL parts:
+The same as on your PC (`generator/README.md`, "One-time setup"), minus the WSL parts.
+First check this server can reach GenAI Studio at all (any HTTP code is fine; a timeout
+isn't): `curl -s -o /dev/null -w '%{http_code}\n' https://genai.rcac.purdue.edu/api/models`
 
 ```bash
 sudo apt install -y docker.io docker-buildx
@@ -121,15 +128,19 @@ crontab -e     # add this line: every night at 4:00
 
 Backups go to `~/backups` (14 days kept), with a copy of `key-secret`. They're on the same
 machine, so also download one now and then:
-`scp -i key.pem ubuntu@<elastic-ip>:backups/boilergames-<date>.db .`
+`scp -i key.pem ubuntu@<static-ip>:backups/boilergames-<date>.db .`
 
 ## Updating the site
 
 ```bash
 cd ~/boilergames && git pull
 npm --prefix server ci --omit=dev && npm --prefix client ci && npm run build
+docker build -f generator/Dockerfile -t boilergames-generator:local .
 sudo systemctl restart boilergames
 ```
+
+Always rebuild the generator image too: the server and the generator inside it talk over a
+protocol (e.g. the browser slot, plan §28), so they must be the same version.
 
 A restart ends every open room (plan §9 risks), so update when nobody is playing. Database
 changes run by themselves on start, with a backup first.
