@@ -17,6 +17,10 @@
 //   Builds use EDIT MODE (plan §23): once there's a file, the model sends changes to it
 //   (edits.js), not the whole file again. "edits": false turns it off.
 //
+// The job is the first line of stdin. With "browserGate": "<token>", the server shares one
+// browser between jobs: before each playtest the job asks for it on stderr and waits for the
+// go on stdin (browserGate.js, plan §28).
+//
 // Progress lines go to stderr: "STEP ..." adds a step; "STEP~ ..." replaces the last one
 // (how far a reply has streamed in, every ~15 s). The result is one JSON line on stdout:
 //   design: { ok, model, design, attempts, error? }
@@ -47,6 +51,7 @@ import {
 } from './prompt.js';
 import { DEFAULT_MODEL, isAllowedModel } from './models.js';
 import { checkGame } from './check/checkGame.js';
+import { NO_GATE, isGateToken, lineReader, stdinGate } from './browserGate.js';
 import { describeProblem } from '../../server/src/games/frameGame.js';
 
 /**
@@ -101,7 +106,8 @@ export const PLAYTEST_SECONDS = 15;
 /**
  * Runs one job. Everything outside is passed in, so tests can use a fake model and checker.
  * @param {GeneratorJob} job  untrusted: checked here
- * @param {{ chatFn?: typeof chat, check?: typeof checkGame, onStep?: OnStep }} [deps]
+ * @param {{ chatFn?: typeof chat, check?: typeof checkGame, onStep?: OnStep, browser?: typeof NO_GATE }} [deps]
+ *   browser: the gate around each browser check (browserGate.js); none by default
  * @returns {Promise<GeneratorResult>}
  */
 export async function runJob(job, deps = {}) {
@@ -188,10 +194,10 @@ async function design(job, model, { chatFn = chat, onStep = () => {} }) {
  *
  * @param {GeneratorJob} job
  * @param {string} model
- * @param {{ chatFn?: typeof chat, check?: typeof checkGame, onStep?: OnStep }} deps
+ * @param {{ chatFn?: typeof chat, check?: typeof checkGame, onStep?: OnStep, browser?: typeof NO_GATE }} deps
  * @returns {Promise<GeneratorResult>}
  */
-async function build(job, model, { chatFn = chat, check = checkGame, onStep = () => {} }) {
+async function build(job, model, { chatFn = chat, check = checkGame, onStep = () => {}, browser = NO_GATE }) {
   const maxAttempts = job.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
   const { change } = job;
   let edits = job.edits !== false;
@@ -267,7 +273,14 @@ async function build(job, model, { chatFn = chat, check = checkGame, onStep = ()
     if (change && result.changelog === null) result.changelog = changelog;
 
     onStep(`attempt ${attempt}/${maxAttempts}: checking the game (static check, then ${PLAYTEST_SECONDS} s of play in a browser)`);
-    const report = await checkWithSize(source, check, onStep);
+    // One browser at a time across jobs (plan §28): wait for the slot, and always give it back.
+    await browser.acquire();
+    let report;
+    try {
+      report = await checkWithSize(source, check, onStep);
+    } finally {
+      browser.release();
+    }
     result.source = source;
     result.report = report;
     record({ ok: report.ok, problems: report.problems.length, source, report: withoutScreenshots(report) });
@@ -323,17 +336,26 @@ export function formatReport(report) {
   return parts.join('\n\n');
 }
 
-// Run as a program: read the job from stdin, print the result.
+// Run as a program: the job is the first line of stdin; print the result.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const chunks = [];
-  for await (const chunk of process.stdin) chunks.push(chunk);
+  const lines = lineReader(process.stdin);
   let job;
   try {
-    job = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+    job = JSON.parse((await lines.next()) ?? '');
   } catch {
     job = null;
   }
-  const result = await runJob(job, { onStep: (text, { replace = false } = {}) => process.stderr.write(`STEP${replace ? '~' : ''} ${text}\n`) });
+  const write = (text) => process.stderr.write(text);
+  const browser = isGateToken(job?.browserGate) ? stdinGate(job.browserGate, { lines, write }) : NO_GATE;
+  // One line per step: a line break inside a step (say, from a game's error message) would
+  // otherwise start a new line the server reads on its own.
+  const onStep = (text, { replace = false } = {}) => write(`STEP${replace ? '~' : ''} ${String(text).replace(/[\r\n]+/g, ' ')}\n`);
+  let result;
+  try {
+    result = await runJob(job, { onStep, browser });
+  } catch (err) {
+    result = { ok: false, model: job?.model ?? null, attempts: [], error: err.message };
+  }
   // Exit only once the result is fully written: `openshell sandbox exec` passes stdout on
   // asynchronously, and exiting right away cut a built game's result off at 64 KB (F5).
   process.stdout.write(`${JSON.stringify(result)}\n`, () => process.exit(result.ok ? 0 : 1));
