@@ -1,6 +1,6 @@
 # BoilerGames: Implementation Plan (MVP lobby + extension structure)
 
-> **Status (2026-10-16):** M0–M7 done; AI generation, frame games (§13, now `main`; the old block games are in the `block-games` branch), the catalogue (§14), bring-your-own-key (§15), game pages/votes/profiles (§16), a room per game (§17), the guided /create flow (§19) and better phones (§21) are built. **Focus (§22): the games that fit a big screen with phones as controllers** (drawing and guessing, writing and voting, bluffing and secrets, trivia, board games, loose real-time action), not platformers or RPGs. Next: deploying (M8, §27), then play-tests with people. This file is the living plan: decisions and changes are recorded here as they happen, so `git log docs/PLAN.md` shows how it evolved.
+> **Status (2026-10-16):** M0–M7 done; AI generation, frame games (§13, now `main`; the old block games are in the `block-games` branch), the catalogue (§14), bring-your-own-key (§15), game pages/votes/profiles (§16), a room per game (§17), the guided /create flow (§19) and better phones (§21) are built. **Focus (§22): the games that fit a big screen with phones as controllers** (drawing and guessing, writing and voting, bluffing and secrets, trivia, board games, loose real-time action), not platformers or RPGs. Next: deploying (M8, §27–29; the server is up), then play-tests with people. This file is the living plan: decisions and changes are recorded here as they happen, so `git log docs/PLAN.md` shows how it evolved.
 
 _Site renamed from "LaunchPad Party" to **BoilerGames** on 2026-10-11 (built for the Purdue LaunchPad club; the club name stays where it refers to the club)._
 
@@ -1856,6 +1856,28 @@ time however many games are being made. `GENERATION_MAX_RUNNING` rose to 4 (defa
 - **Where:** `generator/src/browserGate.js` (the job's side), `server/src/generation/browserSlot.js`
   (the slot), `slotGate` in `sandbox.js` (the conversation). Without a slot (the
   `npm run generate` script) jobs check whenever they like, as before.
+
+## 29. The server: EC2 t3.small, then Lightsail when the credits end (built 2026-10-17)
+
+**What happened:** Lightsail refused the $12 2 GB plan ("your account can not create an
+instance using this Lightsail plan size"): free-plan projects only get the small Lightsail
+plans. EC2's free-plan types include `t3.small` (2 GB, 2 vCPUs, x86), the size §28 measured
+for, so that's the server.
+
+**The money:** the free plan is credits, not free usage: $100 at sign-up plus $20 for each of
+5 starter activities ($200 in all once done; launching EC2 and setting a budget are two). Any
+supported service spends them. The server costs ~$21/month (t3.small $15.18, 30 GB disk $2.40,
+the IP address $3.65), so the credits cover it until the free plan ends (2027-04-17).
+**Then:** move to a cheaper Lightsail server (2 GB at $12/month, on the paid plan) and pay
+for it; the deploy steps are the same apart from step 1.
+
+**What was created (us-east-2, all tagged `project=boilergames`):**
+- instance `boilergames` (`t3.small`, Ubuntu 24.04 from Canonical's official image, 30 GB
+  encrypted gp3 disk, IMDSv2 required, **CPU credits "standard"** so bursts can never add
+  charges, only slow down);
+- Elastic IP **18.222.40.29**; security group `boilergames-web`: 22 (SSH, key-only), 80, 443;
+- the user's own SSH public key, imported (the private key never left their machine);
+- budget `boilergames-monthly`: $25/month.
 
 ## Verification (how to confirm the plan worked once built)
 

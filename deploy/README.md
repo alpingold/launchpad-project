@@ -1,6 +1,8 @@
 # Deploying BoilerGames (milestone M8)
 
-One AWS Lightsail server (2 GB, plan §28) runs everything, at **https://boilergames.party**:
+One AWS server with 2 GB (plan §28, §29) runs everything, at **https://boilergames.party**.
+Today it's EC2 `t3.small` (paid from the free-plan credits); later a Lightsail server. Only
+step 1 differs between the two:
 
 ```
 phone / laptop ──HTTPS + wss://──▶ Caddy (:443) ──▶ node server (:3000) ──▶ SQLite file
@@ -16,7 +18,14 @@ phone / laptop ──HTTPS + wss://──▶ Caddy (:443) ──▶ node server 
 Files in this folder: `Caddyfile`, `boilergames.service` (systemd), `boilergames.env.example`
 (the server's settings) and `backup.sh` (the nightly backup).
 
-## 1. The server (AWS Lightsail)
+## 1. The server
+
+**EC2 (now, plan §29):** `t3.small`, Canonical's Ubuntu 24.04 x86 image, a 30 GB encrypted gp3
+disk, **CPU credits "standard"** (bursts never cost extra), IMDSv2 required, your own SSH public
+key imported, an Elastic IP, and a security group allowing only 22, 80 and 443. Then do step 4
+below (the domain) with the Elastic IP.
+
+**Lightsail (later, after the free plan):**
 
 1. **Create an instance** in **Ohio (us-east-2)**: Linux/Unix, "OS Only", **Ubuntu 24.04 LTS**,
    the **$12 plan (2 GB memory, 2 vCPUs, 60 GB disk)**. 2 GB is enough for the site plus AI
