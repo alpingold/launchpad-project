@@ -1,6 +1,6 @@
 # BoilerGames: Implementation Plan (MVP lobby + extension structure)
 
-> **Status (2026-10-16):** M0–M7 done; AI generation, frame games (§13, now `main`; the old block games are in the `block-games` branch), the catalogue (§14), bring-your-own-key (§15), game pages/votes/profiles (§16), a room per game (§17), the guided /create flow (§19) and better phones (§21) are built. **Focus (§22): the games that fit a big screen with phones as controllers** (drawing and guessing, writing and voting, bluffing and secrets, trivia, board games, loose real-time action), not platformers or RPGs. Next: deploying (M8, §27–29; the server is up), then play-tests with people. This file is the living plan: decisions and changes are recorded here as they happen, so `git log docs/PLAN.md` shows how it evolved.
+> **Status (2026-10-16):** M0–M7 done; AI generation, frame games (§13, now `main`; the old block games are in the `block-games` branch), the catalogue (§14), bring-your-own-key (§15), game pages/votes/profiles (§16), a room per game (§17), the guided /create flow (§19) and better phones (§21) are built. **Focus (§22): the games that fit a big screen with phones as controllers** (drawing and guessing, writing and voting, bluffing and secrets, trivia, board games, loose real-time action), not platformers or RPGs. **Live at https://boilergames.party since 2026-10-17** (M8, §27–29). Next: play-tests with people. This file is the living plan: decisions and changes are recorded here as they happen, so `git log docs/PLAN.md` shows how it evolved.
 
 _Site renamed from "LaunchPad Party" to **BoilerGames** on 2026-10-11 (built for the Purdue LaunchPad club; the club name stays where it refers to the club)._
 
@@ -1878,6 +1878,16 @@ for it; the deploy steps are the same apart from step 1.
 - Elastic IP **18.222.40.29**; security group `boilergames-web`: 22 (SSH, key-only), 80, 443;
 - the user's own SSH public key, imported (the private key never left their machine);
 - budget `boilergames-monthly`: $25/month.
+
+**Set up (2026-10-17), following `deploy/README.md` over SSH:** swap, Node 24, the code (via a
+read-only GitHub deploy key: the repo is private), the systemd service (generation off, then
+on), Caddy (a Let's Encrypt certificate on the first try), Docker, OpenShell 0.1.3 (pinned to
+the dev PC's version), the generator image, nightly backups. Checked: HTTPS and `wss://` from
+outside, port 3000 closed, GenAI Studio reachable from AWS (HTTP 401 without a key), the
+checker passing a game on the server, and everything back by itself after a reboot.
+Lessons now in the guide: OpenShell's gateway is a user service (needs lingering and a
+restart of the user's service manager after joining the docker group, else "no compute
+driver"), and the CLI must be registered with `openshell gateway add --local`.
 
 ## Verification (how to confirm the plan worked once built)
 

@@ -62,8 +62,20 @@ installs security updates by itself (unattended-upgrades); leave that on.
 
 ## 3. The code
 
+The repo is private, so the server gets a **deploy key**: an SSH key that can only *read*
+this one repo. Make it on the server, then add its public half on GitHub (repo → Settings →
+Deploy keys → Add deploy key, "Allow write access" unchecked):
+
 ```bash
-git clone https://github.com/alpingold/launchpad-project.git ~/boilergames
+ssh-keygen -q -t ed25519 -N "" -C "boilergames-server deploy key (read-only)" -f ~/.ssh/github_deploy
+printf 'Host github.com\n  IdentityFile ~/.ssh/github_deploy\n  IdentitiesOnly yes\n' > ~/.ssh/config
+ssh-keyscan -t ed25519 github.com >> ~/.ssh/known_hosts
+ssh-keygen -lf ~/.ssh/known_hosts   # must show SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU (GitHub's)
+cat ~/.ssh/github_deploy.pub         # paste this on GitHub
+```
+
+```bash
+git clone git@github.com:alpingold/launchpad-project.git ~/boilergames
 cd ~/boilergames
 npm --prefix server ci --omit=dev
 npm --prefix client ci
@@ -114,10 +126,22 @@ isn't): `curl -s -o /dev/null -w '%{http_code}\n' https://genai.rcac.purdue.edu/
 sudo apt install -y docker.io docker-buildx
 sudo usermod -aG docker ubuntu   # then log out and back in
 docker run --rm hello-world
-# OpenShell: download install.sh from github.com/NVIDIA/OpenShell, read it, run it with sh
-openshell status
+# OpenShell: the installer downloads only from NVIDIA's GitHub releases and checks their
+# checksums. Pin the version the dev PC uses (`openshell --version` there; 0.1.3 at launch).
+curl -fsSL https://raw.githubusercontent.com/NVIDIA/OpenShell/main/install.sh -o /tmp/openshell-install.sh
+OPENSHELL_VERSION=v0.1.3 sh /tmp/openshell-install.sh
+# Its gateway is a *user* service of ubuntu: keep it running with nobody logged in, and
+# restart ubuntu's service manager so the gateway gets the new docker group (without this
+# it fails with "no compute driver configured").
+sudo loginctl enable-linger ubuntu
+sudo systemctl restart user@$(id -u).service
+openshell gateway add --local --name openshell https://127.0.0.1:17670
+openshell status                  # Status: Connected
 openshell profile import -f generator/openshell/genai-studio.yaml
 docker build -f generator/Dockerfile -t boilergames-generator:local .
+# The checker works here (headless Chromium, no network):
+docker run --rm --network none -v "$PWD/server/src/games/punchline/game.html:/tmp/game.html:ro" \
+  boilergames-generator:local node /app/generator/src/check/cli.js /tmp/game.html   # PASSED
 ```
 
 Then set `GENERATION_ENABLED=1` in `/etc/boilergames.env` and
@@ -131,9 +155,14 @@ a shared `genai-studio` provider, so either save your key on /account like every
 
 ```bash
 chmod +x ~/boilergames/deploy/backup.sh
-crontab -e     # add this line: every night at 4:00
-0 4 * * * /home/ubuntu/boilergames/deploy/backup.sh
+echo "0 4 * * * /home/ubuntu/boilergames/deploy/backup.sh" | crontab -   # every night at 4:00 UTC
+crontab -l                        # check it's there
+~/boilergames/deploy/backup.sh && chmod 700 ~/backups && ls -l ~/backups   # try it once
 ```
+
+**Last check: reboot** (`sudo systemctl reboot`). After a minute, `boilergames`, `caddy`,
+`docker` and `systemctl --user is-active openshell-gateway` should all be active, and
+`https://boilergames.party/api/health` should answer `{"ok":true}`.
 
 Backups go to `~/backups` (14 days kept), with a copy of `key-secret`. They're on the same
 machine, so also download one now and then:
