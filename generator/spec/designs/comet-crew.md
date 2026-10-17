@@ -76,7 +76,8 @@ and one line of what to do. The station's controls fill the bottom half.
    They can't be shot. If the shield faces that side when it hits (or did in the last
    0.35 s), it's blocked (+20). If not: −15 hull and a fire.
 4. **Fires:** a room's fire has 6 flames; each engineer tap puts out one. A new hit on a
-   burning room adds 2. Each burning room costs 1 hull a second. Engine fire: the ship
+   burning room adds 2. Each burning room costs 1 hull a second. Fires go out between waves
+   (the crew patches up in the break). Engine fire: the ship
    steers at a third of its speed. Gun fire: the turrets jam. Shield fire: no shield.
 5. **Stars** (+25) float by; **repair kits** (+15 hull, from wave 3) now and then. The helm
    catches them by flying into them; the navigator's tractor beam pulls all of them in.
@@ -122,7 +123,7 @@ and one line of what to do. The station's controls fill the bottom half.
   gives each person credit without ranking them against each other.
 
 ## Closest example
-Bumper Blobs (real-time canvas, joystick). Built: one file, ~45 KB.
+Bumper Blobs (real-time canvas, joystick). Built: one file, ~51 KB.
 
 ## Edge cases
 - **A player leaves:** their station goes on autopilot ("autopilot" on the crew strip),
