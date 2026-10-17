@@ -1817,6 +1817,35 @@ Jumpers' 15 turns feel short at 2 players; Doodle Drift and Punchline timers wit
 - **Backups stay on the same machine** unless downloaded; a lost instance loses them. Copying
   them to S3 is a later step.
 
+## 28. Server size and making several games at once (decided 2026-10-17)
+
+**Measured (one real generation on the dev PC, sampled every few seconds):** Docker +
+OpenShell idle use ~210 MB. A job adds ~70 MB while it waits for the AI (about 90% of
+its time) and peaks at ~450 MB during its ~20 s browser playtest. A whole server (Ubuntu,
+Docker, OpenShell, Node, one job) needs ~1.1 GB at its worst. The 4 GB guess in §27 was far
+too high.
+
+**Server:** Lightsail 2 GB ($12/month with its IP address, disk and data), with a 2 GB swap
+file as a safety net. The $100 free-plan credits cover it until they expire (2027-04-17).
+EC2 options cost more for the same size (a separate charge for the IP address and disk) and
+don't scale down by themselves; scaling out needs rooms and the database moved off the one
+server first.
+
+**Several games at once (built):** a job used to run only when no other job was running,
+a leftover from when only admins generated. Now up to `GENERATION_MAX_RUNNING` (default 2)
+run at once; up to 4 more wait in line. One job per person stays (§15). The limit is small
+because two browser checks at the same moment use ~900 MB and both CPUs, and the checker
+measures timing, so a starved CPU could fail a good game.
+
+**Next, if queues form: a shared "browser slot".** Any number of jobs talk to the AI at
+once, and they take turns only for the browser check. Before starting Chrome, the job (in
+its sandbox) prints `BROWSER?` on stderr and waits; the server, which keeps the job's stdin
+open, answers `BROWSER!` when the slot is free; after the check the job prints `BROWSER done`.
+Safety rules: the slot is freed when a job ends for any reason, and after a maximum hold
+time; the game under test must never reach stderr (so it can't fake the messages); the
+server accepts them only in order. The sandbox can't reach the server any other way, so the
+job's own pipes are the channel.
+
 ## Verification (how to confirm the plan worked once built)
 
 - `npm test` (root) → runs `node --test server/test`, all unit and integration tests green.
