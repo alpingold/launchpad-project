@@ -83,6 +83,14 @@ export const config = {
   // Off by default: without a proxy, anyone could fake that header.
   TRUST_PROXY: process.env.TRUST_PROXY || false,
 
+  // --- Deploying (M8) ---
+
+  // The built website (`npm run build` writes it). When this folder exists, the server serves
+  // the site itself, so production needs no Vite: one process, one port, behind Caddy.
+  // In development it usually doesn't exist and Vite serves the site instead.
+  CLIENT_DIST_PATH:
+    process.env.CLIENT_DIST_PATH || fileURLToPath(new URL('../../client/dist', import.meta.url)),
+
   // --- Games ---
 
   // Largest game file (plan §13c). It's sent to every phone when a game starts; a hand-made

@@ -1,3 +1,5 @@
+import { existsSync } from 'node:fs';
+import path from 'node:path';
 import express from 'express';
 import { config } from '../config.js';
 import { GameRegistry } from '../games/registry.js';
@@ -59,6 +61,21 @@ export function createApp({ games = new GameRegistry(), db = openDatabase(':memo
   app.use('/api', (_req, res) => {
     res.status(404).json({ error: 'NOT_FOUND' });
   });
+
+  // The built website (M8), when there is one: its files, and index.html for every other page
+  // address (/games, /create/g-…): the React app reads the address and shows the right page.
+  // Vite gives the files in assets/ names that change with their contents, so browsers may
+  // keep them forever; index.html itself is always checked again, so a deploy shows up at once.
+  if (cfg.CLIENT_DIST_PATH && existsSync(path.join(cfg.CLIENT_DIST_PATH, 'index.html'))) {
+    app.use('/assets', express.static(path.join(cfg.CLIENT_DIST_PATH, 'assets'), { immutable: true, maxAge: '1y' }));
+    // A built file that's gone (an old tab after a deploy) is a plain 404, not the page's HTML.
+    app.use('/assets', (_req, res) => res.status(404).end());
+    app.use(express.static(cfg.CLIENT_DIST_PATH, { index: false }));
+    app.get('/{*page}', (_req, res) => {
+      res.set('Cache-Control', 'no-cache');
+      res.sendFile(path.join(cfg.CLIENT_DIST_PATH, 'index.html'));
+    });
+  }
 
   // Last-resort error handler. Express calls this when a route throws or
   // when express.json() gets a malformed or oversized body.
