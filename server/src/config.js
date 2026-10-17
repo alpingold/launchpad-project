@@ -125,9 +125,15 @@ export const config = {
   GENERATION_ENABLED: process.env.GENERATION_ENABLED === '1',
 
   // How many games may be made at the same time; the rest wait in line. A job mostly waits
-  // for the AI, but its browser check needs ~450 MB and the CPU (measured 2026-10-17), so 2
-  // suits a 2 GB / 2-CPU server. Raise it on a bigger one (plan §28).
-  GENERATION_MAX_RUNNING: Number(process.env.GENERATION_MAX_RUNNING) || 2,
+  // for the AI (~70 MB each, measured 2026-10-17); the heavy part, its browser check, takes
+  // turns through the browser slot below, so this can be larger than the number of checks.
+  GENERATION_MAX_RUNNING: Number(process.env.GENERATION_MAX_RUNNING) || 4,
+
+  // Browser checks (headless Chrome, ~450 MB and the CPU for ~20 s) that may run at once
+  // across all jobs (plan §28). 1 suits a 2 GB / 2-CPU server. A job holding the browser
+  // longer than the max hold time is stopped and the next one goes.
+  GENERATION_BROWSER_CHECKS: Number(process.env.GENERATION_BROWSER_CHECKS) || 1,
+  GENERATION_BROWSER_MAX_HOLD_MS: 120_000,
 
   // The generator runs in an OpenShell sandbox: this image, with this provider (which holds
   // the GenAI Studio key) and this policy (generator/README.md has the one-time setup).

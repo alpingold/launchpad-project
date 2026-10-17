@@ -37,6 +37,7 @@ import {
 } from '../db/generatedGames.js';
 import { liveGameId, registerVersion } from '../games/generated.js';
 import { runGeneratorInSandbox } from './sandbox.js';
+import { BrowserSlot } from './browserSlot.js';
 import { isAdminUser } from '../db/users.js';
 import { MODELS, DEFAULT_MODEL, isAllowedModel } from '../../../generator/src/models.js';
 import { MAX_DESIGN_LENGTH } from '../../../generator/src/extract.js';
@@ -74,8 +75,9 @@ export class GenerationService {
    *   only an admin's job may run (with the server's own key).
    * @param {(message: string) => void} [deps.log]
    * @param {number} [deps.maxRunning]  jobs that may run at the same time (config.GENERATION_MAX_RUNNING)
+   * @param {BrowserSlot} [deps.browserSlot]  shared by all jobs: how many browser checks run at once (plan §28)
    */
-  constructor({ db, games, enabled, runGenerator = runGeneratorInSandbox, userKeys = null, log = (m) => console.log(m), maxRunning = 1 }) {
+  constructor({ db, games, enabled, runGenerator = runGeneratorInSandbox, userKeys = null, log = (m) => console.log(m), maxRunning = 1, browserSlot = new BrowserSlot() }) {
     this.db = db;
     this.userKeys = userKeys;
     this.games = games;
@@ -86,6 +88,7 @@ export class GenerationService {
     this.runGenerator = runGenerator;
     this.log = log;
     this.maxRunning = Math.max(1, maxRunning);
+    this.browserSlot = browserSlot;
     /** @type {string[]} ids of games with a version waiting to run, oldest first */
     this.queue = [];
     /** @type {Map<string, Promise<void>>} the games whose versions are running right now, and their jobs */
@@ -261,7 +264,7 @@ export class GenerationService {
   /**
    * Starts queued jobs while there's room: up to maxRunning at once. A job spends most of its
    * time waiting for the AI (~70 MB); its short browser check is the heavy part (~450 MB,
-   * measured 2026-10-17), which is why the limit is small (plan §28).
+   * measured 2026-10-17), and the browser slot lets only one of those run at a time (plan §28).
    */
   next() {
     while (this.running.size < this.maxRunning && this.queue.length > 0) {
@@ -302,7 +305,7 @@ export class GenerationService {
       result = { ok: false, error: "Your GenAI Studio key couldn't be used. Save it again on your account page, then try again." };
     } else {
       try {
-        result = await this.runGenerator(job, { onStep, ...(apiKey && { apiKey }) });
+        result = await this.runGenerator(job, { onStep, browserSlot: this.browserSlot, ...(apiKey && { apiKey }) });
       } catch (err) {
         result = { ok: false, error: err.message };
       }

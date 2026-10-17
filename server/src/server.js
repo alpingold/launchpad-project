@@ -7,6 +7,7 @@ import { createRouter } from './router.js';
 import { createDefaultRegistry } from './games/index.js';
 import { openDatabase } from './db/database.js';
 import { GenerationService } from './generation/service.js';
+import { BrowserSlot } from './generation/browserSlot.js';
 import { createKeyVault } from './auth/keyVault.js';
 import { createUserKeys } from './generation/userKeys.js';
 import { randomBytes } from 'node:crypto';
@@ -38,7 +39,15 @@ export function createGameServer(overrides = {}, { games = createDefaultRegistry
 
   // AI-generated games (plan §11): a queue that runs the generator in OpenShell sandboxes.
   const userKeys = createUserKeys({ db, vault: createKeyVault(keySecret), checkKey });
-  const generation = new GenerationService({ db, games, enabled: cfg.GENERATION_ENABLED, runGenerator, userKeys, maxRunning: cfg.GENERATION_MAX_RUNNING });
+  const generation = new GenerationService({
+    db,
+    games,
+    enabled: cfg.GENERATION_ENABLED,
+    runGenerator,
+    userKeys,
+    maxRunning: cfg.GENERATION_MAX_RUNNING,
+    browserSlot: new BrowserSlot({ size: cfg.GENERATION_BROWSER_CHECKS, maxHoldMs: cfg.GENERATION_BROWSER_MAX_HOLD_MS }),
+  });
   generation.recoverInterrupted(); // anything "generating" was cut off by the last restart
 
   const httpServer = http.createServer(createApp({ games, db, cfg, generation, userKeys }));
