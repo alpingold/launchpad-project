@@ -1766,6 +1766,33 @@ The guided /create (§19) set a look; the other pages now share it, so the site 
 
 No behavior changed: same pages, same words (except "How it works" laid out as a track), and all browser tests pass.
 
+## 26. Five more default games, one per genre (built 2026-10-17)
+
+**Why:** §22 named the genres that fit. Each now has an official game, so players have
+something good to play on day one, and people making games see what's possible. Every
+game shows off a different part of the platform. Each one's rules, screens and reasons are in
+`generator/spec/designs/<id>.md`.
+
+| Game | Genre | Players, length | What it shows off |
+|---|---|---|---|
+| **Punchline** | writing and voting (Quiplash-style) | 3–8, 5–12 min | different prompts per phone (`sendTo`), `textInput`, anonymous votes, 152 built-in prompts |
+| **Doodle Drift** | drawing telephone | 4–8, 6–14 min | `drawPad`, drawings passed phone to phone, shrunk to ~2–3 KB so a whole game fits in `party.save` |
+| **Ballpark** | estimation (Wits & Wagers-style) | 2–10, 6–10 min | a number keypad, betting with odds, a speed tie-break with `party.now` |
+| **Claim Jumpers** | simultaneous-move board game | 2–6, 4–7 min | everyone moves at once (nobody waits), a board readable by colour *and* shape |
+| **Comet Crew** | co-op action | 2–8, ~4.5 min | one shared ship, a station per phone (`joystick`, `gamepad`), a team score, forgiving of phone lag |
+
+**How they were built:** five agents in parallel, each in its own git worktree, on its own test
+ports (`E2E_SERVER_PORT` / `E2E_CLIENT_PORT`), then reviewed and merged one at a time. Each has
+a design, its game file and catalogue pictures, and a browser test that plays it with phones.
+
+**Small platform fix they turned up:** the lobby's "last game" line. A co-op game gives everyone
+the same score, so the lobby now says "Everyone shares the win!" instead of listing a tie of
+everyone. A game that breaks ties itself (Ballpark, by speed) leaves `scores` out of `party.end`,
+so the lobby names its winner.
+
+**Not yet known (needs real play):** Comet Crew's difficulty in waves 5–6; whether Claim
+Jumpers' 15 turns feel short at 2 players; Doodle Drift and Punchline timers with real groups.
+
 ## Verification (how to confirm the plan worked once built)
 
 - `npm test` (root) → runs `node --test server/test`, all unit and integration tests green.
