@@ -2,7 +2,8 @@
 // serve it: /api/admin/generations (admins: every game) and /api/generations (any account:
 // only your own games, plan §15). The server checks who may do what on each request.
 
-let BASE = '/api/admin/generations';
+const ADMIN_BASE = '/api/admin/generations';
+let BASE = ADMIN_BASE;
 
 /** The /create page uses the per-account routes: it calls this while rendering, before any request. */
 export function useOwnGamesApi() {
@@ -65,8 +66,14 @@ export const discardVersion = (id, version) => request(versionPath(id, version, 
 export const playtestVersion = (id, version) =>
   request(`${BASE}/${encodeURIComponent(id)}/versions/${version}/playtest`, { method: 'POST', body: {} });
 
-/** action: 'publish' (the playtest version goes to everyone) | 'stop-playtest' | 'unpublish' → { game } */
-export const actOnGeneration = (id, action) =>
-  request(`${BASE}/${encodeURIComponent(id)}/${action}`, { method: 'POST', body: {} });
+/**
+ * action: 'publish' (the playtest version goes to everyone) | 'stop-playtest' | 'unpublish' → { game }
+ * Publishing and unpublishing exist only under the admin routes (the per-account routes leave
+ * them out), so those two always go there, even from /create. The server still checks it's an admin.
+ */
+export const actOnGeneration = (id, action) => {
+  const base = action === 'publish' || action === 'unpublish' ? ADMIN_BASE : BASE;
+  return request(`${base}/${encodeURIComponent(id)}/${action}`, { method: 'POST', body: {} });
+};
 
 export const deleteGeneration = (id) => request(`${BASE}/${encodeURIComponent(id)}`, { method: 'DELETE' });

@@ -226,3 +226,27 @@ test('a small fix skips the plan; an unwanted plan can be discarded', async ({ b
   await expect(detail(page).getByLabel('Ask for changes')).toBeEnabled();
   await admin.context.close();
 });
+
+test('an admin publishes their own game from /create (its routes have no publish, so it goes to the admin routes)', async ({ browser }) => {
+  const { page } = await adminPage(browser);
+  await page.goto('/create');
+  await page.getByLabel('Game idea').fill(`Everyone votes, the most popular answer scores (${test.info().testId}-${Date.now()})`);
+  // An earlier test's last job may still be finishing (one job at a time): retry until it starts.
+  await expect(async () => {
+    await page.getByRole('button', { name: 'Write the design' }).click();
+    await expect(page).toHaveURL(/\/create\/g-[a-z0-9]{8}$/, { timeout: 1000 });
+  }).toPass(GENERATED);
+  const gameId = new URL(page.url()).pathname.split('/').at(-1);
+  await page.getByRole('button', { name: 'Build it' }).click({ timeout: GENERATED.timeout });
+  await expect(page.getByRole('heading', { name: 'Your game is ready' })).toBeVisible(GENERATED);
+  await page.getByRole('button', { name: 'Publish for everyone' }).click();
+  await expect(page.getByText('Everyone can play this version.')).toBeVisible();
+  await expect(page.getByText('Something went wrong.')).toHaveCount(0);
+
+  // Logged out, the catalogue lists it now.
+  const visitor = await browser.newContext();
+  const games = await (await visitor.request.get('/api/games')).json();
+  expect(games.games.some((g) => g.pageId === gameId)).toBe(true);
+  await visitor.close();
+  await page.request.delete(`/api/admin/generations/${gameId}`);
+});
