@@ -4,7 +4,7 @@ import { openDatabase } from '../../src/db/database.js';
 import { createUser, setAdmin } from '../../src/db/users.js';
 import { createGeneratedGame, getGeneratedGame, gameStatus, saveDraft, startRedraft, listBuildAttempts } from '../../src/db/generatedGames.js';
 import { GameRegistry } from '../../src/games/registry.js';
-import { GenerationService, MAX_QUEUED } from '../../src/generation/service.js';
+import { GenerationService, MAX_WAITING } from '../../src/generation/service.js';
 import { renamedSource } from '../helpers/frameGames.js';
 
 // The generation queue, designs, versions and going live (plan §11 A5, §12e K6, §13i F5).
@@ -31,13 +31,13 @@ function fakeGenerator() {
   return { runGenerator, calls };
 }
 
-function setup({ enabled = true } = {}) {
+function setup({ enabled = true, maxRunning } = {}) {
   const db = openDatabase(':memory:');
   const admin = createUser(db, 'admin', 'scrypt$x');
   setAdmin(db, 'admin', true); // admins without their own key use the server's
   const games = new GameRegistry();
   const fake = fakeGenerator();
-  const service = new GenerationService({ db, games, enabled, runGenerator: fake.runGenerator, log: () => {} });
+  const service = new GenerationService({ db, games, enabled, runGenerator: fake.runGenerator, log: () => {}, maxRunning });
   return { db, admin, games, service, ...fake };
 }
 
@@ -172,7 +172,7 @@ test('one job at a time, in order; one per person; the queue has a limit', async
   assert.equal(calls.length, 1, 'the second waits');
   assert.equal(service.progress(second.id).queuePosition, 1);
 
-  for (let i = 2; i < MAX_QUEUED; i++) service.start({ ownerUserId: person(`p${i}`), idea: IDEA });
+  for (let i = 2; i <= MAX_WAITING; i++) service.start({ ownerUserId: person(`p${i}`), idea: IDEA });
   assert.equal(codeOf(() => service.start({ ownerUserId: person('late'), idea: IDEA })), 'QUEUE_FULL');
 
   calls[0].finish(DESIGNED);
@@ -181,6 +181,33 @@ test('one job at a time, in order; one per person; the queue has a limit', async
   assert.equal(calls[1].job.model, 'qwen3.8:27b');
   assert.equal(service.progress(first.id), null);
   assert.equal(service.progress(second.id).queuePosition, 0);
+});
+
+test('with maxRunning 2, two jobs run at once; the third waits for a free place, then starts (plan §28)', async () => {
+  const { service, db, calls } = setup({ maxRunning: 2 });
+  const person = (name) => {
+    const user = createUser(db, name, 'scrypt$x');
+    setAdmin(db, name, true);
+    return user.id;
+  };
+  const a = service.start({ ownerUserId: person('ana'), idea: IDEA });
+  const b = service.start({ ownerUserId: person('ben'), idea: IDEA });
+  const c = service.start({ ownerUserId: person('cy'), idea: IDEA });
+  assert.equal(calls.length, 2, 'two run at the same time');
+  assert.equal(service.progress(a.id).queuePosition, 0);
+  assert.equal(service.progress(b.id).queuePosition, 0);
+  assert.equal(service.progress(c.id).queuePosition, 1);
+
+  // The queue limit counts the waiting jobs, not the running ones.
+  for (let i = 2; i <= MAX_WAITING; i++) service.start({ ownerUserId: person(`p${i}`), idea: IDEA });
+  assert.equal(codeOf(() => service.start({ ownerUserId: person('late'), idea: IDEA })), 'QUEUE_FULL');
+
+  calls[1].finish(DESIGNED); // the second finishes first
+  await new Promise((resolve) => setImmediate(resolve)); // (service.current would wait for the first too)
+  assert.equal(calls.length, 3, 'the third started in the free place');
+  assert.equal(service.progress(c.id).queuePosition, 0);
+  assert.equal(service.progress(a.id).queuePosition, 0, 'the first is still running');
+  assert.equal(service.progress(b.id), null);
 });
 
 test('failures are saved with the reason, and the last attempt if there was one', async () => {

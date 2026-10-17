@@ -38,7 +38,7 @@ export function createGameServer(overrides = {}, { games = createDefaultRegistry
 
   // AI-generated games (plan §11): a queue that runs the generator in OpenShell sandboxes.
   const userKeys = createUserKeys({ db, vault: createKeyVault(keySecret), checkKey });
-  const generation = new GenerationService({ db, games, enabled: cfg.GENERATION_ENABLED, runGenerator, userKeys });
+  const generation = new GenerationService({ db, games, enabled: cfg.GENERATION_ENABLED, runGenerator, userKeys, maxRunning: cfg.GENERATION_MAX_RUNNING });
   generation.recoverInterrupted(); // anything "generating" was cut off by the last restart
 
   const httpServer = http.createServer(createApp({ games, db, cfg, generation, userKeys }));

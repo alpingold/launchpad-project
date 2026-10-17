@@ -48,8 +48,8 @@ export const MIN_FEEDBACK_LENGTH = 3;
 /** A design the admin edits by hand. */
 export const MIN_DESIGN_LENGTH = 20;
 export { MAX_DESIGN_LENGTH };
-/** At most this many jobs waiting or running at once, so nobody can queue up hours of work. */
-export const MAX_QUEUED = 5;
+/** At most this many jobs waiting in line (besides those running), so nobody can queue up hours of work. */
+export const MAX_WAITING = 4;
 /** Progress lines kept per job (the admin page shows them while it runs). */
 const MAX_STEPS = 50;
 
@@ -73,8 +73,9 @@ export class GenerationService {
    *   users' own GenAI Studio keys (plan §15): a job runs with its owner's key. Without one,
    *   only an admin's job may run (with the server's own key).
    * @param {(message: string) => void} [deps.log]
+   * @param {number} [deps.maxRunning]  jobs that may run at the same time (config.GENERATION_MAX_RUNNING)
    */
-  constructor({ db, games, enabled, runGenerator = runGeneratorInSandbox, userKeys = null, log = (m) => console.log(m) }) {
+  constructor({ db, games, enabled, runGenerator = runGeneratorInSandbox, userKeys = null, log = (m) => console.log(m), maxRunning = 1 }) {
     this.db = db;
     this.userKeys = userKeys;
     this.games = games;
@@ -84,13 +85,14 @@ export class GenerationService {
       : "Generating games isn't set up on this server (start it with GENERATION_ENABLED=1; see generator/README.md).";
     this.runGenerator = runGenerator;
     this.log = log;
+    this.maxRunning = Math.max(1, maxRunning);
     /** @type {string[]} ids of games with a version waiting to run, oldest first */
     this.queue = [];
-    /** @type {string | null} the game whose version is running right now */
-    this.running = null;
+    /** @type {Map<string, Promise<void>>} the games whose versions are running right now, and their jobs */
+    this.running = new Map();
     /** @type {Map<string, { seconds: number, text: string }[]>} progress of queued/running jobs, by game id */
     this.steps = new Map();
-    /** @type {Promise<void>} settles when the current job finishes (tests wait on it) */
+    /** @type {Promise<unknown>} settles when the jobs running now finish (tests wait on it) */
     this.current = Promise.resolve();
   }
 
@@ -132,12 +134,12 @@ export class GenerationService {
     if (!this.hasKey(ownerUserId)) {
       throw new GenerationError(403, 'NO_KEY', 'Save your GenAI Studio API key on your account page first.');
     }
-    const busy = [this.running, ...this.queue].filter(Boolean).some((id) => getGeneratedGame(this.db, id)?.ownerUserId === ownerUserId);
+    const busy = [...this.running.keys(), ...this.queue].some((id) => getGeneratedGame(this.db, id)?.ownerUserId === ownerUserId);
     if (busy) {
       throw new GenerationError(409, 'ALREADY_RUNNING', 'You already have a game being made. Wait for it to finish, then start the next one.');
     }
-    if (this.queue.length + (this.running ? 1 : 0) >= MAX_QUEUED) {
-      throw new GenerationError(429, 'QUEUE_FULL', `${MAX_QUEUED} games are already being made. Wait for one to finish.`);
+    if (this.running.size >= this.maxRunning && this.queue.length >= MAX_WAITING) {
+      throw new GenerationError(429, 'QUEUE_FULL', `${this.running.size + this.queue.length} games are already being made. Wait for one to finish.`);
     }
   }
 
@@ -196,7 +198,7 @@ export class GenerationService {
     const game = this.get(id);
     const version = findVersion(game, versionNumber);
     if (!version) throw new GenerationError(404, 'NOT_FOUND', 'There is no such version.');
-    if (this.running === id || this.queue.includes(id)) throw new GenerationError(409, 'BUSY', 'This game has a job running. Wait for it to finish.');
+    if (this.running.has(id) || this.queue.includes(id)) throw new GenerationError(409, 'BUSY', 'This game has a job running. Wait for it to finish.');
     const open = version.status === 'design_ready' || (version.status === 'failed' && version.design !== null);
     if (!open) throw new GenerationError(409, 'WRONG_STATUS', 'This version has no design waiting for you.');
     return { game, version };
@@ -245,7 +247,7 @@ export class GenerationService {
     if (version !== game.versions.at(-1) || !['design_ready', 'failed'].includes(version.status)) {
       throw new GenerationError(409, 'WRONG_STATUS', 'Only the newest version can be discarded, while it has no code that passed.');
     }
-    if (this.running === id || this.queue.includes(id)) throw new GenerationError(409, 'BUSY', 'This game has a job running. Wait for it to finish.');
+    if (this.running.has(id) || this.queue.includes(id)) throw new GenerationError(409, 'BUSY', 'This game has a job running. Wait for it to finish.');
     deleteVersion(this.db, id, version.version);
     return this.get(id);
   }
@@ -256,16 +258,22 @@ export class GenerationService {
     this.next();
   }
 
-  /** Runs the next queued job, if nothing is running. */
+  /**
+   * Starts queued jobs while there's room: up to maxRunning at once. A job spends most of its
+   * time waiting for the AI (~70 MB); its short browser check is the heavy part (~450 MB,
+   * measured 2026-10-17), which is why the limit is small (plan §28).
+   */
   next() {
-    if (this.running || this.queue.length === 0) return;
-    const id = this.queue.shift();
-    this.running = id;
-    this.current = this.run(id).finally(() => {
-      this.running = null;
-      this.steps.delete(id);
-      this.next();
-    });
+    while (this.running.size < this.maxRunning && this.queue.length > 0) {
+      const id = this.queue.shift();
+      const job = this.run(id).finally(() => {
+        this.running.delete(id);
+        this.steps.delete(id);
+        this.next();
+      });
+      this.running.set(id, job);
+    }
+    this.current = Promise.all(this.running.values());
   }
 
   /** Runs the game's job: a design (or plan, or new draft) for a "designing" version, or the build for a "generating" one. */
@@ -350,7 +358,7 @@ export class GenerationService {
 
   /** Where a game's job is: its place in line (0 = running now) and its progress so far. */
   progress(id) {
-    if (this.running === id) return { queuePosition: 0, steps: this.steps.get(id) ?? [] };
+    if (this.running.has(id)) return { queuePosition: 0, steps: this.steps.get(id) ?? [] };
     const at = this.queue.indexOf(id);
     return at === -1 ? null : { queuePosition: at + 1, steps: [] };
   }
@@ -428,7 +436,7 @@ export class GenerationService {
   /** Deletes a game and all its versions for good (it disappears from the game picker right away). */
   remove(id) {
     const game = this.get(id);
-    if (this.running === id) throw new GenerationError(409, 'WRONG_STATUS', "A game can't be deleted while its job is running.");
+    if (this.running.has(id)) throw new GenerationError(409, 'WRONG_STATUS', "A game can't be deleted while its job is running.");
     if (this.queue.includes(id)) {
       this.queue.splice(this.queue.indexOf(id), 1); // still waiting: just drop it
       this.steps.delete(id);
