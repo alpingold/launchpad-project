@@ -368,7 +368,9 @@
           ended = true;
           g.phase = 'over';
           party.save(g);
-          party.end({ rankings: standings(), scores: { ...g.scores } });
+          // No scores: equal scores are already broken by speed in standings(), and with scores
+          // the lobby would call them a tie.
+          party.end({ rankings: standings() });
       }
     }
 
