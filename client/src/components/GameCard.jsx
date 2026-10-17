@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import AiBadge from './AiBadge.jsx';
+import Token from './Token.jsx';
 
 /** "2–12 players", or "4 players" when it's exactly one number. */
 export function playersText({ minPlayers, maxPlayers }) {
@@ -76,8 +77,8 @@ export default function GameCard({ game, action }) {
 }
 
 /**
- * The game's main screenshot, or a coloured tile with its first letter when it has none (or the
- * picture fails to load). Decorative: the name is right below it.
+ * The game's main screenshot, or its gold token when it has none (or the picture fails to
+ * load). Decorative: the name is right below it.
  */
 export function GameThumb({ game }) {
   const [failed, setFailed] = useState(false);
@@ -85,15 +86,8 @@ export function GameThumb({ game }) {
     return <img className="game-thumb" src={`/api/games/${encodeURIComponent(game.id)}/thumb`} alt="" loading="lazy" onError={() => setFailed(true)} />;
   }
   return (
-    <div className="game-thumb game-thumb-tile" style={{ '--tile-hue': hue(game.id) }} aria-hidden="true">
-      {game.name.trim().charAt(0).toUpperCase()}
+    <div className="game-thumb game-thumb-tile" aria-hidden="true">
+      <Token name={game.name} />
     </div>
   );
-}
-
-/** The same colour for the same game every time. */
-function hue(id) {
-  let h = 0;
-  for (const ch of id) h = (h * 31 + ch.charCodeAt(0)) % 360;
-  return h;
 }

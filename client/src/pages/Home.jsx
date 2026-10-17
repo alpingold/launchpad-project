@@ -95,16 +95,25 @@ export default function Home() {
 
       <section aria-labelledby="how-it-works">
         <h2 id="how-it-works">How it works</h2>
-        <ol className="steps">
+        <ol className="how-track">
           <li>
-            <strong>The host picks a game and opens a room</strong> on a big screen. It shows a 4-letter room code.
+            <span className="how-dot" aria-hidden="true">1</span>
+            <p>
+              <strong>The host picks a game and opens a room</strong> on a big screen. It shows a 4-letter room code.
+            </p>
           </li>
           <li>
-            <strong>Everyone else joins from their phone</strong> at <span className="mono">{window.location.host}/join</span>{' '}
-            with the code and a name.
+            <span className="how-dot" aria-hidden="true">2</span>
+            <p>
+              <strong>Everyone else joins from their phone</strong> at <span className="mono">{window.location.host}/join</span>{' '}
+              with the code and a name.
+            </p>
           </li>
           <li>
-            <strong>The host starts the game</strong>, and your phone becomes the controller.
+            <span className="how-dot" aria-hidden="true">3</span>
+            <p>
+              <strong>The host starts the game</strong>, and your phone becomes the controller.
+            </p>
           </li>
         </ol>
       </section>

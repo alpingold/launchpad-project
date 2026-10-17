@@ -23,6 +23,10 @@
   --danger-tint: #fbe0e4; /* (K6: removed lines) */
   --banner-bg: #fff3cd;
   --banner-text: #664d03;
+  /* §19: Boilermaker gold, the site's one bold color (the /create track, game tokens, the
+     room code). The same in both themes; text on gold is always dark ink. */
+  --gold: #cfb991;
+  --gold-ink: #1a1a2e;
 }
 
 :root[data-theme='dark'] {
@@ -76,9 +80,8 @@ body {
 .host-label {
   margin: 1.5rem 0 0;
   color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  font-size: 1rem;
+  font-size: 1.1rem;
+  font-weight: 600;
 }
 
 .host-url {
@@ -87,12 +90,32 @@ body {
   font-weight: 600;
 }
 
+/* The room code: each letter on its own gold tile, like a row of game pieces (§19's
+   token), so it reads from the back of the room. Dark ink on gold in both themes. */
 .room-code {
-  margin: 0.25rem 0 1.5rem;
-  font-size: clamp(4rem, 15vw, 9rem);
+  display: flex;
+  justify-content: center;
+  gap: clamp(0.4rem, 2vw, 1rem);
+  margin: 0.5rem 0 1.5rem;
+  font-size: clamp(3rem, 10vw, 6.5rem);
   font-weight: 800;
-  letter-spacing: 0.15em;
+  line-height: 1;
   font-family: ui-monospace, monospace;
+}
+
+.room-code span {
+  display: grid;
+  place-items: center;
+  width: 1.35em;
+  height: 1.3em;
+  border: 0.05em solid var(--text);
+  border-radius: 30% 34% 28% 32% / 32% 28% 34% 30%;
+  background: var(--gold);
+  color: var(--gold-ink);
+}
+
+.room-code span:nth-child(even) {
+  border-radius: 34% 28% 32% 30% / 28% 34% 30% 32%;
 }
 
 .mono {
@@ -334,6 +357,9 @@ body {
 }
 
 .game-card h3 {
+  font-size: 1.25rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -366,10 +392,20 @@ body {
 .game-thumb-tile {
   display: grid;
   place-items: center;
-  font-size: 3rem;
-  font-weight: 800;
-  color: #fff;
-  background: linear-gradient(135deg, hsl(var(--tile-hue) 65% 50%), hsl(calc(var(--tile-hue) + 40) 65% 38%));
+  background: var(--chip);
+}
+
+/* A game with no screenshot shows its token: the same gold piece as on /create (§19). */
+.game-thumb-tile .token {
+  width: 5.5rem;
+  height: 5.2rem;
+  font-size: 2.4rem;
+}
+
+.chosen-game .game-thumb-tile .token {
+  width: 4rem;
+  height: 3.8rem;
+  font-size: 1.7rem;
 }
 
 .game-tags {
@@ -478,18 +514,23 @@ body.in-game-player .site-header {
 }
 
 .hero {
-  text-align: center;
   padding: 1.5rem 0 0.5rem;
 }
 
 .hero h1 {
-  font-size: clamp(2.5rem, 8vw, 4rem);
-  margin: 0;
+  font-size: clamp(2.75rem, 10vw, 5rem);
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  line-height: 1;
+  margin: 0 0 1rem;
 }
 
 .tagline {
-  font-size: 1.3rem;
-  margin: 0.5rem 0;
+  font-size: clamp(1.2rem, 3.5vw, 1.5rem);
+  font-weight: 600;
+  line-height: 1.35;
+  max-width: 34rem;
+  margin: 0 0 0.5rem;
 }
 
 .home-actions {
@@ -531,13 +572,75 @@ a.primary-button {
   text-decoration: none;
 }
 
-.steps {
-  padding-left: 1.5rem;
-  line-height: 1.6;
+/* Home: "How it works" as a short gold track, the same path as /create's (§19). Three
+   spaces in a row, each joined to the next; on phones they stand in a column instead. */
+.how-track {
+  list-style: none;
+  padding: 0;
+  margin: 1.25rem 0 2.5rem;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
 }
 
-.steps li {
-  margin-bottom: 0.5rem;
+.how-track li {
+  position: relative;
+  padding: 0 1rem;
+  text-align: center;
+  line-height: 1.5;
+}
+
+.how-track li:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  top: calc(1.5rem - 3px);
+  left: 50%;
+  width: 100%;
+  height: 6px;
+  background: var(--gold);
+}
+
+.how-dot {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 3rem;
+  height: 3rem;
+  margin: 0 auto 0.75rem;
+  border-radius: 50%;
+  background: var(--gold);
+  color: var(--gold-ink);
+  font-weight: 800;
+}
+
+.how-track p {
+  margin: 0;
+}
+
+@media (max-width: 36rem) {
+  .how-track {
+    grid-template-columns: 1fr;
+  }
+
+  .how-track li {
+    padding: 0 0 1.5rem 4rem;
+    min-height: 3rem;
+    text-align: left;
+  }
+
+  .how-track li:not(:last-child)::after {
+    top: 3rem;
+    left: calc(1.5rem - 3px);
+    width: 6px;
+    height: calc(100% - 3rem);
+  }
+
+  .how-dot {
+    position: absolute;
+    left: 0;
+    top: 0;
+    margin: 0;
+  }
 }
 
 .game-cards {
@@ -562,6 +665,17 @@ a.primary-button {
    (default link blue is hard to read on a dark background). */
 a {
   color: var(--link);
+}
+
+/* §19 on every page: a strong outline shows where the keyboard is. */
+a:focus-visible,
+button:focus-visible,
+summary:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+input:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
 }
 
 input,
@@ -611,8 +725,10 @@ select {
   background: var(--chip);
 }
 
-.site-nav a[aria-current='page'] {
-  color: var(--link);
+.site-nav a[aria-current='page'],
+.site-menu-links a[aria-current='page'] {
+  text-decoration: underline 3px var(--gold);
+  text-underline-offset: 0.35em;
 }
 
 /* Phones: the links fold into a ☰ menu (SiteNav.jsx). */
@@ -659,10 +775,6 @@ select {
 
 .site-menu-links a:hover {
   background: var(--chip);
-}
-
-.site-menu-links a[aria-current='page'] {
-  color: var(--link);
 }
 
 @media (max-width: 36rem) {
@@ -1216,6 +1328,27 @@ code {
   border-radius: 0.5rem;
 }
 
+.account-page .card {
+  margin-bottom: 1.25rem;
+  padding: 1.25rem 1.5rem 1.5rem;
+}
+
+/* §16 profile: the person's token (their first letter on gold) beside their name. */
+.profile-head {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.profile-head .page-title {
+  margin: 0;
+}
+
+.profile-head .token {
+  flex: none;
+}
+
 .account-page .admin-form input {
   width: 100%;
   font: inherit;
@@ -1430,31 +1563,19 @@ code {
 
 /* §19: /create as a guided flow. The board track (Idea → Design → Build → Play) is the one
    bold thing: Boilermaker gold marks how far your game got, and its token sits on the step
-   it's at. Everything else uses the site's usual colors. Text on gold is always dark ink. */
-:root {
-  --gold: #cfb991;
-  --gold-ink: #1a1a2e;
-}
+   it's at. Everything else uses the site's usual colors. (Gold is in the theme block.) */
 
 .page.create {
   max-width: 44rem;
-}
-
-.create a:focus-visible,
-.create button:focus-visible,
-.create summary:focus-visible,
-.create textarea:focus-visible,
-.create select:focus-visible,
-.create input:focus-visible {
-  outline: 3px solid var(--accent);
-  outline-offset: 2px;
 }
 
 .create-back {
   margin: 0 0 1.5rem;
 }
 
-.create-title {
+.create-title,
+.page-title,
+.page > h1 {
   font-size: clamp(2.25rem, 7vw, 3.25rem);
   font-weight: 800;
   letter-spacing: -0.025em;
@@ -1464,7 +1585,9 @@ code {
 }
 
 .create-lede,
-.create-idea {
+.create-idea,
+.page-lede,
+.page > h1 + p.muted:not(.small) {
   font-size: 1.1rem;
   line-height: 1.5;
   color: var(--muted);
@@ -1546,7 +1669,8 @@ code {
 }
 
 /* The token: your game, a slightly squashed gold blob with its first letter. */
-.track-token {
+.track-token,
+.token {
   width: 3.6rem;
   height: 3.4rem;
   border-radius: 52% 48% 46% 54% / 56% 54% 46% 44%;

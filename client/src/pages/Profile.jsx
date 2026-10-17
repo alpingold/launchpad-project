@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { usePageTitle } from '../usePageTitle.js';
 import { useCurrentUser } from '../net/auth.js';
 import GameCard from '../components/GameCard.jsx';
+import Token from '../components/Token.jsx';
 
 // Someone's profile (plan §16): their bio and the games of theirs you can see.
 
@@ -39,7 +40,10 @@ export default function Profile({ username }) {
   const mine = me?.username === profile.username;
   return (
     <main className="page games-page profile-page">
-      <h1>{profile.username}</h1>
+      <div className="profile-head">
+        <Token name={profile.username} />
+        <h1 className="page-title">{profile.username}</h1>
+      </div>
       <p className="muted small">Joined {new Date(profile.joinedAt).toLocaleDateString(undefined, { year: 'numeric', month: 'long' })}</p>
       {profile.bio ? <p className="profile-bio">{profile.bio}</p> : <p className="muted">No bio yet.</p>}
       {mine && (

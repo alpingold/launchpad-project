@@ -1754,6 +1754,18 @@ Deliberation as a fourth test.
 
 ---
 
+## 25. One look for the whole site, from /create (built 2026-10-16)
+
+The guided /create (§19) set a look; the other pages now share it, so the site feels like one place:
+
+- **Titles and intros.** Every page's title is /create's: big, heavy and tight (`.page > h1`, or `.page-title`), with a larger muted intro line under it. One CSS rule covers all pages, instead of a class per page.
+- **Gold is the one bold color.** Boilermaker gold (`--gold`, now in the theme block) marks: the /create track, the current page in the nav (a gold underline), the home page's "How it works" (a 3-step gold track, a column on phones), and the token.
+- **The token.** /create's gold game piece with a first letter (`components/Token.jsx`) now also stands in for a game with no screenshot (instead of a rainbow gradient tile), and for a person on their profile.
+- **The room code** on the big screen: each letter on its own gold tile, like game pieces, and readable from across the room. The "Join at" / "Room code" labels are no longer all caps.
+- **Keyboard focus** shows a strong outline on every page, not just /create.
+
+No behavior changed: same pages, same words (except "How it works" laid out as a track), and all browser tests pass.
+
 ## Verification (how to confirm the plan worked once built)
 
 - `npm test` (root) → runs `node --test server/test`, all unit and integration tests green.

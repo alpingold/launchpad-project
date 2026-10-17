@@ -262,7 +262,11 @@ function HostRoom({ user, chosenGame }) {
       <p className="host-label">Join at</p>
       <p className="host-url">{window.location.host}/join</p>
       <p className="host-label">Room code</p>
-      <p className="room-code">{room.code}</p>
+      <p className="room-code">
+        {[...room.code].map((letter, i) => (
+          <span key={i}>{letter}</span>
+        ))}
+      </p>
       <p>
         Players ({room.players.length}/{room.maxPlayers})
       </p>
