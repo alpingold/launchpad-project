@@ -1799,7 +1799,7 @@ Jumpers' 15 turns feel short at 2 players; Doodle Drift and Punchline timers wit
 - **Hosting (D17, updated):** one **AWS EC2** instance on the free tier, instead of an unnamed VPS.
   Still one server with Caddy, as D17 decided.
 - **Q10 (where generation runs):** on **that same server**, with Docker + OpenShell as on the dev
-  PC. It needs ~4 GB of memory, which the instance type we use has. Everyone's jobs run on their own GenAI
+  PC. It needs ~4 GB of memory, so the instance must have at least that. Everyone's jobs run on their own GenAI
   Studio key (§15), so the server pays for nothing but the machine.
 - **Domain:** the user's own domain, with an A record pointing to the instance's Elastic IP.
 
