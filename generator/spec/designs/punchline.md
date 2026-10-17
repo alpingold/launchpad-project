@@ -42,7 +42,9 @@ needed beyond being a little silly.
 - **The Last Word:** one prompt, everyone's answer as a card in a grid (shuffled, no names),
   then everyone's votes as chips on the cards, then the names.
 - **End (10 s):** "The funniest person in the room is…", the winner's badge big in the
-  spotlight with the others below, then `party.end`.
+  spotlight with the others below (everyone tied for first shares the spotlight), then `party.end`.
+- **While a reveal plays,** the scores strip still shows the scores from before it: a jump
+  there would give away who wrote what before the names slide in.
 
 ## Phones
 Your colour and name at the top. Big buttons at the bottom, one thumb.
@@ -55,7 +57,8 @@ Your colour and name at the top. Big buttons at the bottom, one thumb.
   (coral, teal). After tapping: "Voted!".
 - **Voting (in this matchup):** "That's your prompt! Hands off the vote." Players can't vote
   on their own matchup.
-- **Reveal and scores:** "Look up!" and your score and place.
+- **Reveal and scores:** the prompt on stage, "Look up! Who wrote what?", your score and
+  place (ties share a place).
 - **The Last Word:** one prompt and one answer; then every other answer as a button (not
   your own) to vote for.
 - **End:** "You came 2nd of 5 with 1,400 points." (or "You won!").
@@ -103,12 +106,14 @@ Your colour and name at the top. Big buttons at the bottom, one thumb.
 
 ## Closest example
 `none`: Stowaways has phases and private prompts but is about secrets; this is about jokes.
+Built: ~47 KB (prompts and house answers ~7 KB), under 100 KB.
 
 ## Edge cases
 - **A player leaves:** their unanswered prompts get house answers when writing ends; they
   aren't waited for as a voter; their matchups still play. Back: the phone redraws from its state.
 - **Only one voter (3 players):** works; a sweep needs 2 votes, so no bonus at 3.
-- **Nobody votes in a matchup:** 0–0, no points, the reveal says "No votes!".
+- **Nobody votes in a matchup:** 0–0, no points, the reveal says "No votes!". A matchup with
+  no connected voters at all (3 players, the voter left) doesn't wait out its timer.
 - **Big screen reload:** everything is one JSON object (`party.save` after each change):
   phase and deadline (server time), round, the deal, answers, which matchup, votes, scores,
   used prompts. A cut-off phase resumes with its deadline.

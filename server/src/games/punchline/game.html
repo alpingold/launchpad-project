@@ -1,0 +1,906 @@
+<script type="application/json" id="game-info">
+  {
+    "name": "Punchline",
+    "description": "Write funny answers to silly prompts on your phone. Each answer goes head-to-head with someone else's, and the room votes for the funnier one.",
+    "minPlayers": 3,
+    "maxPlayers": 8,
+    "tags": ["words", "voting"],
+    "minutes": [5, 12]
+  }
+</script>
+<!--
+  PUNCHLINE: a writing-and-voting game (design: generator/spec/designs/punchline.md).
+  One file, two roles:
+   - the big screen (role "host") is the referee and the stage. It deals the prompts in a ring
+     (each player answers 2, every prompt has 2 authors), runs every timer, shows each pair of
+     answers WITHOUT names while the room votes, counts the votes, and keeps the scores.
+   - each phone (role "player") shows only its own state (party.setState per player): the
+     prompts it has to answer, the two answers to vote on, or the answers in the last round.
+  Everything that matters lives in one plain-JSON object `g`, saved with party.save after
+  every change, so a big-screen reload carries on where it was (deadlines are server times).
+-->
+<style>
+  /* ---- The club's palette (the same in light and dark: it's the scene) ---- */
+  :root {
+    --plum: #4a0f2e;
+    --fold: #6b1840;
+    --stage: #1a0b14;
+    --cream: #fff4d8;
+    --marquee: #ffd23f;
+    --coral: #ff6b6b;
+    --teal: #2ec4b6;
+    --ink: #1a0b14;
+  }
+  body.host, body.player {
+    --bg: #1a0b14; --surface: #3a1028; --text: #fff4d8; --muted: #d9a9c0; --border: #6b1840;
+    --accent: #ffd23f; --on-accent: #1a0b14; --good: #7be08a; --bad: #ff6b6b; --gold: #ffd23f;
+    background: var(--stage); color: var(--text); color-scheme: dark;
+    font-family: 'Trebuchet MS', 'Segoe UI', system-ui, sans-serif;
+  }
+  [hidden] { display: none !important; }
+  body.host { overflow: hidden; }
+  /* Sized by the frame's width AND height, so every phase fits a wide TV or a short window. */
+  :root[data-role='host'] { font-size: clamp(11px, min(1.55vw, 2.7vh), 34px); }
+
+  /* ---- Big screen ---- */
+  #club { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
+  #host { position: fixed; inset: 0; display: grid; grid-template-rows: auto 1fr auto; padding: 2.2vh 2.5vw 1.5vh; box-sizing: border-box; }
+  .top { display: flex; justify-content: space-between; align-items: center; }
+  .round { font-weight: 900; font-size: 1.3rem; padding: 0.25em 0.9em; border-radius: 2rem; background: var(--marquee); color: var(--ink); box-shadow: 0 0.25rem 0 #b38b00; }
+  .logo { font-weight: 900; letter-spacing: 0.18em; font-size: 1.1rem; color: var(--marquee); text-shadow: 0 0 14px rgba(255, 210, 63, 0.7); }
+
+  .stage { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.9rem; padding: 1rem 0 0.5rem; text-align: center; min-height: 0; overflow: hidden; }
+  .stage > * { flex-shrink: 0; }
+  .headline { font-size: 3rem; font-weight: 900; margin: 0; line-height: 1.1; text-shadow: 0 0.2rem 0 rgba(0, 0, 0, 0.5); }
+  .sub { font-size: 1.4rem; color: var(--muted); margin: 0; }
+  .title { font-size: 6rem; font-weight: 900; letter-spacing: 0.08em; color: var(--marquee); margin: 0; text-shadow: 0 0 30px rgba(255, 210, 63, 0.6), 0 0.3rem 0 #8a5a00; animation: pop 0.7s cubic-bezier(0.2, 1.5, 0.4, 1) both; }
+  .how { list-style: none; padding: 0; margin: 0; display: flex; gap: 1.5rem; }
+  .how li { width: 15rem; background: rgba(26, 11, 20, 0.75); border: 3px solid var(--fold); border-radius: 1.2rem; padding: 1rem; font-size: 1.25rem; font-weight: 700; line-height: 1.3; animation: pop 0.6s cubic-bezier(0.2, 1.5, 0.4, 1) both; }
+  .how b { display: block; font-size: 2.2rem; color: var(--marquee); }
+  .bar { width: min(60vw, 40rem); height: 0.8rem; border-radius: 1rem; background: rgba(0, 0, 0, 0.45); overflow: hidden; }
+  .bar > i { display: block; height: 100%; width: 100%; background: var(--marquee); border-radius: 1rem; }
+
+  .prompt-h { font-size: 2.2rem; font-weight: 900; max-width: 80vw; line-height: 1.15; margin: 0; padding: 0.5rem 1.4rem; background: rgba(26, 11, 20, 0.7); border-radius: 1rem; }
+  .duel { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 2rem; width: min(90vw, 70rem); }
+  .vs { font-size: 3rem; font-weight: 900; color: var(--marquee); transform: rotate(-8deg); text-shadow: 0 0.2rem 0 #8a5a00; }
+  .side { display: flex; flex-direction: column; align-items: center; gap: 0.6rem; min-width: 0; }
+  .bubble { position: relative; width: 100%; box-sizing: border-box; min-height: 6rem; display: grid; place-items: center; padding: 1rem 1.3rem; background: var(--cream); color: var(--ink); border: 0.4rem solid var(--coral); border-radius: 2rem; font-size: 2rem; font-weight: 900; line-height: 1.15; overflow-wrap: anywhere; box-shadow: 0 0.5rem 0 rgba(0, 0, 0, 0.4); animation: pop 0.55s cubic-bezier(0.2, 1.5, 0.4, 1) both; }
+  .bubble::after { content: ''; position: absolute; bottom: -1.3rem; left: 22%; width: 2rem; height: 2rem; background: var(--cream); border: solid var(--coral); border-width: 0 0.4rem 0.4rem 0; transform: rotate(45deg) skew(10deg, 10deg); }
+  .side.b .bubble { border-color: var(--teal); }
+  .side.b .bubble::after { left: auto; right: 22%; border-color: var(--teal); }
+  .bubble .house { position: absolute; top: -1rem; left: 1rem; font-size: 0.85rem; padding: 0.2em 0.7em; border-radius: 1rem; background: var(--stage); color: var(--muted); }
+  .side.win .bubble { transform: scale(1.05); box-shadow: 0 0 0 0.4rem var(--marquee), 0 0.5rem 0 rgba(0, 0, 0, 0.4); }
+  .side.lose .bubble { filter: saturate(0.5) brightness(0.85); }
+  .stamp { position: absolute; top: -1.4rem; right: -1rem; font-size: 2.2rem; font-weight: 900; color: var(--marquee); border: 0.3rem solid var(--marquee); border-radius: 0.6rem; padding: 0 0.4em; background: rgba(26, 11, 20, 0.85); animation: stamp 0.5s 1.6s cubic-bezier(0.2, 1.6, 0.4, 1) both; pointer-events: none; }
+  @keyframes stamp { from { transform: rotate(12deg) scale(3); opacity: 0; } to { transform: rotate(12deg); opacity: 1; } }
+  .chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.4rem; min-height: 2.6rem; }
+  .author { font-size: 1.5rem; font-weight: 900; animation: slide 0.5s 1.2s both; }
+  .author .plus { color: var(--marquee); margin-left: 0.5rem; }
+  @keyframes slide { from { transform: translateY(1.5rem); opacity: 0; } }
+  @keyframes pop { from { transform: scale(0.4); opacity: 0; } }
+  @keyframes drop { from { transform: translateY(-40vh) rotate(-30deg); opacity: 0; } }
+
+  /* Player badges: a round token in the player's colour with their initial. */
+  .badge { position: relative; display: flex; flex-direction: column; align-items: center; gap: 0.25rem; width: 5.6rem; transition: opacity 0.4s; }
+  .tok { width: 3rem; height: 3rem; border-radius: 50%; display: grid; place-items: center; font-size: 1.4rem; font-weight: 900; color: var(--ink); border: 0.22rem solid var(--cream); box-shadow: inset -0.35rem -0.4rem 0 rgba(0, 0, 0, 0.2); }
+  .badge .nm { font-weight: 800; font-size: 0.95rem; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .badge .pts { font-size: 0.9rem; color: var(--marquee); font-weight: 800; }
+  .badge.away { opacity: 0.35; }
+  .badge .dots { display: flex; gap: 0.25rem; }
+  .badge .dots span { width: 0.7rem; height: 0.7rem; border-radius: 50%; border: 2px solid var(--cream); box-sizing: border-box; }
+  .badge .dots span.on { background: var(--marquee); border-color: var(--marquee); }
+  .strip { display: flex; justify-content: center; gap: 0.8vw; padding-top: 0.8rem; border-top: 3px solid rgba(255, 210, 63, 0.35); }
+  .chip { width: 2.4rem; height: 2.4rem; border-radius: 50%; display: grid; place-items: center; font-weight: 900; color: var(--ink); border: 0.18rem solid var(--cream); animation: drop 0.6s cubic-bezier(0.3, 1.3, 0.5, 1) both; }
+  .voters { display: flex; gap: 0.5rem; justify-content: center; }
+  .voters .tok { width: 2.6rem; height: 2.6rem; font-size: 1.2rem; position: relative; opacity: 0.45; }
+  .voters .tok.done { opacity: 1; }
+  .voters .tok.done::after { content: ''; position: absolute; right: -0.3rem; bottom: -0.3rem; width: 1rem; height: 1rem; border-radius: 50%; background: var(--good); border: 2px solid var(--stage); }
+
+  /* The Last Word: every answer as a card. */
+  .wall { display: flex; flex-wrap: wrap; justify-content: center; gap: 1rem; max-width: 92vw; }
+  .wall .bubble { width: 16rem; min-height: 6rem; font-size: 1.6rem; border-color: var(--marquee); padding: 0.9rem 1rem; }
+  .wall .bubble::after { border-color: var(--marquee); }
+  .wall .side { width: 16rem; gap: 0.6rem; }
+  .wall .side.win .bubble { box-shadow: 0 0 0 0.4rem var(--coral), 0 0.5rem 0 rgba(0, 0, 0, 0.4); }
+  .wall .chips { min-height: 2rem; }
+  .wall .chip { width: 1.8rem; height: 1.8rem; font-size: 0.9rem; }
+  .wall .author { font-size: 1.2rem; }
+
+  /* Scores and the end. */
+  .board { display: flex; flex-direction: column; gap: 0.55rem; width: min(70vw, 46rem); }
+  .brow { display: grid; grid-template-columns: 2.8rem 9rem 1fr 6rem; align-items: center; gap: 0.8rem; font-size: 1.4rem; font-weight: 900; text-align: left; }
+  .brow .tok { width: 2.8rem; height: 2.8rem; font-size: 1.3rem; }
+  .brow .fill { height: 1.8rem; border-radius: 1rem; min-width: 0.4rem; transition: width 1.4s cubic-bezier(0.3, 1.2, 0.4, 1); }
+  .brow .n { text-align: right; color: var(--marquee); }
+  .winner .tok { width: 9rem; height: 9rem; font-size: 4.5rem; border-width: 0.4rem; animation: pop 0.8s 0.8s cubic-bezier(0.2, 1.5, 0.4, 1) both; box-shadow: 0 0 60px rgba(255, 244, 216, 0.6); }
+  .badge.winner { width: auto; max-width: 40vw; }
+  .row-win { display: flex; gap: 3rem; justify-content: center; }
+  .winner .nm { font-size: 2.6rem; font-weight: 900; margin-top: 0.6rem; animation: slide 0.5s 1.4s both; }
+
+  /* ---- Phones ---- */
+  body.player { user-select: none; -webkit-user-select: none; }
+  .ph { gap: 0.9rem; }
+  .me { display: flex; align-items: center; gap: 0.6rem; font-weight: 900; font-size: 1.2rem; }
+  .me .tok { width: 2.2rem; height: 2.2rem; font-size: 1.1rem; border-width: 0.15rem; }
+  .me .score { margin-left: auto; color: var(--marquee); font-size: 1rem; }
+  .say-big { font-size: 1.4rem; font-weight: 800; margin: 0; line-height: 1.25; }
+  .card-p { background: var(--cream); color: var(--ink); border-radius: 1rem; padding: 0.9rem 1rem; font-size: 1.45rem; font-weight: 900; line-height: 1.2; border: 0.25rem solid var(--marquee); }
+  .card-p small { display: block; font-size: 0.85rem; color: #7a3f5c; font-weight: 800; margin-bottom: 0.25rem; }
+  .choices { display: grid; gap: 0.7rem; }
+  .choices button { min-height: 4.2rem; font-size: 1.25rem; font-weight: 900; line-height: 1.2; padding: 0.6rem 0.9rem; border-radius: 1.2rem; color: var(--ink); overflow-wrap: anywhere; }
+  .choices .a { background: var(--coral); }
+  .choices .b { background: var(--teal); }
+  .choices .w { background: var(--cream); border: 0.2rem solid var(--marquee); }
+  .choices button.on { box-shadow: 0 0 0 0.3rem var(--text); }
+  button.house-btn { background: var(--surface); color: var(--text); border: 2px solid var(--border); }
+  .big-num { font-size: 3rem; font-weight: 900; color: var(--marquee); margin: 0; }
+</style>
+
+<canvas id="club" hidden></canvas>
+<div id="host" hidden></div>
+<div class="screen ph" id="phone" hidden></div>
+
+<script>
+  'use strict';
+
+  // ---- Shared ---------------------------------------------------------------------------
+  const COLORS = ['#ff6b6b', '#ffd23f', '#7be08a', '#4cc9f0', '#c77dff', '#ff9ec7', '#2ec4b6', '#ff9f43'];
+  const ANSWER_MAX = 60;
+  const INTRO_MS = 8000, WRITE_MS = 75000, FINAL_WRITE_MS = 45000, VOTE_MS = 15000, FINAL_VOTE_MS = 25000;
+  const REVEAL_MS = 6000, FINAL_REVEAL_MS = 10000, SCORES_MS = 8000, END_MS = 10000;
+  const ROUND_NAME = ['', 'Round 1', 'Round 2', 'The Last Word'];
+  const initial = (name) => (name.trim()[0] || '?').toUpperCase();
+  const ordinal = (n) => n + (n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] || 'th');
+  function shuffle(list) {
+    const a = [...list];
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+  const pick = (list) => list[Math.floor(Math.random() * list.length)];
+  /** An answer as the big screen keeps it: trimmed, one line, no control characters, 1–60 long. */
+  function cleanAnswer(text) {
+    if (typeof text !== 'string') return '';
+    // eslint-disable-next-line no-control-regex
+    return text.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, ANSWER_MAX);
+  }
+
+  // The prompts: silly, open, family-friendly. Never repeated in a game.
+  const PROMPTS = [
+    'The worst thing to hear from your dentist',
+    'A terrible name for a pet goldfish',
+    'The real reason the chicken crossed the road',
+    'What your cat is secretly thinking',
+    'A bad thing to yell on a roller coaster',
+    'The worst flavour of ice cream',
+    'A rejected name for a new candy bar',
+    'Something you should never say on a first day at school',
+    'The worst superpower to have',
+    'What aliens would think of our pizza',
+    'A strange thing to keep in your pocket',
+    'The most useless invention ever',
+    'A terrible slogan for a toothpaste',
+    'What the moon does when nobody is looking',
+    'The worst thing to find in your sandwich',
+    'A bad name for a rock band made of grandmas',
+    'The secret ingredient in the school cafeteria food',
+    'What your houseplant would say if it could talk',
+    'The worst theme for a birthday party',
+    'A weird thing for a robot to be afraid of',
+    'A sign you might be a vampire',
+    'The worst job on a pirate ship',
+    'A brand new Olympic sport',
+    'What dogs dream about',
+    'The least scary Halloween costume',
+    'A bad thing to say to the queen',
+    'The title of a very boring movie',
+    'A suspicious thing to find in your fridge',
+    'What penguins talk about at parties',
+    'The worst advice a fortune cookie could give',
+    'A new rule for every family dinner',
+    'The worst thing to be stuck in an elevator with',
+    'A hobby that is way too dangerous for a hamster',
+    'What a ghost does on its day off',
+    'A terrible name for a hair salon',
+    'The world’s least popular theme park ride',
+    'Something that would ruin a camping trip',
+    'An unexpected thing to win on a game show',
+    'The worst thing to say during a job interview',
+    'What the Easter Bunny does the rest of the year',
+    'A really bad name for a superhero',
+    'The most dramatic way to eat a banana',
+    'A new holiday everyone should celebrate',
+    'A terrible thing to put on a pizza',
+    'What your shoes would say about you',
+    'The worst thing to write on a birthday cake',
+    'A sport that should never have a mascot',
+    'A bad thing to bring to show-and-tell',
+    'The real reason dinosaurs went extinct',
+    'A rejected flavour of chips',
+    'The worst thing a magician could pull out of a hat',
+    'Something a snowman would be scared of',
+    'A strange thing to collect',
+    'The first thing a time traveller should say',
+    'A bad name for a spaceship',
+    'What happens at a squirrel meeting',
+    'The worst present to get from your grandma',
+    'A bad thing to hear from your pilot',
+    'A terrible name for a perfume',
+    'The secret life of garden gnomes',
+    'What your alarm clock really wants to say',
+    'A new use for spaghetti',
+    'A very bad excuse for being late',
+    'The worst thing to step on in the dark',
+    'What the tooth fairy does with all those teeth',
+    'A strange new law for your town',
+    'The worst name for a cereal',
+    'A rejected Disney movie title',
+    'What a sloth does in a hurry',
+    'A strange thing to say to a mirror',
+    'The worst thing to sneeze on',
+    'A new animal made of two other animals',
+    'The most awkward thing to say at a wedding',
+    'A very bad theme song for a hero',
+    'The real reason the sky is blue',
+    'The worst thing to forget on a trip to the beach',
+    'What a fish would complain about',
+    'An unhelpful thing for a lifeguard to shout',
+    'A new feature for the next phone',
+    'A bad thing to name your car',
+    'The weirdest thing to find in a library book',
+    'What clouds gossip about',
+    'A terrible way to wake someone up',
+    'The worst thing to hear in a haunted house',
+    'A dance move named after a vegetable',
+    'The most boring superhero ever',
+    'Something you should not microwave',
+    'A strange thing for a knight to fight',
+    'The best way to scare away a bear',
+    'A terrible name for a puppy',
+    'What your teacher does after school',
+    'The worst thing to say to a waiter',
+    'A rejected name for a planet',
+    'What a giraffe would order at a restaurant',
+    'A bad thing to keep under your bed',
+    'A good reason to cancel school',
+    'The worst thing to hear from a hair stylist',
+    'A silly thing to argue about',
+    'A bad title for a cookbook',
+    'What a robot puts on its toast',
+    'A secret talent your goldfish has',
+    'The worst flavour of toothpaste',
+    'A strange thing to see at the zoo',
+    'What happens if you sneeze in space',
+    'A terrible name for a bakery',
+    'Something you should never say to a cat',
+    'The worst thing to win at a fair',
+    'A new word for being very tired',
+    'An unusual thing to wear on your head',
+    'What the last cookie in the jar is thinking',
+    'The worst thing to say at the end of a movie',
+    'A terrible idea for a tattoo on a tiger',
+    'A bad thing to see on your GPS',
+    'What a cactus wants for its birthday',
+    'An embarrassing thing to say to your teacher by accident',
+    'A really bad name for a hospital',
+    'The worst thing to put in a piñata',
+    'A new crayon colour',
+    'What a snail does to relax',
+    'The least useful thing to bring to a desert island',
+    'A rejected name for a dog breed',
+    'The worst thing to hear from your GPS',
+    'A suspicious thing for a babysitter to say',
+    'An odd thing to see in a swimming pool',
+    'What a volcano says before it erupts',
+    'The worst thing to forget at a sleepover',
+    'A bad name for a ship that sinks',
+    'The real reason cats knock things off tables',
+    'An unusual job for a dragon',
+    'The worst thing to find in your shoe',
+    'What your pillow knows about you',
+    'A terrible wish to make to a genie',
+    'A new thing for a robot butler to do',
+    'The title of a song about socks',
+    'What the Mona Lisa is smiling about',
+    'A bad thing to shout in a library',
+    'The worst thing to hear at a magic show',
+    'A strange thing to find at the bottom of the ocean',
+    'An awkward thing to say to a giant',
+    'The worst thing to be allergic to',
+    'A very strange sandwich',
+    'What happens in a tiny town for ants',
+    'A bad nickname for a king',
+    'The worst snack for a long car trip',
+    'A new emoji the world needs',
+    'What a pigeon thinks about all day',
+    'A terrible name for a hotel',
+    'The worst way to end a fairy tale',
+    'A terrible thing to hear from a doctor',
+    'Something you should never put in a washing machine',
+    'What teddy bears do at night',
+    'A brand new flavour of soda',
+  ];
+
+  // What "Pick one for me" and a missed answer use: safe, silly, and fit almost any prompt.
+  const HOUSE = [
+    'A very confused goose', 'My left sock', 'Grandma’s secret soup', 'Seven angry bees', 'A tiny cowboy hat',
+    'Way too much glitter', 'A haunted toaster', 'Spaghetti, but sad', 'A llama in sunglasses', 'The sound of a kazoo',
+    'Three raccoons in a coat', 'A suspicious pickle', 'An extremely loud sneeze', 'A banana phone', 'My dad’s dance moves',
+    'Soggy cereal', 'A disco ball for cats', 'Wet socks', 'A pirate who is afraid of water', 'A potato with feelings',
+    'Pineapple on everything', 'A really dramatic hamster', 'One thousand rubber ducks', 'Accidental karaoke',
+    'A moustache made of cheese', 'A snail on a skateboard', 'A very polite dinosaur', 'An inflatable castle',
+    'Crying in the cereal aisle', 'The wrong kind of jelly', 'A wizard with a cold', 'Bubble wrap', 'A shy volcano',
+    'An octopus in mittens', 'A lot of noodles', 'Burnt toast', 'A cardboard crown', 'The world’s smallest violin',
+    'An elevator full of clowns', 'A sock puppet named Steve',
+  ];
+
+  party.ready(({ role, me, restored }) => {
+    document.body.className = role;
+    if (role === 'host') bigScreen(restored);
+    else phone(me);
+  });
+
+  // ---- The big screen: the referee and the stage ----------------------------------------
+  function bigScreen(restored) {
+    const { el, sound } = party.ui;
+    const ids = party.players.map((p) => p.id);
+    const nameOf = (id) => party.players.find((p) => p.id === id)?.name ?? '?';
+    const colorOf = (id) => COLORS[Math.max(0, ids.indexOf(id)) % COLORS.length];
+    const connected = (id) => party.players.find((p) => p.id === id)?.connected !== false;
+
+    /** The whole game, as plain JSON (party.save). */
+    let g = restored && restored.v === 1 && restored.scores ? restored : newGame();
+    let ended = false;
+
+    function newGame() {
+      const now = party.now();
+      return {
+        v: 1,
+        phase: 'intro',
+        at: now,
+        endsAt: now + INTRO_MS,
+        round: 1,
+        used: [], // prompt indexes used so far
+        deal: [], // rounds 1–2: [{ prompt, a, b, ans: { [id]: { t, house } } }]
+        match: 0, // which matchup is on stage
+        votes: {}, // voter id → 'a' | 'b' (rounds 1–2) or the id they voted for (The Last Word)
+        result: null, // the last reveal: { va, vb, sweep, gain: { [id]: points } } or { count: { [id]: n } }
+        final: null, // { prompt, ans: { [id]: { t, house } }, order: [ids] }
+        scores: Object.fromEntries(ids.map((id) => [id, 0])),
+      };
+    }
+
+    function takePrompt() {
+      let free = PROMPTS.map((_, i) => i).filter((i) => !g.used.includes(i));
+      if (free.length === 0) free = PROMPTS.map((_, i) => i); // (can't happen in one game)
+      const i = pick(free);
+      g.used.push(i);
+      return PROMPTS[i];
+    }
+
+    function enter(phase, ms, now = party.now()) {
+      g.phase = phase;
+      g.at = now;
+      g.endsAt = now + ms;
+      changed();
+      cue(phase);
+    }
+
+    // -- The deal: a ring, so everyone writes 2 answers and odd counts work too. --
+    function startWrite(round, now = party.now()) {
+      g.round = round;
+      g.votes = {};
+      g.result = null;
+      if (round < 3) {
+        const ring = shuffle(ids);
+        g.deal = ring.map((p, i) => ({ prompt: takePrompt(), a: p, b: ring[(i + 1) % ring.length], ans: {} }));
+        g.match = 0;
+        enter('write', WRITE_MS, now);
+      } else {
+        g.final = { prompt: takePrompt(), ans: {}, order: [] };
+        enter('final-write', FINAL_WRITE_MS, now);
+      }
+    }
+    /** The matchups this player writes for, by index. */
+    const myMatchups = (id) => g.deal.map((m, k) => (m.a === id || m.b === id ? k : -1)).filter((k) => k >= 0);
+    const todo = (id) => (g.phase === 'write' ? myMatchups(id).filter((k) => !g.deal[k].ans[id]) : g.phase === 'final-write' && !g.final.ans[id] ? [0] : []);
+
+    function endWrite(now = party.now()) {
+      // A prompt nobody answered in time gets an answer from the house.
+      if (g.phase === 'write') {
+        for (const m of g.deal) for (const id of [m.a, m.b]) if (!m.ans[id]) m.ans[id] = { t: pick(HOUSE), house: true };
+        // Two house answers can't be the same in one matchup.
+        for (const m of g.deal) while (m.ans[m.a].house && m.ans[m.b].house && m.ans[m.a].t === m.ans[m.b].t) m.ans[m.b].t = pick(HOUSE);
+        startVote(now);
+      } else {
+        for (const id of ids) if (!g.final.ans[id]) g.final.ans[id] = { t: pick(HOUSE), house: true };
+        g.final.order = shuffle(ids);
+        g.votes = {};
+        enter('final-vote', FINAL_VOTE_MS, now);
+      }
+    }
+
+    function startVote(now = party.now()) {
+      g.votes = {};
+      g.result = null;
+      enter('vote', VOTE_MS, now);
+    }
+    const voters = () => {
+      if (g.phase === 'vote') {
+        const m = g.deal[g.match];
+        return ids.filter((id) => id !== m.a && id !== m.b);
+      }
+      return ids;
+    };
+
+    function endVote(now = party.now()) {
+      const m = g.deal[g.match];
+      const vals = Object.values(g.votes);
+      const va = vals.filter((v) => v === 'a').length;
+      const vb = vals.filter((v) => v === 'b').length;
+      const per = g.round * 100;
+      const sweep = va + vb >= 2 && (va === 0 || vb === 0) ? (va ? 'a' : 'b') : null;
+      const gain = { [m.a]: va * per + (sweep === 'a' ? per : 0), [m.b]: vb * per + (sweep === 'b' ? per : 0) };
+      for (const [id, n] of Object.entries(gain)) g.scores[id] += n;
+      g.result = { va, vb, sweep, gain };
+      enter('reveal', REVEAL_MS, now);
+    }
+
+    function endFinalVote(now = party.now()) {
+      const count = Object.fromEntries(ids.map((id) => [id, 0]));
+      for (const target of Object.values(g.votes)) count[target] += 1;
+      for (const id of ids) g.scores[id] += count[id] * 300;
+      g.result = { count };
+      enter('final-reveal', FINAL_REVEAL_MS, now);
+    }
+
+    const ranking = () => ids.map((id, seat) => ({ id, seat })).sort((x, y) => g.scores[y.id] - g.scores[x.id] || x.seat - y.seat).map((x) => x.id);
+
+    function timeUp(now) {
+      switch (g.phase) {
+        case 'intro': return startWrite(1, now);
+        case 'write': case 'final-write': return endWrite(now);
+        case 'vote': return endVote(now);
+        case 'reveal':
+          if (g.match + 1 < g.deal.length) {
+            g.match += 1;
+            return startVote(now);
+          }
+          return enter('scores', SCORES_MS, now);
+        case 'scores': return startWrite(g.round + 1, now);
+        case 'final-vote': return endFinalVote(now);
+        case 'final-reveal': return enter('end', END_MS, now);
+        case 'end':
+          if (ended) return;
+          ended = true;
+          g.phase = 'over';
+          party.save(g);
+          party.end({ rankings: ranking(), scores: { ...g.scores } });
+      }
+    }
+
+    // Early ends: everyone connected has written everything; every connected voter voted.
+    function checkEarly() {
+      const now = party.now();
+      const live = ids.filter(connected);
+      if ((g.phase === 'write' || g.phase === 'final-write') && live.every((id) => todo(id).length === 0)) endWrite(now);
+      else if ((g.phase === 'vote' || g.phase === 'final-vote') && voters().filter(connected).every((id) => id in g.votes)) {
+        if (g.phase === 'vote') endVote(now);
+        else endFinalVote(now);
+      }
+    }
+
+    // -- What phones send: every event is checked. --
+    party.on('event', (from, data) => {
+      if (!ids.includes(from) || !data || typeof data !== 'object' || ended) return;
+      if ('k' in data && (g.phase === 'write' || g.phase === 'final-write')) {
+        // An answer (or "Pick one for me") for one of this player's prompts that isn't answered yet.
+        if (!todo(from).includes(data.k)) return;
+        const t = data.house === true ? pick(HOUSE) : cleanAnswer(data.answer);
+        if (!t) return;
+        const box = g.phase === 'write' ? g.deal[data.k].ans : g.final.ans;
+        box[from] = { t, house: false };
+        changed();
+        checkEarly();
+      } else if ('vote' in data && g.phase === 'vote') {
+        if (!voters().includes(from) || (data.vote !== 'a' && data.vote !== 'b')) return;
+        g.votes[from] = data.vote;
+        changed();
+        checkEarly();
+      } else if ('vote' in data && g.phase === 'final-vote') {
+        if (typeof data.vote !== 'string' || !ids.includes(data.vote) || data.vote === from) return;
+        g.votes[from] = data.vote;
+        changed();
+        checkEarly();
+      }
+    });
+
+    party.on('players', () => {
+      changed();
+      checkEarly();
+    });
+
+    // -- Every phone: only its own state. --
+    function phoneState(id) {
+      const s = {
+        phase: g.phase,
+        endsAt: g.endsAt,
+        round: g.round,
+        color: colorOf(id),
+        score: g.scores[id],
+        place: 1 + ids.filter((o) => g.scores[o] > g.scores[id]).length, // ties share a place
+        of: ids.length,
+      };
+      if (g.phase === 'write' || g.phase === 'final-write') {
+        const left = todo(id);
+        const total = g.phase === 'write' ? myMatchups(id).length : 1;
+        s.total = total;
+        s.n = total - left.length + 1;
+        if (left.length) {
+          s.k = left[0];
+          s.prompt = g.phase === 'write' ? g.deal[left[0]].prompt : g.final.prompt;
+        }
+      }
+      if (g.phase === 'vote') {
+        const m = g.deal[g.match];
+        s.prompt = m.prompt;
+        s.mine = id === m.a || id === m.b;
+        if (!s.mine) s.answers = [m.ans[m.a].t, m.ans[m.b].t];
+        if (id in g.votes) s.voted = g.votes[id];
+      }
+      if (g.phase === 'reveal') s.prompt = g.deal[g.match].prompt;
+      if (g.phase === 'final-reveal') s.prompt = g.final.prompt;
+      if (g.phase === 'final-vote') {
+        s.prompt = g.final.prompt;
+        s.options = g.final.order.filter((p) => p !== id).map((p) => ({ id: p, t: g.final.ans[p].t }));
+        if (id in g.votes) s.voted = g.votes[id];
+      }
+      return s;
+    }
+
+    function changed() {
+      for (const id of ids) party.setState(id, phoneState(id));
+      party.save(g);
+      render();
+    }
+
+    // -- Sounds: big moments only. --
+    let lastCue = '';
+    function cue(phase) {
+      const key = `${phase}-${g.at}`;
+      if (key === lastCue) return;
+      lastCue = key;
+      if (phase === 'write' || phase === 'final-write') sound('go');
+      else if (phase === 'reveal') {
+        // (Read now: by the time the timers fire, g.result may belong to the next matchup.)
+        const { va, vb, sweep } = g.result;
+        for (let i = 0; i < va + vb; i++) setTimeout(() => sound('pop'), 200 + i * 120);
+        setTimeout(() => sound(sweep ? { notes: [523, 659, 784, 1047], ms: 110, type: 'triangle' } : 'coin'), 1300);
+      } else if (phase === 'final-reveal') {
+        Object.values(g.votes).forEach((_, i) => setTimeout(() => sound('pop'), 200 + i * 120));
+        setTimeout(() => sound('coin'), 1400);
+      } else if (phase === 'end') setTimeout(() => sound('win'), 900);
+    }
+
+    // -- Drawing the big screen: HTML and CSS for the show, a canvas for the club behind. --
+    const root = document.getElementById('host');
+    root.hidden = false;
+
+    function tok(id, cls = 'tok') {
+      return el('div', { class: cls, style: { background: colorOf(id) } }, initial(nameOf(id)));
+    }
+    function badge(id, extra = null, cls = '') {
+      return el('div', { class: `badge${connected(id) ? '' : ' away'}${cls}` }, tok(id), el('div', { class: 'nm' }, nameOf(id)), extra);
+    }
+    const bar = () => el('div', { class: 'bar', 'data-bar': '1' }, el('i'));
+    const voterToks = () => voters().map((id) => el('div', { class: `tok${id in g.votes ? ' done' : ''}`, style: { background: colorOf(id) }, title: nameOf(id) }, initial(nameOf(id))));
+    const voterRow = () => el('div', { class: 'voters' }, voterToks());
+    const chipsFor = (who) => Object.entries(g.votes).filter(([, v]) => v === who).map(([voter], i) => el('div', { class: 'chip', style: { background: colorOf(voter), animationDelay: `${0.2 + i * 0.12}s` } }, initial(nameOf(voter))));
+    const bubble = (answer, showHouse) => el('div', { class: 'bubble' }, showHouse && answer.house ? el('span', { class: 'house' }, 'picked by the house') : null, answer.t);
+
+    // Only redraw when something you can see changed (so animations don't restart). While the
+    // room votes, a new vote only ticks its voter's token: the answers mustn't pop in again.
+    let shownKey = '';
+    function render() {
+      const key = JSON.stringify([g.phase, g.at, g.match, g.round, g.phase.endsWith('write') ? ids.map(todo) : 0, party.players.map((p) => p.connected)]);
+      if (key === shownKey) {
+        root.querySelector('.voters')?.replaceChildren(...voterToks());
+        return;
+      }
+      shownKey = key;
+      const top = el('div', { class: 'top' }, g.phase === 'intro' || g.phase === 'end' || g.phase === 'over' ? el('span') : el('div', { class: 'round' }, ROUND_NAME[g.round]), el('div', { class: 'logo' }, 'PUNCHLINE'));
+      const stage = el('div', { class: 'stage' });
+      const strip = el('div', { class: 'strip' });
+      const p = g.phase;
+
+      if (p !== 'intro' && p !== 'end' && p !== 'over') {
+        for (const id of ids) {
+          // During a reveal the strip shows the scores from before it: a jump there would
+          // give away who wrote what before the names come in.
+          const shown = g.scores[id] - (p === 'reveal' ? g.result.gain[id] ?? 0 : p === 'final-reveal' ? g.result.count[id] * 300 : 0);
+          let extra = el('div', { class: 'pts' }, String(shown));
+          if (p === 'write' || p === 'final-write') {
+            const total = p === 'write' ? myMatchups(id).length : 1;
+            const done = total - todo(id).length;
+            extra = el('div', { class: 'dots' }, Array.from({ length: total }, (_, i) => el('span', { class: i < done ? 'on' : '' })));
+          }
+          strip.append(badge(id, extra));
+        }
+      }
+
+      if (p === 'intro') {
+        stage.append(
+          el('h1', { class: 'title' }, 'PUNCHLINE'),
+          el('ol', { class: 'how' },
+            el('li', { style: { animationDelay: '0.5s' } }, el('b', {}, '1'), 'Answer 2 prompts on your phone.'),
+            el('li', { style: { animationDelay: '0.8s' } }, el('b', {}, '2'), 'Your answer goes head-to-head with someone else’s.'),
+            el('li', { style: { animationDelay: '1.1s' } }, el('b', {}, '3'), 'Everyone else votes for the funnier one.')),
+          bar());
+      } else if (p === 'write' || p === 'final-write') {
+        stage.append(
+          el('h1', { class: 'headline' }, 'Answer on your phones!'),
+          el('p', { class: 'sub' }, p === 'write' ? `Two prompts each. Round ${g.round}: ${g.round * 100} points a vote.` : 'One prompt for everyone. 300 points a vote. Make it count!'),
+          bar());
+      } else if (p === 'vote' || p === 'reveal') {
+        const m = g.deal[g.match];
+        const r = p === 'reveal' ? g.result : null;
+        const side = (who) => {
+          const id = m[who];
+          const won = r && r.va !== r.vb && (r.va > r.vb) === (who === 'a');
+          const node = el('div', { class: `side ${who}${r ? (won ? ' win' : r.va === r.vb ? '' : ' lose') : ''}` }, bubble(m.ans[id], Boolean(r)));
+          if (r) {
+            node.append(el('div', { class: 'chips' }, chipsFor(who)), el('div', { class: 'author', style: { color: colorOf(id) } }, nameOf(id), el('span', { class: 'plus' }, `+${r.gain[id]}`)));
+            if (r.sweep === who) node.style.position = 'relative';
+            if (r.sweep === who) node.append(el('div', { class: 'stamp' }, 'SWEEP!'));
+          }
+          return node;
+        };
+        stage.append(
+          el('p', { class: 'sub' }, `Matchup ${g.match + 1} of ${g.deal.length}`),
+          el('h1', { class: 'prompt-h' }, m.prompt),
+          el('div', { class: 'duel' }, side('a'), el('div', { class: 'vs' }, 'VS'), side('b')));
+        if (p === 'vote') stage.append(el('p', { class: 'sub' }, 'Vote on your phone for the funnier answer!'), voterRow(), bar());
+        else if (r.va + r.vb === 0) stage.append(el('p', { class: 'sub' }, 'No votes!'));
+      } else if (p === 'final-vote' || p === 'final-reveal') {
+        const r = p === 'final-reveal' ? g.result : null;
+        const best = r ? Math.max(...Object.values(r.count)) : 0;
+        stage.append(
+          el('h1', { class: 'prompt-h' }, g.final.prompt),
+          el('div', { class: 'wall' }, g.final.order.map((id, i) => {
+            const node = el('div', { class: `side${r && best > 0 && r.count[id] === best ? ' win' : ''}` });
+            const b = bubble(g.final.ans[id], Boolean(r));
+            b.style.animationDelay = `${i * 0.1}s`;
+            node.append(b);
+            if (r) node.append(el('div', { class: 'chips' }, chipsFor(id)), el('div', { class: 'author', style: { color: colorOf(id) } }, nameOf(id), el('span', { class: 'plus' }, `+${r.count[id] * 300}`)));
+            return node;
+          })));
+        if (p === 'final-vote') stage.append(el('p', { class: 'sub' }, 'Vote for your favourite (not your own)!'), voterRow(), bar());
+      } else if (p === 'scores') {
+        const top = Math.max(1, ...Object.values(g.scores));
+        const rows = ranking().map((id) => {
+          const fill = el('div', { class: 'fill', style: { background: colorOf(id), width: '0%' } });
+          requestAnimationFrame(() => requestAnimationFrame(() => (fill.style.width = `${(g.scores[id] / top) * 100}%`)));
+          return el('div', { class: 'brow' }, tok(id), el('span', {}, nameOf(id)), el('div', {}, fill), el('span', { class: 'n' }, String(g.scores[id])));
+        });
+        stage.append(el('h1', { class: 'headline' }, `After ${ROUND_NAME[g.round]}`), el('div', { class: 'board' }, rows), el('p', { class: 'sub' }, g.round === 1 ? 'Next round: double points!' : 'Next: The Last Word.'));
+      } else {
+        // Ties share a place, and everyone tied for first wins.
+        const placeOf = (id) => 1 + ids.filter((o) => g.scores[o] > g.scores[id]).length;
+        const order = ranking();
+        const winners = order.filter((id) => placeOf(id) === 1);
+        const rest = order.filter((id) => placeOf(id) > 1);
+        stage.append(
+          el('p', { class: 'sub' }, winners.length === 1 ? 'The funniest person in the room is…' : 'The funniest people in the room are…'),
+          el('div', { class: 'row-win' }, winners.map((id) => el('div', { class: 'winner badge' }, tok(id), el('div', { class: 'nm', style: { color: colorOf(id) } }, nameOf(id))))),
+          el('p', { class: 'headline', style: { fontSize: '2rem', color: 'var(--marquee)' } }, `${g.scores[winners[0]]} points`),
+          el('div', { class: 'strip', style: { borderTop: 'none' } }, rest.map((id) => badge(id, el('div', { class: 'pts' }, `${ordinal(placeOf(id))} · ${g.scores[id]}`)))));
+      }
+      root.replaceChildren(top, stage, strip);
+      frame();
+    }
+
+    // -- Every frame: the bars, the ticks, the club behind. --
+    let lastSecond = -1;
+    function frame(now = party.now()) {
+      const total = Math.max(1, g.endsAt - g.at);
+      const left = g.endsAt - now;
+      const frac = Math.max(0, Math.min(1, left / total));
+      for (const b of root.querySelectorAll('[data-bar] > i')) b.style.width = `${frac * 100}%`;
+      if (['write', 'final-write', 'vote', 'final-vote'].includes(g.phase)) {
+        const sec = Math.ceil(left / 1000);
+        if (sec <= 5 && sec > 0 && sec !== lastSecond) sound('tick');
+        lastSecond = sec;
+      }
+    }
+
+    const club = document.getElementById('club');
+    club.hidden = false;
+    const ctx = club.getContext('2d');
+    function drawClub(t) {
+      const dpr = window.devicePixelRatio || 1;
+      const w = club.clientWidth, h = club.clientHeight;
+      if (club.width !== Math.round(w * dpr) || club.height !== Math.round(h * dpr)) {
+        club.width = Math.round(w * dpr);
+        club.height = Math.round(h * dpr);
+      }
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      // The curtain: folds that sway a little.
+      const floor = h * 0.84;
+      const folds = 16;
+      const fw = w / folds;
+      for (let i = 0; i < folds; i++) {
+        // Each fold's highlight drifts a little, so the curtain seems to sway.
+        const x = i * fw;
+        const grad = ctx.createLinearGradient(x, 0, x + fw, 0);
+        grad.addColorStop(0, '#3a0b24');
+        grad.addColorStop(0.45 + Math.sin(t / 2400 + i) * 0.12, '#7a1c4a');
+        grad.addColorStop(1, '#3a0b24');
+        ctx.fillStyle = grad;
+        ctx.fillRect(Math.floor(x), 0, Math.ceil(fw) + 1, floor);
+      }
+      // A valance across the top.
+      ctx.fillStyle = '#5a1236';
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(w, 0);
+      ctx.lineTo(w, h * 0.05);
+      for (let i = folds; i >= 0; i--) ctx.quadraticCurveTo(i * fw + fw / 2, h * 0.09, i * fw, h * 0.05);
+      ctx.closePath();
+      ctx.fill();
+      // The stage floor: dark boards.
+      ctx.fillStyle = '#1a0b14';
+      ctx.fillRect(0, floor, w, h - floor);
+      ctx.strokeStyle = 'rgba(255, 210, 63, 0.12)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      for (let y = floor + 12; y < h; y += 16) { ctx.moveTo(0, y); ctx.lineTo(w, y); }
+      ctx.stroke();
+      // Two spotlights sweeping slowly.
+      for (const [base, speed] of [[0.3, 1], [0.7, -1.3]]) {
+        const cx = w * (base + Math.sin(t / 3800 * speed) * 0.12);
+        const glow = ctx.createRadialGradient(cx, h * 0.55, 0, cx, h * 0.55, Math.max(w, h) * 0.38);
+        glow.addColorStop(0, 'rgba(255, 244, 216, 0.22)');
+        glow.addColorStop(1, 'rgba(255, 244, 216, 0)');
+        ctx.fillStyle = glow;
+        ctx.fillRect(0, 0, w, h);
+      }
+      // Marquee bulbs along the top, chasing.
+      const n = Math.floor(w / 34);
+      for (let i = 0; i < n; i++) {
+        const on = (i + Math.floor(t / 220)) % 3 === 0;
+        ctx.beginPath();
+        ctx.arc((i + 0.5) * (w / n), 7, 4.5, 0, Math.PI * 2);
+        ctx.fillStyle = on ? '#ffd23f' : '#7a5a1a';
+        ctx.shadowColor = '#ffd23f';
+        ctx.shadowBlur = on ? 12 : 0;
+        ctx.fill();
+      }
+      ctx.shadowBlur = 0;
+    }
+    function loop(t) {
+      drawClub(t);
+      frame();
+      requestAnimationFrame(loop);
+    }
+    requestAnimationFrame(loop);
+
+    // -- The referee's heartbeat: deadlines. --
+    setInterval(() => {
+      if (ended || g.phase === 'over') return;
+      if (party.now() >= g.endsAt) timeUp(party.now());
+      else checkEarly(); // e.g. a matchup whose only voter has left: nothing to wait for
+    }, 250);
+
+    if (g.phase === 'over') {
+      // Reloaded after the end: show the end again and finish.
+      g.phase = 'end';
+      g.endsAt = party.now() + 3000;
+    }
+    changed();
+    cue(g.phase);
+  }
+
+  // ---- A phone: write, vote, look up -----------------------------------------------------
+  function phone(me) {
+    const { el, textInput, timer, sound } = party.ui;
+    const root = document.getElementById('phone');
+    root.hidden = false;
+    const myName = party.players.find((p) => p.id === me)?.name ?? 'You';
+    let s = null;
+    let mainKey = '';
+
+    const tokEl = el('div', { class: 'tok' }, initial(myName));
+    const scoreEl = el('span', { class: 'score' });
+    const head = el('div', { class: 'me' }, tokEl, el('span', {}, myName), scoreEl);
+    const main = el('div', { class: 'stack' });
+    const foot = el('div', { class: 'stack' });
+    root.append(head, main, el('div', { class: 'grow' }), foot);
+    main.append(el('p', { class: 'say-big' }, 'Waiting for the big screen…'));
+
+    party.on('state', (state) => {
+      s = state;
+      draw();
+    });
+
+    const say = (text) => el('p', { class: 'say-big' }, text);
+    const timerBox = () => {
+      const box = el('div');
+      timer(box, { endsAt: s.endsAt });
+      return box;
+    };
+    const placeLine = () => el('p', { class: 'muted' }, `You're ${ordinal(s.place)} of ${s.of} with ${s.score} points.`);
+
+    /** [key, build]: the phone's main part is rebuilt only when its key changes. */
+    function view() {
+      const p = s.phase;
+      if (p === 'intro') return ['intro', () => [say('Get ready to be funny.'), el('p', { class: 'muted' }, 'You’ll answer prompts here, then vote on the big screen’s matchups.')]];
+      if (p === 'write' || p === 'final-write') {
+        if (s.k === undefined) return [`done${p}${s.round}`, () => [say('All done! Waiting for the others.'), el('p', { class: 'muted' }, 'Look at the big screen to see who’s still writing.')]];
+        return [`w${p}${s.round}-${s.k}`, () => {
+          const box = el('div');
+          const nodes = [
+            el('div', { class: 'card-p' }, el('small', {}, p === 'write' ? `Prompt ${s.n} of ${s.total}` : 'The Last Word'), s.prompt),
+            box,
+          ];
+          textInput(box, { placeholder: 'Your funniest answer', maxLength: ANSWER_MAX, onSubmit: (text) => { sound('tap'); party.send({ k: s.k, answer: text }); } });
+          return nodes;
+        }];
+      }
+      if (p === 'vote') {
+        if (s.mine) return [`mine${s.prompt}`, () => [say('That’s your prompt! Hands off the vote.'), el('div', { class: 'card-p' }, s.prompt)]];
+        return [`v${s.prompt}${s.voted}`, () => [
+          el('div', { class: 'card-p' }, el('small', {}, 'Which is funnier?'), s.prompt),
+          el('div', { class: 'choices' },
+            ['a', 'b'].map((side, i) => el('button', { type: 'button', class: `${side}${s.voted === side ? ' on' : ''}`, 'aria-pressed': s.voted === side ? 'true' : 'false', onClick: () => party.send({ vote: side }) }, s.answers[i]))),
+          s.voted ? el('p', { class: 'muted' }, 'Voted! Tap the other one to change your mind.') : null,
+        ]];
+      }
+      if (p === 'final-vote') {
+        return [`fv${s.voted}`, () => [
+          el('div', { class: 'card-p' }, el('small', {}, 'Vote for your favourite'), s.prompt),
+          el('div', { class: 'choices' }, s.options.map((o) => el('button', { type: 'button', class: `w${s.voted === o.id ? ' on' : ''}`, 'aria-pressed': s.voted === o.id ? 'true' : 'false', onClick: () => party.send({ vote: o.id }) }, o.t))),
+          s.voted ? el('p', { class: 'muted' }, 'Voted! Tap another to change your mind.') : null,
+        ]];
+      }
+      if (p === 'reveal' || p === 'final-reveal' || p === 'scores') {
+        return [`look${p}${s.score}${s.place}${s.prompt}`, () => [
+          s.prompt ? el('div', { class: 'card-p' }, el('small', {}, 'On the big screen'), s.prompt) : null,
+          say(p === 'scores' ? 'Look up! Here are the scores.' : 'Look up! Who wrote what?'),
+          el('p', { class: 'big-num' }, String(s.score)),
+          placeLine(),
+        ]];
+      }
+      if (p === 'end' || p === 'over') {
+        return ['end', () => [
+          el('p', { class: 'say-big', style: { fontSize: '2rem' } }, s.place === 1 ? 'You won!' : `You came ${ordinal(s.place)}.`),
+          el('p', { class: 'big-num' }, String(s.score)),
+          el('p', { class: 'muted' }, `of ${s.of} players. Thanks for playing!`),
+        ]];
+      }
+      return ['wait', () => [say('…')]];
+    }
+
+    let footKey = '';
+    function draw() {
+      if (!s) return;
+      tokEl.style.background = s.color;
+      scoreEl.textContent = `${s.score} pts`;
+      const [key, build] = view();
+      if (key !== mainKey) {
+        mainKey = key;
+        main.replaceChildren(...build().filter(Boolean));
+      }
+      // The foot: "Pick one for me" while writing, and the timer for any phase with a deadline.
+      const fk = `${s.phase}${s.endsAt}${s.k}`;
+      if (fk === footKey) return;
+      footKey = fk;
+      foot.replaceChildren();
+      if ((s.phase === 'write' || s.phase === 'final-write') && s.k !== undefined) {
+        foot.append(el('button', { type: 'button', class: 'big house-btn', onClick: () => party.send({ k: s.k, house: true }) }, 'Pick one for me'));
+      }
+      if (['intro', 'write', 'final-write', 'vote', 'final-vote'].includes(s.phase)) foot.append(timerBox());
+    }
+  }
+</script>
