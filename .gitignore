@@ -8,5 +8,8 @@ e2e/playwright-report/
 server/data/
 generator/out/
 
-# Claude Code: agents' git worktrees (separate checkouts on their own branches)
-.claude/worktrees/
+# Claude Code's own files stay on this machine: its settings, skills and agents' worktrees
+# (.claude/), and its instructions (CLAUDE.md, CLAUDE.local.md). Only the docs are shared.
+.claude/
+CLAUDE.md
+CLAUDE.local.md
