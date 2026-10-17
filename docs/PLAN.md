@@ -1,6 +1,6 @@
 # BoilerGames: Implementation Plan (MVP lobby + extension structure)
 
-> **Status (2026-10-16):** M0–M7 done; AI generation, frame games (§13, now `main`; the old block games are in the `block-games` branch), the catalogue (§14), bring-your-own-key (§15), game pages/votes/profiles (§16), a room per game (§17), the guided /create flow (§19) and better phones (§21) are built. **Focus (§22): the games that fit a big screen with phones as controllers** (drawing and guessing, writing and voting, bluffing and secrets, trivia, board games, loose real-time action), not platformers or RPGs. Next: play-tests with people, then deploying (M8). This file is the living plan: decisions and changes are recorded here as they happen, so `git log docs/PLAN.md` shows how it evolved.
+> **Status (2026-10-16):** M0–M7 done; AI generation, frame games (§13, now `main`; the old block games are in the `block-games` branch), the catalogue (§14), bring-your-own-key (§15), game pages/votes/profiles (§16), a room per game (§17), the guided /create flow (§19) and better phones (§21) are built. **Focus (§22): the games that fit a big screen with phones as controllers** (drawing and guessing, writing and voting, bluffing and secrets, trivia, board games, loose real-time action), not platformers or RPGs. Next: deploying (M8, §27), then play-tests with people. This file is the living plan: decisions and changes are recorded here as they happen, so `git log docs/PLAN.md` shows how it evolved.
 
 _Site renamed from "LaunchPad Party" to **BoilerGames** on 2026-10-11 (built for the Purdue LaunchPad club; the club name stays where it refers to the club)._
 
@@ -1792,6 +1792,30 @@ so the lobby names its winner.
 
 **Not yet known (needs real play):** Comet Crew's difficulty in waves 5–6; whether Claim
 Jumpers' 15 turns feel short at 2 players; Doodle Drift and Punchline timers with real groups.
+
+## 27. Deploying (M8): AWS EC2, generation on the same server (decided 2026-10-17)
+
+**Decisions:**
+- **Hosting (D17, updated):** one **AWS EC2** instance on the free tier, instead of an unnamed VPS.
+  Still one server with Caddy, as D17 decided.
+- **Q10 (where generation runs):** on **that same server**, with Docker + OpenShell as on the dev
+  PC. It needs ~4 GB of memory, which the instance type we use has. Everyone's jobs run on their own GenAI
+  Studio key (§15), so the server pays for nothing but the machine.
+- **Domain:** the user's own domain, with an A record pointing to the instance's Elastic IP.
+
+**What was built:**
+- **The server serves the built website itself:** `client/dist`, with `index.html` for any page
+  address. One process and one port, no Vite in production.
+- **`deploy/`:** a Caddyfile (HTTPS + `wss://`), the systemd service, the settings file
+  (`/etc/boilergames.env`), a nightly SQLite backup (14 days kept, with the key secret), and
+  `deploy/README.md`, the step-by-step guide from an empty AWS account to the site on a
+  phone on mobile data.
+
+**Risks:**
+- **Free-tier limits:** check what the free tier covers before launching, and how long. It has
+  changed over time; the EC2 launch screen marks eligible types.
+- **Backups stay on the same machine** unless downloaded; a lost instance loses them. Copying
+  them to S3 is a later step.
 
 ## Verification (how to confirm the plan worked once built)
 

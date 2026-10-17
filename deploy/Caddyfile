@@ -1,0 +1,7 @@
+# Caddy: the front door (plan M8). It gets and renews the HTTPS certificate by itself, and
+# passes everything, WebSockets included (/ws becomes wss://), to the Node server.
+# Replace play.example.com with your domain when installing it (see deploy/README.md, step 5).
+play.example.com {
+	encode zstd gzip
+	reverse_proxy localhost:3000
+}

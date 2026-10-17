@@ -1,0 +1,20 @@
+# systemd keeps the server running: it starts it at boot and restarts it if it crashes.
+# Installed as /etc/systemd/system/boilergames.service (see deploy/README.md).
+[Unit]
+Description=BoilerGames server
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+# The same user that owns the code. It's in the docker group, which AI generation needs.
+User=ubuntu
+WorkingDirectory=/home/ubuntu/boilergames/server
+EnvironmentFile=/etc/boilergames.env
+ExecStart=/usr/bin/node src/index.js
+Restart=always
+RestartSec=3
+# The server shuts down cleanly on SIGTERM (src/index.js); give it a moment.
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target
