@@ -3,8 +3,10 @@ import { defineConfig, devices } from '@playwright/test';
 // Browser tests start their OWN copy of the server and client on different ports
 // (3100 / 5174), so they never touch rooms on your dev servers (3000 / 5173),
 // and you can run them while developing.
-const SERVER_PORT = 3100;
-const CLIENT_PORT = 5174;
+// E2E_SERVER_PORT / E2E_CLIENT_PORT move them, so two copies of the tests (e.g. in two git
+// worktrees) can run at the same time.
+const SERVER_PORT = Number(process.env.E2E_SERVER_PORT ?? 3100);
+const CLIENT_PORT = Number(process.env.E2E_CLIENT_PORT ?? 5174);
 
 export default defineConfig({
   testDir: './tests',
