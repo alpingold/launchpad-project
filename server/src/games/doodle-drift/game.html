@@ -1,0 +1,787 @@
+<script type="application/json" id="game-info">
+  {
+    "name": "Doodle Drift",
+    "description": "Write a phrase, then pass the sketchbooks: draw what you read, guess what you see. At the end the big screen replays every book and you vote for the funniest page.",
+    "minPlayers": 4,
+    "maxPlayers": 8,
+    "tags": ["drawing", "words"],
+    "minutes": [6, 14]
+  }
+</script>
+<!--
+  DOODLE DRIFT: a drawing-telephone game (design: generator/spec/designs/doodle-drift.md).
+  One file, two roles:
+   - the big screen (role "host") is the referee. It keeps every sketchbook, runs the rounds
+     (write, then draw / guess in turn) with their timers, passes the books, simplifies every
+     drawing so they all fit in one party.save, then replays each book page by page and counts
+     the favourite votes. It shows nothing anyone made until the reveal.
+   - each phone (role "player") shows only its own state: the page it's working on (a phrase
+     to draw or a drawing to guess), and during the reveal the book to vote on.
+  Everything that matters lives in one plain-JSON object `g`, saved with party.save after
+  every change, so a big-screen reload carries on where it was (deadlines are server times).
+-->
+<style>
+  /* ---- The desk's palette (the same in light and dark: it's the scene) ---- */
+  :root {
+    --desk: #2442c9;
+    --desk2: #1b2f94;
+    --paper: #fffaf0;
+    --ink: #1d1b2e;
+    --pencil: #ffd23f;
+    --tape: rgba(255, 226, 120, 0.75);
+    --faint: #5c6a9e;
+  }
+  body.host, body.player {
+    --bg: #1b2f94; --surface: #fffaf0; --text: #fffaf0; --muted: #c4cff7; --border: #d8cfb8;
+    --accent: #ffd23f; --on-accent: #1d1b2e; --good: #7be3a4; --bad: #ff8a8a; --gold: #ffd23f;
+    background: var(--desk2); color: var(--text); color-scheme: dark;
+  }
+  [hidden] { display: none !important; }
+  body.host { overflow: hidden; }
+  :root[data-role='host'] { font-size: clamp(11px, min(1.55vw, 2.7vh), 34px); }
+
+  /* ---- Big screen ---- */
+  #desk { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
+  #host { position: fixed; inset: 0; display: grid; grid-template-rows: auto 1fr auto; padding: 1.6vh 2.4vw; box-sizing: border-box; }
+  .top { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+  .brand { font-weight: 900; font-size: 1.6rem; letter-spacing: -0.02em; color: var(--pencil); transform: rotate(-2deg); text-shadow: 0.12rem 0.12rem 0 var(--desk2); }
+  .step { font-weight: 800; font-size: 1.15rem; color: var(--muted); }
+  .stage { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1.4rem; min-height: 0; text-align: center; }
+  .headline { margin: 0; font-size: 3.4rem; font-weight: 900; letter-spacing: -0.02em; line-height: 1.05; }
+  .sub { margin: 0; font-size: 1.5rem; font-weight: 700; color: var(--muted); }
+  .bar { width: min(60rem, 80vw); height: 0.9rem; border-radius: 1rem; background: rgba(255, 255, 255, 0.15); overflow: hidden; }
+  .bar > i { display: block; height: 100%; width: 100%; background: var(--pencil); border-radius: 1rem; }
+  .secs { font: 900 1.6rem/1 var(--mono); color: var(--pencil); }
+
+  /* Notebooks: one per player, in their colour, with a spiral down the left. */
+  .shelf { display: flex; flex-wrap: wrap; justify-content: center; gap: 1.2rem; padding: 0.5rem 0; }
+  .nb { position: relative; width: 7.5rem; height: 9.5rem; border-radius: 0.4rem 0.9rem 0.9rem 0.4rem; background: var(--c); box-shadow: 0.35rem 0.45rem 0 rgba(0, 0, 0, 0.25); display: flex; flex-direction: column; align-items: center; justify-content: flex-end; padding-bottom: 0.8rem; box-sizing: border-box; transition: opacity 0.3s; }
+  .nb::before { content: ''; position: absolute; left: 0.35rem; top: 0.5rem; bottom: 0.5rem; width: 0.55rem; background: radial-gradient(circle, var(--desk2) 0.18rem, transparent 0.2rem) 0 0 / 0.55rem 1rem repeat-y; }
+  .nb .label { background: var(--paper); color: var(--ink); font-weight: 800; font-size: 1.05rem; padding: 0.25rem 0.5rem; border-radius: 0.3rem; max-width: 6rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .nb.away { opacity: 0.4; }
+  .nb .status { position: absolute; top: 1.2rem; left: 50%; transform: translateX(-50%); }
+  .pencil { width: 0.9rem; height: 3.6rem; background: linear-gradient(var(--pencil) 0 78%, #f2c79b 78% 92%, var(--ink) 92%); clip-path: polygon(0 0, 100% 0, 100% 78%, 50% 100%, 0 78%); transform-origin: 50% 100%; animation: wiggle 0.5s ease-in-out infinite alternate; }
+  @keyframes wiggle { from { transform: rotate(-14deg); } to { transform: rotate(14deg) translateY(-0.2rem); } }
+  .check { width: 3.2rem; height: 3.2rem; border-radius: 50%; background: var(--pencil); color: var(--ink); display: grid; place-items: center; font-size: 2rem; font-weight: 900; animation: pop 0.35s cubic-bezier(0.3, 1.6, 0.5, 1); }
+  @keyframes pop { from { transform: scale(0.2); } }
+  .shelf.passing .nb { animation: slide 0.9s 0.3s cubic-bezier(0.5, 0, 0.3, 1) both; }
+  @keyframes slide { 50% { transform: translateY(-1.5rem) rotate(6deg); } to { transform: translateX(calc(100% + 1.2rem)); opacity: 0.2; } }
+
+  /* Paper cards for the reveal. */
+  .pages { display: flex; align-items: center; justify-content: center; gap: 2rem; width: 100%; }
+  .card { position: relative; background: var(--paper); color: var(--ink); border-radius: 0.5rem; padding: 1rem 1.2rem 1.3rem; box-shadow: 0.4rem 0.6rem 0 rgba(0, 0, 0, 0.28); text-align: left; transform: rotate(var(--tilt, -1deg)); }
+  .card::before { content: ''; position: absolute; top: -0.7rem; left: 50%; width: 5.5rem; height: 1.4rem; margin-left: -2.75rem; background: var(--tape); transform: rotate(-3deg); }
+  .card .who { font-weight: 800; font-size: 1.05rem; color: var(--faint); margin-bottom: 0.4rem; display: flex; align-items: center; gap: 0.45rem; }
+  .card .who i { width: 0.9rem; height: 0.9rem; border-radius: 50%; display: inline-block; }
+  .card .words { font-size: 2.6rem; font-weight: 900; line-height: 1.12; overflow-wrap: anywhere; }
+  .card .words.none { color: var(--faint); font-style: italic; font-size: 1.8rem; }
+  .card.big { width: min(40rem, 46vw, 62vh); }
+  .card.small { width: min(24rem, 28vw, 40vh); opacity: 0.85; --tilt: 1.5deg; }
+  .card.small .words { font-size: 1.7rem; }
+  .card.new { animation: drop 0.45s cubic-bezier(0.3, 1.4, 0.5, 1); }
+  @keyframes drop { from { transform: translateY(-2rem) rotate(-6deg) scale(0.9); opacity: 0; } }
+  .card .pu-paper { border: 2px solid #e8e0cc; border-radius: 0.3rem; }
+  .card .blankpic { aspect-ratio: 4 / 3; border: 2px dashed #d8cfb8; border-radius: 0.3rem; display: grid; place-items: center; color: var(--faint); font-style: italic; font-size: 1.6rem; font-weight: 700; }
+  .arrow { flex: none; width: 4rem; height: 2.4rem; background: var(--pencil); clip-path: polygon(0 30%, 60% 30%, 60% 0, 100% 50%, 60% 100%, 60% 70%, 0 70%); }
+  .dots { display: flex; gap: 0.6rem; justify-content: center; }
+  .dots i { width: 1rem; height: 1rem; border-radius: 50%; background: rgba(255, 255, 255, 0.25); }
+  .dots i.on { background: var(--pencil); }
+  .owner { display: inline-flex; align-items: center; gap: 0.8rem; }
+  .owner .mini { width: 2.6rem; height: 3.3rem; border-radius: 0.2rem 0.4rem 0.4rem 0.2rem; background: var(--c); box-shadow: 0.2rem 0.25rem 0 rgba(0, 0, 0, 0.25); }
+  .vs { display: grid; grid-template-columns: 1fr 1fr; gap: 3rem; width: min(80rem, 92vw); align-items: start; }
+  .vs .tag { font-size: 1.4rem; font-weight: 900; color: var(--pencil); margin-bottom: 0.9rem; }
+  .vs .card { width: auto; max-width: 62vh; margin: 0 auto; }
+
+  /* Final */
+  .final { display: grid; grid-template-columns: 1fr 1fr; gap: 3rem; width: min(80rem, 92vw); align-items: center; }
+  .board { display: flex; flex-direction: column; gap: 0.7rem; }
+  .row-score { display: grid; grid-template-columns: 2.2rem 9rem 1fr 2.5rem; align-items: center; gap: 0.7rem; font-size: 1.5rem; font-weight: 800; text-align: left; }
+  .row-score .fill { height: 1.6rem; border-radius: 0.4rem; background: var(--c); min-width: 0.4rem; box-shadow: 0.2rem 0.25rem 0 rgba(0, 0, 0, 0.25); transform-origin: left; animation: grow 0.9s cubic-bezier(0.3, 1.2, 0.5, 1) both; }
+  @keyframes grow { from { transform: scaleX(0); } }
+  .row-score .place { color: var(--pencil); }
+
+  .foot { display: flex; justify-content: center; align-items: center; gap: 1.2rem; min-height: 2rem; }
+
+  /* ---- Phone ---- */
+  .ph { gap: 0.8rem; }
+  .me { display: flex; align-items: center; gap: 0.6rem; font-weight: 800; font-size: 1.15rem; }
+  .me .dot { width: 1.3rem; height: 1.3rem; border-radius: 50%; border: 2px solid var(--paper); }
+  .me .what { margin-left: auto; color: var(--muted); font-size: 0.95rem; font-weight: 700; }
+  .ph .card { transform: none; box-shadow: 0.25rem 0.35rem 0 rgba(0, 0, 0, 0.25); padding: 0.8rem 0.9rem 0.9rem; }
+  .ph .card::before { width: 4rem; margin-left: -2rem; height: 1rem; top: -0.5rem; }
+  .ph .card .words { font-size: 1.6rem; }
+  .ph .card .who { font-size: 0.9rem; }
+  .say { margin: 0; font-size: 1.35rem; font-weight: 800; line-height: 1.25; }
+  .hint { margin: 0; color: var(--muted); font-weight: 600; }
+  .ideas { display: flex; flex-direction: column; gap: 0.5rem; }
+  .ideas button { background: rgba(255, 255, 255, 0.12); color: var(--text); border: 2px dashed rgba(255, 255, 255, 0.4); min-height: 3rem; font-weight: 700; text-align: left; padding: 0.5rem 0.8rem; }
+  .faves { display: grid; gap: 0.7rem; }
+  .faves button { all: unset; display: block; cursor: pointer; border-radius: 0.6rem; outline-offset: 3px; }
+  .faves button:focus-visible { outline: 3px solid var(--pencil); }
+  .faves button[aria-pressed='true'] .card { box-shadow: 0 0 0 0.3rem var(--pencil); }
+  .faves button[disabled] { opacity: 0.45; cursor: default; }
+  .faves .card .words { font-size: 1.25rem; }
+  .ph .pu-paper { border-color: #e8e0cc; }
+  .ph button.secondary { color: var(--ink); background: var(--paper); border: 2px solid var(--border); }
+  .ph .card.sent { text-align: center; padding: 1.6rem 1rem; transform: rotate(-1.5deg); }
+  .ph .card.sent .words { font-size: 2.2rem; }
+  .bigline { font-size: 2.2rem; font-weight: 900; margin: 0; }
+</style>
+
+<canvas id="desk" hidden></canvas>
+<div id="host" hidden></div>
+<div class="screen ph" id="phone" hidden></div>
+
+<script>
+  'use strict';
+
+  // ---- Shared ---------------------------------------------------------------------------
+  const COLORS = ['#ff5a5f', '#ffb400', '#3ec300', '#00c2d1', '#b06cff', '#ff7eb6', '#ff8c42', '#e8f05a'];
+  const WRITE_MS = 45000, DRAW_MS = 75000, GUESS_MS = 40000, PASS_MS = 2500;
+  const TEXT_PAGE_MS = 5000, DRAW_PAGE_MS = 7000, FAVE_MS = 15000, FAVE_MIN_MS = 5000, FINAL_MS = 12000;
+  const TEXT_MAX = 60;
+  const DRAW_BUDGET = 2800; // bytes of JSON per drawing, so 24 drawings fit in one party.save
+  const INK_COLORS = ['black', 'red', 'blue', 'green', 'orange', 'brown'];
+  /** Pages after the phrase: always even, so every book ends on a guess. */
+  const pagesFor = (n) => (n >= 6 ? 6 : 4);
+  const kindOf = (round) => (round === 0 ? 'write' : round % 2 === 1 ? 'draw' : 'guess');
+
+  // For a blank mind: a few starting phrases (tapping one sends it). Family-friendly.
+  const IDEAS = [
+    'a cat on a skateboard', 'a dragon at the dentist', 'a snowman on vacation', "the world's tallest sandwich",
+    'a penguin in a hot tub', 'a robot walking a dog', 'a pirate who is afraid of water', 'breakfast in space',
+    'a haunted vending machine', 'a giraffe in a tiny car', 'a superhero doing laundry', 'a shark at a birthday party',
+    'an octopus playing drums', 'grandma on a rollercoaster', 'a volcano making pancakes', 'a ghost learning to ride a bike',
+    'a cactus giving a hug', 'a wizard stuck in traffic', 'the moon eating cheese', 'a dog running for president',
+    'a snail winning a race', 'a banana in a bathtub', 'a knight fighting a goose', 'an alien at the grocery store',
+    'a hamster lifting weights', 'a cloud that rains spaghetti', 'a cow on a trampoline', 'a mermaid at the gym',
+    'a bear opening presents', 'a ninja baking cookies', 'a T. rex trying to clap', 'a frog wearing a crown',
+    'a lighthouse at a disco', 'a sloth in a hurry', 'a castle made of ice cream', 'a tiny elephant in a teacup',
+    'a squirrel stealing a pizza', 'a bee with a briefcase', 'a pumpkin learning to swim', 'a chicken on a skateboard',
+  ];
+
+  /** Sets the CSS colour variable --c on an element (el's style object can't set custom properties). */
+  function tint(node, color) {
+    node.style.setProperty('--c', color);
+    return node;
+  }
+
+  function shuffle(list) {
+    const a = [...list];
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  /** A paper card for one page: who made it, then the words or the drawing. */
+  function pageCard(page, { name, color, label, size = '', fresh = false }) {
+    const { el, drawing } = party.ui;
+    const card = el('div', { class: `card ${size}${fresh ? ' new' : ''}` });
+    card.append(el('div', { class: 'who' }, el('i', { style: { background: color } }), label ?? name));
+    if (page.kind === 'draw') {
+      if (page.blank) card.append(el('div', { class: 'blankpic' }, 'nothing drawn'));
+      else {
+        const pic = el('div');
+        card.append(pic);
+        drawing(pic, page.strokes, { label: `${name}'s drawing` });
+      }
+    } else if (page.blank) card.append(el('div', { class: 'words none' }, 'no guess'));
+    else card.append(el('div', { class: 'words' }, page.text));
+    return card;
+  }
+
+  party.ready(({ role, me, restored }) => {
+    document.body.className = role;
+    if (role === 'host') bigScreen(restored);
+    else phone(me);
+  });
+
+  // ---- The big screen: the referee and the desk -----------------------------------------
+  function bigScreen(restored) {
+    const { el, sound } = party.ui;
+    const ids = party.players.map((p) => p.id);
+    const n = ids.length;
+    const R = pagesFor(n);
+    const nameOf = (id) => party.players.find((p) => p.id === id)?.name ?? '?';
+    const colorOf = (id) => COLORS[Math.max(0, ids.indexOf(id)) % COLORS.length];
+    const connected = (id) => party.players.find((p) => p.id === id)?.connected !== false;
+
+    /** The whole game, as plain JSON (party.save). */
+    let g = restored && restored.v === 1 && Array.isArray(restored.books) ? restored : newGame();
+    let ended = false;
+
+    function newGame() {
+      const now = party.now();
+      const ideas = shuffle(IDEAS);
+      return {
+        v: 1,
+        phase: 'write', // write | draw | guess | pass | reveal | fave | final | over
+        round: 0,
+        at: now,
+        endsAt: now + WRITE_MS,
+        books: ids.map((id) => ({ owner: id, pages: [] })), // book b belongs to the player in seat b
+        ideas: Object.fromEntries(ids.map((id, i) => [id, ideas.slice(i * 3, i * 3 + 3)])),
+        draft: {}, // id → what they sent this round (text, or simplified strokes)
+        done: {}, // id → true once they finished this round
+        book: 0, // reveal: which book
+        page: 0, // reveal: which shown page of it
+        votes: {}, // fave: voter id → page index in the book
+        points: Object.fromEntries(ids.map((id) => [id, 0])),
+        best: null, // { b, p, votes }: the most-voted page so far
+      };
+    }
+
+    // Round r: the player in seat i holds the book of seat (i - r) mod n.
+    const bookOf = (id, r = g.round) => ((ids.indexOf(id) - r) % n + n) % n;
+    /** The latest phrase in a book: what a drawer draws (skipped and blank guesses don't count). */
+    const lastText = (book) => [...book.pages].reverse().find((p) => p.kind === 'text' && !p.skip && !p.blank).text;
+    /** In a guess round: is the drawing this player got blank? Then they skip. */
+    const skips = (id) => g.phase === 'guess' && g.books[bookOf(id)].pages[g.round - 1].blank;
+
+    function enter(phase, ms, now = party.now()) {
+      g.phase = phase;
+      g.at = now;
+      g.endsAt = now + ms;
+      changed();
+      cue();
+    }
+
+    function startRound(r, now = party.now()) {
+      g.round = r;
+      g.draft = {};
+      g.done = {};
+      const kind = kindOf(r);
+      g.phase = kind; // so skips() sees the new round
+      for (const id of ids) if (kind === 'guess' && skips(id)) g.done[id] = true;
+      enter(kind, kind === 'draw' ? DRAW_MS : GUESS_MS, now);
+      checkEarly();
+    }
+
+    /** The round is over: every book gets this round's page, then pass or reveal. */
+    function endRound(now = party.now()) {
+      const kind = kindOf(g.round);
+      for (const id of ids) {
+        const book = g.books[bookOf(id)];
+        const d = g.draft[id];
+        if (kind === 'write') {
+          const auto = typeof d !== 'string';
+          book.pages.push({ by: id, kind: 'text', text: auto ? g.ideas[id][0] : d, auto });
+        } else if (kind === 'draw') {
+          book.pages.push({ by: id, kind: 'draw', strokes: Array.isArray(d) ? d : [], blank: !Array.isArray(d) || d.length === 0 });
+        } else if (book.pages[g.round - 1].blank) {
+          book.pages.push({ by: id, kind: 'text', skip: true });
+        } else {
+          book.pages.push(typeof d === 'string' ? { by: id, kind: 'text', text: d } : { by: id, kind: 'text', blank: true });
+        }
+      }
+      g.draft = {};
+      g.done = {};
+      if (g.round < R) enter('pass', PASS_MS, now);
+      else {
+        g.book = 0;
+        g.page = 0;
+        enter('reveal', pageMs(), now);
+      }
+    }
+
+    // -- The reveal --
+    const shownPages = (b = g.book) => g.books[b].pages.map((p, i) => i).filter((i) => !g.books[b].pages[i].skip);
+    const pageMs = () => (g.books[g.book].pages[shownPages()[g.page]].kind === 'draw' ? DRAW_PAGE_MS : TEXT_PAGE_MS);
+    const votable = (id, b = g.book) => shownPages(b).filter((i) => { const p = g.books[b].pages[i]; return p.by !== id && !p.blank; });
+    const voters = () => ids.filter((id) => connected(id) && votable(id).length > 0);
+
+    function nextPage(now = party.now()) {
+      if (g.page + 1 < shownPages().length) {
+        g.page += 1;
+        enter('reveal', pageMs(), now);
+      } else {
+        g.votes = {};
+        enter('fave', FAVE_MS, now);
+      }
+    }
+
+    function endFave(now = party.now()) {
+      const count = {};
+      for (const p of Object.values(g.votes)) count[p] = (count[p] ?? 0) + 1;
+      for (const [p, c] of Object.entries(count)) {
+        g.points[g.books[g.book].pages[p].by] += c;
+        if (!g.best || c > g.best.votes) g.best = { b: g.book, p: Number(p), votes: c };
+      }
+      if (Object.keys(count).length) sound('coin');
+      g.votes = {};
+      if (g.book + 1 < n) {
+        g.book += 1;
+        g.page = 0;
+        enter('reveal', pageMs(), now);
+      } else enter('final', FINAL_MS, now);
+    }
+
+    const ranking = () => [...ids].sort((a, b) => g.points[b] - g.points[a] || ids.indexOf(a) - ids.indexOf(b));
+
+    function timeUp(now) {
+      switch (g.phase) {
+        case 'write': case 'draw': case 'guess': return endRound(now);
+        case 'pass': return startRound(g.round + 1, now);
+        case 'reveal': return nextPage(now);
+        case 'fave': return endFave(now);
+        case 'final':
+          if (ended) return;
+          ended = true;
+          g.phase = 'over';
+          party.save(g);
+          party.end({ rankings: ranking(), scores: { ...g.points } });
+      }
+    }
+
+    // Early ends: everyone connected is done (rounds); everyone who can vote voted (favourites).
+    function checkEarly() {
+      const now = party.now();
+      const here = ids.filter(connected);
+      if (['write', 'draw', 'guess'].includes(g.phase) && here.length > 0 && here.every((id) => g.done[id])) endRound(now);
+      else if (g.phase === 'fave' && now - g.at >= FAVE_MIN_MS) {
+        const v = voters();
+        if (v.length > 0 && v.every((id) => id in g.votes)) endFave(now);
+      }
+    }
+
+    // -- What phones send: every event is checked. --
+    party.on('event', (from, data) => {
+      if (!ids.includes(from) || !data || typeof data !== 'object' || ended) return;
+      const now = party.now();
+      const kind = g.phase;
+      if (typeof data.text === 'string' && (kind === 'write' || kind === 'guess') && !g.done[from]) {
+        const text = data.text.replace(/\s+/g, ' ').trim().slice(0, TEXT_MAX);
+        if (!text) return;
+        g.draft[from] = text;
+        g.done[from] = true;
+        sound('pop');
+        changed();
+        return checkEarly();
+      }
+      if ('draw' in data && kind === 'draw' && !g.done[from]) {
+        const strokes = simplify(data.draw);
+        if (!strokes) return;
+        g.draft[from] = strokes;
+        if (data.done === true) {
+          g.done[from] = true;
+          sound('pop');
+        }
+        changed();
+        return checkEarly();
+      }
+      if (data.next === true && kind === 'reveal' && from === g.books[g.book].owner && now - g.at >= 1200) return nextPage(now);
+      if (Number.isInteger(data.fave) && kind === 'fave' && !(from in g.votes) && votable(from).includes(data.fave)) {
+        g.votes[from] = data.fave;
+        sound('tap');
+        changed();
+        return checkEarly();
+      }
+    });
+
+    party.on('players', () => {
+      changed();
+      checkEarly();
+    });
+
+    // -- Drawings: checked, then simplified until they fit DRAW_BUDGET. --
+    function simplify(a) {
+      if (!Array.isArray(a) || a.length > 400) return null;
+      const clean = [];
+      for (const s of a) {
+        if (!Array.isArray(s) || !INK_COLORS.includes(s[0]) || !Array.isArray(s[1]) || s[1].length < 2 || s[1].length > 4000) return null;
+        if (!s[1].every((v) => Number.isFinite(v))) return null;
+        const pts = s[1].slice(0, s[1].length - (s[1].length % 2)).map((v) => Math.max(0, Math.min(1000, Math.round(v))));
+        clean.push([s[0], pts]);
+      }
+      for (const eps of [0, 2, 4, 7, 11, 16, 24, 35, 50]) {
+        const out = eps ? clean.map(([c, pts]) => [c, rdp(pts, eps)]) : clean;
+        if (JSON.stringify(out).length <= DRAW_BUDGET) return out;
+      }
+      // Still too big (a huge scribble): keep the earliest strokes that fit.
+      const out = clean.map(([c, pts]) => [c, rdp(pts, 50)]);
+      while (out.length && JSON.stringify(out).length > DRAW_BUDGET) out.pop();
+      return out;
+    }
+    /** Ramer–Douglas–Peucker on a flat [x, y, x, y, ...] list: drops points within eps of the line. */
+    function rdp(pts, eps) {
+      const count = pts.length / 2;
+      if (count <= 2) return pts;
+      const keep = new Uint8Array(count);
+      keep[0] = keep[count - 1] = 1;
+      const stack = [[0, count - 1]];
+      while (stack.length) {
+        const [a, b] = stack.pop();
+        const ax = pts[a * 2], ay = pts[a * 2 + 1], bx = pts[b * 2], by = pts[b * 2 + 1];
+        const len = Math.hypot(bx - ax, by - ay) || 1;
+        let far = -1, farD = eps;
+        for (let i = a + 1; i < b; i++) {
+          const d = Math.abs((bx - ax) * (ay - pts[i * 2 + 1]) - (ax - pts[i * 2]) * (by - ay)) / len;
+          if (d > farD) { far = i; farD = d; }
+        }
+        if (far > 0) {
+          keep[far] = 1;
+          stack.push([a, far], [far, b]);
+        }
+      }
+      const out = [];
+      for (let i = 0; i < count; i++) if (keep[i]) out.push(pts[i * 2], pts[i * 2 + 1]);
+      return out;
+    }
+
+    // -- Every phone: only its own state. --
+    function phoneState(id) {
+      const s = { phase: g.phase, endsAt: g.endsAt, round: g.round, rounds: R + 1, color: colorOf(id) };
+      if (['write', 'draw', 'guess'].includes(g.phase)) {
+        s.done = Boolean(g.done[id]);
+        const book = g.books[bookOf(id)];
+        if (g.phase === 'write') s.ideas = g.ideas[id];
+        else if (g.phase === 'draw') s.prompt = lastText(book);
+        else if (skips(id)) s.skip = true;
+        else s.strokes = book.pages[g.round - 1].strokes;
+      }
+      if (g.phase === 'reveal' || g.phase === 'fave') {
+        const owner = g.books[g.book].owner;
+        s.owner = nameOf(owner);
+        s.isOwner = owner === id;
+        s.page = g.page + 1;
+        s.pages = shownPages().length;
+      }
+      if (g.phase === 'fave') {
+        const book = g.books[g.book];
+        s.faves = shownPages().filter((i) => !book.pages[i].blank).map((i) => {
+          const p = book.pages[i];
+          return { i, name: nameOf(p.by), color: colorOf(p.by), mine: p.by === id, kind: p.kind, text: p.text, strokes: p.strokes };
+        });
+        if (id in g.votes) s.voted = g.votes[id];
+        s.canVote = votable(id).length > 0;
+      }
+      if (g.phase === 'final' || g.phase === 'over') {
+        s.points = g.points[id];
+        s.place = ranking().findIndex((x) => g.points[x] === g.points[id]) + 1;
+        s.players = n;
+      }
+      return s;
+    }
+
+    // The big screen redraws only when something it shows changed.
+    let shownKey = '';
+    const publicKey = () => JSON.stringify([g.phase, g.at, g.round, g.book, g.page, Object.keys(g.done).sort(), Object.keys(g.votes).length, party.players.map((p) => p.connected)]);
+    function changed() {
+      for (const id of ids) party.setState(id, phoneState(id));
+      party.save(g);
+      const key = publicKey();
+      if (key !== shownKey) {
+        shownKey = key;
+        render();
+      }
+    }
+
+    // -- Sounds: the room's moments. --
+    let lastCue = '';
+    function cue() {
+      const key = `${g.phase}-${g.at}`;
+      if (key === lastCue) return;
+      lastCue = key;
+      if (['write', 'draw', 'guess'].includes(g.phase)) sound('go');
+      else if (g.phase === 'pass') sound({ notes: [520, 780], ms: 110, type: 'triangle' });
+      else if (g.phase === 'reveal') sound('blip');
+      else if (g.phase === 'final') sound('win');
+    }
+
+    // -- Drawing the big screen --
+    const root = document.getElementById('host');
+    root.hidden = false;
+    let stage = null;
+    let barFill = null;
+    let secsEl = null;
+
+    function notebooks(passing = false) {
+      return el('div', { class: `shelf${passing ? ' passing' : ''}` }, ids.map((id) => {
+        const working = ['write', 'draw', 'guess'].includes(g.phase);
+        const status = !working ? null : g.done[id] ? el('div', { class: 'check', 'aria-label': 'done' }, '✓') : connected(id) ? el('div', { class: 'pencil', style: { animationDelay: `${(ids.indexOf(id) % 4) * -0.13}s` } }) : null;
+        return tint(el('div', { class: `nb${connected(id) ? '' : ' away'}` },
+          status && el('div', { class: 'status' }, status),
+          el('div', { class: 'label' }, nameOf(id) + (connected(id) ? '' : ' (away)'))), colorOf(id));
+      }));
+    }
+
+    function timerBar() {
+      barFill = el('i');
+      secsEl = el('span', { class: 'secs' });
+      return el('div', { class: 'foot' }, el('div', { class: 'bar' }, barFill), secsEl);
+    }
+
+    const ROUND_TEXT = {
+      write: ['Write a phrase!', 'Something funny for someone else to draw. Check your phone.'],
+      draw: ['Draw!', 'Draw the phrase on your phone. No words or letters!'],
+      guess: ['Guess!', 'What is the drawing on your phone?'],
+    };
+
+    function render() {
+      const step = g.phase === 'final' || g.phase === 'over' ? 'The end' : ['reveal', 'fave'].includes(g.phase) ? `Book ${g.book + 1} of ${n}` : `Page ${g.round + 1} of ${R + 1}`;
+      const top = el('div', { class: 'top' }, el('div', { class: 'brand' }, 'Doodle Drift'), el('div', { class: 'step' }, step));
+      stage = el('div', { class: 'stage' });
+      barFill = null;
+      secsEl = null;
+      let foot = el('div', { class: 'foot' });
+      const p = g.phase;
+
+      if (p === 'write' || p === 'draw' || p === 'guess') {
+        const [head, sub] = ROUND_TEXT[p];
+        const doneCount = ids.filter((id) => g.done[id]).length;
+        stage.append(el('h1', { class: 'headline' }, head), el('p', { class: 'sub' }, sub), notebooks(), el('p', { class: 'sub' }, `${doneCount} of ${n} done`));
+        foot = timerBar();
+      } else if (p === 'pass') {
+        stage.append(el('h1', { class: 'headline' }, 'Pass the books!'), notebooks(true), el('p', { class: 'sub' }, g.round + 1 === R ? 'Last page coming up.' : `Next: ${kindOf(g.round + 1) === 'draw' ? 'draw' : 'guess'}.`));
+      } else if (p === 'reveal') {
+        const book = g.books[g.book];
+        const shown = shownPages();
+        const owner = book.owner;
+        stage.append(el('h1', { class: 'headline owner' }, tint(el('span', { class: 'mini' }), colorOf(owner)), `${nameOf(owner)}'s book`));
+        const cur = book.pages[shown[g.page]];
+        const label = (pg, i) => `${nameOf(pg.by)} ${i === 0 ? 'wrote' : pg.kind === 'draw' ? 'drew' : 'guessed'}:`;
+        const row = el('div', { class: 'pages' });
+        if (g.page > 0) {
+          const prev = book.pages[shown[g.page - 1]];
+          row.append(pageCard(prev, { name: nameOf(prev.by), color: colorOf(prev.by), label: label(prev, g.page - 1), size: 'small' }), el('div', { class: 'arrow', 'aria-hidden': 'true' }));
+        }
+        row.append(pageCard(cur, { name: nameOf(cur.by), color: colorOf(cur.by), label: label(cur, g.page), size: 'big', fresh: true }));
+        stage.append(row, el('div', { class: 'dots', 'aria-label': `Page ${g.page + 1} of ${shown.length}` }, shown.map((_, i) => el('i', { class: i <= g.page ? 'on' : '' }))));
+        foot = el('div', { class: 'foot' }, el('p', { class: 'sub' }, `${nameOf(owner)} can tap Next on their phone.`));
+      } else if (p === 'fave') {
+        const book = g.books[g.book];
+        const shown = shownPages();
+        const first = book.pages[shown[0]];
+        const last = book.pages[shown[shown.length - 1]];
+        stage.append(
+          el('h1', { class: 'headline owner' }, tint(el('span', { class: 'mini' }), colorOf(book.owner)), `${nameOf(book.owner)}'s book`),
+          el('div', { class: 'vs' },
+            el('div', {}, el('div', { class: 'tag' }, 'Started as'), pageCard(first, { name: nameOf(first.by), color: colorOf(first.by), label: `${nameOf(first.by)} wrote:` })),
+            el('div', {}, el('div', { class: 'tag' }, 'Ended as'), pageCard(last, { name: nameOf(last.by), color: colorOf(last.by), label: `${nameOf(last.by)} ${last.kind === 'draw' ? 'drew' : 'guessed'}:`, fresh: true }))),
+          el('p', { class: 'sub' }, `Vote for your favourite page on your phone. ${Object.keys(g.votes).length} of ${voters().length} voted.`));
+        foot = timerBar();
+      } else {
+        const order = ranking();
+        const top1 = Math.max(1, ...ids.map((id) => g.points[id]));
+        const board = el('div', { class: 'board' }, order.map((id, i) => tint(el('div', { class: 'row-score' },
+          el('span', { class: 'place' }, String(order.findIndex((x) => g.points[x] === g.points[id]) + 1)),
+          el('span', {}, nameOf(id)),
+          el('div', { class: 'fill', style: { width: `${(g.points[id] / top1) * 100}%`, animationDelay: `${i * 0.12}s` } }),
+          el('span', {}, String(g.points[id]))), colorOf(id))));
+        const right = el('div');
+        if (g.best) {
+          const pg = g.books[g.best.b].pages[g.best.p];
+          right.append(el('div', { class: 'tag sub', style: { color: 'var(--pencil)', fontWeight: 900, marginBottom: '0.9rem' } }, `Page of the game (${g.best.votes} ${g.best.votes === 1 ? 'vote' : 'votes'})`),
+            pageCard(pg, { name: nameOf(pg.by), color: colorOf(pg.by), label: `${nameOf(pg.by)} ${pg.kind === 'draw' ? 'drew' : 'wrote'}:`, fresh: true }));
+        } else right.append(el('p', { class: 'sub' }, 'No favourites this time. Thanks for drawing!'));
+        stage.append(el('h1', { class: 'headline' }, 'Crowd favourites'), el('div', { class: 'final' }, board, right));
+      }
+      root.replaceChildren(top, stage, foot);
+    }
+
+    // -- Every frame: the timer bar, and the desk behind. --
+    let lastSecond = -1;
+    function frame(now = party.now()) {
+      if (barFill) {
+        const total = Math.max(1, g.endsAt - g.at);
+        const left = Math.max(0, g.endsAt - now);
+        barFill.style.width = `${(left / total) * 100}%`;
+        const sec = Math.ceil(left / 1000);
+        if (secsEl) secsEl.textContent = String(sec);
+        if (['write', 'draw', 'guess'].includes(g.phase) && sec <= 5 && sec > 0 && sec !== lastSecond) sound('tick');
+        lastSecond = sec;
+      }
+    }
+
+    const desk = document.getElementById('desk');
+    desk.hidden = false;
+    const ctx = desk.getContext('2d');
+    // Faint doodles drifting across the desk: loops, stars and squiggles.
+    const doodles = Array.from({ length: 16 }, (_, i) => ({ kind: i % 3, x: Math.random(), y: Math.random(), s: 0.5 + Math.random(), v: 0.004 + Math.random() * 0.006, r: Math.random() * 6 }));
+    function drawDesk(t) {
+      const dpr = window.devicePixelRatio || 1;
+      const w = desk.clientWidth, h = desk.clientHeight;
+      if (desk.width !== Math.round(w * dpr) || desk.height !== Math.round(h * dpr)) {
+        desk.width = Math.round(w * dpr);
+        desk.height = Math.round(h * dpr);
+      }
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const grad = ctx.createLinearGradient(0, 0, w, h);
+      grad.addColorStop(0, '#2442c9');
+      grad.addColorStop(1, '#1b2f94');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, w, h);
+      ctx.strokeStyle = 'rgba(160, 185, 255, 0.16)';
+      ctx.lineWidth = Math.max(2, h * 0.005);
+      ctx.lineCap = 'round';
+      const u = Math.min(w, h) * 0.06;
+      for (const d of doodles) {
+        const x = (((d.x + (t / 1000) * d.v) % 1.1) - 0.05) * w;
+        const y = d.y * h + Math.sin(t / 3000 + d.r) * u * 0.3;
+        const s = u * d.s;
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(d.r + t / 9000);
+        ctx.beginPath();
+        if (d.kind === 0) {
+          for (let a = 0; a <= Math.PI * 6; a += 0.2) ctx.lineTo(Math.cos(a) * s * 0.4 + a * s * 0.08, Math.sin(a) * s * 0.4);
+        } else if (d.kind === 1) {
+          for (let k = 0; k <= 10; k++) {
+            const rr = k % 2 ? s * 0.25 : s * 0.6;
+            const a = (k / 10) * Math.PI * 2;
+            ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
+          }
+        } else {
+          for (let k = 0; k <= 24; k++) ctx.lineTo(-s + (k / 24) * s * 2, Math.sin(k * 0.9) * s * 0.25);
+        }
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+    function loop(t) {
+      drawDesk(t);
+      frame();
+      requestAnimationFrame(loop);
+    }
+    requestAnimationFrame(loop);
+
+    // -- The referee's heartbeat: deadlines, and the favourites' early end. --
+    setInterval(() => {
+      if (ended || g.phase === 'over') return;
+      const now = party.now();
+      if (now >= g.endsAt) timeUp(now);
+      else if (g.phase === 'fave') checkEarly();
+    }, 250);
+
+    if (g.phase === 'over') {
+      // Reloaded after the end: show the end again and finish.
+      g.phase = 'final';
+      g.endsAt = party.now() + 3000;
+    }
+    changed();
+    cue();
+  }
+
+  // ---- A phone: your page, then your votes ------------------------------------------------
+  function phone(me) {
+    const { el, textInput, timer, drawPad, drawing, sound } = party.ui;
+    const root = document.getElementById('phone');
+    root.hidden = false;
+    let s = null;
+    let mainKey = '';
+    const myName = party.players.find((p) => p.id === me)?.name ?? 'You';
+
+    const dot = el('span', { class: 'dot' });
+    const what = el('span', { class: 'what' });
+    const head = el('div', { class: 'me' }, dot, el('span', {}, myName), what);
+    const main = el('div', { class: 'stack' });
+    root.append(head, main);
+    main.append(el('p', { class: 'say' }, 'Waiting for the big screen…'));
+
+    party.on('state', (state) => {
+      s = state;
+      draw();
+    });
+
+    const timerBox = () => {
+      const box = el('div');
+      timer(box, { endsAt: s.endsAt });
+      return box;
+    };
+    const say = (text) => el('p', { class: 'say' }, text);
+    const paper = (label, text) => el('div', { class: 'card' }, el('div', { class: 'who' }, label), el('div', { class: 'words' }, text));
+
+    function view() {
+      const p = s.phase;
+      if ((p === 'write' || p === 'draw' || p === 'guess') && s.done) {
+        return [`done-${p}-${s.round}`, () => [
+          el('div', { class: 'card sent' }, el('div', { class: 'words' }, s.skip ? 'Nothing to guess this time' : 'Sent!')),
+          say(s.skip ? 'The drawing you got was blank. Take a breather!' : 'Waiting for the others. The big screen shows who is still going.'),
+          el('div', { class: 'grow' }), timerBox()]];
+      }
+      if (p === 'write') {
+        return [`write-${s.round}`, () => {
+          const box = el('div');
+          const send = (text) => {
+            sound('tap');
+            party.send({ text });
+          };
+          textInput(box, { placeholder: 'e.g. a cat on a skateboard', label: 'Your phrase', maxLength: 60, onSubmit: send });
+          return [say('Write something for someone else to draw.'), box,
+            el('p', { class: 'hint' }, 'Stuck? Tap one:'),
+            el('div', { class: 'ideas' }, s.ideas.map((idea) => el('button', { type: 'button', onClick: () => send(idea) }, idea))),
+            el('div', { class: 'grow' }), timerBox()];
+        }];
+      }
+      if (p === 'draw') {
+        return [`draw-${s.round}`, () => {
+          const box = el('div', { class: 'stack' });
+          let strokes = [];
+          drawPad(box, { colors: ['black', 'red', 'blue', 'green', 'orange', 'brown'], onChange: (st) => { strokes = st; party.send({ draw: st }); } });
+          return [paper('Draw this:', s.prompt), box,
+            el('button', { class: 'big', type: 'button', onClick: () => { sound('tap'); party.send({ draw: strokes, done: true }); } }, "I'm done"),
+            timerBox()];
+        }];
+      }
+      if (p === 'guess') {
+        return [`guess-${s.round}`, () => {
+          const pic = el('div', { class: 'card' }, el('div', { class: 'who' }, 'What is this?'));
+          const holder = el('div');
+          pic.append(holder);
+          drawing(holder, s.strokes, { label: 'The drawing to guess' });
+          const box = el('div');
+          textInput(box, { placeholder: 'Your guess', label: 'Your guess', maxLength: 60, onSubmit: (text) => { sound('tap'); party.send({ text }); } });
+          return [pic, box, el('div', { class: 'grow' }), timerBox()];
+        }];
+      }
+      if (p === 'pass') return ['pass', () => [say('Passing the books…'), el('p', { class: 'hint' }, 'Get ready for the next page.')]];
+      if (p === 'reveal') {
+        return [`reveal-${s.owner}-${s.page}-${s.isOwner}`, () => {
+          const nodes = [say(`Watch the big screen: ${s.owner}'s book, page ${s.page} of ${s.pages}.`)];
+          if (s.isOwner) nodes.push(el('div', { class: 'grow' }), el('p', { class: 'hint' }, "It's your book: go on when the room is ready."), el('button', { class: 'big', type: 'button', onClick: () => party.send({ next: true }) }, 'Next'));
+          return nodes;
+        }];
+      }
+      if (p === 'fave') {
+        return [`fave-${s.owner}-${s.voted}`, () => {
+          if (!s.canVote) return [say(`${s.owner}'s book is all yours. Enjoy the votes!`), timerBox()];
+          const list = el('div', { class: 'faves' }, s.faves.map((f) => {
+            const card = el('div', { class: 'card' }, el('div', { class: 'who' }, `${f.name}${f.mine ? ' (you)' : ''}`));
+            if (f.kind === 'draw') {
+              const holder = el('div');
+              card.append(holder);
+              drawing(holder, f.strokes, { label: `${f.name}'s drawing` });
+            } else card.append(el('div', { class: 'words' }, f.text));
+            return el('button', {
+              type: 'button',
+              disabled: f.mine || s.voted !== undefined,
+              'aria-pressed': s.voted === f.i ? 'true' : 'false',
+              'aria-label': `Vote for ${f.name}'s ${f.kind === 'draw' ? 'drawing' : f.text}`,
+              onClick: () => party.send({ fave: f.i }),
+            }, card);
+          }));
+          return [say(s.voted === undefined ? 'Tap your favourite page!' : 'Vote counted!'), timerBox(), list];
+        }];
+      }
+      if (p === 'final' || p === 'over') {
+        return ['final', () => [say('Thanks for drawing!'), el('p', { class: 'bigline' }, `${s.points} ${s.points === 1 ? 'vote' : 'votes'}`),
+          el('p', { class: 'hint' }, `Place ${s.place} of ${s.players}. See the big screen.`)]];
+      }
+      return ['wait', () => [say('Waiting for the big screen…')]];
+    }
+
+    function draw() {
+      if (!s) return;
+      dot.style.background = s.color;
+      what.textContent = ['write', 'draw', 'guess'].includes(s.phase) ? `Page ${s.round + 1} of ${s.rounds}` : '';
+      const [key, build] = view();
+      if (key === mainKey) return;
+      mainKey = key;
+      main.replaceChildren(...build());
+      // Fill the phone: the column grows so the .grow spacer pushes the timer down.
+      main.style.flex = '1';
+    }
+  }
+</script>
