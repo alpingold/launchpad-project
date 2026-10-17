@@ -74,6 +74,7 @@
   .cross .front { grid-column: 3; grid-row: 2; } .cross .bottom { grid-column: 2; grid-row: 3; }
   .cross .hub { grid-column: 2; grid-row: 2; display: grid; place-items: center; border-radius: 50%; background: #ffe7c2; color: #140b2e; font-weight: 900; font-size: 0.8rem; margin: 0.6rem; }
   .warns { display: flex; flex-direction: column; gap: 0.35rem; min-height: 2.6rem; }
+  .calm { margin: 0; font-weight: 700; text-align: center; }
   .warn { padding: 0.45rem 0.7rem; border-radius: 0.7rem; background: #ff3b5c; color: #fff; font-weight: 900; font-size: 1.2rem; }
   .warn.soon { animation: blink 0.4s steps(2) infinite; }
   @keyframes blink { 50% { background: #140b2e; } }
@@ -179,7 +180,8 @@
   function bigScreen(restored) {
     const { el, sound } = party.ui;
     const W = 1600, H = 900;
-    const SHIP_HW = 78, SHIP_HH = 36; // hitbox half-sizes: a bit smaller than the drawing
+    const K = 1.35; // the ship's size: drawn at this scale, so it reads on a TV
+    const SHIP_HW = 78 * K, SHIP_HH = 36 * K; // hitbox half-sizes: a bit smaller than the drawing
     const TURRET = { gun: [8, -40], gun2: [-72, 0], gun3: [8, 40] };
     const ROOM_X = { engine: -48, guns: -2, shields: 40 };
     const WARN_MS = 2600, NAV_MS = 5000, COMET_FLY_MS = 700, SHIELD_GRACE_MS = 350;
@@ -346,7 +348,7 @@
       g.fires[room] -= 1;
       if (g.fires[room] === 0) {
         if (by && g.log[by]) g.log[by].fires += 1;
-        pop(ship.x + ROOM_X[room], ship.y - 70, 'Fire out!', '#3ddc84');
+        pop(ship.x + ROOM_X[room] * K, ship.y - 90, 'Fire out!', '#3ddc84');
         buildCrewStrip();
       }
       dirty = true;
@@ -463,7 +465,7 @@
         // Autopilot: back to the middle, and a half-hearted dodge of the nearest rock ahead.
         tx = Math.max(-0.5, Math.min(0.5, (420 - ship.x) / 300));
         ty = Math.max(-0.5, Math.min(0.5, (450 - ship.y) / 300));
-        const threat = rocks.filter((r) => r.x > ship.x && r.x - ship.x < 380 && Math.abs(r.y - ship.y) < 120).sort((a, b) => a.x - b.x)[0];
+        const threat = rocks.filter((r) => r.x > ship.x && r.x - ship.x < 400 && Math.abs(r.y - ship.y) < 140).sort((a, b) => a.x - b.x)[0];
         if (threat) ty = threat.y > ship.y ? -0.6 : 0.6;
       }
       const speed = 420 * (g.fires.engine > 0 ? 0.35 : 1);
@@ -492,7 +494,7 @@
         if (firing && !over && g.fires.guns === 0 && now - gun.lastShot >= 220) {
           gun.lastShot = now;
           const [ox, oy] = TURRET[st];
-          bullets.push({ x: ship.x + ox + Math.cos(gun.angle) * 30, y: ship.y + oy + Math.sin(gun.angle) * 30, vx: Math.cos(gun.angle) * 1100, vy: Math.sin(gun.angle) * 1100, until: now + 1000, by: id });
+          bullets.push({ x: ship.x + ox * K + Math.cos(gun.angle) * 40, y: ship.y + oy * K + Math.sin(gun.angle) * 40, vx: Math.cos(gun.angle) * 1100, vy: Math.sin(gun.angle) * 1100, until: now + 1000, by: id });
           if (id) {
             gun.heat += 0.1;
             if (gun.heat >= 1) { gun.heat = 1; gun.overUntil = now + 2000; tellPhones(); }
@@ -539,7 +541,7 @@
         }
         p.x += p.vx * dt;
         p.y += p.vy * dt;
-        if (Math.hypot(p.x - ship.x, p.y - ship.y) < 75) {
+        if (Math.hypot(p.x - ship.x, p.y - ship.y) < 95) {
           p.dead = true;
           const credit = p.pulled ? who('nav') : helmId;
           if (p.kind === 'star') {
@@ -571,7 +573,7 @@
           c.done = true;
           const recent = sideHistory.some((h) => h.side === c.side && now - h.at <= SHIELD_GRACE_MS);
           const blocked = g.fires.shields === 0 && (g.side === c.side || recent);
-          const hx = ship.x + SIDE[c.side].dx * 110, hy = ship.y + SIDE[c.side].dy * 80;
+          const hx = ship.x + SIDE[c.side].dx * 150, hy = ship.y + SIDE[c.side].dy * 110;
           if (blocked) {
             g.score += 20;
             if (shieldId && g.log[shieldId]) g.log[shieldId].blocks += 1;
@@ -672,6 +674,10 @@
 
     function drawShip(now) {
       const { x, y } = ship;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.scale(K, K);
+      ctx.translate(-x, -y);
       // Engine glow.
       const flick = 0.75 + 0.25 * Math.sin(now / 40);
       ctx.fillStyle = g.fires.engine > 0 ? '#ff7a3d88' : '#5ce1ffaa';
@@ -731,6 +737,7 @@
         ctx.stroke();
         ctx.shadowBlur = 0;
       }
+      ctx.restore();
     }
     function drawFlames(x, y, level, now) {
       for (let i = 0; i < Math.min(3, Math.ceil(level / 2)); i++) {
@@ -794,14 +801,14 @@
         ctx.strokeStyle = `rgba(255, 255, 255, ${1 - t})`;
         ctx.lineWidth = 6;
         ctx.beginPath();
-        ctx.arc(ship.x + d.dx * 120, ship.y + d.dy * 85, 20 + t * 60, 0, Math.PI * 2);
+        ctx.arc(ship.x + d.dx * 160, ship.y + d.dy * 115, 20 + t * 60, 0, Math.PI * 2);
         ctx.stroke();
         return;
       }
       const t = 1 - (c.impactAt - now) / COMET_FLY_MS;
       const from = cometStart(c);
       const d = SIDE[c.side];
-      const tx = ship.x + d.dx * 130, ty = ship.y + d.dy * 95;
+      const tx = ship.x + d.dx * 175, ty = ship.y + d.dy * 128;
       const x = from.x + (tx - from.x) * t, y = from.y + (ty - from.y) * t;
       const ang = Math.atan2(y - from.y, x - from.x);
       const tail = ctx.createLinearGradient(x, y, x - Math.cos(ang) * 260, y - Math.sin(ang) * 260);
@@ -1103,6 +1110,7 @@
         if (parts.warns.dataset.sig !== sig) {
           parts.warns.dataset.sig = sig;
           parts.warns.replaceChildren(...text.map((t) => el('div', { class: `warn${t.soon ? ' soon' : ''}`, 'data-side': t.side }, t.text)));
+          if (!text.length) parts.warns.append(el('p', { class: 'muted calm' }, state.station === 'nav' ? 'No comets on the scanner. Watch the rocks and stars: tractor when lots of stars are out.' : 'No comet coming. Listen for the navigator!'));
         }
       }
       requestAnimationFrame(warnLoop);
