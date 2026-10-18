@@ -2331,6 +2331,25 @@ fix without changes. Stowaways also keeps its timer out of the part it rebuilds.
 - **Still missed:** games that move on but are wrong ("Wave 0", "Ada → undefined", labels on top
   of each other). Reading the code and the screenshots still matters.
 
+## 42. The home page leads with making a game (2026-10-18)
+
+- **Why:** making a game with AI is what the site is for, but the home page only mentioned it
+  in a small "Logged in as … · Make a game with AI" line, and the header called it "Create".
+- **The hero is the idea box** ("Describe a party game. The AI builds it."), sitting on the first
+  space of the same gold track /create shows: Idea → Design → Build → Play, each with a line on
+  what happens there. One motion: when the page opens, the gold token runs the four spaces once
+  and comes back to Idea (not with reduced motion). "Make this game" opens `/create?idea=…`
+  with the idea filled in, and signing up or logging in from there keeps it.
+- **For players:** "Got a room code?" sits beside the hero (above it on phones, where most
+  visitors are joining), with the host's way in under it.
+- **Then:** the 3 most-voted games (▲ minus ▼, ties in the featured order; "Games" while nobody
+  has voted), the newest published games players made with AI (or an invitation to make the
+  first), and how a game night works, now in quiet grey so the gold stays on making.
+- **Everywhere:** the header's "Create" is now **Make a game**, in gold; the home page's header
+  shows the name; /games says "Not seeing the one you want? Describe it and the AI makes it."
+- **Kept:** the dark palette and Boilermaker gold (§34, §19), the system font (no new font to
+  load), the demo notes.
+
 ## Verification (how to confirm the plan worked once built)
 
 - `npm test` (root) → runs `node --test server/test`, all unit and integration tests green.
