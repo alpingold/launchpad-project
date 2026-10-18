@@ -31,7 +31,8 @@
     const right = el('div', { class: 'stack' }, el('div', { id: 'scores' }), el('div', { id: 'art' }), log);
     app.append(el('div', { class: 'host-layout' }, left, right));
 
-    timer('#timer', { endsAt: party.now() + 60_000 });
+    window.demoEndsAt = party.now() + 60_000; // the test makes a second timer for the same deadline
+    timer('#timer', { endsAt: window.demoEndsAt });
     const scores = { update: (rows) => document.getElementById('scores').replaceChildren(el('h2', {}, 'Taps'), ...rows.map((r) => el('p', {}, `${r.name}: ${r.score}`))) };
     const art = drawing('#art', [], { label: 'Last drawing' });
     // A 20 × 7 board drawn with shapes: a border, three coins, a circle per player.

@@ -290,6 +290,17 @@ window.__partyUi = function createPartyUi(party) {
 
   // ---- Timer -----------------------------------------------------------------------------
   /** A bar and seconds counting down to `endsAt` (SERVER time: party.now() + ms). */
+  // The full length first seen for each end time. A game that rebuilds its screen makes a new
+  // timer for the same deadline; without this it would start full again (plan §36a).
+  const timerLengths = new Map();
+  function fullLength(end) {
+    if (!timerLengths.has(end)) {
+      if (timerLengths.size > 50) timerLengths.delete(timerLengths.keys().next().value);
+      timerLengths.set(end, Math.max(1, end - party.now()));
+    }
+    return timerLengths.get(end);
+  }
+
   function timer(target, { endsAt, onDone, label = 'Time left' } = {}) {
     const root = mount(target, 'timer');
     const fill = el('div', { class: 'pu-timer-fill' });
@@ -297,7 +308,7 @@ window.__partyUi = function createPartyUi(party) {
     const node = el('div', { class: 'pu-timer', role: 'timer', 'aria-label': label }, el('div', { class: 'pu-timer-track' }, fill), seconds);
     root.append(node);
     let end = endsAt;
-    let total = Math.max(1, end - party.now());
+    let total = fullLength(end);
     let done = false;
     let frame = 0;
     function tick() {
@@ -316,7 +327,7 @@ window.__partyUi = function createPartyUi(party) {
       set(newEndsAt) {
         cancelAnimationFrame(frame);
         end = newEndsAt;
-        total = Math.max(1, end - party.now());
+        total = fullLength(end);
         done = false;
         tick();
       },

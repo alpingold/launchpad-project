@@ -134,6 +134,15 @@ test('drawing pad: draw, send, and the big screen shows it; the timer counts dow
   const seconds = frame(host.page).getByRole('timer');
   await expect(seconds).toContainText(/^(59|60)$/);
   await expect(seconds).toContainText(/^5[0-8]$/, { timeout: 5000 });
+
+  // A new timer for the same deadline (a game rebuilding its screen) carries on, not full (§36a).
+  const width = await frame(host.page).locator('body').evaluate(() => {
+    const box = document.createElement('div');
+    document.body.append(box);
+    window.party.ui.timer(box, { endsAt: window.demoEndsAt });
+    return parseFloat(box.querySelector('.pu-timer-fill').style.width);
+  });
+  expect(width).toBeLessThan(98);
 });
 
 test('the countdown counts down to GO; party.kit is gone (plan §20)', async ({ people }) => {
