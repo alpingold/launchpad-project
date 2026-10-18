@@ -175,6 +175,8 @@ async function summary() {
       minutes: game?.match(/"minutes"\s*:\s*\[\s*(\d+)\s*,\s*(\d+)\s*\]/)?.slice(1).join('–') ?? null, // the game's own estimate
       attempts: attempts.length,
       first: attempts[0]?.usage?.completion_tokens ?? null, // the first build: its thinking + the whole file
+      thinking: attempts[0]?.usage?.completion_tokens_details?.reasoning_tokens ?? null, // of which thinking
+      outOfRoom: attempts.filter((a) => a.outOfRoom).length,
       completion: sum('completion_tokens'),
       prompt: sum('prompt_tokens'),
       seconds: r.seconds,
@@ -185,18 +187,18 @@ async function summary() {
     '',
     `Idea: ${values.idea}`,
     '',
-    '| Build | Passed | Size | Minutes | Attempts | First reply (tokens) | All replies | All prompts | Time |',
-    '|---|---|---|---|---|---|---|---|---|',
-    ...rows.map((r) => `| ${r.entry} | ${r.ok ? 'yes' : 'no'} | ${r.kb ?? '–'} KB | ${r.minutes ?? '–'} | ${r.attempts} | ${r.first ?? '–'} | ${r.completion} | ${r.prompt} | ${r.seconds} s |`),
+    '| Build | Passed | Size | Minutes | Attempts | Out of room | First reply (tokens) | Its thinking | All replies | All prompts | Time |',
+    '|---|---|---|---|---|---|---|---|---|---|---|',
+    ...rows.map((r) => `| ${r.entry} | ${r.ok ? 'yes' : 'no'} | ${r.kb ?? '–'} KB | ${r.minutes ?? '–'} | ${r.attempts} | ${r.outOfRoom} | ${r.first ?? '–'} | ${r.thinking ?? '–'} | ${r.completion} | ${r.prompt} | ${r.seconds} s |`),
     '',
-    '| Variant | Builds | Passed | Avg size | Avg first reply | Avg time |',
-    '|---|---|---|---|---|---|',
+    '| Variant | Builds | Passed | Out of room | Avg size | Avg first reply | Avg time |',
+    '|---|---|---|---|---|---|---|',
   ];
   const avg = (list) => (list.length ? Math.round((list.reduce((a, b) => a + b, 0) / list.length) * 10) / 10 : '–');
   for (const label of [...new Set(rows.map((r) => r.label))]) {
     const of = rows.filter((r) => r.label === label);
     lines.push(
-      `| ${label} | ${of.length} | ${of.filter((r) => r.ok).length} | ${avg(of.filter((r) => r.kb !== null).map((r) => r.kb))} KB | ${avg(of.filter((r) => r.first !== null).map((r) => r.first))} | ${avg(of.map((r) => r.seconds))} s |`,
+      `| ${label} | ${of.length} | ${of.filter((r) => r.ok).length} | ${of.reduce((n, r) => n + r.outOfRoom, 0)} | ${avg(of.filter((r) => r.kb !== null).map((r) => r.kb))} KB | ${avg(of.filter((r) => r.first !== null).map((r) => r.first))} | ${avg(of.map((r) => r.seconds))} s |`,
     );
   }
   return `${lines.join('\n')}\n`;
