@@ -11,11 +11,13 @@ import CreateGame from './pages/CreateGame.jsx';
 import Account from './pages/Account.jsx';
 import GamePage from './pages/GamePage.jsx';
 import Profile from './pages/Profile.jsx';
+import Report from './pages/Report.jsx';
 import { SettingsProvider } from './settings/SettingsContext.jsx';
 import SettingsMenu from './settings/SettingsMenu.jsx';
 import HomeLink from './components/HomeLink.jsx';
 import SiteNav from './components/SiteNav.jsx';
 import DemoBadge from './components/DemoBadge.jsx';
+import SiteFooter from './components/SiteFooter.jsx';
 
 // The site's pages, by URL path. Plain links (<a href>) do a full page load, which is all a
 // handful of pages needs (decision D12: no router library). Adding a page = one line here.
@@ -29,6 +31,7 @@ const PAGES = {
   '/games': Games,
   '/create': Create,
   '/account': Account,
+  '/report': Report,
 };
 
 /** "/join/" and "/join" are the same page. */
@@ -77,6 +80,7 @@ export default function App() {
         </div>
       </header>
       {pageFor(path)}
+      <SiteFooter path={path} />
       <DemoBadge />
     </SettingsProvider>
   );

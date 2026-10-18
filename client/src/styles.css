@@ -1559,6 +1559,28 @@ code {
   margin: 0.5rem 0;
 }
 
+/* A radio choice in a form: the button beside its words (forms otherwise stack a label's parts). */
+.admin-form label.settings-option {
+  flex-direction: row;
+  font-weight: 400;
+}
+
+/* §31c: the report form's "What kind?" choices, side by side where they fit. */
+.report-form fieldset {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+  border: none;
+  padding: 0;
+  margin: 0;
+}
+
+.report-form legend {
+  font-weight: 600;
+  padding: 0;
+  margin-bottom: 0.5rem;
+}
+
 .game-page-minutes label {
   display: inline-flex;
   align-items: center;
@@ -2015,4 +2037,95 @@ code {
 
 .create .gen-change textarea {
   font-family: inherit;
+}
+
+/* §31c: the footer on most pages. The bottom padding keeps its text clear of the "(demo)"
+   badge in the corner. */
+.site-footer {
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: 1.25rem 1rem 3.5rem;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+.site-footer p {
+  margin: 0;
+}
+
+body.in-game .site-footer,
+body.in-game .demo-badge-room {
+  display: none;
+}
+
+.demo-badge-room {
+  height: 3rem;
+}
+
+/* §31c: the admin page's two parts (as wide as the admin page). */
+.admin-tabs {
+  display: flex;
+  gap: 1.25rem;
+  max-width: 48rem;
+  margin: 1rem auto 0;
+  padding: 0 1rem;
+  font-weight: 600;
+}
+
+.admin-tabs a {
+  color: var(--text);
+  text-decoration: none;
+}
+
+.admin-tabs a[aria-current='page'] {
+  text-decoration: underline 3px var(--gold);
+  text-underline-offset: 0.35em;
+}
+
+/* §31: reports, in the admin's list (and on game pages). */
+.report-list {
+  list-style: none;
+  padding: 0;
+  margin: 1rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.report-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.5rem;
+  margin: 0 0 0.4rem;
+}
+
+.report-body {
+  margin: 0 0 0.6rem;
+  white-space: pre-wrap; /* keep the reporter's line breaks */
+  overflow-wrap: anywhere;
+}
+
+.report-kind {
+  padding: 0.05rem 0.5rem;
+  border-radius: 999px;
+  background: var(--chip);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.report-kind.kind-bug {
+  background: var(--danger-tint);
+}
+
+.report-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.site-report.is-done {
+  opacity: 0.6;
 }

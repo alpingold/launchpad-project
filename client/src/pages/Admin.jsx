@@ -15,6 +15,7 @@ import {
 } from '../net/admin.js';
 import { usePageTitle } from '../usePageTitle.js';
 import Markdown from '../components/Markdown.jsx';
+import AdminReports from './AdminReports.jsx';
 
 // The admin page (plan §11 A6, versions §12e K6, designs §13i F5): make games with AI. The AI
 // writes a design first; you read it, ask for a new draft or edit it, and click "Build it".
@@ -76,7 +77,28 @@ export default function Admin() {
       </main>
     );
   }
-  return <GameMaker />;
+  const tab = new URLSearchParams(window.location.search).get('tab') === 'reports' ? 'reports' : 'games';
+  return (
+    <>
+      <AdminTabs tab={tab} />
+      {tab === 'reports' ? <AdminReports /> : <GameMaker />}
+    </>
+  );
+}
+
+/** The admin page's two parts, as plain links (decision D12). */
+function AdminTabs({ tab }) {
+  const link = (value, href, label) => (
+    <a href={href} aria-current={tab === value ? 'page' : undefined}>
+      {label}
+    </a>
+  );
+  return (
+    <nav className="admin-tabs" aria-label="Admin">
+      {link('games', '/admin', 'AI games')}
+      {link('reports', '/admin?tab=reports', 'Reports')}
+    </nav>
+  );
 }
 
 /**
