@@ -194,9 +194,13 @@ gamepad(target, { dpad: 'horizontal' | 'full' | 'none', buttons: [{ id: 'jump', 
 //   every control's state, e.g. { left: false, right: true, jump: false }.
 //   Returns { setEnabled(on), destroy() }.
 
-textInput(target, { placeholder, maxLength: 80, button: 'Send', multiline: false, onSubmit(text) })
+textInput(target, { placeholder, maxLength: 80, button: 'Send', multiline: false, lockOnSubmit: false, onSubmit(text) })
 //   A box for typing on a phone: Enter or Send calls onSubmit with the trimmed text (empty is
 //   ignored) and empties the box. Big enough text that phones don't zoom in.
+//   lockOnSubmit: true instead keeps the text and locks the box ("Sent ✓") until your next
+//   screen replaces it. Use it whenever the NEXT thing to type comes in a new state (prompt 1
+//   of 2, then 2 of 2): on a slow phone that state takes a moment, and an answer typed into the
+//   old box meanwhile would be lost.
 //   Returns { value, clear(), focus(), setEnabled(on), destroy() }. Send the text with party.send.
 
 timer(target, { endsAt, onDone })

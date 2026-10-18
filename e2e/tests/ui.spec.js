@@ -80,6 +80,18 @@ test('text input (plan §21): Enter sends, the box empties, empty answers are ig
   await expect(box).toHaveValue('');
 });
 
+test('text input with lockOnSubmit: sent once, then locked with the text still showing', async ({ people }) => {
+  const { alex, log } = await startDemo(people);
+  const box = frame(alex.page).getByRole('textbox', { name: 'Locked answer' });
+  await box.fill('my one answer');
+  await box.press('Enter');
+  await expect(log).toContainText('answer Alex: locked my one answer');
+  await expect(box).toBeDisabled();
+  await expect(box).toHaveValue('my one answer');
+  await expect(frame(alex.page).getByRole('button', { name: 'Sent ✓' })).toBeDisabled();
+  await expect(log.getByText(/^answer Alex: locked/)).toHaveCount(1);
+});
+
 test('sound (plan §21): a phone and the big screen can play sounds; the frame may play audio', async ({ people }) => {
   const { host, alex, log } = await startDemo(people);
   await expect(host.page.locator('iframe.game-frame')).toHaveAttribute('allow', 'autoplay');

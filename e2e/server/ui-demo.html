@@ -104,10 +104,12 @@
         el('button', { class: 'big', id: 'send-drawing' }, 'Send drawing'),
         el('button', { class: 'secondary', onClick: () => party.send({ countdown: true }) }, 'Countdown'),
         el('div', { id: 'answer' }),
+        el('div', { id: 'locked' }),
         el('button', { class: 'secondary', onClick: () => party.send({ sound: sound('coin') }) }, 'Beep'),
       ),
     );
     textInput('#answer', { placeholder: 'Type an answer', maxLength: 40, onSubmit: (text) => party.send({ answer: text }) });
+    textInput('#locked', { label: 'Locked answer', lockOnSubmit: true, onSubmit: (text) => party.send({ answer: `locked ${text}` }) });
     joystick('#stick', { onChange: (x, y) => party.send({ stick: { x, y } }) });
     gamepad('#pad', { dpad: 'horizontal', buttons: [{ id: 'jump', label: 'Jump' }], onChange: (state) => party.send({ pad: state }) });
     const pad = drawPad('#drawpad');

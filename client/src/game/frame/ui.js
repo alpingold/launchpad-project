@@ -337,10 +337,14 @@ window.__partyUi = function createPartyUi(party) {
    * "send", the box scrolls into view above the keyboard, a character counter, and empty
    * answers are ignored.
    *   textInput(target, { placeholder, maxLength = 80, button = 'Send', multiline = false,
-   *                       clearOnSubmit = true, onSubmit(text) })
+   *                       clearOnSubmit = true, lockOnSubmit = false, onSubmit(text) })
+   * lockOnSubmit: after sending, the box locks with the text still in it and the button says
+   * "Sent ✓", until the game draws its next screen (or calls setEnabled(true)). For a box that
+   * another box follows (prompt 1 of 2, then 2 of 2): on a slow phone the next prompt takes a
+   * moment to arrive, and without the lock an answer typed into the old box would be lost.
    * Returns { value, clear(), focus(), setEnabled(on), destroy() }.
    */
-  function textInput(target, { placeholder = '', maxLength = 80, button = 'Send', multiline = false, clearOnSubmit = true, onSubmit = () => {}, label = 'Your answer' } = {}) {
+  function textInput(target, { placeholder = '', maxLength = 80, button = 'Send', multiline = false, clearOnSubmit = true, lockOnSubmit = false, onSubmit = () => {}, label = 'Your answer' } = {}) {
     const root = mount(target, 'textInput');
     const box = el(multiline ? 'textarea' : 'input', {
       class: 'pu-text',
@@ -363,6 +367,11 @@ window.__partyUi = function createPartyUi(party) {
       const text = box.value.trim();
       if (!enabled || !text) return;
       onSubmit(text);
+      if (lockOnSubmit) {
+        setEnabled(false);
+        send.textContent = 'Sent ✓';
+        return; // the text stays, so the player sees what they sent
+      }
       if (clearOnSubmit) {
         box.value = '';
         count.textContent = `0/${maxLength}`;
@@ -377,6 +386,12 @@ window.__partyUi = function createPartyUi(party) {
       }
     });
     send.addEventListener('click', submit);
+    function setEnabled(on) {
+      enabled = Boolean(on);
+      box.disabled = !enabled;
+      send.disabled = !enabled;
+      if (enabled) send.textContent = button;
+    }
     return {
       get value() {
         return box.value;
@@ -386,11 +401,7 @@ window.__partyUi = function createPartyUi(party) {
         count.textContent = `0/${maxLength}`;
       },
       focus: () => box.focus(),
-      setEnabled(on) {
-        enabled = Boolean(on);
-        box.disabled = !enabled;
-        send.disabled = !enabled;
-      },
+      setEnabled,
       destroy: () => wrap.remove(),
     };
   }
