@@ -8,6 +8,8 @@
 // a call that sends nothing for IDLE_TIMEOUT_MS is stuck, and is tried again. (Until
 // 2026-10-15 a call had 5 minutes in total, which cut off healthy but long replies.)
 
+import { MODELS } from './models.js';
+
 const DEFAULT_BASE_URL = 'https://genai.rcac.purdue.edu/api';
 /** No new piece of the reply for this long: the call is stuck. (Pieces normally come every few ms.) */
 export const IDLE_TIMEOUT_MS = 2 * 60 * 1000;
@@ -50,6 +52,14 @@ export async function chat(
     idleTimeoutMs = IDLE_TIMEOUT_MS,
   },
 ) {
+  const reasoningEffort = MODELS.find((m) => m.id === model)?.reasoningEffort;
+  const body = JSON.stringify({
+    model,
+    messages,
+    stream: true,
+    stream_options: { include_usage: true },
+    ...(reasoningEffort && { reasoning_effort: reasoningEffort }),
+  });
   let lastProblem = '';
   for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
     if (attempt > 0) {
@@ -64,7 +74,7 @@ export async function chat(
       res = await fetchImpl(`${baseUrl}/chat/completions`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model, messages, stream: true, stream_options: { include_usage: true } }),
+        body,
         signal: idle.signal,
       });
     } catch (err) {

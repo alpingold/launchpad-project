@@ -64,14 +64,14 @@ function fakeFetch(responses) {
 const reply = (content) => ({ body: { choices: [{ message: { content } }], usage: { total_tokens: 5 } } });
 const noSleep = async () => {};
 
-test('chat: sends the conversation and returns the reply', async () => {
+test('chat: sends the conversation (with the model\'s reasoning effort) and returns the reply', async () => {
   const { fetchImpl, calls } = fakeFetch([reply('hello')]);
   const result = await chat([{ role: 'user', content: 'hi' }], { model: 'qwen3.8:27b', baseUrl: 'https://x/api', apiKey: 'k', fetchImpl, sleep: noSleep });
   assert.equal(result.content, 'hello');
   assert.deepEqual(result.usage, { total_tokens: 5 });
   assert.equal(calls[0].url, 'https://x/api/chat/completions');
   assert.equal(calls[0].auth, 'Bearer k');
-  assert.deepEqual(calls[0].body, { model: 'qwen3.8:27b', messages: [{ role: 'user', content: 'hi' }], stream: true, stream_options: { include_usage: true } });
+  assert.deepEqual(calls[0].body, { model: 'qwen3.8:27b', messages: [{ role: 'user', content: 'hi' }], stream: true, stream_options: { include_usage: true }, reasoning_effort: 'medium' });
 });
 
 /** A streamed reply, as GenAI Studio sends it: `data:` lines, split across network chunks. */
