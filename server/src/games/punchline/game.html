@@ -844,7 +844,7 @@
             el('div', { class: 'card-p' }, el('small', {}, p === 'write' ? `Prompt ${s.n} of ${s.total}` : 'The Last Word'), s.prompt),
             box,
           ];
-          textInput(box, { placeholder: 'Your funniest answer', maxLength: ANSWER_MAX, onSubmit: (text) => { sound('tap'); party.send({ k: s.k, answer: text }); } });
+          textInput(box, { placeholder: 'Your funniest answer', maxLength: ANSWER_MAX, lockOnSubmit: true, onSubmit: (text) => { sound('tap'); party.send({ k: s.k, answer: text }); } });
           return nodes;
         }];
       }
