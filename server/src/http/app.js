@@ -9,6 +9,7 @@ import { createAdminRouter } from './adminRoutes.js';
 import { createAccountRouter } from './accountRoutes.js';
 import { createGamesRouter } from './gamesRoutes.js';
 import { createReportsRouter } from './reportsRoutes.js';
+import { createSeoRouter } from './seoRoutes.js';
 import { kitGuide } from '../games/kitGuide.js';
 
 /**
@@ -99,6 +100,10 @@ export function createApp({ games = new GameRegistry(), db = openDatabase(':memo
   app.use('/api', (_req, res) => {
     res.status(404).json({ error: 'NOT_FOUND' });
   });
+
+  // For search engines: robots.txt and the sitemap (plan §33). Before the website below,
+  // which would otherwise answer them with its page.
+  app.use(createSeoRouter({ db, games }));
 
   // The built website (M8), when there is one: its files, and index.html for every other page
   // address (/games, /create/g-…): the React app reads the address and shows the right page.

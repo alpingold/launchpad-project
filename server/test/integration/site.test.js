@@ -59,3 +59,20 @@ test('without a build (development), page addresses are not served', async () =>
   assert.equal(res.status, 404);
   await new Promise((resolve) => dev.close(resolve));
 });
+
+test('search engines (plan §33): a real robots.txt and a sitemap of the public pages, not the website', async () => {
+  const robots = await fetch(`${baseUrl}/robots.txt`);
+  assert.equal(robots.status, 200);
+  assert.match(robots.headers.get('content-type'), /^text\/plain/);
+  const text = await robots.text();
+  assert.match(text, /^User-agent: \*$/m);
+  assert.match(text, /^Disallow: \/admin$/m);
+  assert.match(text, new RegExp(`^Sitemap: ${baseUrl}/sitemap.xml$`, 'm'));
+
+  const sitemap = await fetch(`${baseUrl}/sitemap.xml`);
+  assert.match(sitemap.headers.get('content-type'), /^application\/xml/);
+  const xml = await sitemap.text();
+  assert.match(xml, /^<\?xml/);
+  for (const page of ['/', '/games', '/kit']) assert.ok(xml.includes(`<loc>${baseUrl}${page}</loc>`), page);
+  assert.doesNotMatch(xml, /id="root"/);
+});
