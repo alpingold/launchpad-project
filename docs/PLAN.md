@@ -2311,6 +2311,26 @@ fix without changes. Stowaways also keeps its timer out of the part it rebuilds.
   them); a job may set `reasoningEffort` for all its steps; every attempt records
   `finishReason`. One build's file was cut off mid-line (brief-2); none since, all `stop`.
 
+## 41. The playtest checks that the game moves on (2026-10-18)
+
+- **Why:** two generated Comet Crews (§40) set their intro's timer and never act on it: they
+  stay on the first screen forever. Nothing runs, so nothing crashes, and the playtest called
+  them fine ("still running after 15 s"). Both had "passed on the first try".
+- **How:** after the last screenshot the bots stop, so only time can move the game. The
+  playtest then warps every clock the game can read 2 minutes ahead (`Date.now`, so
+  `party.now()`; `performance.now`; animation-frame times) and runs every `setTimeout` due by
+  then (`INIT_SCRIPT` in playtest.js; the real SDK is untouched). If within 5 s no phone gets a
+  new state, nothing is saved and the game doesn't end, it gets a `stuck` warning. After the
+  warp nothing else is reported: a game may catch up on 2 minutes clumsily.
+- **Tried on 16 games** (the 7 official ones and 9 from §38–40): it flags exactly the two that
+  never start. On the way: a plain server-clock jump wrongly flagged a game that waits with
+  `setTimeout(…, deadline − now)` (hence the full warp), and Bumper Blobs' ice melted frame by
+  frame, so a warp mid-round couldn't end the round; it now melts from the round's own clock.
+- **A warning for now** (it doesn't fail a build). Once it has run on more new games without a
+  false alarm, it becomes a problem, so the model is asked to fix it.
+- **Still missed:** games that move on but are wrong ("Wave 0", "Ada → undefined", labels on top
+  of each other). Reading the code and the screenshots still matters.
+
 ## Verification (how to confirm the plan worked once built)
 
 - `npm test` (root) → runs `node --test server/test`, all unit and integration tests green.
