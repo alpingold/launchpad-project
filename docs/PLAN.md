@@ -2202,6 +2202,9 @@ extra rounds to hit a number, instead of designing what fits the idea.
 - **Without the rule, games came out ~25% bigger** (32 vs 26 KB), like §32's no-limit side.
   Four builds a side is too few to call it real.
 - **So the rule is fluff:** it costs prompt space and changes nothing measurable.
+- **Decided (2026-10-18): removed.** GAME_SPEC.md's Length line now only says a round takes at
+  least about 20 s and not to pad a game with waiting; DESIGN.md still asks for the length
+  arithmetic but no target. The `lengthRule` job option went with it.
 
 ## 36. Claim Jumpers rework, Stowaways refresh, and the timer bar (2026-10-18)
 
