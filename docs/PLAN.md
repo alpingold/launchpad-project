@@ -2038,6 +2038,68 @@ At our size that's instant.
 - While testing, two Punchline e2e tests turned out to have a race of their own: they typed the
   second answer before the second prompt was on screen. They now wait for it (the game was fine).
 
+## 32. Secrets in AI games, the context window, and a size-limit experiment (2026-10-17)
+
+### Secrets on the big screen
+
+**Problem:** in AI-made games where players get a secret (a role, a word), Qwen often showed
+it on the big screen. The contract never said the TV is public. It called the big screen
+"the referee" that "holds the whole game", and its role is named `host`, which reads as a
+game master who may know everything. The design template never asked what's secret, and the
+checker has no rule a leak would break.
+
+**Decided and built:**
+- **The guide** (`GAME_SPEC.md`) calls the big screen "the referee, in plain sight", says
+  everyone in the room can see it, and says "host" is the shared screen, not a person.
+- **Rule 10, "Secrets stay on their own phone":**
+  - no secret on the big screen, not even as a hint (a colour, an icon, the order of a list,
+    a caption);
+  - secrets only via `setState(player)` or `sendTo(player)`, never `'all'`;
+  - reveals happen on purpose;
+  - no phone sound that gives a secret away.
+- **A Secrets heading in the design template:** each secret, who knows it, and when the big
+  screen reveals it, or `none`. A design without it is sent back, like any missing heading.
+  All 7 official designs now have one.
+
+**Not done, on purpose:**
+- **An automatic leak check:** secrets marked under one key in a phone's state, checked
+  against the big screen's text during the playtest. Maybe later; it would bring its own
+  problems.
+- **Example games or snippets:** the AI copies them (§13n, §13o). Widget-level examples are
+  added only when they're almost certainly useful and unlikely to make games look the same.
+
+Also: the kit's `textInput` got `lockOnSubmit`, used by Punchline. On a slow phone, an
+answer typed into the first prompt's box before the second prompt arrived was dropped.
+
+### The context window
+
+qwen3.8:27b has 65,536 tokens per call, for everything together: the prompt, the game, its
+thinking and its reply. Code is ~2.8 bytes per token. The numbers are in `prompt.js`.
+
+**Changes and fixes** use edit mode (§23): the game is in the call once, and the reply is
+only the edits, so the AI can change any game up to 100 KB. **A first build** has to write
+the whole file in one reply: ~6K tokens of prompt, up to ~24K of thinking, and the game. The
+games come out at 12–35 KB (5–13K tokens), far below the 100 KB limit.
+
+**Ways to use it better later:**
+- **Measure** thinking vs. writing per build; every attempt already records its tokens.
+- **Budget the thinking:** it's the largest cost, and the design step has already planned.
+- **Build in passes:** a core game first, then features added as edits. This is the way
+  past the "whole file in one reply" ceiling.
+- **Send only what an edit needs:** risky, since the model loses sight of the rest.
+- **A model with a bigger window,** if GenAI Studio adds one.
+
+### Experiment: does "At most 100 KB" in the build prompt change the games?
+
+The idea: the line may nudge the model toward terse games, and we don't need it, since the
+check after the build enforces the limit anyway.
+- **The switch:** the `sizeLimit: false` build option leaves both mentions out of the prompt
+  (the rulebook's line and the build instruction's last sentence).
+- **The runner:** `npm run compare-builds` builds one design several times per variant,
+  taking turns.
+- **The test:** a Drawful Animate-style idea, one design, 4 builds with the limit and 4
+  without. Results go in `generator/out/size-limit/summary.md`, plus playing them.
+
 ## Verification (how to confirm the plan worked once built)
 
 - `npm test` (root) → runs `node --test server/test`, all unit and integration tests green.
