@@ -27,6 +27,18 @@ async function answer(phone, text) {
   await box.press('Enter');
 }
 
+/**
+ * Answers both prompts on one phone. It waits for the second prompt before typing: until the
+ * game's next state arrives, the first prompt's box is still on screen, and an answer typed
+ * into it would count as a repeat of the first one (and be dropped).
+ */
+async function answerBoth(phone, name) {
+  await expect(frame(phone.page).getByText('Prompt 1 of 2')).toBeVisible({ timeout: 15_000 });
+  await answer(phone, `${name} 1`);
+  await expect(frame(phone.page).getByText('Prompt 2 of 2')).toBeVisible();
+  await answer(phone, `${name} 2`);
+}
+
 /** Writes both prompts on every phone (after the 8 s intro). */
 async function writeRound(phones, round) {
   for (const [name, phone] of Object.entries(phones)) {
@@ -116,10 +128,7 @@ test('the big screen reloads mid-round: the same prompts and answers carry on', 
   // The big screen kept her first answer: her badge shows one of two prompts done.
   await expect(frame(host.page).locator('.badge', { hasText: 'Ana' }).locator('.dots span.on')).toHaveCount(1);
   await answer(phones.Ana, 'Ana after the reload');
-  for (const name of ['Ben', 'Cal']) {
-    await answer(phones[name], `${name} 1`);
-    await answer(phones[name], `${name} 2`);
-  }
+  for (const name of ['Ben', 'Cal']) await answerBoth(phones[name], name);
   await expect(frame(host.page).getByText('Matchup 1 of 3')).toBeVisible({ timeout: 15_000 });
 });
 
@@ -127,10 +136,7 @@ test('a player who leaves gets answers from the house, so the round goes on with
   const { host, phones } = await startGame(people);
   await expect(frame(phones.Cal.page).getByText('Prompt 1 of 2')).toBeVisible({ timeout: 15_000 });
   await phones.Cal.context.close(); // Cal walks away mid-round
-  for (const name of ['Ana', 'Ben']) {
-    await answer(phones[name], `${name} 1`);
-    await answer(phones[name], `${name} 2`);
-  }
+  for (const name of ['Ana', 'Ben']) await answerBoth(phones[name], name);
   // Once Cal is marked away, nobody connected is still writing, so the matchups start, and
   // Cal's answers are the house's.
   await expect(frame(host.page).getByText('Matchup 1 of 3')).toBeVisible({ timeout: 20_000 });
