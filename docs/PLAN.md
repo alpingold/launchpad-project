@@ -2187,6 +2187,22 @@ extra rounds to hit a number, instead of designing what fits the idea.
 - **What to look at:** the `minutes` each game claims, its rounds, and playing them.
   Results go in `generator/out/length-rule/summary.md`.
 
+**Results (2026-10-18):**
+
+| | Passed | Avg size | Minutes the games claim |
+|---|---|---|---|
+| With the rule | 3 of 4 | 25.9 KB | 5–12, 3–9, 6–9, 7–11 |
+| Without | 2 of 4 | 32.1 KB | 6–9, 7–10, 4–15, 5–12 |
+
+- **The length didn't change.** Without the rule, every design still worked out its rounds
+  and landed at about 4–15 minutes. The model already knows how long a party game runs.
+- **The failures weren't about length:** a syntax error, and names used before they were
+  defined. With a fresh design per build, the spread between builds is wide, so 2 vs 3
+  passes is noise.
+- **Without the rule, games came out ~25% bigger** (32 vs 26 KB), like §32's no-limit side.
+  Four builds a side is too few to call it real.
+- **So the rule is fluff:** it costs prompt space and changes nothing measurable.
+
 ## 36. Claim Jumpers rework, Stowaways refresh, and the timer bar (2026-10-18)
 
 From playing the official games: Doodle Drift, Punchline, Ballpark and Comet Crew are good.
