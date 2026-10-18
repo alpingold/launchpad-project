@@ -60,6 +60,20 @@ test('a big screen stuck in a loop is caught, and the check still finishes', opt
   assert.ok(rules(report.problems).includes('hang'), JSON.stringify(report.problems));
 });
 
+test('a game that never leaves its first screen gets a "stuck" warning once every timer has run out (plan §41)', opts, async () => {
+  const stuck = await check('stuck');
+  assert.deepEqual(rules(stuck.warnings).filter((r) => r === 'stuck'), ['stuck'], JSON.stringify(stuck.warnings));
+  assert.match(stuck.warnings.find((w) => w.rule === 'stuck').message, /Nothing changed after every timer ran out/);
+  assert.equal(stuck.ok, true, 'a warning for now, not a problem');
+
+  // The same game with its timer working moves on when the clock jumps: no warning. Also when
+  // it waits with a setTimeout: every timer due by then runs.
+  for (const name of ['timed', 'scheduled']) {
+    const fine = await check(name);
+    assert.deepEqual(rules(fine.warnings).filter((r) => r === 'stuck'), [], `${name}: ${JSON.stringify(fine.warnings)}`);
+  }
+});
+
 test('results naming someone who isn\'t playing are refused', opts, async () => {
   const report = await check('bad-end');
   assert.ok(rules(report.problems).includes('results'), JSON.stringify(report.problems));

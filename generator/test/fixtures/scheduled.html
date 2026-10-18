@@ -1,0 +1,28 @@
+<script type="application/json" id="game-info">{ "name": "Scheduled", "description": "A test game with timed phases.", "minPlayers": 1, "maxPlayers": 4 }</script>
+<div id="app"></div>
+<script>
+  // Nothing wrong: like timed.html, but each phase schedules the next with a setTimeout for the
+  // time left (as a generated Ballpark did): the clock jump alone wouldn't fire it (plan §41).
+  party.ready(({ role }) => {
+    const app = document.getElementById('app');
+    if (role === 'host') {
+      let g = { phase: 'intro', round: 0, endsAt: party.now() + 30000 };
+      const show = () => {
+        app.textContent = g.phase === 'intro' ? 'Get ready!' : 'Round ' + g.round;
+        party.setState('all', { text: app.textContent });
+        party.save(g);
+      };
+      const next = () => {
+        g = { phase: 'round', round: g.round + 1, endsAt: party.now() + 30000 };
+        show();
+        setTimeout(next, g.endsAt - party.now());
+      };
+      show();
+      setTimeout(next, g.endsAt - party.now());
+    } else {
+      const text = party.ui.el('p');
+      app.append(text);
+      party.on('state', (s) => (text.textContent = s.text));
+    }
+  });
+</script>

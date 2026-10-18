@@ -1,0 +1,27 @@
+<script type="application/json" id="game-info">{ "name": "Stuck", "description": "A broken test game.", "minPlayers": 1, "maxPlayers": 4 }</script>
+<div id="app"></div>
+<script>
+  // Never leaves its intro: the timer is set, but only a phase that never comes acts on it
+  // (the bug in two generated games, plan §41).
+  party.ready(({ role }) => {
+    const app = document.getElementById('app');
+    if (role === 'host') {
+      let g = { phase: 'intro', round: 0, endsAt: party.now() + 30000 };
+      const show = () => {
+        app.textContent = g.phase === 'intro' ? 'Get ready!' : 'Round ' + g.round;
+        party.setState('all', { text: app.textContent });
+        party.save(g);
+      };
+      show();
+      setInterval(() => {
+        if (g.phase !== 'round' || party.now() < g.endsAt) return;
+        g = { phase: 'round', round: g.round + 1, endsAt: party.now() + 30000 };
+        show();
+      }, 250);
+    } else {
+      const text = party.ui.el('p');
+      app.append(text);
+      party.on('state', (s) => (text.textContent = s.text));
+    }
+  });
+</script>

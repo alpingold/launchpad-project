@@ -18,6 +18,9 @@
 //  - the frame loading another page (a link, location = …)
 //  - a big screen that stops ticking (an endless loop), a blank screen, phones that never
 //    hear from the big screen, messages the server would refuse, bad results in party.end
+//  - a game that never moves on (plan §41): at the end, with the bots stopped, every clock the
+//    game can read jumps 2 minutes ahead (and timers due by then run), so every deadline is
+//    past; if no phone's state, the save or the end changes after that, nothing ever moves it
 // While it plays: bots tap buttons, drag and hold (joysticks, drawing pads), type in text
 // boxes and press keys. One phone reloads and the big screen reloads (with its last
 // party.save), as happens at real parties.
@@ -44,6 +47,8 @@ const RATE_BURST = config.RATE_LIMIT_BURST;
 const HANG_MS = 5000; // the big screen ticks every second; 5 s of silence means it's stuck
 const LOAD_TIMEOUT_MS = 8000;
 const FIRST_WORD_MS = 6000; // phones should hear from the big screen by then
+const CLOCK_JUMP_MS = 2 * 60 * 1000; // the jump at the end: past any one phase's timer
+const MOVE_ON_MS = 5000; // how long the game gets to react to it
 
 /** The page around each game iframe: what GameFrame.jsx does, minus React and the socket. */
 const HARNESS_HTML = `<!doctype html>
@@ -74,6 +79,47 @@ const INIT_SCRIPT = `(() => {
       window.__report('csp', { directive: e.effectiveDirective, blocked: e.blockedURI, line: e.lineNumber, sample: e.sample });
     } catch {}
   });
+
+  // The time warp (plan §41): __warp(ms) moves every clock the game can read ms ahead
+  // (Date.now, so party.now too; performance.now; animation-frame times) and runs at once
+  // every setTimeout that would fall due by then. Until it's called, nothing is different.
+  let warp = 0;
+  const realDateNow = Date.now.bind(Date);
+  const realPerfNow = performance.now.bind(performance);
+  const realRaf = window.requestAnimationFrame.bind(window);
+  const realSetTimeout = window.setTimeout.bind(window);
+  const realClearTimeout = window.clearTimeout.bind(window);
+  const pending = new Map();
+  Date.now = () => realDateNow() + warp;
+  performance.now = () => realPerfNow() + warp;
+  window.requestAnimationFrame = (cb) => realRaf((t) => cb(t + warp));
+  window.setTimeout = (fn, ms, ...args) => {
+    const id = realSetTimeout(() => {
+      pending.delete(id);
+      if (typeof fn === 'function') fn(...args);
+    }, ms);
+    pending.set(id, { fn, args, due: Date.now() + (Number(ms) || 0) });
+    return id;
+  };
+  window.clearTimeout = (id) => {
+    pending.delete(id);
+    realClearTimeout(id);
+  };
+  Object.defineProperty(window, '__warp', {
+    value: (ms) => {
+      warp += ms;
+      const now = Date.now();
+      const due = [...pending].filter(([, t]) => t.due <= now).sort((a, b) => a[1].due - b[1].due);
+      for (const [id, t] of due) {
+        window.clearTimeout(id);
+        try {
+          if (typeof t.fn === 'function') t.fn(...t.args);
+        } catch (err) {
+          realSetTimeout(() => { throw err; }); // reported like any other error
+        }
+      }
+    },
+  });
 })();`;
 
 /**
@@ -96,7 +142,7 @@ const INIT_SCRIPT = `(() => {
 
 /**
  * @typedef {Object} PlaytestFinding
- * @property {string} rule     csp | error | network | navigation | hang | blank | silent | refused | results | load
+ * @property {string} rule     csp | error | network | navigation | hang | blank | silent | stuck | refused | results | load
  * @property {string} message
  * @property {string} [screen] where it happened: 'big screen', 'phone 2', or several ('big screen, phone 1')
  * @property {number} [line]   in the game file
@@ -149,6 +195,7 @@ export async function playtest(source, opts = {}) {
   const startedAt = Date.now();
   let lastAlive = 0;
   let stopping = false;
+  let botsStopped = false;
   let stopWatchdog = () => {};
   let hung = false;
 
@@ -376,8 +423,10 @@ export async function playtest(source, opts = {}) {
     }
     if (summary.ended) await takeShots(); // the end screen (unless taken already)
     else if (!hung) await takeShots();
-    stopping = true;
+    botsStopped = true;
     await Promise.race([Promise.allSettled(bots), sleep(2000)]);
+    if (!summary.ended && !hung) await checkMovesOn();
+    stopping = true;
     if (!summary.ended && !hung) onStep(`playtest: still running after ${seconds} s (fine for long games)`);
   } finally {
     stopWatchdog();
@@ -394,6 +443,30 @@ export async function playtest(source, opts = {}) {
   return { problems: findings.problems, warnings: findings.warnings, summary, screenshots: shots };
 
   // --- During the game --------------------------------------------------------------------
+
+  /**
+   * Plan §41: the bots have stopped, so only time can move the game now. Warp every screen's
+   * clocks past every deadline (INIT_SCRIPT) and see whether anything changes: a phone's
+   * state, the save, or the end. A WARNING for now, until it has been tried on many games.
+   */
+  async function checkMovesOn() {
+    const seen = () => JSON.stringify([[...relay.lastStates], relay.snapshot ?? null]);
+    await sleep(500); // what the bots' last taps caused
+    const before = seen();
+    onStep(`playtest: moving the clock ${CLOCK_JUMP_MS / 60000} minutes ahead (every timer runs out)`);
+    findings.onlyStuck = true;
+    for (const s of screens.values()) {
+      await gameFrame(s)?.evaluate((ms) => window.__warp?.(ms), CLOCK_JUMP_MS).catch(() => {});
+    }
+    // The game may freeze for a while catching up (that's not held against it either).
+    const moved = await until(() => summary.ended || seen() !== before, MOVE_ON_MS);
+    if (moved) return;
+    findings.warn({
+      rule: 'stuck',
+      screen: 'big screen',
+      message: `Nothing changed after every timer ran out (the clock was moved ${CLOCK_JUMP_MS / 60000} minutes ahead): no phone got a new state and nothing was saved, so the game stays on the screen it's on. Check that each phase moves to the next when its time is up (compare party.now() with its deadline), and that the first one starts.`,
+    });
+  }
 
   async function reloadPhone() {
     const screen = screens.get(players.at(-1).id);
@@ -440,9 +513,9 @@ export async function playtest(source, opts = {}) {
 
   /** One phone's bot: every 0.25–0.6 s, does something a player might. */
   async function runBot(screen) {
-    while (!stopping && !summary.ended && !hung) {
+    while (!stopping && !botsStopped && !summary.ended && !hung) {
       await sleep(250 + random() * 350);
-      if (stopping || !screen.ready) continue;
+      if (stopping || botsStopped || !screen.ready) continue;
       const frame = gameFrame(screen);
       if (!frame) continue;
       try {
@@ -524,11 +597,15 @@ class Findings {
   constructor() {
     this.problems = [];
     this.warnings = [];
+    /** After the clock jump (plan §41) only its own finding counts: a game may catch up on 2 minutes clumsily. */
+    this.onlyStuck = false;
   }
   add(f) {
+    if (this.onlyStuck) return;
     this.#push(this.problems, f);
   }
   warn(f) {
+    if (this.onlyStuck && f.rule !== 'stuck') return;
     this.#push(this.warnings, f);
   }
   /** The same finding on several screens becomes one, naming them all. */

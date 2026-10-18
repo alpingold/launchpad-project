@@ -1,0 +1,26 @@
+<script type="application/json" id="game-info">{ "name": "Timed", "description": "A test game with timed phases.", "minPlayers": 1, "maxPlayers": 4 }</script>
+<div id="app"></div>
+<script>
+  // Nothing wrong: a 30-second intro, then rounds of 30 seconds, each timed with party.now().
+  party.ready(({ role }) => {
+    const app = document.getElementById('app');
+    if (role === 'host') {
+      let g = { phase: 'intro', round: 0, endsAt: party.now() + 30000 };
+      const show = () => {
+        app.textContent = g.phase === 'intro' ? 'Get ready!' : 'Round ' + g.round;
+        party.setState('all', { text: app.textContent });
+        party.save(g);
+      };
+      show();
+      setInterval(() => {
+        if (party.now() < g.endsAt) return;
+        g = { phase: 'round', round: g.round + 1, endsAt: party.now() + 30000 };
+        show();
+      }, 250);
+    } else {
+      const text = party.ui.el('p');
+      app.append(text);
+      party.on('state', (s) => (text.textContent = s.text));
+    }
+  });
+</script>
