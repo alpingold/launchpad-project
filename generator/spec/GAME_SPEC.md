@@ -98,25 +98,23 @@ network, so there's nothing to fetch.)
 - **Length:** a game lasts about **5–15 minutes** unless the idea asks for something else,
   and each round, level, race or fight takes at least about 20 seconds. Make a game long
   enough with more rounds, longer levels or more to do, not with waiting.
-- **Both themes:** the game's own scene can have its own colours (a night sky is dark in both
-  themes). For page text, panels and buttons outside the scene, use the colour variables
-  below, so they look right in light and dark mode. A canvas can read them with
-  `getComputedStyle(document.documentElement)`.
+- **Colours:** the game's own scene has its own colours. For page text, panels and buttons
+  outside the scene, the colour variables below match the platform. A canvas can read them
+  with `getComputedStyle(document.documentElement)`.
 
 ## The `party` SDK
 
 Start everything in `party.ready`; nothing else is available before it runs.
 
 ```js
-party.ready(({ role, me, players, theme, restored }) => { ... })
+party.ready(({ role, me, players, restored }) => { ... })
 //   role: 'host' (big screen) or 'player' (phone)
 //   me: this phone's player id (null on the big screen)
 //   players: [{ id, name, connected }], everyone in the game, fixed for the whole game
-//   theme: 'light' or 'dark'
 //   restored: on the big screen after a reload, the last party.save snapshot; else undefined
 party.now()          // server time in ms: use it for every timer and deadline
 party.asset(id)      // URL of an approved picture (see the art library), or null
-party.players / party.me / party.role / party.theme   // the same, any time after ready
+party.players / party.me / party.role   // the same, any time after ready
 party.ui             // ready-made pieces you can see (below)
 party.on(name, fn)   // listen; the names are below
 ```
@@ -141,8 +139,7 @@ party.on('back', (playerId) => ...)          // it's back
 party.end({ rankings: [playerId, ...], scores: { [playerId]: number } })   // the game is over
 ```
 
-**Both:** `party.on('players', (players) => ...)` (who's connected changed) and
-`party.on('theme', (theme) => ...)`.
+**Both:** `party.on('players', (players) => ...)` (who's connected changed).
 
 **How to use it well:**
 
@@ -180,7 +177,7 @@ booleans. A `Set`, `Map`, class instance or function comes back broken (a `Set` 
 ## `party.ui`: ready-made pieces
 
 The phone's input is the hard part on a touch screen; use these instead of writing your own
-touch handling. They work on phones and keyboards, and look right in both themes. Each takes
+touch handling. They work on phones and keyboards. Each takes
 an element or a CSS selector. Everything else (scores, boards, the scene) the game draws in
 its own style.
 
@@ -257,8 +254,7 @@ style), so it doesn't look like every other game. Whatever the style:
 Already loaded; your own CSS always wins over them.
 
 - **Colour variables:** `--bg`, `--surface`, `--text`, `--muted`, `--border`, `--accent`,
-  `--on-accent`, `--good`, `--bad`, `--gold`; also `--radius`, `--font`, `--mono`. They
-  switch with the theme.
+  `--on-accent`, `--good`, `--bad`, `--gold`; also `--radius`, `--font`, `--mono`.
 - **Classes:** `.screen` (fills the frame, a column with padding: use it as the phone's
   page), `.stack` (a column with gaps), `.row`, `.center`, `.grow` (takes the free space),
   `.card`, `.muted`, `.big-text`, `.good`, `.bad`, `.mono`. Buttons: `button` (accent

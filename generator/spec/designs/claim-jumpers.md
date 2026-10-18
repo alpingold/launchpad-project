@@ -74,7 +74,7 @@ everyone ranked by score; scores are the points.
   Short on purpose: it's a game to play two or three times in a row. `minutes` = [4, 7].
 
 ## Art
-- **Palette (the same in both themes: it's the map):** deep map teal `#123238` with faint
+- **Palette (it's the map):** deep map teal `#123238` with faint
   contour lines, land `#6f8f6a` (squares) on darker grid lines `#0d262b`, gold `#ffcc33`
   with a dark outline, a jump red `#ff4d5e`, paper text `#f3efe2`.
 - **Player colours and shapes**, chosen so the colours stay apart for common colour

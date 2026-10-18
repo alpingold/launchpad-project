@@ -104,8 +104,8 @@ page plus up to 15 s of favourites per book.
 Cobalt desk (#2442c9 → #1b2f94), cream paper (#fffaf0) with soft shadows and tape strips
 (translucent yellow), ink-black text, pencil yellow (#ffd23f) for highlights and the
 checks. Player colours on their notebooks. Slow drifting doodles (loops, stars, squiggles)
-on the desk in a lighter blue. Cards tilt by a degree or two; new pages pop in. The same
-look in light and dark themes (it's the scene); drawings are always on white paper.
+on the desk in a lighter blue. Cards tilt by a degree or two; new pages pop in. Drawings
+are always on white paper.
 
 ## Sounds (big screen)
 Round start: go. Everyone done / pass: pop. Last 5 s of a round: tick. A page appears: blip.
