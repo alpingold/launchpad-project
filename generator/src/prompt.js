@@ -63,6 +63,30 @@ export const DESIGN_HEADINGS = ['Genre and feel', 'Players', 'Big screen', 'Phon
 /** The headings every change plan has. */
 export const PLAN_HEADINGS = ['What changes', 'What stays the same', 'Risks'];
 
+/**
+ * The shape a design (or change plan) reply must have (plan §39): JSON with a title and one
+ * text field per heading, all required. GenAI Studio's vLLM holds the reply to it
+ * (`response_format`), so no heading can be left out; extract.js turns it back into Markdown.
+ * The thinking before the reply isn't affected.
+ * @param {'design' | 'plan'} what
+ */
+export function headingsFormat(what) {
+  const headings = what === 'plan' ? PLAN_HEADINGS : DESIGN_HEADINGS;
+  const fields = ['title', ...headings];
+  return {
+    type: 'json_schema',
+    json_schema: {
+      name: what,
+      schema: {
+        type: 'object',
+        properties: Object.fromEntries(fields.map((f) => [f, { type: 'string' }])),
+        required: fields,
+        additionalProperties: false,
+      },
+    },
+  };
+}
+
 export const EXAMPLES = {
   'bumper-blobs': { design: '../spec/designs/bumper-blobs.md' },
 };
@@ -113,7 +137,7 @@ ${read('../spec/DESIGN.md')}
 ${exampleSection}${DATA_NOTE}`;
 }
 
-const DESIGN_ANSWER = `Reply with the design only: Markdown, starting with "# " and the game's name, with every heading from "Writing a game design" in order. No code.`;
+const DESIGN_ANSWER = `Reply with the design only, as JSON: "title" is the game's name, then one field for each heading from "Writing a game design", in order, holding that section in Markdown (without its heading). No code.`;
 
 /**
  * A new game's design.
@@ -163,7 +187,7 @@ export function planMessages(change, redraft) {
     parts.push(`Your last plan:\n\n<last-draft>\n${String(redraft.draft).trim()}\n</last-draft>`);
     parts.push(`Write a new complete plan that makes these changes to it:\n\n${data('feedback', redraft.feedback)}`);
   }
-  parts.push('Reply with the change plan only: Markdown, starting with "# Change:", with the three headings. No code. If part of the request isn\'t possible, say so under Risks and plan the closest thing that is.');
+  parts.push('Reply with the change plan only, as JSON: "title" is the short title, then one field for each of the three headings, holding that section in Markdown (without its heading). No code. If part of the request isn\'t possible, say so under Risks and plan the closest thing that is.');
   return [
     { role: 'system', content: `You change party games for BoilerGames.\n\n${read('../spec/GAME_SPEC.md')}\n\n${PLAN_FORMAT}\n\n${DATA_NOTE}` },
     { role: 'user', content: parts.join('\n\n') },
@@ -315,5 +339,5 @@ export const NO_CODE_MESSAGE =
 
 /** What to say when a design is missing headings. */
 export function missingHeadingsMessage(missing) {
-  return `That design is missing these headings: ${missing.join(', ')}. Reply with the complete design again, with every heading in order.`;
+  return `That design is missing these headings: ${missing.join(', ')}. Reply with the complete design again, with every heading filled in.`;
 }

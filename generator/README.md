@@ -19,7 +19,8 @@ generator/
   src/prompt.js                 what the model reads: design step = rulebook + design format + art list
                                 + the idea; build step = rulebook + art list + the approved design
   src/llm.js                    GenAI Studio chat API (plain fetch, retries on rate limits)
-  src/extract.js                pulls the game file, design or list of changes out of a reply
+  src/extract.js                pulls the game file, design or list of changes out of a reply (a design
+                                comes as JSON, one field per heading, and is turned back into Markdown)
   src/models.js                 the allowed models
   src/check/checkGame.js        F4: game info + static check + browser playtest → one report
   src/check/playtest.js         F4: plays the game in headless Chromium with simulated phones

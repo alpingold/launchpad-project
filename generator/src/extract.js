@@ -41,6 +41,34 @@ export function extractDesign(reply) {
 }
 
 /**
+ * The design (or change plan) in a reply held to headingsFormat (prompt.js): JSON with a title
+ * and one field per heading, joined into the same Markdown as a written design. A heading
+ * with no text is left out, so missingHeadings still notices it. A reply that isn't that JSON
+ * (a server that ignored the format) is read as Markdown instead.
+ * @param {string} reply
+ * @param {string[]} headings
+ * @param {string} [titlePrefix]  "Change: " for a change plan
+ * @returns {string | null}
+ */
+export function extractHeadings(reply, headings, titlePrefix = '') {
+  let fields;
+  try {
+    fields = JSON.parse(withoutThinking(reply).trim());
+  } catch {
+    return extractDesign(reply);
+  }
+  if (!fields || typeof fields !== 'object' || typeof fields.title !== 'string') return extractDesign(reply);
+  const title = fields.title.trim().replace(/^#+\s*/, '');
+  const prefixed = title.toLowerCase().startsWith(titlePrefix.toLowerCase()) ? title : `${titlePrefix}${title}`;
+  const sections = headings.flatMap((h) => {
+    // A model may repeat the heading at the top of its text: drop it.
+    const text = typeof fields[h] === 'string' ? fields[h].trim().replace(/^#+\s*(.+)\r?\n/, (line, name) => (name.trim().toLowerCase() === h.toLowerCase() ? '' : line)).trim() : '';
+    return text ? [`## ${h}\n${text}`] : [];
+  });
+  return [`# ${prefixed}`, ...sections].join('\n\n').slice(0, MAX_DESIGN_LENGTH) + '\n';
+}
+
+/**
  * The headings from `required` that a design is missing (compared without case).
  * @param {string} design
  * @param {string[]} required  e.g. ['Genre and feel', 'Players', ...]

@@ -26,18 +26,37 @@ const RETRY_DELAYS_MS = [5_000, 15_000, 30_000];
  */
 
 /**
+ * The model used up its context (65K tokens, prompt included) THINKING, and wrote no reply
+ * (plan §38: a build can think for 45K+ tokens). Not tried again here: the same call would
+ * likely do the same, after another ~15 minutes. The caller decides; this keeps what's known.
+ */
+export class OutOfRoomError extends Error {
+  /** @param {{ thinking: string, usage: object | null, seconds: number }} reply */
+  constructor({ thinking, usage, seconds }) {
+    const tokens = usage?.completion_tokens ? ` (${usage.completion_tokens.toLocaleString('en-US')} tokens)` : '';
+    super(`the model ran out of room while thinking${tokens} and wrote no reply`);
+    this.outOfRoom = true;
+    this.thinking = thinking;
+    this.usage = usage;
+    this.seconds = seconds;
+  }
+}
+
+/**
  * Sends a conversation to the model and returns its reply.
  * @param {Message[]} messages
  * @param {Object} opts
  * @param {string} opts.model
  * @param {string} [opts.baseUrl]
  * @param {string} [opts.apiKey]
+ * @param {object} [opts.responseFormat]       the reply must match this (a JSON schema, prompt.js)
  * @param {typeof fetch} [opts.fetchImpl]          tests pass a fake
  * @param {(ms: number) => Promise<void>} [opts.sleep]
  * @param {(text: string) => void} [opts.onRetry]
  * @param {(progress: Progress) => void} [opts.onProgress]  every ~15 s while the reply streams in
  * @param {number} [opts.idleTimeoutMs]
  * @returns {Promise<ChatResult>}
+ * @throws {OutOfRoomError} when the thinking filled the context and there's no reply
  */
 export async function chat(
   messages,
@@ -45,6 +64,7 @@ export async function chat(
     model,
     baseUrl = process.env.GENAI_BASE_URL || DEFAULT_BASE_URL,
     apiKey = process.env.GENAI_API_KEY,
+    responseFormat,
     fetchImpl = fetch,
     sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     onRetry = () => {},
@@ -59,6 +79,7 @@ export async function chat(
     stream: true,
     stream_options: { include_usage: true },
     ...(reasoningEffort && { reasoning_effort: reasoningEffort }),
+    ...(responseFormat && { response_format: responseFormat }),
   });
   let lastProblem = '';
   for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
@@ -103,11 +124,15 @@ export async function chat(
     } finally {
       idle.stop();
     }
-    if (typeof reply.content !== 'string' || reply.content === '') {
+    const seconds = Math.round((Date.now() - started) / 1000);
+    const empty = typeof reply.content !== 'string' || reply.content === '';
+    // Stopped by the length limit, or thought and then said nothing: out of room, not the rate limit.
+    if (empty && (reply.finishReason === 'length' || reply.thinking)) throw new OutOfRoomError({ thinking: reply.thinking, usage: reply.usage, seconds });
+    if (empty) {
       lastProblem = 'empty reply (often the rate limit)';
       continue;
     }
-    return { content: reply.content, thinking: reply.thinking, seconds: Math.round((Date.now() - started) / 1000), usage: reply.usage };
+    return { content: reply.content, thinking: reply.thinking, seconds, usage: reply.usage };
   }
   throw new Error(`model call failed after ${RETRY_DELAYS_MS.length + 1} tries: ${lastProblem}`);
 }
@@ -141,14 +166,15 @@ function isEventStream(res) {
 /** A server that ignores `stream: true` answers with one JSON body. */
 async function readWhole(res) {
   const body = await res.json().catch(() => null);
-  const message = body?.choices?.[0]?.message;
-  return { content: message?.content, thinking: message?.reasoning_content ?? '', usage: body?.usage ?? null };
+  const choice = body?.choices?.[0];
+  return { content: choice?.message?.content, thinking: choice?.message?.reasoning_content ?? '', finishReason: choice?.finish_reason ?? null, usage: body?.usage ?? null };
 }
 
 /**
  * Reads a streamed reply: lines of `data: {json}`, ending with `data: [DONE]`. Each chunk
  * holds a small piece of the reply (`delta.content`) or of the model's thinking
- * (`delta.reasoning_content`); the last one carries the token counts.
+ * (`delta.reasoning_content`); the last ones carry why it stopped (`finish_reason`: "length"
+ * when the context was full) and the token counts.
  */
 async function readStream(res, idle, onProgress) {
   const reader = res.body.getReader();
@@ -157,6 +183,7 @@ async function readStream(res, idle, onProgress) {
   const thoughts = [];
   const progress = { thinking: 0, writing: 0 };
   let usage = null;
+  let finishReason = null;
   let buffer = '';
   let reportedAt = Date.now();
   for (;;) {
@@ -186,6 +213,7 @@ async function readStream(res, idle, onProgress) {
         thoughts.push(delta.reasoning_content);
         progress.thinking += 1;
       }
+      if (chunk.choices?.[0]?.finish_reason) finishReason = chunk.choices[0].finish_reason;
       if (chunk.usage) usage = chunk.usage;
     }
     if (Date.now() - reportedAt >= PROGRESS_EVERY_MS) {
@@ -193,5 +221,5 @@ async function readStream(res, idle, onProgress) {
       onProgress({ ...progress });
     }
   }
-  return { content: parts.join(''), thinking: thoughts.join(''), usage };
+  return { content: parts.join(''), thinking: thoughts.join(''), finishReason, usage };
 }

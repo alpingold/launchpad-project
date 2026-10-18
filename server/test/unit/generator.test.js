@@ -1,15 +1,17 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { extractGameFile, extractDesign, missingHeadings, extractChangelog } from '../../../generator/src/extract.js';
-import { chat } from '../../../generator/src/llm.js';
+import { extractGameFile, extractDesign, extractHeadings, missingHeadings, extractChangelog } from '../../../generator/src/extract.js';
+import { chat, OutOfRoomError } from '../../../generator/src/llm.js';
 import { MODELS, DEFAULT_MODEL } from '../../../generator/src/models.js';
 import {
   designMessages,
   planMessages,
   buildMessages,
   changeBuildMessages,
+  headingsFormat,
   DESIGN_HEADINGS,
+  PLAN_HEADINGS,
 } from '../../../generator/src/prompt.js';
 import { runJob, formatReport } from '../../../generator/src/run.js';
 
@@ -38,6 +40,40 @@ test('extractDesign: from the first heading, unwrapping a markdown fence; missin
   assert.equal(extractDesign('No headings here.'), null);
   assert.deepEqual(missingHeadings(DESIGN, DESIGN_HEADINGS), []);
   assert.deepEqual(missingHeadings('# X\n## players\n## Rules', ['Players', 'Rules', 'Art']), ['Art']);
+});
+
+/** A design as the model sends it under headingsFormat: its title and one field per heading. */
+function asFields(design) {
+  const [head, ...sections] = design.trim().split(/^## /m);
+  const fields = { title: head.replace(/^# /, '').trim() };
+  for (const s of sections) {
+    const [heading, ...body] = s.split('\n');
+    fields[heading.trim()] = body.join('\n').trim();
+  }
+  return fields;
+}
+
+test('headingsFormat + extractHeadings: every heading required, and the JSON reply turned back into the same Markdown', () => {
+  const { schema } = headingsFormat('design').json_schema;
+  assert.deepEqual(schema.required, ['title', ...DESIGN_HEADINGS]);
+  assert.equal(schema.additionalProperties, false);
+  assert.deepEqual(headingsFormat('plan').json_schema.schema.required, ['title', ...PLAN_HEADINGS]);
+
+  const fields = asFields(DESIGN);
+  assert.deepEqual(missingHeadings(extractHeadings(JSON.stringify(fields), DESIGN_HEADINGS), DESIGN_HEADINGS), []);
+  assert.equal(extractHeadings(`<think>{"no": 1}</think>${JSON.stringify(fields)}`, DESIGN_HEADINGS), DESIGN.trim().replace(/\n{3,}/g, '\n\n') + '\n');
+
+  // An empty section is left out (so it counts as missing); a repeated heading is dropped.
+  const odd = extractHeadings(JSON.stringify({ ...fields, Art: '  ', Rules: '## Rules\nRun.' }), DESIGN_HEADINGS);
+  assert.deepEqual(missingHeadings(odd, DESIGN_HEADINGS), ['Art']);
+  assert.match(odd, /## Rules\nRun\./);
+
+  // A plan's title gets "Change: " once; a reply that isn't the JSON is read as Markdown.
+  const plan = { title: 'Faster rounds', 'What changes': '- 30 s rounds', 'What stays the same': 'Scoring', Risks: 'None' };
+  assert.match(extractHeadings(JSON.stringify(plan), PLAN_HEADINGS, 'Change: '), /^# Change: Faster rounds\n\n## What changes\n- 30 s rounds/);
+  assert.match(extractHeadings(JSON.stringify({ ...plan, title: 'Change: Faster rounds' }), PLAN_HEADINGS, 'Change: '), /^# Change: Faster rounds\n/);
+  assert.equal(extractHeadings(`Sure!\n\n${DESIGN}`, DESIGN_HEADINGS), DESIGN.trim() + '\n');
+  assert.equal(extractHeadings('[1, 2]', DESIGN_HEADINGS), null);
 });
 
 test('extractChangelog: the "- " lines after CHANGES:, ignoring thinking, code and later lists', () => {
@@ -75,9 +111,10 @@ test('chat: sends the conversation (with the model\'s reasoning effort) and retu
 });
 
 /** A streamed reply, as GenAI Studio sends it: `data:` lines, split across network chunks. */
-function streamed(pieces, { usage = { total_tokens: 9 }, hangAfter = null } = {}) {
+function streamed(pieces, { usage = { total_tokens: 9 }, hangAfter = null, finishReason = 'stop' } = {}) {
   const lines = [
     ...pieces.map(([field, text]) => `data: ${JSON.stringify({ choices: [{ delta: { [field]: text } }] })}\n\n`),
+    `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: finishReason }] })}\n\n`,
     `data: ${JSON.stringify({ choices: [], usage })}\n\n`,
     'data: [DONE]\n\n',
   ];
@@ -101,6 +138,28 @@ function streamed(pieces, { usage = { total_tokens: 9 }, hangAfter = null } = {}
     },
   });
 }
+
+test('chat: thinking until the context is full is "out of room", not the rate limit, and isn\'t tried again', async () => {
+  const usage = { completion_tokens: 59_000 };
+  const full = { body: { choices: [{ message: { content: '', reasoning_content: 'Let me write.' }, finish_reason: 'length' }], usage } };
+  const { fetchImpl, calls } = fakeFetch([full, reply('never asked')]);
+  const err = await chat([], { model: 'm', fetchImpl, sleep: noSleep }).catch((e) => e);
+  assert.ok(err instanceof OutOfRoomError);
+  assert.match(err.message, /ran out of room while thinking \(59,000 tokens\)/);
+  assert.equal(err.thinking, 'Let me write.');
+  assert.deepEqual(err.usage, usage);
+  assert.equal(calls.length, 1);
+
+  // Streamed, as GenAI Studio sends it: the finish reason comes in a chunk of its own.
+  const fetchStream = async (_url, init) => streamed([['reasoning_content', 'Hmm.']], { finishReason: 'length' })(init.signal);
+  assert.ok((await chat([], { model: 'm', fetchImpl: fetchStream, sleep: noSleep }).catch((e) => e)).outOfRoom);
+});
+
+test('chat: a response format goes in the request as response_format', async () => {
+  const { fetchImpl, calls } = fakeFetch([reply('{}')]);
+  await chat([], { model: 'm', fetchImpl, sleep: noSleep, responseFormat: headingsFormat('plan') });
+  assert.deepEqual(calls[0].body.response_format, headingsFormat('plan'));
+});
 
 test('chat: reads a streamed reply, keeping the answer and the thinking apart', async () => {
   const fetchImpl = async (_url, init) => streamed([['reasoning_content', 'Hmm, '], ['reasoning_content', 'let me see.'], ['content', 'Hello'], ['content', ', world']])(init.signal);
@@ -211,8 +270,9 @@ test('change prompts: the plan sees the design, code and request; the build gets
 /** A fake model that answers with each of `replies` in turn, and remembers what it was asked. */
 function fakeModel(replies) {
   const calls = [];
-  const chatFn = async (messages) => {
+  const chatFn = async (messages, opts) => {
     calls.push(messages.map((m) => ({ ...m })));
+    calls.at(-1).responseFormat = opts?.responseFormat;
     return { content: replies.shift(), thinking: 'Let me think.', seconds: 1, usage: null };
   };
   return { chatFn, calls };
@@ -236,6 +296,12 @@ test('design job: one call, the design comes back; a draft missing headings is a
   const never = await runJob({ step: 'design', idea: 'A racing platformer for friends' }, { chatFn: fakeModel(['I cannot.', 'Still no.']).chatFn });
   assert.equal(never.ok, false);
   assert.match(never.error, /no design/);
+
+  // The reply is held to the headings (plan §39) and may come back as JSON.
+  assert.equal(one.calls[0].responseFormat.json_schema.name, 'design');
+  const json = await runJob({ step: 'design', idea: 'A racing platformer for friends' }, { chatFn: fakeModel([JSON.stringify(asFields(DESIGN))]).chatFn });
+  assert.equal(json.ok, true);
+  assert.match(json.design, /^# Bumper Blobs\n\n## Genre and feel\n/);
 
   // The thinking is kept only when the job asks (plan §38).
   assert.equal(result.attempts[0].thinking, undefined);
@@ -278,6 +344,24 @@ test('build job (edit mode off): write → check → fix until it passes; the re
   const fix = model.calls[1].at(-1).content;
   assert.match(fix, /line 12: `fetch` is blocked\.\n {4}code: fetch\("\/x"\); \(on the big screen\)/);
   assert.match(model.calls[2].at(-1).content, /no game file/);
+});
+
+test('build job: an attempt that ran out of room is recorded (with its thinking, if kept), and the next asks again', async () => {
+  const model = fakeModel([fenced('html', GAME)]);
+  let first = true;
+  const chatFn = async (messages, opts) => {
+    if (!first) return model.chatFn(messages, opts);
+    first = false;
+    throw new OutOfRoomError({ thinking: 'Wait. Actually…', usage: { completion_tokens: 59_000 }, seconds: 900 });
+  };
+  const steps = [];
+  const result = await runJob({ step: 'build', idea: 'A racing platformer for friends', design: DESIGN, keepThinking: true }, { chatFn, check: passing, onStep: (t) => steps.push(t) });
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.attempts.map((a) => [a.ok, a.outOfRoom ?? false]), [[false, true], [true, false]]);
+  assert.equal(result.attempts[0].thinking, 'Wait. Actually…');
+  assert.deepEqual(result.attempts[0].usage, { completion_tokens: 59_000 });
+  assert.ok(steps.includes('attempt 1/4: the model ran out of room while thinking (59,000 tokens) and wrote no reply'));
+  assert.equal(model.calls[0].length, 2, 'the same request again');
 });
 
 test('build job: gives up after the attempts, keeping the last game and report; too big fails', async () => {

@@ -31,7 +31,7 @@
 
 import { pathToFileURL } from 'node:url';
 import { chat } from './llm.js';
-import { extractGameFile, extractDesign, extractChangelog, missingHeadings } from './extract.js';
+import { extractGameFile, extractHeadings, extractChangelog, missingHeadings } from './extract.js';
 import { applyReply, hasEdits, withoutEdits } from './edits.js';
 import {
   designMessages,
@@ -41,6 +41,7 @@ import {
   fixMessage,
   editsFailedMessage,
   missingHeadingsMessage,
+  headingsFormat,
   NO_CODE_MESSAGE,
   DESIGN_HEADINGS,
   PLAN_HEADINGS,
@@ -75,7 +76,7 @@ import { describeProblem } from '../../server/src/games/frameGame.js';
  * One build attempt, as the result lists it. mode: how the model answered (plan §23). An
  * "edits" attempt whose edits didn't fit the file has no source; its report lists why.
  * @typedef {{ attempt: number, mode?: 'whole' | 'edits', ok: boolean, problems: number, seconds: number,
- *   usage: { prompt_tokens?: number, completion_tokens?: number } | null, thinking?: string,
+ *   usage: { prompt_tokens?: number, completion_tokens?: number } | null, thinking?: string, outOfRoom?: true,
  *   source?: string | null, report?: import('../../server/src/games/frameGame.js').CheckReport }} AttemptResult
  */
 
@@ -167,12 +168,20 @@ async function design(job, model, { chatFn = chat, onStep = () => {} }) {
     onStep(asking);
     let reply;
     try {
-      reply = await chatFn(messages, { model, onRetry: onStep, onProgress: (p) => onStep(`${asking} (${progressText(p)})`, { replace: true }) });
+      reply = await chatFn(messages, {
+        model,
+        responseFormat: headingsFormat(what),
+        onRetry: onStep,
+        onProgress: (p) => onStep(`${asking} (${progressText(p)})`, { replace: true }),
+      });
     } catch (err) {
-      return { ...result, error: err.message };
+      if (!err.outOfRoom) return { ...result, error: err.message };
+      result.attempts.push({ attempt, seconds: err.seconds, ok: false, problems: 1, outOfRoom: true, usage: err.usage, ...thinkingOf(job, err) });
+      onStep(`${what}: ${err.message}`);
+      continue;
     }
     messages.push({ role: 'assistant', content: reply.content });
-    const text = extractDesign(reply.content);
+    const text = extractHeadings(reply.content, headings, isPlan ? 'Change: ' : '');
     const missing = text ? missingHeadings(text, headings) : headings;
     result.attempts.push({ attempt, seconds: reply.seconds, ok: missing.length === 0, problems: missing.length, usage: reply.usage, ...thinkingOf(job, reply) });
     if (text) result.design = text;
@@ -184,6 +193,7 @@ async function design(job, model, { chatFn = chat, onStep = () => {} }) {
   }
   // A design with a heading missing is still worth showing: the admin can fix it by hand.
   if (result.design) return { ...result, ok: true, warning: `the ${what} is missing some headings` };
+  if (result.attempts.at(-1)?.outOfRoom) return { ...result, error: `the model ran out of room while thinking and wrote no ${what}` };
   return { ...result, error: `the model wrote no ${what}` };
 }
 
@@ -234,7 +244,11 @@ async function build(job, model, { chatFn = chat, check = checkGame, onStep = ()
     try {
       reply = await chatFn(messages, { model, onRetry: onStep, onProgress: (p) => onStep(`${asking} (${progressText(p)})`, { replace: true }) });
     } catch (err) {
-      return { ...result, error: err.message };
+      if (!err.outOfRoom) return { ...result, error: err.message };
+      // It thought until the context was full: a used-up attempt. The next one asks the same again.
+      result.attempts.push({ attempt, mode, seconds: err.seconds, usage: err.usage, ...thinkingOf(job, err), ok: false, problems: 1, outOfRoom: true, source: null });
+      onStep(`attempt ${attempt}/${maxAttempts}: ${err.message}`);
+      continue;
     }
     // The list of changes comes with the first answer that has one (fixes don't repeat it).
     if (change) changelog ??= extractChangelog(withoutEdits(reply.content));
@@ -299,7 +313,8 @@ async function build(job, model, { chatFn = chat, check = checkGame, onStep = ()
     // Only the game file goes back (not the model's chatter around it), to keep it short.
     messages = fixMessages(current, currentProblems, edits);
   }
-  return { ...result, error: `no passing game after ${maxAttempts} attempts` };
+  const outOfRoom = result.attempts.at(-1)?.outOfRoom ? ' (the last one ran out of room while thinking)' : '';
+  return { ...result, error: `no passing game after ${maxAttempts} attempts${outOfRoom}` };
 }
 
 /** A report without the playtest's screenshots (only the final report keeps them: they're large). */
