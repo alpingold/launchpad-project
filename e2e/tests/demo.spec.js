@@ -35,6 +35,7 @@ test('the footer is on ordinary pages, not the room screens; its link remembers 
   await page.goto('/games');
   const footer = page.locator('.site-footer');
   await expect(footer).toContainText("BoilerGames is still in an early testing phase and I'd love your feedback!");
+  await expect(footer).toContainText('not affiliated with, endorsed by, sponsored by, or in any way sanctioned by Purdue University');
   await footer.getByRole('link', { name: 'Report an issue' }).click();
   await expect(page).toHaveURL('/report?from=%2Fgames');
   await expect(page.locator('.site-footer')).toHaveCount(0);

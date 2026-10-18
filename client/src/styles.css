@@ -1983,6 +1983,11 @@ code {
   margin: 0;
 }
 
+.site-footer .site-footer-disclaimer {
+  margin-top: 0.6rem;
+  font-size: 0.8rem;
+}
+
 body.in-game .site-footer,
 body.in-game .demo-badge-room {
   display: none;
