@@ -1889,6 +1889,34 @@ Lessons now in the guide: OpenShell's gateway is a user service (needs lingering
 restart of the user's service manager after joining the docker group, else "no compute
 driver"), and the CLI must be registered with `openshell gateway add --local`.
 
+## 30. Updating the live site with almost no downtime (built 2026-10-17)
+
+**Problem:** the first way to update (`git pull`, install, build, restart, all in the live
+folder) changed the files under the running server, so pages loaded mid-build could break.
+A broken version went live before anyone knew, and the restart ended any game being played
+(rooms live in memory, §9).
+
+**Decision:** one script, `deploy/update.sh` (steps in `deploy/README.md`):
+- **Build off to the side** (`~/boilergames-next`, a git worktree), then **try** it on port
+  3001 with a copy of the database. A bad version stops there; the site is never touched.
+- **Wait until nobody is playing** or making a game (default up to 30 min, `--now` to skip).
+  The server answers `GET /api/status` (`{rooms, playing, connections, generating}`) only to
+  itself: through Caddy a visitor's address is never 127.0.0.1 (`TRUST_PROXY=loopback`).
+- **Switch by renaming** the built `node_modules` and `client/dist` into place (instant), and
+  restart. Caddy keeps retrying for up to 10 s (`lb_try_duration`), so the ~2 s restart is a
+  slow page, not a 502. The new build keeps the last week's asset files for tabs left open.
+- **Check, else roll back** the code, packages, website and generator image (`:previous`).
+
+**Not done, on purpose:** no two servers side by side (true zero downtime). Rooms are in one
+process's memory, so a second server couldn't take them over anyway; waiting for an empty
+server gets the same result for players with far less machinery. No automatic deploys from
+GitHub yet: they'd need GitHub to hold a login to the server.
+
+Rehearsed on the dev PC with stand-ins for sudo/systemctl/docker: the first update (from a
+version without `/api/status`), waiting out an open room, and a rollback of a version that
+only failed once live. Also added `.dockerignore`: the generator's build context went from the
+whole repo (with `node_modules` and `server/data`) to 28 kB.
+
 ## Verification (how to confirm the plan worked once built)
 
 - `npm test` (root) → runs `node --test server/test`, all unit and integration tests green.
