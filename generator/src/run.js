@@ -69,6 +69,7 @@ import { describeProblem } from '../../server/src/games/frameGame.js';
  * @property {boolean} [sizeLimit]        build: false leaves the 100 KB limit out of the prompt (plan §32's experiment)
  * @property {number} [maxAttempts]       build
  * @property {boolean} [edits]            build: false turns edit mode off (on by default, plan §23)
+ * @property {boolean} [briefThinking]    build: asks for a short plan before the file (plan §40's experiment)
  * @property {boolean} [keepThinking]     each attempt keeps the model's thinking (plan §38's look; off on the site)
  */
 
@@ -135,6 +136,7 @@ export async function runJob(job, deps = {}) {
   if (job.edits !== undefined && typeof job.edits !== 'boolean') return fail('edits must be true or false');
   if (job.sizeLimit !== undefined && typeof job.sizeLimit !== 'boolean') return fail('sizeLimit must be true or false');
   if (job.keepThinking !== undefined && typeof job.keepThinking !== 'boolean') return fail('keepThinking must be true or false');
+  if (job.briefThinking !== undefined && typeof job.briefThinking !== 'boolean') return fail('briefThinking must be true or false');
 
   if (job.step === 'design') return design(job, model, deps);
   if (job.step === 'build') {
@@ -220,7 +222,7 @@ async function build(job, model, { chatFn = chat, check = checkGame, onStep = ()
   // The conversation is the prompt plus, after a failed attempt, ONLY that attempt and its
   // problems: earlier attempts are dropped. Each one can be a whole game (~10K tokens), and
   // the model's context is 65K (plan §13n): keeping them all would overflow by attempt 4.
-  const prompt = change ? changeBuildMessages({ idea: job.idea, ...change }, plan, { edits }) : buildMessages(job.idea, job.design, { sizeLimit: job.sizeLimit ?? true });
+  const prompt = change ? changeBuildMessages({ idea: job.idea, ...change }, plan, { edits }) : buildMessages(job.idea, job.design, { sizeLimit: job.sizeLimit ?? true, briefThinking: job.briefThinking ?? false });
   // A fix shows the model its last file as its own reply. For a change, that file replaces
   // the old one in the prompt (withCode: false), so the game is in the conversation once.
   const fixPrompt = (asEdits) => (change ? changeBuildMessages({ idea: job.idea, ...change }, plan, { edits: asEdits, withCode: false }) : prompt);

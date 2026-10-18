@@ -232,6 +232,12 @@ test('sizeLimit: false (plan §32\'s experiment) leaves every mention of the 100
   assert.match(without, /Everything is in this one file/);
 });
 
+test('briefThinking (plan §40\'s experiment): the short-plan sentence comes just before the answer line, only when asked', () => {
+  const user = (opts) => buildMessages('Run and jump', DESIGN, opts)[1].content;
+  assert.doesNotMatch(user(), /plan briefly/);
+  assert.match(user({ briefThinking: true }), /plan briefly:[^\n]*\n\nReply with the complete game file/);
+});
+
 test('no target length for a whole game (plan §35), but a round is at least about 20 s and the design works out its length', () => {
   const all = (messages) => messages.map((m) => m.content).join('\n');
   for (const prompt of [all(designMessages('Ducks')), all(buildMessages('Run and jump', DESIGN))]) {
@@ -400,6 +406,7 @@ test('bad jobs are refused before any model call', async () => {
     [{ step: 'design', idea: 'A long enough idea', redraft: { draft: 'x' } }, /last draft/],
     [{ step: 'design', idea: 'A long enough idea', examples: 'no' }, /examples must be true or false/],
     [{ step: 'design', idea: 'A long enough idea', keepThinking: 1 }, /keepThinking must be true or false/],
+    [{ step: 'build', idea: 'A long enough idea', design: 'd', briefThinking: 'yes' }, /briefThinking must be true or false/],
   ];
   for (const [job, error] of cases) assert.match((await runJob(job, { chatFn: model.chatFn })).error, error);
   assert.equal(model.calls.length, 0);

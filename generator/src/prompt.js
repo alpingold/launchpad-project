@@ -229,12 +229,18 @@ function buildSystemPrompt({ sizeLimit = true } = {}) {
 
 const BUILD_ANSWER = `Reply with the complete game file in ONE \`\`\`html code block, starting with the game-info block. Follow the design exactly; where it leaves something open, choose what plays best.`;
 const BUILD_SIZE = ` At most ${MAX_GAME_BYTES / 1024} KB.`;
+/**
+ * Plan §40's experiment (job.briefThinking): a build thought for 46K tokens, a third of it
+ * drafts of code, and nearly filled the context. This asks for a short plan instead. Off by
+ * default until a comparison shows it helps.
+ */
+export const BRIEF_THINKING = `Before writing, plan briefly: the big screen's state, what each phone is sent, every timer, and what happens when a player leaves or a screen reloads. Work out only the tricky parts in detail; don't draft the whole file in your thinking. Where the design is unclear, follow the reading closest to its words. Once the plan is set, write the file in your reply.`;
 
 /**
  * Building a new game from its approved design.
  * @param {string} idea
  * @param {string} design
- * @param {{ sizeLimit?: boolean }} [opts]  see buildSystemPrompt
+ * @param {{ sizeLimit?: boolean, briefThinking?: boolean }} [opts]  sizeLimit: see buildSystemPrompt; briefThinking: BRIEF_THINKING
  * @returns {import('./llm.js').Message[]}
  */
 export function buildMessages(idea, design, opts = {}) {
@@ -242,7 +248,7 @@ export function buildMessages(idea, design, opts = {}) {
     { role: 'system', content: buildSystemPrompt(opts) },
     {
       role: 'user',
-      content: `Build this game. The design was approved by the game's owner.\n\n<design>\n${String(design).trim()}\n</design>\n\nThe idea it came from, for context:\n\n${data('game-idea', idea)}\n\n${BUILD_ANSWER}${opts.sizeLimit === false ? '' : BUILD_SIZE}`,
+      content: `Build this game. The design was approved by the game's owner.\n\n<design>\n${String(design).trim()}\n</design>\n\nThe idea it came from, for context:\n\n${data('game-idea', idea)}\n\n${opts.briefThinking ? `${BRIEF_THINKING}\n\n` : ''}${BUILD_ANSWER}${opts.sizeLimit === false ? '' : BUILD_SIZE}`,
     },
   ];
 }
