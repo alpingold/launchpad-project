@@ -1262,6 +1262,53 @@ code {
   overflow-wrap: anywhere;
 }
 
+.kit-sdk {
+  border-collapse: collapse;
+  width: 100%;
+  overflow-wrap: normal;
+}
+
+.kit-sdk code {
+  white-space: nowrap;
+}
+
+.kit-sdk th {
+  padding: 0.9rem 0 0.2rem;
+  text-align: left;
+  color: var(--muted);
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.kit-sdk td {
+  padding: 0.3rem 0.75rem 0.3rem 0;
+  vertical-align: top;
+  border-top: 1px solid var(--border);
+}
+
+/* On a phone, each call sits above what it does. */
+@media (max-width: 600px) {
+  .kit-sdk td {
+    display: block;
+    padding-right: 0;
+  }
+
+  .kit-sdk td + td {
+    border-top: none;
+    padding-top: 0;
+  }
+}
+
+.kit-guide {
+  margin-top: 0.75rem;
+}
+
+.kit-guide > summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
 .kit-section pre {
   overflow-x: auto;
   padding: 0.75rem;
