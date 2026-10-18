@@ -13,6 +13,7 @@
 //   party.asset(id)                                           URL of an approved picture
 //   party.on(name, fn)                                        listen (see below)
 //   party.ui.…                                                ready-made pieces (ui.js)
+//   party.sound(name | { notes, ms, type })                   a short sound made in code
 //
 //   On a phone:       party.send(data)                        → the big screen's 'event'
 //                     party.on('message', fn(data))           one-off messages
@@ -295,6 +296,9 @@
 
   // party.ui: the helpers from ui.js, which ran just before this and left its factory here.
   api.ui = typeof window.__partyUi === 'function' ? window.__partyUi(api) : null;
+  // party.sound (plan §40): sounds made in ui.js, but called like the rest of the SDK; models
+  // kept writing party.sound. party.ui.sound is the same function, for games written before.
+  api.sound = api.ui ? api.ui.sound : function () { return false; };
   delete window.__partyUi;
   window.party = Object.freeze(api);
 

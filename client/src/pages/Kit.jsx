@@ -24,6 +24,7 @@ const SDK = [
     [
       ['party.ready(fn)', 'start here: role, me, players, and the last save after a reload'],
       ['party.now()', 'server time, for every timer and deadline'],
+      ['party.sound(name)', 'a short sound: a tap, a coin, a win'],
     ],
   ],
   [
@@ -107,7 +108,7 @@ export default function Kit() {
         </table>
         <p>
           <code>party.ui</code> has the pieces that are hard to build for a touch screen: a joystick, a gamepad, text
-          input, a timer bar, a 3-2-1 countdown, a drawing pad, and short sounds.
+          input, a timer bar, a 3-2-1 countdown and a drawing pad.
         </p>
       </section>
 

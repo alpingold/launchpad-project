@@ -116,6 +116,10 @@ party.asset(id)      // URL of an approved picture (see the art library), or nul
 party.players / party.me / party.role   // the same, any time after ready
 party.ui             // ready-made pieces you can see (below)
 party.on(name, fn)   // listen; the names are below
+party.sound(name)    // a short sound made in code: 'tap', 'blip', 'tick', 'pop', 'coin', 'go', 'buzz', 'win', 'lose'
+party.sound({ notes: [440, 660], ms: 120, type: 'square' })   // or your own (type: sine, square, triangle, sawtooth)
+//   The big screen can play sounds any time; a phone after the player's first tap. Keep them
+//   short and use them for moments (a point, a buzzer, the winner), not all the time.
 ```
 
 **On a phone:**
@@ -181,7 +185,7 @@ an element or a CSS selector. Everything else (scores, boards, the scene) the ga
 its own style.
 
 ```js
-const { el, joystick, gamepad, textInput, timer, countdown, drawPad, drawing, sound, INK } = party.ui;
+const { el, joystick, gamepad, textInput, timer, countdown, drawPad, drawing, INK } = party.ui;
 
 el(tag, props, ...children)
 //   Builds an element. props: class, style (object), onClick etc. (handlers), other attributes.
@@ -222,11 +226,6 @@ INK                             // the drawing colours: { black, red, blue, ... 
 
 countdown(target, { endsAt, onGo })
 //   A big 3, 2, 1, GO! over the screen, to endsAt (server time); onGo runs at zero.
-
-sound(name)   // a short sound made in code: 'tap', 'blip', 'tick', 'pop', 'coin', 'go', 'buzz', 'win', 'lose'
-sound({ notes: [440, 660], ms: 120, type: 'square' })   // or your own (type: sine, square, triangle, sawtooth)
-//   The big screen can play sounds any time; a phone after the player's first tap. Keep them
-//   short and use them for moments (a point, a buzzer, the winner), not all the time.
 ```
 
 ## How to draw

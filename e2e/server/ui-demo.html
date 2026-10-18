@@ -89,7 +89,7 @@
       }
       if (data.answer) {
         write(`answer ${who}: ${data.answer}`);
-        write(`host sound: ${sound('win')}`); // the big screen plays a sound without anyone tapping it
+        write(`host sound: ${party.sound('win')}`); // the big screen plays a sound without anyone tapping it (party.sound; the phone's Beep uses party.ui's, for older games)
       }
       if (data.sound !== undefined) write(`sound ${who}: ${data.sound}`);
     });
