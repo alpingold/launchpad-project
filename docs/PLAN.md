@@ -2260,6 +2260,28 @@ fix without changes. Stowaways also keeps its timer out of the part it rebuilds.
 - **`chat_template_kwargs` reach the template** (`enable_thinking: false` turned thinking
   off), but our requests have no tools, images or saved thinking, so the template fixes in
   froggeric/Qwen-Fixed-Chat-Templates mostly don't apply. Purdue picks the template.
+- **`keepThinking`** (a job option, off on the site) saves the model's thinking per attempt;
+  `compare-builds` writes it to `attempt-<n>-thinking.txt`, to see what builds think about.
+- **What it showed:** a Ballpark build thought for 46,540 tokens (36% of it drafts of code, 78
+  "Actually"s) and used 64,590 of the 65,536-token context; a Comet Crew build ran out twice.
+  So **running out of room** is now its own error (`OutOfRoomError`: `finish_reason` "length",
+  or thinking and no reply), not "empty reply (often the rate limit)". It isn't retried inside
+  `chat`; a build counts it as a used attempt (`outOfRoom: true`, with its tokens and thinking).
+
+## 39. Designs as JSON, one field per heading (2026-10-18)
+
+- **Why:** 8 of 22 design attempts in `generator/out` were missing a heading and had to be
+  asked again. GenAI Studio's vLLM takes `response_format` (a JSON schema) and holds the reply
+  to it, so a design request now asks for `{ title, "Genre and feel", …, "Edge cases" }`, all
+  required, and `extract.js` joins it back into the same Markdown. The admin's design, the
+  build prompt and the database don't change. Change plans do the same with their 3 headings.
+- **Tested first:** with the schema, qwen still thought (2,781 tokens at medium; the schema
+  only applies to the reply after it), and every field came back filled in.
+- **Not for game files or edits:** code inside a JSON string must escape every quote and
+  newline, which models do worse; game files have never gone missing, and the 2 of 20 edit
+  failures were SEARCH text not in the file, which a schema can't fix.
+- **Fallbacks stay:** a reply that isn't the JSON is read as Markdown, and an empty field still
+  counts as a missing heading, so the one retry still works.
 
 ## Verification (how to confirm the plan worked once built)
 
