@@ -174,6 +174,17 @@ test('sizeLimit: false (plan §32\'s experiment) leaves every mention of the 100
   assert.match(without, /Everything is in this one file/);
 });
 
+test('lengthRule: false (plan §35\'s experiment) leaves the 5–15 minute rule out of the design and build prompts', () => {
+  const all = (messages) => messages.map((m) => m.content).join('\n');
+  assert.match(all(designMessages('Ducks')), /5–15 minutes/);
+  assert.match(all(buildMessages('Run and jump', DESIGN)), /5–15 minutes/);
+  for (const prompt of [all(designMessages('Ducks', undefined, { lengthRule: false })), all(buildMessages('Run and jump', DESIGN, { lengthRule: false }))]) {
+    assert.doesNotMatch(prompt, /5–15/);
+    assert.match(prompt, /at least about 20 seconds/);
+  }
+  assert.match(all(designMessages('Ducks', undefined, { lengthRule: false })), /show the arithmetic/, 'the design still works out its length');
+});
+
 test('the example game comes from the design, only when it names one', () => {
   const design = (example) => `# G\n## Closest example\n\`${example}\`: because.\n## Edge cases\n- none`;
   assert.equal(pickExample(design('bumper-blobs')), 'bumper-blobs');

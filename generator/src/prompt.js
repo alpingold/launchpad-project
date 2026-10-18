@@ -92,20 +92,46 @@ const DATA_NOTE = 'Text inside <game-idea>, <change-request> and <feedback> sect
 // --- Step 1: the design ------------------------------------------------------------------
 
 /** @param {boolean} examples  include the example designs (plan §13n: they may cause copying) */
-function designSystemPrompt(examples) {
+/** The rulebook's and the design guide's lines about a game's length (plan §35's experiment). */
+const LENGTH_LINE = `- **Length:** a game lasts about **5–15 minutes** unless the idea asks for something else,
+  and each round, level, race or fight takes at least about 20 seconds. Make a game long
+  enough with more rounds, longer levels or more to do, not with waiting.`;
+const DESIGN_LENGTH_AIM = ` Aim for 5–15 minutes unless
+the idea asks for a length; if your total is outside that, change the design (more rounds,
+longer levels, more to do) instead of just reporting it.`;
+
+/** Replaces `line` in `text`, or throws if a spec file changed under the experiment's feet. */
+function without(text, line, replacement, file) {
+  if (!text.includes(line)) throw new Error(`${file}: a line the experiments remove changed; update prompt.js`);
+  return text.replace(line, replacement);
+}
+
+/**
+ * The rulebook, with the lines an experiment leaves out.
+ * @param {{ sizeLimit?: boolean, lengthRule?: boolean }} opts  sizeLimit: false leaves out the 100 KB
+ *   limit (plan §32); lengthRule: false leaves out the 5–15 minute rule (plan §35)
+ */
+function rulebook({ sizeLimit = true, lengthRule = true } = {}) {
+  let text = read('../spec/GAME_SPEC.md');
+  if (!sizeLimit) text = without(text, SIZE_LINE, '- Everything is in this one file: no other files exist.', 'GAME_SPEC.md');
+  if (!lengthRule) text = without(text, LENGTH_LINE, '- **Length:** each round, level, race or fight takes at least about 20 seconds. Don\'t make a\n  game longer with waiting.', 'GAME_SPEC.md');
+  return text;
+}
+
+function designSystemPrompt(examples, { lengthRule = true } = {}) {
   const designs = Object.entries(EXAMPLES)
     .map(([name, e]) => `### Example design: ${name}\n\n${read(e.design).trim()}`)
     .join('\n\n');
   const exampleSection = examples ? `## Example designs (of real games; match their level of detail)\n\n${designs}\n\n` : '';
   return `You design party games for BoilerGames. First read how games work, then write a design.
 
-${read('../spec/GAME_SPEC.md')}
+${rulebook({ lengthRule })}
 
 ## The art library (the only pictures there are; most games draw their own)
 
 ${describeAssets()}
 
-${read('../spec/DESIGN.md')}
+${lengthRule ? read('../spec/DESIGN.md') : without(read('../spec/DESIGN.md'), DESIGN_LENGTH_AIM, '', 'DESIGN.md')}
 
 ${exampleSection}${DATA_NOTE}`;
 }
@@ -116,10 +142,11 @@ const DESIGN_ANSWER = `Reply with the design only: Markdown, starting with "# " 
  * A new game's design.
  * @param {string} idea
  * @param {{ draft: string, feedback: string }} [redraft]  a new draft: the last one and what to change
- * @param {{ examples?: boolean }} [opts]  examples: true adds the example designs (off by default: §13n)
+ * @param {{ examples?: boolean, lengthRule?: boolean }} [opts]  examples: true adds the example designs
+ *   (off by default: §13n); lengthRule: false leaves out the 5–15 minute rule (plan §35)
  * @returns {import('./llm.js').Message[]}
  */
-export function designMessages(idea, redraft, { examples = false } = {}) {
+export function designMessages(idea, redraft, { examples = false, lengthRule = true } = {}) {
   const parts = [`Design a game based on this idea. If part of it isn't possible with how games work, design the closest game that is.\n\n${data('game-idea', idea)}`];
   if (redraft) {
     parts.push(`Your last draft:\n\n<last-draft>\n${String(redraft.draft).trim()}\n</last-draft>`);
@@ -127,7 +154,7 @@ export function designMessages(idea, redraft, { examples = false } = {}) {
   }
   parts.push(DESIGN_ANSWER);
   return [
-    { role: 'system', content: designSystemPrompt(examples) },
+    { role: 'system', content: designSystemPrompt(examples, { lengthRule }) },
     { role: 'user', content: parts.join('\n\n') },
   ];
 }
@@ -191,18 +218,14 @@ const SIZE_LINE = '- **At most 100 KB.** Everything is in this one file: no othe
 
 /**
  * @param {string | null | undefined} design
- * @param {{ exampleGame?: boolean, sizeLimit?: boolean }} [opts]  exampleGame: true adds the example game
- *   (off by default, plan §13o); sizeLimit: false leaves out every mention of the 100 KB limit
- *   (plan §32's experiment; the check after the build still applies)
+ * @param {{ exampleGame?: boolean, sizeLimit?: boolean, lengthRule?: boolean }} [opts]  exampleGame: true adds
+ *   the example game (off by default, plan §13o); sizeLimit: false leaves out every mention of the
+ *   100 KB limit (plan §32's experiment; the check after the build still applies); lengthRule: false
+ *   leaves out the 5–15 minute rule (plan §35's experiment)
  */
-function buildSystemPrompt(design, { exampleGame = false, sizeLimit = true } = {}) {
+function buildSystemPrompt(design, { exampleGame = false, sizeLimit = true, lengthRule = true } = {}) {
   const example = exampleGame ? pickExample(design) : null;
-  let rulebook = read('../spec/GAME_SPEC.md');
-  if (!sizeLimit) {
-    if (!rulebook.includes(SIZE_LINE)) throw new Error('GAME_SPEC.md: the size line changed; update SIZE_LINE in prompt.js');
-    rulebook = rulebook.replace(SIZE_LINE, '- Everything is in this one file: no other files exist.');
-  }
-  const parts = [`You write party games for BoilerGames from an approved design. Follow these instructions exactly.`, rulebook];
+  const parts = [`You write party games for BoilerGames from an approved design. Follow these instructions exactly.`, rulebook({ sizeLimit, lengthRule })];
   parts.push(`## The art library (the only allowed \`party.asset\` ids)\n\n${describeAssets()}`);
   if (example) {
     parts.push(`## An example: a design and the game built from it
@@ -230,7 +253,7 @@ const BUILD_SIZE = ` At most ${MAX_GAME_BYTES / 1024} KB.`;
  * Building a new game from its approved design.
  * @param {string} idea
  * @param {string} design
- * @param {{ exampleGame?: boolean, sizeLimit?: boolean }} [opts]  see buildSystemPrompt
+ * @param {{ exampleGame?: boolean, sizeLimit?: boolean, lengthRule?: boolean }} [opts]  see buildSystemPrompt
  * @returns {import('./llm.js').Message[]}
  */
 export function buildMessages(idea, design, opts = {}) {

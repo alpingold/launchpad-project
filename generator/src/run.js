@@ -67,6 +67,7 @@ import { describeProblem } from '../../server/src/games/frameGame.js';
  * @property {boolean} [examples]         design: add the example designs (off by default)
  * @property {boolean} [exampleGame]      build: add the example game's design and code (off by default, plan §13o)
  * @property {boolean} [sizeLimit]        build: false leaves the 100 KB limit out of the prompt (plan §32's experiment)
+ * @property {boolean} [lengthRule]       design and build: false leaves the 5–15 minute rule out (plan §35's experiment)
  * @property {number} [maxAttempts]       build
  * @property {boolean} [edits]            build: false turns edit mode off (on by default, plan §23)
  */
@@ -134,6 +135,7 @@ export async function runJob(job, deps = {}) {
   if (job.exampleGame !== undefined && typeof job.exampleGame !== 'boolean') return fail('exampleGame must be true or false');
   if (job.edits !== undefined && typeof job.edits !== 'boolean') return fail('edits must be true or false');
   if (job.sizeLimit !== undefined && typeof job.sizeLimit !== 'boolean') return fail('sizeLimit must be true or false');
+  if (job.lengthRule !== undefined && typeof job.lengthRule !== 'boolean') return fail('lengthRule must be true or false');
 
   if (job.step === 'design') return design(job, model, deps);
   if (job.step === 'build') {
@@ -156,7 +158,7 @@ async function design(job, model, { chatFn = chat, onStep = () => {} }) {
   const isPlan = job.change !== undefined;
   const what = isPlan ? 'plan' : 'design';
   const headings = isPlan ? PLAN_HEADINGS : DESIGN_HEADINGS;
-  const messages = isPlan ? planMessages({ idea: job.idea, ...job.change }, job.redraft) : designMessages(job.idea, job.redraft, { examples: job.examples ?? false });
+  const messages = isPlan ? planMessages({ idea: job.idea, ...job.change }, job.redraft) : designMessages(job.idea, job.redraft, { examples: job.examples ?? false, lengthRule: job.lengthRule ?? true });
   const result = { ok: false, model, design: null, attempts: [] };
 
   for (let attempt = 1; attempt <= DESIGN_ATTEMPTS; attempt++) {
@@ -207,7 +209,7 @@ async function build(job, model, { chatFn = chat, check = checkGame, onStep = ()
   // The conversation is the prompt plus, after a failed attempt, ONLY that attempt and its
   // problems: earlier attempts are dropped. Each one can be a whole game (~10K tokens), and
   // the model's context is 65K (plan §13n): keeping them all would overflow by attempt 4.
-  const prompt = change ? changeBuildMessages({ idea: job.idea, ...change }, plan, { edits }) : buildMessages(job.idea, job.design, { exampleGame: job.exampleGame ?? false, sizeLimit: job.sizeLimit ?? true });
+  const prompt = change ? changeBuildMessages({ idea: job.idea, ...change }, plan, { edits }) : buildMessages(job.idea, job.design, { exampleGame: job.exampleGame ?? false, sizeLimit: job.sizeLimit ?? true, lengthRule: job.lengthRule ?? true });
   // A fix shows the model its last file as its own reply. For a change, that file replaces
   // the old one in the prompt (withCode: false), so the game is in the conversation once.
   const fixPrompt = (asEdits) => (change ? changeBuildMessages({ idea: job.idea, ...change }, plan, { edits: asEdits, withCode: false }) : prompt);
