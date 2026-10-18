@@ -12,8 +12,6 @@ import Account from './pages/Account.jsx';
 import GamePage from './pages/GamePage.jsx';
 import Profile from './pages/Profile.jsx';
 import Report from './pages/Report.jsx';
-import { SettingsProvider } from './settings/SettingsContext.jsx';
-import SettingsMenu from './settings/SettingsMenu.jsx';
 import HomeLink from './components/HomeLink.jsx';
 import SiteNav from './components/SiteNav.jsx';
 import DemoBadge from './components/DemoBadge.jsx';
@@ -69,19 +67,18 @@ function pageFor(path) {
 export default function App() {
   const path = currentPath();
   return (
-    <SettingsProvider>
+    <>
       {/* The top of every page: home on the left (not on the home page itself), then the
-          site's pages and ⚙ on the right (plan §16). */}
+          site's pages on the right (plan §16). */}
       <header className="site-header">
         {path !== '/' ? <HomeLink /> : <span />}
         <div className="site-header-right">
           <SiteNav />
-          <SettingsMenu />
         </div>
       </header>
       {pageFor(path)}
       <SiteFooter path={path} />
       <DemoBadge />
-    </SettingsProvider>
+    </>
   );
 }

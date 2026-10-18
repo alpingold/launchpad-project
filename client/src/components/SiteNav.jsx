@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useCurrentUser } from '../net/auth.js';
 
 /**
- * The links at the top right of every page (plan §16), next to ⚙: the game catalogue, making
+ * The links at the top right of every page (plan §16): the game catalogue, making
  * a game with AI, the docs, and Sign up (logged out) or Account (logged in). Plain links: full
  * page loads (D12). On narrow screens (phones) they fold into a ☰ menu, so the header stays one
  * line. Hidden while a game is on screen (styles.css: body.in-game).

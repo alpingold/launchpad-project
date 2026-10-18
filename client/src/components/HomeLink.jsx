@@ -1,6 +1,6 @@
 /**
  * The "← BoilerGames" link in the top-left corner of every page except the home page,
- * opposite the site's links and the ⚙ settings button (App.jsx's header). A plain link: it does a full page load (decision D12).
+ * opposite the site's links (App.jsx's header). A plain link: it does a full page load (decision D12).
  *
  * Leaving a room page this way is safe to undo: the room tokens stay in sessionStorage,
  * so going back to /host or /join reconnects within the grace period.

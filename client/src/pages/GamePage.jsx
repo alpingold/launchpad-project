@@ -272,7 +272,7 @@ function PageEditor({ game, onSaved }) {
           <fieldset>
             <legend>Main screenshot</legend>
             {game.shots.map((which) => (
-              <label key={which} className="settings-option">
+              <label key={which} className="radio-option">
                 <input type="radio" name="main-shot" checked={form.mainShot === which} onChange={() => set({ mainShot: which })} />
                 {SHOT_NAMES[which]}
               </label>

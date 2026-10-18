@@ -1,36 +1,9 @@
-/* ---- Themes (M6b) ----------------------------------------------------------------
-   Every color on the site comes from these variables. A theme is just a different set of
-   values: the light theme below, and dark overrides under [data-theme="dark"].
-   The <html> element gets data-theme="light" or "dark" from settings/theme.js
-   (and from a tiny script in index.html before the page draws, to avoid a flash). */
+/* ---- Colours ------------------------------------------------------------------------
+   Every colour on the site comes from these variables. The site is dark only (plan §34):
+   games are shown on a TV in a living room and on phones held next to it, and the light
+   theme made both look wrong. (It had a light theme and a setting until 2026-10-17.) */
 :root {
-  color-scheme: light; /* tells the browser to draw scrollbars and form controls to match */
-  --bg: #f5f5fa;
-  --surface: #ffffff;
-  --text: #1a1a2e;
-  --muted: #6b6b80;
-  --chip: #e2e2f0;
-  --border: #e2e2f0;
-  --input-border: #c8c8da;
-  --accent: #4a3aff;
-  --on-accent: #ffffff;
-  --accent-disabled: #a9a3e8;
-  --link: #3b2fd6;
-  --danger: #b00020;
-  --good: #1a7f37;
-  --good-bg: #1a7f37;
-  --good-tint: #dcf5e3; /* light backgrounds behind normal text (K6: added lines, status chips) */
-  --danger-tint: #fbe0e4; /* (K6: removed lines) */
-  --banner-bg: #fff3cd;
-  --banner-text: #664d03;
-  /* §19: Boilermaker gold, the site's one bold color (the /create track, game tokens, the
-     room code). The same in both themes; text on gold is always dark ink. */
-  --gold: #cfb991;
-  --gold-ink: #1a1a2e;
-}
-
-:root[data-theme='dark'] {
-  color-scheme: dark;
+  color-scheme: dark; /* tells the browser to draw scrollbars and form controls to match */
   --bg: #14141f;
   --surface: #1f1f2e;
   --text: #ececf5;
@@ -45,10 +18,14 @@
   --danger: #ff6b81;
   --good: #4ade80;
   --good-bg: #238636;
-  --good-tint: #133d22;
-  --danger-tint: #4a1a24;
+  --good-tint: #133d22; /* dark backgrounds behind normal text (K6: added lines, status chips) */
+  --danger-tint: #4a1a24; /* (K6: removed lines) */
   --banner-bg: #3d3214;
   --banner-text: #ffe08a;
+  /* §19: Boilermaker gold, the site's one bold colour (the /create track, game tokens, the
+     room code). Text on gold is always dark ink. */
+  --gold: #cfb991;
+  --gold-ink: #1a1a2e;
 }
 
 :root {
@@ -482,12 +459,6 @@ body.in-game-player .site-header {
   white-space: nowrap;
 }
 
-.phone-bar .settings-button {
-  width: 2.25rem;
-  height: 2.25rem;
-  font-size: 1.1rem;
-}
-
 .phone-bar-leave {
   font-size: 0.9rem;
   padding: 0.4rem 0.8rem;
@@ -704,7 +675,7 @@ select {
   accent-color: var(--accent); /* radio buttons and checkboxes in the site's color */
 }
 
-/* §16: the top of every page. Home on the left; the site's links and ⚙ on the right. */
+/* §16: the top of every page. Home on the left; the site's links on the right. */
 .site-header {
   display: flex;
   justify-content: space-between;
@@ -806,7 +777,7 @@ select {
   }
 }
 
-/* While a game is on screen (GameFrame.jsx), only ⚙ and home stay. */
+/* While a game is on screen (GameFrame.jsx), only the home link stays. */
 body.in-game .site-nav,
 body.in-game .site-menu {
   display: none;
@@ -836,24 +807,6 @@ body.in-game .demo-badge {
   display: none;
 }
 
-/* M6b: settings button and panel */
-.settings-button {
-  flex: none;
-  width: 2.5rem;
-  height: 2.5rem;
-  border: 1px solid var(--border);
-  border-radius: 50%;
-  background: var(--surface);
-  color: var(--muted);
-  font-size: 1.3rem;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.settings-button:hover {
-  color: var(--text);
-}
-
 /* "← BoilerGames" in the top-left corner (every page but the home page), in the header. */
 .home-nav {
   flex: none;
@@ -877,32 +830,7 @@ body.in-game .demo-badge {
   border-color: var(--accent);
 }
 
-.settings-dialog {
-  width: min(90vw, 22rem);
-  border: 1px solid var(--border);
-  border-radius: 1rem;
-  background: var(--surface);
-  color: var(--text);
-  padding: 1.25rem;
-}
-
-.settings-dialog::backdrop {
-  background: rgb(0 0 0 / 0.45);
-}
-
-.settings-dialog h2 {
-  margin-top: 0;
-}
-
-.settings-group {
-  border: 1px solid var(--border);
-  border-radius: 0.5rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.settings-option {
+.radio-option {
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -910,7 +838,7 @@ body.in-game .demo-badge {
   cursor: pointer;
 }
 
-.settings-option input {
+.radio-option input {
   width: 1.2rem;
   height: 1.2rem;
 }
@@ -1560,7 +1488,7 @@ code {
 }
 
 /* A radio choice in a form: the button beside its words (forms otherwise stack a label's parts). */
-.admin-form label.settings-option {
+.admin-form label.radio-option {
   flex-direction: row;
   font-weight: 400;
 }

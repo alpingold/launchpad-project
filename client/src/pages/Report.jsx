@@ -64,7 +64,7 @@ export default function Report() {
         <fieldset>
           <legend>What kind?</legend>
           {KINDS.map(([value, label]) => (
-            <label key={value} className="settings-option">
+            <label key={value} className="radio-option">
               <input type="radio" name="kind" value={value} checked={kind === value} onChange={() => setKind(value)} />
               {label}
             </label>

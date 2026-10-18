@@ -269,7 +269,7 @@ function NewGameForm({ info, onStarted }) {
           <fieldset className="model-options" disabled={!ready}>
             <legend>Model</legend>
             {info.models.map((m) => (
-              <label key={m.id} className="settings-option">
+              <label key={m.id} className="radio-option">
                 <input
                   type="radio"
                   name="model"

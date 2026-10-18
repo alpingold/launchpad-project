@@ -2,6 +2,9 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <!-- Dark only (plan §34): the browser draws its own parts dark too, from the first paint. -->
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#14141f" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>BoilerGames · Party games for one big screen and everyone's phones</title>
     <!-- For search results and link previews (plan §33). Link previews (Discord, iMessage)
@@ -21,22 +24,6 @@
     <!-- The site's name, so search results can say "BoilerGames" instead of the address. -->
     <script type="application/ld+json">
       { "@context": "https://schema.org", "@type": "WebSite", "name": "BoilerGames", "alternateName": "BoilerGames Party", "url": "https://boilergames.party/" }
-    </script>
-    <script>
-      // Set the theme BEFORE the page draws, so people using dark mode don't see a white
-      // flash on every page load. Same rules as src/settings/theme.js, which takes over
-      // once React has loaded. Kept tiny and dependency-free on purpose.
-      (function () {
-        var theme = 'system';
-        try {
-          var saved = JSON.parse(localStorage.getItem('boilergames.settings'));
-          if (saved && (saved.theme === 'light' || saved.theme === 'dark')) theme = saved.theme;
-        } catch (e) {}
-        if (theme === 'system') {
-          theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-        }
-        document.documentElement.dataset.theme = theme;
-      })();
     </script>
   </head>
   <body>
