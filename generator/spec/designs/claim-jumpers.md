@@ -92,9 +92,6 @@ has locked in, + reveal ≈ 1.7 s × claims + 1.8 s, + 5 s scores), then 12 s at
 - Canvas for the background contour lines; HTML and CSS for the plots, crews and panel
   (CSS `clip-path` makes the shapes and nuggets).
 
-## Closest example
-`none`: Ballpark is guesses and bets on numbers; this is hidden allocation over prizes.
-
 ## Edge cases
 - **A player leaves:** the round doesn't wait for them; a draft they sent still counts. Back:
   their phone redraws from its state.

@@ -9,7 +9,6 @@ import {
   planMessages,
   buildMessages,
   changeBuildMessages,
-  pickExample,
   DESIGN_HEADINGS,
 } from '../../../generator/src/prompt.js';
 import { runJob, formatReport } from '../../../generator/src/run.js';
@@ -182,25 +181,14 @@ test('no target length for a whole game (plan §35), but a round is at least abo
   assert.match(all(designMessages('Ducks')), /show the arithmetic/);
 });
 
-test('the example game comes from the design, only when it names one', () => {
-  const design = (example) => `# G\n## Closest example\n\`${example}\`: because.\n## Edge cases\n- none`;
-  assert.equal(pickExample(design('bumper-blobs')), 'bumper-blobs');
-  assert.equal(pickExample(design('none')), null);
-  assert.equal(pickExample('no sections at all'), null);
-});
-
-test('the build prompt: the rulebook and the design; the example game only when asked; no kit, no template (plan §20)', () => {
-  const design = DESIGN.replace(/## Closest example[\s\S]*?## Edge/, '## Closest example\n`bumper-blobs`: real-time\n\n## Edge');
-  const [system, user] = buildMessages('Run and jump', design, { exampleGame: true });
-  assert.match(system.content, /"name": "Bumper Blobs"/, 'the example game');
+test('the build prompt: the rulebook and the design; no example game, no kit, no template (plan §13o, §20)', () => {
+  const [system, user] = buildMessages('Run and jump', DESIGN);
   assert.match(user.content, /<design>\n# Bumper Blobs/);
   assert.match(system.content, /10\. \*\*Secrets stay on their own phone\.\*\*/, 'the rulebook, with the secrets rule');
-
-  const [plain] = buildMessages('Run and jump', design);
-  assert.doesNotMatch(plain.content, /"name": "Bumper Blobs"/, 'plan §13o: no example game by default');
-  assert.doesNotMatch(plain.content, /party\.kit|starter template/i);
-  assert.match(plain.content, /## `party\.ui`/);
-  assert.match(plain.content, /Give\s+the game its own look/);
+  assert.doesNotMatch(system.content, /"name": "Bumper Blobs"/, 'plan §13o: no example game');
+  assert.doesNotMatch(system.content, /party\.kit|starter template/i);
+  assert.match(system.content, /## `party\.ui`/);
+  assert.match(system.content, /Give\s+the game its own look/);
 });
 
 test('change prompts: the plan sees the design, code and request; the build gets the approved plan', () => {

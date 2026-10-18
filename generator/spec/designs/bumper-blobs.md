@@ -44,9 +44,6 @@ screen, then `party.end`.
 ## Art
 Canvas: circles, an ice disc with a soft edge, water. No pictures.
 
-## Closest example
-`none`: this is the real-time example itself.
-
 ## Edge cases
 - A player who leaves stops steering; their blob just slides.
 - Nobody moves: the melting ice ends the round anyway.

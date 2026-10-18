@@ -109,10 +109,6 @@ Your colour and name at the top. Big buttons at the bottom, one thumb.
   Phones: `tap` when an answer is sent.
 - Canvas for the club (curtains, spotlights, bulbs); HTML and CSS for text, bubbles and badges.
 
-## Closest example
-`none`: Stowaways has phases and private prompts but is about secrets; this is about jokes.
-Built: ~47 KB (prompts and house answers ~7 KB), under 100 KB.
-
 ## Edge cases
 - **A player leaves:** their unanswered prompts get house answers when writing ends; they
   aren't waited for as a voter; their matchups still play. Back: the phone redraws from its state.

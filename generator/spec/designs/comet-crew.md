@@ -125,9 +125,6 @@ none: it's co-op, and every station's job is shown to the whole room.
 - **Team score for all:** the result is shared, which is the point of co-op; the crew log
   gives each person credit without ranking them against each other.
 
-## Closest example
-Bumper Blobs (real-time canvas, joystick). Built: one file, ~51 KB.
-
 ## Edge cases
 - **A player leaves:** their station goes on autopilot ("autopilot" on the crew strip),
   their inputs reset. Back: their phone redraws from its state and takes the station back.

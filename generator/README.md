@@ -16,9 +16,8 @@ problems (by line and screen) and tries again, up to 4 attempts.
 generator/
   src/run.js                    one job: { step: 'design' | 'build', idea, design?, change?, redraft? }
                                 design → a design or change plan; build → write → check → fix
-  src/prompt.js                 what the model reads: design step = rulebook + design format + 3 example
-                                designs + art list + the idea; build step = rulebook + the template and
-                                closest example (with its design) that the design names + the design
+  src/prompt.js                 what the model reads: design step = rulebook + design format + art list
+                                + the idea; build step = rulebook + art list + the approved design
   src/llm.js                    GenAI Studio chat API (plain fetch, retries on rate limits)
   src/extract.js                pulls the game file, design or list of changes out of a reply
   src/models.js                 the allowed models

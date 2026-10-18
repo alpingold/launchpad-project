@@ -108,10 +108,6 @@ No sounds on phones (a neighbour could hear a secret). Your colour and name at t
   on the button, `pop` per vote, `win`/`lose` at the end.
 - Canvas for the background (grid, hull outline, scan line); HTML and CSS for helmets, cards and text.
 
-## Closest example
-`none`: Bumper Blobs is real-time; this is phases and secrets. Built: ~58 KB (prompts ~7 KB),
-under 100 KB.
-
 ## Edge cases
 - **A player leaves:** skipped as captain and in votes; their test answer shows "(no answer)".
   They keep their role and can be accused. Back: their phone redraws from its state.

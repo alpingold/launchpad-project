@@ -47,10 +47,6 @@ This game's own look, so it doesn't look like every other game:
 - **Motion:** what moves, pops, shakes or glows, and when.
 It's drawn with shapes on a canvas, HTML and CSS, or pictures from the art library.
 
-## Closest example
-One of: `bumper-blobs` (real-time canvas with a joystick), or `none`. Then one sentence on
-why.
-
 ## Edge cases
 - A player leaves, or comes back.
 - Nobody does anything (every wait has a timer).

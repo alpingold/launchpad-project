@@ -3,9 +3,9 @@
 //   DESIGN  the rulebook, how to write a design, the art library, and the idea → a short
 //           design document (or, for a change, a short plan). The three example designs are
 //           left out by default: they made the model copy them (plan §13n's experiment).
-//   BUILD   the rulebook, the art library and the approved design → one game file. On
-//           request (exampleGame), also the example game the design names, with ITS design.
-//           (Starter templates and party.kit were dropped on 2026-10-16: plan §20.)
+//   BUILD   the rulebook, the art library and the approved design → one game file. (The
+//           example game was dropped on 2026-10-16, plan §13o, and with it the design's
+//           "Closest example" section on 2026-10-18; starter templates and party.kit: plan §20.)
 //
 // The idea, change requests and the admin's feedback come from people typing into a form,
 // so they're treated as DATA: each in its own clearly marked section, and the instructions
@@ -59,31 +59,18 @@ export const MAX_WHOLE_FILE_LENGTH = 60 * 1024;
 export const MAX_GAME_BYTES = 100 * 1024;
 
 /** The headings every design has, in order (generator/spec/DESIGN.md). */
-export const DESIGN_HEADINGS = ['Genre and feel', 'Players', 'Big screen', 'Phones', 'Secrets', 'Rules', 'Ending and winner', 'Length', 'Art', 'Closest example', 'Edge cases'];
+export const DESIGN_HEADINGS = ['Genre and feel', 'Players', 'Big screen', 'Phones', 'Secrets', 'Rules', 'Ending and winner', 'Length', 'Art', 'Edge cases'];
 /** The headings every change plan has. */
 export const PLAN_HEADINGS = ['What changes', 'What stays the same', 'Risks'];
 
 export const EXAMPLES = {
-  'bumper-blobs': { game: '../../server/src/games/bumper-blobs/game.html', design: '../spec/designs/bumper-blobs.md' },
+  'bumper-blobs': { design: '../spec/designs/bumper-blobs.md' },
 };
 
 /** The art library, as the model should see it: id, description, tags. */
 export function describeAssets() {
   const { assets } = JSON.parse(read('../../client/public/game-assets/manifest.json'));
   return assets.map((a) => `- \`${a.id}\`: ${a.alt} (tags: ${a.tags.join(', ')})`).join('\n');
-}
-
-/** The first word of a design's section that is one of `allowed` (or null). */
-function chosen(design, heading, allowed) {
-  const section = new RegExp(`^##\\s+${heading}\\s*$([\\s\\S]*?)(?=^##\\s|(?![\\s\\S]))`, 'im').exec(String(design ?? ''))?.[1] ?? '';
-  const words = section.toLowerCase().match(/[a-z-]+/g) ?? [];
-  return words.find((w) => allowed.includes(w)) ?? null;
-}
-
-/** The example game the design's "Closest example" section names (null: none). */
-export function pickExample(design) {
-  const e = chosen(design, 'Closest example', [...Object.keys(EXAMPLES), 'none']);
-  return e && e !== 'none' ? e : null;
 }
 
 const data = (tag, text) => `<${tag}>\n${String(text).trim().slice(0, MAX_IDEA_LENGTH)}\n</${tag}>`;
@@ -206,30 +193,12 @@ function currentGame({ idea, design, source, earlierRequests = [] }, { withCode 
 const SIZE_LINE = '- **At most 100 KB.** Everything is in this one file: no other files exist.';
 
 /**
- * @param {string | null | undefined} design
- * @param {{ exampleGame?: boolean, sizeLimit?: boolean }} [opts]  exampleGame: true adds
- *   the example game (off by default, plan §13o); sizeLimit: false leaves out every mention of the
+ * @param {{ sizeLimit?: boolean }} [opts]  sizeLimit: false leaves out every mention of the
  *   100 KB limit (plan §32's experiment; the check after the build still applies)
  */
-function buildSystemPrompt(design, { exampleGame = false, sizeLimit = true } = {}) {
-  const example = exampleGame ? pickExample(design) : null;
+function buildSystemPrompt({ sizeLimit = true } = {}) {
   const parts = [`You write party games for BoilerGames from an approved design. Follow these instructions exactly.`, rulebook({ sizeLimit })];
   parts.push(`## The art library (the only allowed \`party.asset\` ids)\n\n${describeAssets()}`);
-  if (example) {
-    parts.push(`## An example: a design and the game built from it
-
-This is how a design becomes code. Copy its structure and its care, not its content.
-
-### Its design
-
-${read(EXAMPLES[example].design).trim()}
-
-### Its code
-
-\`\`\`html
-${read(EXAMPLES[example].game).trim()}
-\`\`\``);
-  }
   parts.push(DATA_NOTE);
   return parts.join('\n\n');
 }
@@ -241,12 +210,12 @@ const BUILD_SIZE = ` At most ${MAX_GAME_BYTES / 1024} KB.`;
  * Building a new game from its approved design.
  * @param {string} idea
  * @param {string} design
- * @param {{ exampleGame?: boolean, sizeLimit?: boolean }} [opts]  see buildSystemPrompt
+ * @param {{ sizeLimit?: boolean }} [opts]  see buildSystemPrompt
  * @returns {import('./llm.js').Message[]}
  */
 export function buildMessages(idea, design, opts = {}) {
   return [
-    { role: 'system', content: buildSystemPrompt(design, opts) },
+    { role: 'system', content: buildSystemPrompt(opts) },
     {
       role: 'user',
       content: `Build this game. The design was approved by the game's owner.\n\n<design>\n${String(design).trim()}\n</design>\n\nThe idea it came from, for context:\n\n${data('game-idea', idea)}\n\n${BUILD_ANSWER}${opts.sizeLimit === false ? '' : BUILD_SIZE}`,
@@ -311,7 +280,7 @@ export function changeBuildMessages(change, plan, { edits = true, withCode = tru
     ? `Keep everything else the same. Reply in this order:\n${changes}\n2. Your edits to the code.\n\n${EDIT_FORMAT}`
     : `Keep everything else the same. Reply in this order:\n${changes}\n2. The complete new game file in ONE \`\`\`html code block.`;
   return [
-    { role: 'system', content: buildSystemPrompt(change.design) },
+    { role: 'system', content: buildSystemPrompt() },
     { role: 'user', content: `${currentGame(change, { withCode })}\n\n${task}\n\n${answer}` },
   ];
 }
