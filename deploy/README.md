@@ -170,15 +170,36 @@ machine, so also download one now and then:
 
 ## Updating the site
 
+Push to GitHub from your PC, then on the server:
+
 ```bash
-cd ~/boilergames && git pull
-npm --prefix server ci --omit=dev && npm --prefix client ci && npm run build
-docker build -f generator/Dockerfile -t boilergames-generator:local .
-sudo systemctl restart boilergames
+~/boilergames/deploy/update.sh             # waits (up to 30 min) until nobody is playing
+~/boilergames/deploy/update.sh --now       # restart straight away: open rooms end
+~/boilergames/deploy/update.sh --wait 120  # wait up to 2 hours instead
 ```
 
-Always rebuild the generator image too: the server and the generator inside it talk over a
-protocol (e.g. the browser slot, plan §28), so they must be the same version.
+What it does, and why:
 
-A restart ends every open room (plan §9 risks), so update when nobody is playing. Database
-changes run by themselves on start, with a backup first.
+1. **Builds the new version off to the side**, in `~/boilergames-next` (a second checkout of
+   the same repo): server packages, the website, and the generator image (as
+   `boilergames-generator:next`). The live site keeps running untouched the whole time.
+2. **Tries it** on port 3001 with a *copy* of the database: it must start, read the database
+   (so database changes run on the copy first) and serve the site. If not, it stops there and
+   the site was never changed. The copy is deleted when the script ends.
+3. **Waits until nobody is playing** or making a game, asking the server (`/api/status`, which
+   only answers the server itself). A restart ends every open room (plan §9 risks); a host who
+   left closes their room after 30 s, so this rarely waits long. Ctrl+C here is safe.
+4. **Switches over:** moves the code forward (`git merge --ff-only`), swaps in the built
+   `server/node_modules` and `client/dist` (renames: instant), points `:local` at the new
+   image, installs a changed Caddyfile or service file, and restarts. The site is gone for
+   ~2 s, and Caddy holds visitors' requests meanwhile (`lb_try_duration`), so they see a slow
+   page, not an error. The new website keeps the last week's old files, so tabs that were open
+   before the update still work.
+5. **Checks** `/api/health`. If the new version doesn't come up, it puts the old code, packages,
+   website and image back and restarts that.
+
+The server and the generator inside the image talk over a protocol (e.g. the browser slot,
+plan §28), so they're always updated together: the script does both.
+
+Settings in `/etc/boilergames.env` are never changed by it; it tells you when
+`boilergames.env.example` changed so you can compare.

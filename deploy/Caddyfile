@@ -4,5 +4,10 @@
 boilergames.party {
 	encode zstd gzip
 	# 127.0.0.1, not "localhost": Node listens on IPv4 only (HOST=127.0.0.1).
-	reverse_proxy 127.0.0.1:3000
+	reverse_proxy 127.0.0.1:3000 {
+		# While Node restarts (an update, deploy/update.sh), keep trying for up to 10 s instead
+		# of showing visitors a "502 Bad Gateway" error: they just see a slow page.
+		lb_try_duration 10s
+		lb_try_interval 250ms
+	}
 }
