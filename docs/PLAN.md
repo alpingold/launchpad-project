@@ -2247,6 +2247,20 @@ fix without changes. Stowaways also keeps its timer out of the part it rebuilds.
 - **/kit is a short overview** (one file and two roles, the SDK on one table, the rules, making
   one with AI), with the full guides the AI reads folded below it. A proper doc comes later.
 
+## 38. Reasoning effort: medium (2026-10-18)
+
+- **Every request now sends `reasoning_effort: "medium"`** (per model, in `models.js`).
+  GenAI Studio's vLLM takes `low`, `medium` or `xhigh` for qwen3.8:27b; `xhigh` is the
+  default. In Qwen's chat template the levels are just a sentence added to the system prompt:
+  xhigh asks it to "think carefully … validate key assumptions, consider plausible
+  alternatives", low to "keep your thinking brief", and medium adds nothing.
+- **Measured once each on a logic puzzle:** low thought ~3× less (19 s vs ~40–60 s); medium
+  and xhigh were within run-to-run noise. All got it right. `none` is a trap: no separate
+  thinking, so it reasons in the visible answer (slowest run, most tokens).
+- **`chat_template_kwargs` reach the template** (`enable_thinking: false` turned thinking
+  off), but our requests have no tools, images or saved thinking, so the template fixes in
+  froggeric/Qwen-Fixed-Chat-Templates mostly don't apply. Purdue picks the template.
+
 ## Verification (how to confirm the plan worked once built)
 
 - `npm test` (root) → runs `node --test server/test`, all unit and integration tests green.
