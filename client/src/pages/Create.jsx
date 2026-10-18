@@ -8,12 +8,20 @@ import { MiniTrack, whereIsSummary, timeAgo } from './CreateGame.jsx';
 // GenAI Studio key: describe a game here, then each game has its own page, /create/<id>,
 // that walks you through Idea → Design → Build → Play. The server enforces all of it.
 // Logged out: this page says what you need (an account, then a key) instead of redirecting.
+// /create?idea=… (from the home page's idea box, plan §42) starts with that idea filled in, and
+// keeps it through signing up or logging in.
 
-const SIGN_UP_URL = '/login?mode=signup&next=/create';
-const LOG_IN_URL = '/login?next=/create';
+/** The idea typed on the home page, if any. */
+const ideaFromAddress = () => new URLSearchParams(window.location.search).get('idea')?.slice(0, 2000) ?? '';
+
+/** Back to /create afterwards (as a ?next= value), with the idea still filled in. */
+const createNext = () => {
+  const idea = ideaFromAddress();
+  return idea ? encodeURIComponent(`/create?idea=${encodeURIComponent(idea)}`) : '/create';
+};
 
 /** Ideas to start from: games that fit a big screen and phones (plan §18). */
-const EXAMPLE_IDEAS = [
+export const EXAMPLE_IDEAS = [
   {
     label: 'Find the spy',
     idea: 'Everyone but one player sees the same secret place on their phone; the spy sees nothing. Take turns answering a question about it, then vote for who the spy is.',
@@ -64,10 +72,10 @@ export default function Create() {
           own Purdue GenAI Studio API key (the account page shows how to get one).
         </p>
         <p className="create-actions">
-          <a className="primary-button" href={SIGN_UP_URL}>
+          <a className="primary-button" href={`/login?mode=signup&next=${createNext()}`}>
             Create an account
           </a>
-          <a href={LOG_IN_URL}>I already have one: log in</a>
+          <a href={`/login?next=${createNext()}`}>I already have one: log in</a>
         </p>
       </main>
     );
@@ -107,7 +115,7 @@ function Maker() {
 }
 
 function IdeaForm({ info }) {
-  const [idea, setIdea] = useState('');
+  const [idea, setIdea] = useState(ideaFromAddress);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
   // Switched on here, and this person's jobs can run (their own key, or an admin: plan §15).
