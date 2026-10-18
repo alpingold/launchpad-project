@@ -186,13 +186,23 @@ function currentGame({ idea, design, source, earlierRequests = [] }, { withCode 
 
 // --- Step 2: the build -------------------------------------------------------------------
 
+/** The rulebook's line about the size limit. */
+const SIZE_LINE = '- **At most 100 KB.** Everything is in this one file: no other files exist.';
+
 /**
  * @param {string | null | undefined} design
- * @param {{ exampleGame?: boolean }} [opts]  exampleGame: true adds the example game (off by default, plan §13o)
+ * @param {{ exampleGame?: boolean, sizeLimit?: boolean }} [opts]  exampleGame: true adds the example game
+ *   (off by default, plan §13o); sizeLimit: false leaves out every mention of the 100 KB limit
+ *   (plan §32's experiment; the check after the build still applies)
  */
-function buildSystemPrompt(design, { exampleGame = false } = {}) {
+function buildSystemPrompt(design, { exampleGame = false, sizeLimit = true } = {}) {
   const example = exampleGame ? pickExample(design) : null;
-  const parts = [`You write party games for BoilerGames from an approved design. Follow these instructions exactly.`, read('../spec/GAME_SPEC.md')];
+  let rulebook = read('../spec/GAME_SPEC.md');
+  if (!sizeLimit) {
+    if (!rulebook.includes(SIZE_LINE)) throw new Error('GAME_SPEC.md: the size line changed; update SIZE_LINE in prompt.js');
+    rulebook = rulebook.replace(SIZE_LINE, '- Everything is in this one file: no other files exist.');
+  }
+  const parts = [`You write party games for BoilerGames from an approved design. Follow these instructions exactly.`, rulebook];
   parts.push(`## The art library (the only allowed \`party.asset\` ids)\n\n${describeAssets()}`);
   if (example) {
     parts.push(`## An example: a design and the game built from it
@@ -213,21 +223,22 @@ ${read(EXAMPLES[example].game).trim()}
   return parts.join('\n\n');
 }
 
-const BUILD_ANSWER = `Reply with the complete game file in ONE \`\`\`html code block, starting with the game-info block. Follow the design exactly; where it leaves something open, choose what plays best. At most ${MAX_GAME_BYTES / 1024} KB.`;
+const BUILD_ANSWER = `Reply with the complete game file in ONE \`\`\`html code block, starting with the game-info block. Follow the design exactly; where it leaves something open, choose what plays best.`;
+const BUILD_SIZE = ` At most ${MAX_GAME_BYTES / 1024} KB.`;
 
 /**
  * Building a new game from its approved design.
  * @param {string} idea
  * @param {string} design
- * @param {{ exampleGame?: boolean }} [opts]  see buildSystemPrompt
+ * @param {{ exampleGame?: boolean, sizeLimit?: boolean }} [opts]  see buildSystemPrompt
  * @returns {import('./llm.js').Message[]}
  */
-export function buildMessages(idea, design, opts) {
+export function buildMessages(idea, design, opts = {}) {
   return [
     { role: 'system', content: buildSystemPrompt(design, opts) },
     {
       role: 'user',
-      content: `Build this game. The design was approved by the game's owner.\n\n<design>\n${String(design).trim()}\n</design>\n\nThe idea it came from, for context:\n\n${data('game-idea', idea)}\n\n${BUILD_ANSWER}`,
+      content: `Build this game. The design was approved by the game's owner.\n\n<design>\n${String(design).trim()}\n</design>\n\nThe idea it came from, for context:\n\n${data('game-idea', idea)}\n\n${BUILD_ANSWER}${opts.sizeLimit === false ? '' : BUILD_SIZE}`,
     },
   ];
 }

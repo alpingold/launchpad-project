@@ -166,6 +166,14 @@ test('the design prompt: the rulebook and the design format (example designs onl
   assert.match(redraft.content, /<feedback>\nMake it shorter\n<\/feedback>/);
 });
 
+test('sizeLimit: false (plan §32\'s experiment) leaves every mention of the 100 KB limit out of the build prompt', () => {
+  const withLimit = buildMessages('Run and jump', DESIGN).map((m) => m.content).join('\n');
+  assert.match(withLimit, /At most 100 KB\./);
+  const without = buildMessages('Run and jump', DESIGN, { sizeLimit: false }).map((m) => m.content).join('\n');
+  assert.doesNotMatch(without, /100 KB/);
+  assert.match(without, /Everything is in this one file/);
+});
+
 test('the example game comes from the design, only when it names one', () => {
   const design = (example) => `# G\n## Closest example\n\`${example}\`: because.\n## Edge cases\n- none`;
   assert.equal(pickExample(design('bumper-blobs')), 'bumper-blobs');
