@@ -68,16 +68,10 @@ export default function App() {
   const path = currentPath();
   return (
     <>
-      {/* The top of every page: home on the left (not on the home page itself), then the
-          site's pages on the right (plan §16). */}
+      {/* The top of every page: the site's name on the left (the link home, except on the
+          home page itself), then the site's pages on the right (plan §16, §42). */}
       <header className="site-header">
-        {path !== '/' ? (
-          <HomeLink />
-        ) : (
-          <span className="home-wordmark">
-            BoilerGames <span className="demo-tag">(demo)</span>
-          </span>
-        )}
+        <HomeLink home={path === '/'} />
         <div className="site-header-right">
           <SiteNav />
         </div>
