@@ -20,12 +20,12 @@ test('every page has Games, Docs and Sign up at the top; Account once logged in;
   const host = await people.host({ game: 'probe' });
   const nav = host.page.getByRole('navigation', { name: 'Pages' });
   await expect(nav.getByRole('link')).toHaveText(['Games', 'Create', 'Docs', 'Account']);
-  // Once a game starts, the links step aside (⚙ stays).
+  // Once a game starts, the links step aside (home stays).
   await people.player(host.code, 'Alex');
   await host.page.getByRole('button', { name: 'Start game' }).click();
   await expect(host.page.locator('iframe.game-frame')).toBeVisible();
   await expect(nav).toBeHidden();
-  await expect(host.page.getByRole('button', { name: 'Settings' })).toBeVisible();
+  await expect(host.page.getByRole('link', { name: 'BoilerGames' })).toBeVisible();
 });
 
 test("a card opens its game's page: screenshots, creator, facts, Host this game; logged out it asks to log in to vote", async ({ page }) => {
@@ -131,7 +131,6 @@ test('on the narrowest phones (320 px) the header fits, with the links in a ☰ 
     await page.getByRole('button', { name: 'Menu' }).click();
     const menu = page.getByRole('navigation', { name: 'Pages' });
     await expect(menu.getByRole('link')).toHaveText(['Games', 'Create', 'Docs', 'Sign up']);
-    await expect(page.getByRole('button', { name: 'Settings' })).toBeVisible();
   }
   await page.getByRole('link', { name: 'Create' }).click();
   await expect(page).toHaveURL('/create');

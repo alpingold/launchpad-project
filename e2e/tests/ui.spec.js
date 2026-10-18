@@ -149,7 +149,7 @@ test('the countdown counts down to GO; party.kit is gone (plan §20)', async ({ 
   await expect(big).toHaveCount(0);
 });
 
-test('phone layout in a game (plan §21): no site header, the game nearly fills the screen, a slim bar with ⚙ and Leave', async ({ people }) => {
+test('phone layout in a game (plan §21): no site header, the game nearly fills the screen, a slim bar with Leave', async ({ people }) => {
   const { alex } = await startDemo(people);
   await expect(alex.page.locator('.site-header')).toBeHidden();
   const bar = alex.page.locator('.phone-bar');
@@ -158,6 +158,4 @@ test('phone layout in a game (plan §21): no site header, the game nearly fills 
   const frameBox = await alex.page.locator('iframe.game-frame').boundingBox();
   const { height } = alex.page.viewportSize();
   expect(frameBox.height).toBeGreaterThan(height - 70); // about all of it, minus the bar
-  await bar.getByRole('button', { name: 'Settings' }).click();
-  await expect(alex.page.getByRole('dialog', { name: 'Settings' })).toBeVisible();
 });
