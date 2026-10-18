@@ -53,6 +53,7 @@ export class OutOfRoomError extends Error {
  * @param {string} opts.model
  * @param {string} [opts.baseUrl]
  * @param {string} [opts.apiKey]
+ * @param {string} [opts.reasoningEffort]      instead of the model's own (models.js), for an experiment
  * @param {object} [opts.responseFormat]       the reply must match this (a JSON schema, prompt.js)
  * @param {typeof fetch} [opts.fetchImpl]          tests pass a fake
  * @param {(ms: number) => Promise<void>} [opts.sleep]
@@ -69,6 +70,7 @@ export async function chat(
     baseUrl = process.env.GENAI_BASE_URL || DEFAULT_BASE_URL,
     apiKey = process.env.GENAI_API_KEY,
     responseFormat,
+    reasoningEffort = MODELS.find((m) => m.id === model)?.reasoningEffort,
     fetchImpl = fetch,
     sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     onRetry = () => {},
@@ -76,7 +78,6 @@ export async function chat(
     idleTimeoutMs = IDLE_TIMEOUT_MS,
   },
 ) {
-  const reasoningEffort = MODELS.find((m) => m.id === model)?.reasoningEffort;
   const body = JSON.stringify({
     model,
     messages,

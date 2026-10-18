@@ -71,14 +71,15 @@ export function runCommand(bin, args, { input, timeoutMs, onStderrLine = () => {
 /**
  * Generates a game in a fresh sandbox.
  * @param {import('../../../generator/src/run.js').GeneratorJob} job  sent to the generator as it is
- * @param {{ onStep?: import('../../../generator/src/run.js').OnStep, cfg?: typeof config, run?: typeof runCommand, apiKey?: string, browserSlot?: import('./browserSlot.js').BrowserSlot }} [deps]
+ * @param {{ onStep?: import('../../../generator/src/run.js').OnStep, onAttempt?: (attempt: object) => void, cfg?: typeof config, run?: typeof runCommand, apiKey?: string, browserSlot?: import('./browserSlot.js').BrowserSlot }} [deps]
  *   onStep: the generator's progress; `replace` updates the last step (a streaming reply)
+ *   onAttempt: each attempt as it ends (keepThinking jobs only: compare-builds keeps them if stopped)
  *   apiKey: the job owner's own GenAI Studio key (plan §15); without it, the server's provider
  *   browserSlot: shared between jobs, so only so many browser checks run at once (plan §28);
  *     without it the job checks whenever it likes
  * @returns {Promise<import('../../../generator/src/run.js').GeneratorResult>}
  */
-export async function runGeneratorInSandbox(job, { onStep = () => {}, cfg = config, run = runCommand, apiKey, browserSlot } = {}) {
+export async function runGeneratorInSandbox(job, { onStep = () => {}, onAttempt = () => {}, cfg = config, run = runCommand, apiKey, browserSlot } = {}) {
   const hex = randomBytes(4).toString('hex');
   const name = `bg-gen-${hex}`; // OpenShell allows at most 19 characters
   const keyProvider = apiKey ? `bg-key-${hex}` : null;
@@ -127,7 +128,13 @@ export async function runGeneratorInSandbox(job, { onStep = () => {}, cfg = conf
           timeoutMs: cfg.GENERATION_TIMEOUT_MS + 60_000,
           onStderrLine: (line) => {
             if (gate?.handle(line)) return;
-            if (line.startsWith('STEP ')) onStep(line.slice(5));
+            if (line.startsWith('ATTEMPT ')) {
+              try {
+                onAttempt(JSON.parse(line.slice(8)));
+              } catch {
+                // a broken line: the attempt is still in the final result
+              }
+            } else if (line.startsWith('STEP ')) onStep(line.slice(5));
             else if (line.startsWith('STEP~ ')) onStep(line.slice(6), { replace: true }); // replaces the last step
           },
         },

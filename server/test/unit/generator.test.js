@@ -168,6 +168,13 @@ test('chat: says why the reply stopped, and keeps any text the server sent as to
   assert.equal((await chat([], { model: 'm', fetchImpl: only, sleep: noSleep })).toolCalls, 'g()');
 });
 
+test('chat: a job\'s reasoning effort replaces the model\'s own', async () => {
+  const { fetchImpl, calls } = fakeFetch([reply('a'), reply('b')]);
+  await chat([], { model: 'qwen3.8:27b', fetchImpl, sleep: noSleep, reasoningEffort: 'low' });
+  await chat([], { model: 'qwen3.8:27b', fetchImpl, sleep: noSleep, reasoningEffort: undefined });
+  assert.deepEqual(calls.map((c) => c.body.reasoning_effort), ['low', 'medium']);
+});
+
 test('chat: a response format goes in the request as response_format', async () => {
   const { fetchImpl, calls } = fakeFetch([reply('{}')]);
   await chat([], { model: 'm', fetchImpl, sleep: noSleep, responseFormat: headingsFormat('plan') });
@@ -384,6 +391,20 @@ test('build job: an attempt that ran out of room is recorded (with its thinking,
   assert.deepEqual(result.attempts[0].usage, { completion_tokens: 59_000 });
   assert.ok(steps.includes('attempt 1/4: the model ran out of room while thinking (59,000 tokens) and wrote no reply'));
   assert.equal(model.calls[0].length, 2, 'the same request again');
+
+  // onAttempt hears each attempt as it's recorded (so a stopped run keeps them, plan §40).
+  const heard = [];
+  first = true;
+  model.calls.length = 0;
+  const again = fakeModel([fenced('html', GAME)]);
+  const chatAgain = async (messages, opts) => {
+    if (!first) return again.chatFn(messages, opts);
+    first = false;
+    throw new OutOfRoomError({ thinking: '', usage: null, seconds: 1 });
+  };
+  const watchedRun = await runJob({ step: 'build', idea: 'A racing platformer for friends', design: DESIGN }, { chatFn: chatAgain, check: passing, onAttempt: (a) => heard.push(a.attempt) });
+  assert.deepEqual(heard, [1, 2]);
+  assert.equal(JSON.parse(JSON.stringify(watchedRun)).attempts.length, 2, 'still an ordinary list in the result');
 });
 
 test('build job: gives up after the attempts, keeping the last game and report; too big fails', async () => {
@@ -423,6 +444,7 @@ test('bad jobs are refused before any model call', async () => {
     [{ step: 'design', idea: 'A long enough idea', examples: 'no' }, /examples must be true or false/],
     [{ step: 'design', idea: 'A long enough idea', keepThinking: 1 }, /keepThinking must be true or false/],
     [{ step: 'build', idea: 'A long enough idea', design: 'd', briefThinking: 'yes' }, /briefThinking must be true or false/],
+    [{ step: 'build', idea: 'A long enough idea', design: 'd', reasoningEffort: 'high' }, /reasoningEffort must be one of low, medium, xhigh/],
   ];
   for (const [job, error] of cases) assert.match((await runJob(job, { chatFn: model.chatFn })).error, error);
   assert.equal(model.calls.length, 0);

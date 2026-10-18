@@ -24,6 +24,17 @@ function fakeOpenshell(answers = {}) {
 
 const job = { idea: 'Everyone votes; the minority wins', model: 'qwen3.8:27b' };
 
+test('each ATTEMPT line goes to onAttempt as it comes (a broken one is skipped), not to the steps', async () => {
+  const heard = [];
+  const steps = [];
+  const { run } = fakeOpenshell({
+    exec: { code: 0, stdout: `${JSON.stringify(RESULT)}\n`, stderr: `ATTEMPT ${JSON.stringify({ attempt: 1, ok: false })}\nATTEMPT {broken\nSTEP attempt 2/4: passed\n` },
+  });
+  await runGeneratorInSandbox(job, { run, onStep: (s) => steps.push(s), onAttempt: (a) => heard.push(a) });
+  assert.deepEqual(heard, [{ attempt: 1, ok: false }]);
+  assert.deepEqual(steps, ['starting the sandbox', 'attempt 2/4: passed']);
+});
+
 test('create → exec (job on stdin) → delete, and the result comes back', async () => {
   const steps = [];
   const { run, calls } = fakeOpenshell({

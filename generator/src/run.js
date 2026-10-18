@@ -69,6 +69,7 @@ import { describeProblem } from '../../server/src/games/frameGame.js';
  * @property {boolean} [sizeLimit]        build: false leaves the 100 KB limit out of the prompt (plan §32's experiment)
  * @property {number} [maxAttempts]       build
  * @property {boolean} [edits]            build: false turns edit mode off (on by default, plan §23)
+ * @property {'low' | 'medium' | 'xhigh'} [reasoningEffort]  instead of the model's own (plan §40's experiment)
  * @property {boolean} [briefThinking]    build: asks for a short plan before the file (plan §40's experiment)
  * @property {boolean} [keepThinking]     each attempt keeps the model's thinking and whole reply (plan §38's look; off on the site)
  */
@@ -110,8 +111,9 @@ export const PLAYTEST_SECONDS = 15;
 /**
  * Runs one job. Everything outside is passed in, so tests can use a fake model and checker.
  * @param {GeneratorJob} job  untrusted: checked here
- * @param {{ chatFn?: typeof chat, check?: typeof checkGame, onStep?: OnStep, browser?: typeof NO_GATE }} [deps]
+ * @param {{ chatFn?: typeof chat, check?: typeof checkGame, onStep?: OnStep, browser?: typeof NO_GATE, onAttempt?: (attempt: object) => void }} [deps]
  *   browser: the gate around each browser check (browserGate.js); none by default
+ *   onAttempt: hears about each attempt as soon as it's recorded
  * @returns {Promise<GeneratorResult>}
  */
 export async function runJob(job, deps = {}) {
@@ -137,6 +139,7 @@ export async function runJob(job, deps = {}) {
   if (job.edits !== undefined && typeof job.edits !== 'boolean') return fail('edits must be true or false');
   if (job.sizeLimit !== undefined && typeof job.sizeLimit !== 'boolean') return fail('sizeLimit must be true or false');
   if (job.keepThinking !== undefined && typeof job.keepThinking !== 'boolean') return fail('keepThinking must be true or false');
+  if (job.reasoningEffort !== undefined && !REASONING_EFFORTS.includes(job.reasoningEffort)) return fail(`reasoningEffort must be one of ${REASONING_EFFORTS.join(', ')}`);
   if (job.briefThinking !== undefined && typeof job.briefThinking !== 'boolean') return fail('briefThinking must be true or false');
 
   if (job.step === 'design') return design(job, model, deps);
@@ -145,6 +148,22 @@ export async function runJob(job, deps = {}) {
     return build(job, model, deps);
   }
   return fail('the step must be "design" or "build"');
+}
+
+/**
+ * The list of attempts: an ordinary array that also tells `onAttempt` about each one as it's
+ * added, so a job that's stopped before it ends still leaves its attempts behind (plan §40).
+ * @param {((attempt: object) => void) | undefined} onAttempt
+ */
+function watched(onAttempt) {
+  const attempts = [];
+  if (onAttempt) {
+    attempts.push = (...added) => {
+      for (const a of added) onAttempt(a);
+      return Array.prototype.push.apply(attempts, added);
+    };
+  }
+  return attempts;
 }
 
 /**
@@ -157,6 +176,9 @@ const thinkingOf = (job, reply) => ({
   ...(job.keepThinking && { thinking: reply.thinking ?? '', reply: reply.content ?? '', ...(reply.toolCalls && { toolCalls: reply.toolCalls }) }),
 });
 
+/** What qwen3.8:27b on GenAI Studio takes (plan §38). */
+const REASONING_EFFORTS = ['low', 'medium', 'xhigh'];
+
 const isText = (value, min) => typeof value === 'string' && value.trim().length >= min && value.length <= MAX_IDEA_LENGTH;
 
 /**
@@ -166,12 +188,12 @@ const isText = (value, min) => typeof value === 'string' && value.trim().length 
  * @param {{ chatFn?: typeof chat, onStep?: OnStep }} deps
  * @returns {Promise<GeneratorResult>}
  */
-async function design(job, model, { chatFn = chat, onStep = () => {} }) {
+async function design(job, model, { chatFn = chat, onStep = () => {}, onAttempt }) {
   const isPlan = job.change !== undefined;
   const what = isPlan ? 'plan' : 'design';
   const headings = isPlan ? PLAN_HEADINGS : DESIGN_HEADINGS;
   const messages = isPlan ? planMessages({ idea: job.idea, ...job.change }, job.redraft) : designMessages(job.idea, job.redraft, { examples: job.examples ?? false });
-  const result = { ok: false, model, design: null, attempts: [] };
+  const result = { ok: false, model, design: null, attempts: watched(onAttempt) };
 
   for (let attempt = 1; attempt <= DESIGN_ATTEMPTS; attempt++) {
     const asking = `${what}${attempt > 1 ? ` (try ${attempt})` : ''}: asking ${model}`;
@@ -180,6 +202,7 @@ async function design(job, model, { chatFn = chat, onStep = () => {} }) {
     try {
       reply = await chatFn(messages, {
         model,
+        reasoningEffort: job.reasoningEffort,
         responseFormat: headingsFormat(what),
         onRetry: onStep,
         onProgress: (p) => onStep(`${asking} (${progressText(p)})`, { replace: true }),
@@ -222,7 +245,7 @@ async function design(job, model, { chatFn = chat, onStep = () => {} }) {
  * @param {{ chatFn?: typeof chat, check?: typeof checkGame, onStep?: OnStep, browser?: typeof NO_GATE }} deps
  * @returns {Promise<GeneratorResult>}
  */
-async function build(job, model, { chatFn = chat, check = checkGame, onStep = () => {}, browser = NO_GATE }) {
+async function build(job, model, { chatFn = chat, check = checkGame, onStep = () => {}, browser = NO_GATE, onAttempt }) {
   const maxAttempts = job.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
   const { change } = job;
   let edits = job.edits !== false;
@@ -243,7 +266,7 @@ async function build(job, model, { chatFn = chat, check = checkGame, onStep = ()
   let currentProblems = null;
   let failedInARow = 0;
   let changelog = null;
-  const result = { ok: false, model, source: null, report: null, changelog: null, attempts: [] };
+  const result = { ok: false, model, source: null, report: null, changelog: null, attempts: watched(onAttempt) };
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     // Edits need a file to apply to: a new game's first attempt is always a whole file.
@@ -252,7 +275,7 @@ async function build(job, model, { chatFn = chat, check = checkGame, onStep = ()
     onStep(asking);
     let reply;
     try {
-      reply = await chatFn(messages, { model, onRetry: onStep, onProgress: (p) => onStep(`${asking} (${progressText(p)})`, { replace: true }) });
+      reply = await chatFn(messages, { model, reasoningEffort: job.reasoningEffort, onRetry: onStep, onProgress: (p) => onStep(`${asking} (${progressText(p)})`, { replace: true }) });
     } catch (err) {
       if (!err.outOfRoom) return { ...result, error: err.message };
       // It thought until the context was full: a used-up attempt. The next one asks the same again.
@@ -380,9 +403,12 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   // One line per step: a line break inside a step (say, from a game's error message) would
   // otherwise start a new line the server reads on its own.
   const onStep = (text, { replace = false } = {}) => write(`STEP${replace ? '~' : ''} ${String(text).replace(/[\r\n]+/g, ' ')}\n`);
+  // keepThinking jobs (experiments) also send each attempt as it ends, on one line (JSON has
+  // no raw line breaks), so a run that's stopped keeps what it has.
+  const onAttempt = job?.keepThinking === true ? (a) => write(`ATTEMPT ${JSON.stringify(a)}\n`) : undefined;
   let result;
   try {
-    result = await runJob(job, { onStep, browser });
+    result = await runJob(job, { onStep, browser, onAttempt });
   } catch (err) {
     result = { ok: false, model: job?.model ?? null, attempts: [], error: err.message };
   }
