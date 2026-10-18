@@ -50,7 +50,7 @@ import {
   MAX_WHOLE_FILE_LENGTH,
   MAX_GAME_BYTES,
 } from './prompt.js';
-import { DEFAULT_MODEL, isAllowedModel } from './models.js';
+import { DEFAULT_MODEL, isAllowedModel, reasoningEffortFor } from './models.js';
 import { checkGame } from './check/checkGame.js';
 import { NO_GATE, isGateToken, lineReader, stdinGate } from './browserGate.js';
 import { describeProblem } from '../../server/src/games/frameGame.js';
@@ -69,8 +69,8 @@ import { describeProblem } from '../../server/src/games/frameGame.js';
  * @property {boolean} [sizeLimit]        build: false leaves the 100 KB limit out of the prompt (plan §32's experiment)
  * @property {number} [maxAttempts]       build
  * @property {boolean} [edits]            build: false turns edit mode off (on by default, plan §23)
- * @property {'low' | 'medium' | 'xhigh'} [reasoningEffort]  instead of the model's own (plan §40's experiment)
- * @property {boolean} [briefThinking]    build: asks for a short plan before the file (plan §40's experiment)
+ * @property {'low' | 'medium' | 'xhigh'} [reasoningEffort]  for every step, instead of the model's own (models.js; plan §40's experiment)
+ * @property {boolean} [briefThinking]    build: asks for a short plan before the file (on by default, plan §40)
  * @property {boolean} [keepThinking]     each attempt keeps the model's thinking and whole reply (plan §38's look; off on the site)
  */
 
@@ -202,7 +202,7 @@ async function design(job, model, { chatFn = chat, onStep = () => {}, onAttempt 
     try {
       reply = await chatFn(messages, {
         model,
-        reasoningEffort: job.reasoningEffort,
+        reasoningEffort: job.reasoningEffort ?? reasoningEffortFor(model, 'design'),
         responseFormat: headingsFormat(what),
         onRetry: onStep,
         onProgress: (p) => onStep(`${asking} (${progressText(p)})`, { replace: true }),
@@ -253,7 +253,7 @@ async function build(job, model, { chatFn = chat, check = checkGame, onStep = ()
   // The conversation is the prompt plus, after a failed attempt, ONLY that attempt and its
   // problems: earlier attempts are dropped. Each one can be a whole game (~10K tokens), and
   // the model's context is 65K (plan §13n): keeping them all would overflow by attempt 4.
-  const prompt = change ? changeBuildMessages({ idea: job.idea, ...change }, plan, { edits }) : buildMessages(job.idea, job.design, { sizeLimit: job.sizeLimit ?? true, briefThinking: job.briefThinking ?? false });
+  const prompt = change ? changeBuildMessages({ idea: job.idea, ...change }, plan, { edits }) : buildMessages(job.idea, job.design, { sizeLimit: job.sizeLimit ?? true, briefThinking: job.briefThinking ?? true });
   // A fix shows the model its last file as its own reply. For a change, that file replaces
   // the old one in the prompt (withCode: false), so the game is in the conversation once.
   const fixPrompt = (asEdits) => (change ? changeBuildMessages({ idea: job.idea, ...change }, plan, { edits: asEdits, withCode: false }) : prompt);
@@ -275,7 +275,10 @@ async function build(job, model, { chatFn = chat, check = checkGame, onStep = ()
     onStep(asking);
     let reply;
     try {
-      reply = await chatFn(messages, { model, reasoningEffort: job.reasoningEffort, onRetry: onStep, onProgress: (p) => onStep(`${asking} (${progressText(p)})`, { replace: true }) });
+      // The first request for the file can think until the context is full (plan §40): models.js
+      // may give it its own effort.
+      const step = messages === prompt ? 'build' : 'fix';
+      reply = await chatFn(messages, { model, reasoningEffort: job.reasoningEffort ?? reasoningEffortFor(model, step), onRetry: onStep, onProgress: (p) => onStep(`${asking} (${progressText(p)})`, { replace: true }) });
     } catch (err) {
       if (!err.outOfRoom) return { ...result, error: err.message };
       // It thought until the context was full: a used-up attempt. The next one asks the same again.

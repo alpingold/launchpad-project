@@ -100,14 +100,16 @@ function fakeFetch(responses) {
 const reply = (content) => ({ body: { choices: [{ message: { content } }], usage: { total_tokens: 5 } } });
 const noSleep = async () => {};
 
-test('chat: sends the conversation (with the model\'s reasoning effort) and returns the reply', async () => {
-  const { fetchImpl, calls } = fakeFetch([reply('hello')]);
-  const result = await chat([{ role: 'user', content: 'hi' }], { model: 'qwen3.8:27b', baseUrl: 'https://x/api', apiKey: 'k', fetchImpl, sleep: noSleep });
+test('chat: sends the conversation (with the reasoning effort it\'s given) and returns the reply', async () => {
+  const { fetchImpl, calls } = fakeFetch([reply('hello'), reply('again')]);
+  const result = await chat([{ role: 'user', content: 'hi' }], { model: 'qwen3.8:27b', baseUrl: 'https://x/api', apiKey: 'k', fetchImpl, sleep: noSleep, reasoningEffort: 'medium' });
   assert.equal(result.content, 'hello');
   assert.deepEqual(result.usage, { total_tokens: 5 });
   assert.equal(calls[0].url, 'https://x/api/chat/completions');
   assert.equal(calls[0].auth, 'Bearer k');
   assert.deepEqual(calls[0].body, { model: 'qwen3.8:27b', messages: [{ role: 'user', content: 'hi' }], stream: true, stream_options: { include_usage: true }, reasoning_effort: 'medium' });
+  await chat([], { model: 'm', fetchImpl, sleep: noSleep });
+  assert.equal('reasoning_effort' in calls[1].body, false, 'none given: none sent (the server\'s default)');
 });
 
 /** A streamed reply, as GenAI Studio sends it: `data:` lines, split across network chunks. */
@@ -166,13 +168,6 @@ test('chat: says why the reply stopped, and keeps any text the server sent as to
   // Only tool calls and no content is not "empty": it comes back, to be seen.
   const only = async (_url, init) => streamed([['tool_calls', [{ index: 0, function: { name: 'g', arguments: '' } }]]])(init.signal);
   assert.equal((await chat([], { model: 'm', fetchImpl: only, sleep: noSleep })).toolCalls, 'g()');
-});
-
-test('chat: a job\'s reasoning effort replaces the model\'s own', async () => {
-  const { fetchImpl, calls } = fakeFetch([reply('a'), reply('b')]);
-  await chat([], { model: 'qwen3.8:27b', fetchImpl, sleep: noSleep, reasoningEffort: 'low' });
-  await chat([], { model: 'qwen3.8:27b', fetchImpl, sleep: noSleep, reasoningEffort: undefined });
-  assert.deepEqual(calls.map((c) => c.body.reasoning_effort), ['low', 'medium']);
 });
 
 test('chat: a response format goes in the request as response_format', async () => {
@@ -252,7 +247,7 @@ test('sizeLimit: false (plan §32\'s experiment) leaves every mention of the 100
   assert.match(without, /Everything is in this one file/);
 });
 
-test('briefThinking (plan §40\'s experiment): the short-plan sentence comes just before the answer line, only when asked', () => {
+test('briefThinking (plan §40): the short-plan sentence comes just before the answer line, when asked (runJob asks by default)', () => {
   const user = (opts) => buildMessages('Run and jump', DESIGN, opts)[1].content;
   assert.doesNotMatch(user(), /plan briefly/);
   assert.match(user({ briefThinking: true }), /plan briefly:[^\n]*\n\nReply with the complete game file/);
@@ -299,6 +294,7 @@ function fakeModel(replies) {
   const chatFn = async (messages, opts) => {
     calls.push(messages.map((m) => ({ ...m })));
     calls.at(-1).responseFormat = opts?.responseFormat;
+    calls.at(-1).reasoningEffort = opts?.reasoningEffort;
     return { content: replies.shift(), thinking: 'Let me think.', finishReason: 'stop', toolCalls: '', seconds: 1, usage: null };
   };
   return { chatFn, calls };
@@ -373,6 +369,25 @@ test('build job (edit mode off): write → check → fix until it passes; the re
   const fix = model.calls[1].at(-1).content;
   assert.match(fix, /line 12: `fetch` is blocked\.\n {4}code: fetch\("\/x"\); \(on the big screen\)/);
   assert.match(model.calls[2].at(-1).content, /no game file/);
+});
+
+test('reasoning effort per step (plan §40): medium for designs, first builds and fixes; a job may set one for all', async () => {
+  const designing = fakeModel([DESIGN]);
+  await runJob({ step: 'design', idea: 'A racing platformer for friends' }, { chatFn: designing.chatFn });
+  assert.equal(designing.calls[0].reasoningEffort, 'medium');
+
+  const failingOnce = (() => {
+    let n = 0;
+    return async () => (n++ === 0 ? { ok: false, problems: ['nope'], warnings: [] } : passing());
+  })();
+  const building = fakeModel([fenced('html', GAME), fenced('html', GAME)]);
+  await runJob({ step: 'build', idea: 'A racing platformer for friends', design: DESIGN, edits: false }, { chatFn: building.chatFn, check: failingOnce });
+  assert.deepEqual(building.calls.map((c) => c.reasoningEffort), ['medium', 'medium']);
+  assert.match(building.calls[0][1].content, /plan briefly:/, 'a new game\'s build asks for a short plan');
+
+  const overridden = fakeModel([fenced('html', GAME)]);
+  await runJob({ step: 'build', idea: 'A racing platformer for friends', design: DESIGN, reasoningEffort: 'xhigh' }, { chatFn: overridden.chatFn, check: passing });
+  assert.equal(overridden.calls[0].reasoningEffort, 'xhigh');
 });
 
 test('build job: an attempt that ran out of room is recorded (with its thinking, if kept), and the next asks again', async () => {

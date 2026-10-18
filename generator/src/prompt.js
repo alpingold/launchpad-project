@@ -230,9 +230,9 @@ function buildSystemPrompt({ sizeLimit = true } = {}) {
 const BUILD_ANSWER = `Reply with the complete game file in ONE \`\`\`html code block, starting with the game-info block. Follow the design exactly; where it leaves something open, choose what plays best.`;
 const BUILD_SIZE = ` At most ${MAX_GAME_BYTES / 1024} KB.`;
 /**
- * Plan §40's experiment (job.briefThinking): a build thought for 46K tokens, a third of it
- * drafts of code, and nearly filled the context. This asks for a short plan instead. Off by
- * default until a comparison shows it helps.
+ * A new game's build asks for a short plan first (plan §40; job.briefThinking: false leaves it
+ * out). Without it a build at medium thought for 25–58K tokens, a third of it drafts of code,
+ * and ran out of room 3 times; with it, 2–12K, and never did.
  */
 export const BRIEF_THINKING = `Before writing, plan briefly: the big screen's state, what each phone is sent, every timer, and what happens when a player leaves or a screen reloads. Work out only the tricky parts in detail; don't draft the whole file in your thinking. Where the design is unclear, follow the reading closest to its words. Once the plan is set, write the file in your reply.`;
 

@@ -8,8 +8,6 @@
 // a call that sends nothing for IDLE_TIMEOUT_MS is stuck, and is tried again. (Until
 // 2026-10-15 a call had 5 minutes in total, which cut off healthy but long replies.)
 
-import { MODELS } from './models.js';
-
 const DEFAULT_BASE_URL = 'https://genai.rcac.purdue.edu/api';
 /** No new piece of the reply for this long: the call is stuck. (Pieces normally come every few ms.) */
 export const IDLE_TIMEOUT_MS = 2 * 60 * 1000;
@@ -53,7 +51,7 @@ export class OutOfRoomError extends Error {
  * @param {string} opts.model
  * @param {string} [opts.baseUrl]
  * @param {string} [opts.apiKey]
- * @param {string} [opts.reasoningEffort]      instead of the model's own (models.js), for an experiment
+ * @param {string} [opts.reasoningEffort]      'low', 'medium' or 'xhigh' (run.js picks it per step, models.js)
  * @param {object} [opts.responseFormat]       the reply must match this (a JSON schema, prompt.js)
  * @param {typeof fetch} [opts.fetchImpl]          tests pass a fake
  * @param {(ms: number) => Promise<void>} [opts.sleep]
@@ -70,7 +68,7 @@ export async function chat(
     baseUrl = process.env.GENAI_BASE_URL || DEFAULT_BASE_URL,
     apiKey = process.env.GENAI_API_KEY,
     responseFormat,
-    reasoningEffort = MODELS.find((m) => m.id === model)?.reasoningEffort,
+    reasoningEffort,
     fetchImpl = fetch,
     sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     onRetry = () => {},
