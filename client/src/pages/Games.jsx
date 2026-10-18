@@ -19,7 +19,10 @@ export default function Games() {
   return (
     <main className="page games-page">
       <h1>Games</h1>
-      <p className="muted">Every game runs on one big screen, with phones as controllers.</p>
+      <p className="muted">
+        Every game runs on one big screen, with phones as controllers. Not seeing the one you want?{' '}
+        <a href="/create">Describe it and the AI makes it</a>.
+      </p>
       {games === null && <p className="muted">Loading…</p>}
       {games?.length === 0 && <p className="muted">No games available right now.</p>}
       {games?.length > 0 && (

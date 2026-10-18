@@ -481,53 +481,362 @@ body.in-game-player .site-header {
 
 /* M6: home page */
 .home {
-  max-width: 56rem;
+  max-width: 68rem;
 }
 
-.hero {
-  padding: 1.5rem 0 0.5rem;
+/* §42: the home page leads with making a game. The idea box and the making track on the
+   left; the room code box beside it (above it on phones, where most visitors are joining). */
+.home-top {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 17rem;
+  gap: 2.5rem;
+  align-items: start;
+  padding: 1rem 0 3rem;
 }
 
-.hero h1 {
-  font-size: clamp(2.75rem, 10vw, 5rem);
+.home-make h1 {
+  font-size: clamp(2.4rem, 6.2vw, 4.4rem);
   font-weight: 800;
-  letter-spacing: -0.035em;
-  line-height: 1;
-  margin: 0 0 1rem;
+  letter-spacing: -0.04em;
+  line-height: 0.98;
+  margin: 0 0 1.25rem;
+  max-width: 13ch;
+  text-wrap: balance;
 }
 
-.tagline {
-  font-size: clamp(1.2rem, 3.5vw, 1.5rem);
-  font-weight: 600;
-  line-height: 1.35;
+.home-make-lede {
+  font-size: 1.2rem;
+  line-height: 1.5;
   max-width: 34rem;
-  margin: 0 0 0.5rem;
+  margin: 0 0 1.75rem;
+  color: var(--muted);
 }
 
-/* §31a: "(demo)" after the title, and the quip under the tagline. A gold pill with dark ink,
-   like the room code: gold as text on the light background would be too faint to read. */
+/* The idea box: the first space of the track, so it's drawn in the track's gold. */
+.home-idea {
+  border: 3px solid var(--gold);
+  border-radius: 1.1rem;
+  background: var(--surface);
+  padding: 1rem 1rem 0.85rem;
+}
+
+.home-idea label {
+  display: block;
+  font-weight: 700;
+  color: var(--gold);
+  margin-bottom: 0.4rem;
+}
+
+.home-idea textarea {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  min-height: 5.5rem;
+  padding: 0.25rem 0;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 1.25rem;
+  line-height: 1.45;
+}
+
+.home-idea textarea::placeholder {
+  color: var(--muted);
+  opacity: 0.75;
+}
+
+/* The box itself shows the focus; the field inside doesn't need its own outline. */
+.home-idea textarea:focus-visible {
+  outline: none;
+}
+
+.home-idea:focus-within {
+  box-shadow: 0 0 0 3px var(--bg), 0 0 0 6px var(--accent);
+}
+
+.home-idea-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+
+.home-idea-examples {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.home-idea-go {
+  margin-left: auto;
+}
+
+/* The making track: Idea → Design → Build → Play, the same gold path as /create's (§19).
+   The token runs the course once when the page opens (unless motion is reduced). */
+.home-track {
+  --dot: 2.6rem;
+  --tok: 3.1rem; /* the token covers the space it's on */
+  position: relative;
+  list-style: none;
+  padding: 0;
+  margin: 1.75rem 0 0;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0 1rem;
+}
+
+.home-track-space {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  line-height: 1.4;
+}
+
+.home-track-space + .home-track-space::before {
+  content: '';
+  position: absolute;
+  top: calc(var(--dot) / 2 - 2px);
+  /* from the space before's dot to this one's, with a little air at both ends */
+  right: calc(100% + 0.3rem);
+  width: calc(100% + 1rem - var(--dot) - 0.6rem);
+  height: 4px;
+  background: var(--gold);
+  opacity: 0.55;
+}
+
+.home-track-dot {
+  width: var(--dot);
+  height: var(--dot);
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  margin-bottom: 0.5rem;
+  border: 3px solid var(--gold);
+  color: var(--gold);
+  font-weight: 800;
+  box-sizing: border-box;
+}
+
+.home-track-space:first-child .home-track-dot {
+  background: var(--gold);
+  color: var(--gold-ink);
+}
+
+.home-track-token {
+  position: absolute;
+  top: calc((var(--dot) - var(--tok)) / 2);
+  left: calc(var(--dot) / 2 - var(--tok) / 2);
+  width: var(--tok);
+  height: calc(var(--tok) - 0.15rem);
+  font-size: 1.2rem;
+  border-radius: 52% 48% 46% 54% / 56% 54% 46% 44%;
+  background: var(--gold);
+  color: var(--gold-ink);
+  border: 3px solid var(--text);
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  box-sizing: border-box;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .home-track-token {
+    animation: home-token-run 2.4s 0.4s cubic-bezier(0.45, 0, 0.3, 1) both;
+  }
+}
+
+/* Hop to each space, then back to Idea, where the next game starts. */
+@keyframes home-token-run {
+  0%,
+  8% {
+    left: calc(var(--dot) / 2 - var(--tok) / 2);
+    transform: translateY(0);
+  }
+  20% {
+    transform: translateY(-0.6rem);
+  }
+  28% {
+    left: calc(25% + 0.25rem + var(--dot) / 2 - var(--tok) / 2);
+    transform: translateY(0);
+  }
+  40% {
+    transform: translateY(-0.6rem);
+  }
+  48% {
+    left: calc(50% + 0.5rem + var(--dot) / 2 - var(--tok) / 2);
+    transform: translateY(0);
+  }
+  60% {
+    transform: translateY(-0.6rem);
+  }
+  68%,
+  84% {
+    left: calc(75% + 0.75rem + var(--dot) / 2 - var(--tok) / 2);
+    transform: translateY(0);
+  }
+  100% {
+    left: calc(var(--dot) / 2 - var(--tok) / 2);
+  }
+}
+
+.home-make-needs {
+  margin: 1.5rem 0 0;
+  max-width: 40rem;
+}
+
+/* For people who came to play: quiet, but on the first screen. */
+.home-join {
+  position: sticky;
+  top: 1rem;
+  padding: 1.25rem;
+  border-radius: 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+.home-join h2 {
+  font-size: 1.15rem;
+  margin: 0 0 0.75rem;
+}
+
+.home-host {
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--border);
+}
+
+.home-host p {
+  margin: 0.75rem 0 0;
+}
+
+.home-row {
+  padding: 2.5rem 0 0.5rem;
+  border-top: 1px solid var(--border);
+}
+
+.home-row h2 {
+  font-size: 1.6rem;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+.home-row-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.25rem 1rem;
+  margin-bottom: 0.25rem;
+}
+
+.home-row-head p {
+  margin: 0;
+}
+
+.home-first-game {
+  margin: 1rem 0 1.5rem;
+  padding: 1rem 1.25rem;
+  border: 2px dashed var(--input-border);
+  border-radius: 1rem;
+  color: var(--muted);
+}
+
+/* The header's name on the home page (elsewhere it's the link home). */
+.home-wordmark {
+  font-weight: 800;
+  font-size: 1.15rem;
+  letter-spacing: -0.02em;
+  padding: 0.4rem 0;
+}
+
+/* "(demo)" after the name: a gold pill with dark ink, like the room code (§31a). */
 .demo-tag {
   display: inline-block;
   vertical-align: middle;
-  font-size: 0.35em;
+  font-size: 0.7em;
   font-weight: 700;
   letter-spacing: 0;
-  padding: 0.2em 0.6em;
+  padding: 0.15em 0.55em;
+  margin-left: 0.25em;
   border-radius: 999px;
   background: var(--gold);
   color: var(--gold-ink);
 }
 
-.hero-quip {
-  max-width: 34rem;
-  margin: 0 0 0.5rem;
+@media (max-width: 52rem) {
+  .home-top {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+    padding-top: 0.5rem;
+  }
+
+  /* Phones: the code box first, where most visitors are joining. */
+  .home-join {
+    order: -1;
+    position: static;
+    padding: 0.85rem 1rem;
+  }
+
+  .home-join h2 {
+    font-size: 1rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .home-host {
+    margin-top: 1rem;
+    padding-top: 0.85rem;
+  }
 }
 
-.home-actions {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
-  gap: 1rem;
-  margin: 1.5rem 0 2rem;
+@media (max-width: 36rem) {
+  .home-track {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+
+  .home-track-space {
+    padding: 0 0 1.25rem calc(var(--dot) + 0.85rem);
+    min-height: var(--dot);
+  }
+
+  .home-track-dot {
+    position: absolute;
+    left: 0;
+    top: 0;
+  }
+
+  .home-track-space + .home-track-space::before {
+    top: auto;
+    bottom: calc(100% - 0.1rem);
+    right: auto;
+    left: calc(var(--dot) / 2 - 2px);
+    width: 4px;
+    height: calc(1.25rem + 0.2rem);
+  }
+
+  /* No room to run beside a column: the token stays off. */
+  .home-track-token {
+    display: none;
+  }
+
+  .home-idea-go {
+    width: 100%;
+  }
+}
+
+/* Lets a link look like a button. */
+a.secondary-button {
+  display: inline-block;
+  text-decoration: none;
 }
 
 .card {
@@ -582,11 +891,11 @@ a.primary-button {
 .how-track li:not(:last-child)::after {
   content: '';
   position: absolute;
-  top: calc(1.5rem - 3px);
+  top: calc(1.5rem - 2px);
   left: 50%;
   width: 100%;
-  height: 6px;
-  background: var(--gold);
+  height: 4px;
+  background: var(--border);
 }
 
 .how-dot {
@@ -598,8 +907,8 @@ a.primary-button {
   height: 3rem;
   margin: 0 auto 0.75rem;
   border-radius: 50%;
-  background: var(--gold);
-  color: var(--gold-ink);
+  background: var(--chip);
+  color: var(--text);
   font-weight: 800;
 }
 
@@ -620,8 +929,8 @@ a.primary-button {
 
   .how-track li:not(:last-child)::after {
     top: 3rem;
-    left: calc(1.5rem - 3px);
-    width: 6px;
+    left: calc(1.5rem - 2px);
+    width: 4px;
     height: calc(100% - 3rem);
   }
 
@@ -713,6 +1022,17 @@ select {
 
 .site-nav a:hover {
   background: var(--chip);
+}
+
+/* §42: making a game is what the site is for, so its link is the gold one. */
+.site-nav a.site-nav-make {
+  background: var(--gold);
+  color: var(--gold-ink);
+  margin: 0 0.25rem;
+}
+
+.site-nav a.site-nav-make:hover {
+  background: var(--text);
 }
 
 .site-nav a[aria-current='page'],

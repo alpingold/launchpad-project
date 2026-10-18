@@ -3,7 +3,7 @@ import { useCurrentUser } from '../net/auth.js';
 
 /**
  * The links at the top right of every page (plan §16): the game catalogue, making
- * a game with AI, the docs, and Sign up (logged out) or Account (logged in). Plain links: full
+ * a game with AI (in gold: what the site is for, §42), the docs, and Sign up (logged out) or Account (logged in). Plain links: full
  * page loads (D12). On narrow screens (phones) they fold into a ☰ menu, so the header stays one
  * line. Hidden while a game is on screen (styles.css: body.in-game).
  */
@@ -27,15 +27,15 @@ export default function SiteNav() {
   }, [open]);
   const here = window.location.pathname.replace(/\/+$/, '') || '/';
   const links = () => {
-    const link = (href, text) => (
-      <a href={href} aria-current={here === href || here.startsWith(`${href}/`) ? 'page' : undefined}>
+    const link = (href, text, className) => (
+      <a href={href} className={className} aria-current={here === href || here.startsWith(`${href}/`) ? 'page' : undefined}>
         {text}
       </a>
     );
     return (
       <>
         {link('/games', 'Games')}
-        {link('/create', 'Create')}
+        {link('/create', 'Make a game', 'site-nav-make')}
         {link('/kit', 'Docs')}
         {user && link('/account', 'Account')}
         {user === null && link(`/login?mode=signup&next=${encodeURIComponent(here === '/login' ? '/' : here)}`, 'Sign up')}
