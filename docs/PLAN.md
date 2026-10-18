@@ -2349,6 +2349,11 @@ fix without changes. Stowaways also keeps its timer out of the part it rebuilds.
   shows the name; /games says "Not seeing the one you want? Describe it and the AI makes it."
 - **Kept:** the dark palette and Boilermaker gold (§34, §19), the system font (no new font to
   load), the demo notes.
+- **The rest of the site, to match:** the name top left on every page is the favicon's gold B
+  token plus "BoilerGames" (bigger on the home page, with "(demo)"; the link home elsewhere,
+  replacing "← BoilerGames"). Every page opens with the same big, tight headline and muted lede;
+  its parts below the top get a rule and a bigger heading (`.page-section`); an empty list is a
+  dashed invitation (`.empty-invite`); /create's idea box is gold like the home page's.
 
 ## Verification (how to confirm the plan worked once built)
 
