@@ -16,7 +16,8 @@
 // result.json and the screenshots, and summary.md: a table of every build (passed, size,
 // attempts, tokens, time). Run it again with the same --name to add more builds. A variant with
 // "keepThinking": true also saves each attempt's thinking and whole reply as
-// attempt-<n>-thinking.txt and attempt-<n>-reply.txt (plan §38).
+// attempt-<n>-thinking.txt and attempt-<n>-reply.txt (plan §38), and any tool calls the server
+// split off the reply as attempt-<n>-toolcalls.txt (plan §40).
 //
 // --parallel builds each round's variants at the same time (A and B together, then again), so
 // both still meet the same GenAI Studio load. Each build is one long request at a time, well
@@ -142,8 +143,9 @@ async function buildOne(label, options, run) {
   for (const a of result.attempts ?? []) {
     if (typeof a.thinking === 'string') await writeFile(path.join(dir, `attempt-${a.attempt}-thinking.txt`), a.thinking);
     if (typeof a.reply === 'string') await writeFile(path.join(dir, `attempt-${a.attempt}-reply.txt`), a.reply);
+    if (typeof a.toolCalls === 'string') await writeFile(path.join(dir, `attempt-${a.attempt}-toolcalls.txt`), a.toolCalls);
   }
-  const attempts = result.attempts?.map(({ thinking, reply, ...a }) => a);
+  const attempts = result.attempts?.map(({ thinking, reply, toolCalls, ...a }) => a);
   await writeFile(
     path.join(dir, 'result.json'),
     JSON.stringify({ label, options, seconds, ...result, attempts, source: undefined, report: result.report && { ...result.report, playtest } }, null, 2),
