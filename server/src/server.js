@@ -50,7 +50,15 @@ export function createGameServer(overrides = {}, { games = createDefaultRegistry
   });
   generation.recoverInterrupted(); // anything "generating" was cut off by the last restart
 
-  const httpServer = http.createServer(createApp({ games, db, cfg, generation, userKeys }));
+  // For /api/status (deploy/update.sh). Like `send` below, it only runs once `rooms` and
+  // `transport` exist.
+  const activity = () => ({
+    rooms: rooms.rooms.size,
+    playing: [...rooms.rooms.values()].filter((room) => room.phase === 'in_game').length,
+    connections: transport.connections.size,
+    generating: generation.running.size + generation.queue.length,
+  });
+  const httpServer = http.createServer(createApp({ games, db, cfg, generation, userKeys, activity }));
 
   // RoomManager needs a way to send messages, but the transport (which owns the sockets)
   // is created after it. This function only runs later, once `transport` exists,

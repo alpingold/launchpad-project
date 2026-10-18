@@ -24,8 +24,10 @@ import { kitGuide } from '../games/kitGuide.js';
  * @param {typeof config} [deps.cfg]
  * @param {import('../generation/service.js').GenerationService} [deps.generation]  AI games (admin routes)
  * @param {ReturnType<typeof import('../generation/userKeys.js').createUserKeys>} [deps.userKeys]  users' own GenAI Studio keys (plan §15)
+ * @param {() => { rooms: number, playing: number, connections: number, generating: number }} [deps.activity]
+ *   what's going on right now, for /api/status (server.js)
  */
-export function createApp({ games = new GameRegistry(), db = openDatabase(':memory:'), cfg = config, generation, userKeys } = {}) {
+export function createApp({ games = new GameRegistry(), db = openDatabase(':memory:'), cfg = config, generation, userKeys, activity } = {}) {
   const app = express();
   app.set('trust proxy', cfg.TRUST_PROXY);
   app.disable('x-powered-by'); // no need to tell visitors what the server runs
@@ -58,6 +60,15 @@ export function createApp({ games = new GameRegistry(), db = openDatabase(':memo
   // Health check: the client (and later the VPS) can call this to see if the server is up.
   app.get('/api/health', (_req, res) => {
     res.json({ ok: true });
+  });
+
+  // What's going on right now: open rooms, games being played, AI games being made. Only for
+  // the server itself (deploy/update.sh waits until nobody is playing before it restarts);
+  // anyone else gets the usual 404. Visitors come through Caddy, so with TRUST_PROXY=loopback
+  // req.ip is their real address, never 127.0.0.1.
+  app.get('/api/status', (req, res, next) => {
+    if (!activity || !['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.ip)) return next();
+    res.json(activity());
   });
 
   // The game catalogue, game pages, votes and profiles (plan §14, §16).

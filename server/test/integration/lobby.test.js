@@ -238,3 +238,21 @@ test('host "End room" closes it for everyone immediately', async () => {
   host.close();
   alex.close();
 });
+
+test('/api/status (deploy/update.sh): what is going on, only for the server itself', async () => {
+  const status = () => fetch(`${baseUrl}/api/status`).then((res) => res.json());
+  assert.deepEqual(await status(), { rooms: 0, playing: 0, connections: 0, generating: 0 });
+
+  const host = await openHost();
+  host.send({ type: 'host:create_room' });
+  await host.next();
+  assert.deepEqual(await status(), { rooms: 1, playing: 0, connections: 1, generating: 0 });
+  host.close();
+
+  // Behind Caddy, a visitor's address is the real one, so they get the usual 404.
+  const proxied = createGameServer({ TRUST_PROXY: 'loopback' });
+  await new Promise((resolve) => proxied.httpServer.listen(0, resolve));
+  const res = await fetch(`http://localhost:${proxied.httpServer.address().port}/api/status`, { headers: { 'X-Forwarded-For': '203.0.113.5' } });
+  assert.equal(res.status, 404);
+  await proxied.close();
+});
