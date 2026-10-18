@@ -217,7 +217,7 @@ const STEPS = [
 
 function KeyGuide() {
   return (
-    <section aria-labelledby="guide-heading">
+    <section className="page-section" aria-labelledby="guide-heading">
       <h2 id="guide-heading">How to get a key</h2>
       <ol className="key-guide">
         {STEPS.map((step) => (

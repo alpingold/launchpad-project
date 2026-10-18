@@ -197,6 +197,7 @@ export default function Join() {
   return (
     <main className="page join">
       <h1>Join a game</h1>
+      <p className="muted">The 4-letter code is on the big screen. Your name is what everyone sees.</p>
       <form onSubmit={handleSubmit} className="join-form">
         <label>
           Room code

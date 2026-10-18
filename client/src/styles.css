@@ -134,6 +134,11 @@ body {
   text-align: center;
 }
 
+.join > h1 + p.muted {
+  margin-left: auto;
+  margin-right: auto;
+}
+
 .join-form {
   display: flex;
   flex-direction: column;
@@ -742,22 +747,6 @@ body.in-game-player .site-header {
   margin: 0;
 }
 
-.home-first-game {
-  margin: 1rem 0 1.5rem;
-  padding: 1rem 1.25rem;
-  border: 2px dashed var(--input-border);
-  border-radius: 1rem;
-  color: var(--muted);
-}
-
-/* The header's name on the home page (elsewhere it's the link home). */
-.home-wordmark {
-  font-weight: 800;
-  font-size: 1.15rem;
-  letter-spacing: -0.02em;
-  padding: 0.4rem 0;
-}
-
 /* "(demo)" after the name: a gold pill with dark ink, like the room code (§31a). */
 .demo-tag {
   display: inline-block;
@@ -1128,26 +1117,59 @@ body.in-game .demo-badge {
 }
 
 /* "← BoilerGames" in the top-left corner (every page but the home page), in the header. */
-.home-nav {
+.wordmark {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
   flex: none;
+  min-width: 0;
 }
 
-.home-link {
+.wordmark nav {
+  display: contents;
+}
+
+.wordmark-mark {
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
-  height: 2.5rem;
-  padding: 0 1rem;
-  border: 1px solid var(--border);
-  border-radius: 1.25rem;
-  background: var(--surface);
+  gap: 0.5rem;
   color: var(--text);
-  font-weight: 700;
   text-decoration: none;
+  font-weight: 800;
+  font-size: 1.3rem;
+  letter-spacing: -0.03em;
 }
 
-.home-link:hover {
-  border-color: var(--accent);
+/* The favicon's token: a slightly squashed gold blob with a B. */
+.wordmark-token {
+  display: grid;
+  place-items: center;
+  width: 2.1rem;
+  height: 2rem;
+  border-radius: 52% 48% 46% 54% / 56% 54% 46% 44%;
+  background: var(--gold);
+  color: var(--gold-ink);
+  border: 3px solid var(--gold-ink);
+  box-shadow: 0 0 0 2px var(--gold);
+  font-size: 1.1rem;
+  letter-spacing: 0;
+  box-sizing: border-box;
+}
+
+a.wordmark-mark:hover .wordmark-name {
+  text-decoration: underline 3px var(--gold);
+  text-underline-offset: 0.3em;
+}
+
+/* The home page: the name is the first thing at the top. */
+.wordmark-home .wordmark-mark {
+  font-size: clamp(1.5rem, 4vw, 2rem);
+}
+
+.wordmark-home .wordmark-token {
+  width: 2.7rem;
+  height: 2.55rem;
+  font-size: 1.4rem;
 }
 
 .radio-option {
@@ -1894,16 +1916,15 @@ code {
     gap: 0.25rem;
   }
 
-  .home-link {
-    padding: 0 0.7rem;
-    font-size: 0.9rem;
+  .wordmark-mark {
+    font-size: 1.1rem;
   }
 
 }
 
-/* The narrowest phones (e.g. 320 px): the home link is just "←" (its name is still read out). */
+/* The narrowest phones (e.g. 320 px): away from home, the name is just its token (still read out). */
 @media (max-width: 23rem) {
-  .home-link-text {
+  a.wordmark-mark .wordmark-name {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -1933,26 +1954,50 @@ code {
   margin: 0 0 1.5rem;
 }
 
+/* §42: every page opens like the home page: a big, tight headline, then a muted lede. */
 .create-title,
 .page-title,
 .page > h1 {
-  font-size: clamp(2.25rem, 7vw, 3.25rem);
+  font-size: clamp(2.4rem, 7vw, 3.6rem);
   font-weight: 800;
-  letter-spacing: -0.025em;
-  line-height: 1.05;
-  margin: 0 0 0.75rem;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  margin: 0.5rem 0 1rem;
   overflow-wrap: anywhere;
+  text-wrap: balance;
 }
 
 .create-lede,
 .create-idea,
 .page-lede,
 .page > h1 + p.muted:not(.small) {
-  font-size: 1.1rem;
+  font-size: 1.2rem;
   line-height: 1.5;
   color: var(--muted);
-  margin: 0 0 1.75rem;
-  max-width: 38rem;
+  margin: 0 0 2rem;
+  max-width: 36rem;
+}
+
+/* A page's parts below the top, as on the home page: a rule above, a bigger heading. */
+.page-section {
+  margin-top: 2.5rem;
+  padding-top: 2rem;
+  border-top: 1px solid var(--border);
+}
+
+.page-section > h2:first-child {
+  font-size: 1.6rem;
+  letter-spacing: -0.02em;
+  margin: 0 0 0.75rem;
+}
+
+/* An empty list is an invitation, as on the home page. */
+.empty-invite {
+  margin: 1rem 0;
+  padding: 1rem 1.25rem;
+  border: 2px dashed var(--input-border);
+  border-radius: 1rem;
+  color: var(--muted);
 }
 
 .create-idea q {
@@ -2189,9 +2234,18 @@ code {
 }
 
 /* /create itself: the idea, then your games. */
+/* The idea box, in the making track's gold, as on the home page (§42). */
 .create-idea-box textarea {
-  font-size: 1.1rem;
+  font-size: 1.2rem;
+  line-height: 1.45;
   min-height: 7rem;
+  border: 3px solid var(--gold);
+  border-radius: 1.1rem;
+  padding: 0.75rem 1rem;
+}
+
+.create-idea-box label {
+  color: var(--gold);
 }
 
 .create-key-banner {

@@ -198,7 +198,7 @@ function IdeaForm({ info }) {
 
 function YourGames({ games }) {
   return (
-    <section className="create-games" aria-labelledby="your-games-heading">
+    <section className="create-games page-section" aria-labelledby="your-games-heading">
       <h2 id="your-games-heading">Your games</h2>
       {games.length === 0 ? (
         <p className="muted">Nothing yet. Your first game shows up here as soon as you start it.</p>

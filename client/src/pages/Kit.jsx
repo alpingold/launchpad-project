@@ -132,7 +132,7 @@ export default function Kit() {
         </p>
       </section>
 
-      <section className="kit-section" aria-label="The full guides">
+      <section className="kit-section page-section" aria-label="The full guides">
         <h2>The full guides</h2>
         <p className="muted">The exact text the AI reads before it designs or writes a game.</p>
         {failed && (

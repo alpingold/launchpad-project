@@ -72,7 +72,7 @@ export default function Home() {
               ))}
             </ul>
           ) : (
-            <p className="home-first-game">
+            <p className="empty-invite">
               Nobody has published one yet. <a href="#home-idea">Describe yours</a> and it could be the first.
             </p>
           )}

@@ -99,7 +99,7 @@ export default function GamePage({ id }) {
         <Votes game={game} loggedIn={Boolean(user)} onVoted={setGame} />
       </div>
       {game.about && (
-        <section aria-labelledby="about-heading">
+        <section className="page-section" aria-labelledby="about-heading">
           <h2 id="about-heading">About this game</h2>
           <p className="game-page-about">{game.about}</p>
         </section>

@@ -52,16 +52,24 @@ export default function Profile({ username }) {
           <a href="/account">Edit your bio</a> · <a href="/create">Make a game</a>
         </p>
       )}
-      <h2>Games</h2>
-      {games.length === 0 ? (
-        <p className="muted">{mine ? "You haven't made a game yet." : 'No games yet.'}</p>
-      ) : (
-        <ul className="game-cards">
-          {games.map((game) => (
-            <GameCard key={game.id} game={game} />
-          ))}
-        </ul>
-      )}
+      <section className="page-section" aria-labelledby="profile-games-heading">
+        <h2 id="profile-games-heading">Games</h2>
+        {games.length === 0 ? (
+          mine ? (
+            <p className="empty-invite">
+              You haven't made a game yet. <a href="/create">Describe one</a> and the AI builds it.
+            </p>
+          ) : (
+            <p className="muted">No games yet.</p>
+          )
+        ) : (
+          <ul className="game-cards">
+            {games.map((game) => (
+              <GameCard key={game.id} game={game} />
+            ))}
+          </ul>
+        )}
+      </section>
     </main>
   );
 }

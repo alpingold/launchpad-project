@@ -76,7 +76,7 @@ export default function GameReports({ game }) {
     />
   );
   return (
-    <section id="reports" ref={section} className="game-reports" aria-labelledby="reports-heading">
+    <section id="reports" ref={section} className="game-reports page-section" aria-labelledby="reports-heading">
       <h2 id="reports-heading">Bug reports</h2>
       <p className="muted">
         Something wrong with {game.name}? Say what happened. ▲ the reports you've hit too, so the problems most people
