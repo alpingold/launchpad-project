@@ -2239,6 +2239,14 @@ fix without changes. Stowaways also keeps its timer out of the part it rebuilds.
 - **Why it works with two:** dividing a fixed crew over prizes ("Colonel Blotto") is a classic
   two-player mind game, and it scales to 6. Every round is a choice: spread or pile up.
 
+## 37. A shorter /kit, and no "Closest example" (2026-10-18)
+
+- **Designs no longer name a closest example.** It only chose which example game the build
+  step would show, and that left the prompt in §13o; all it still did was point the model at
+  a game to copy (§13n). Gone from DESIGN.md, the example designs and the `exampleGame` option.
+- **/kit is a short overview** (one file and two roles, the SDK on one table, the rules, making
+  one with AI), with the full guides the AI reads folded below it. A proper doc comes later.
+
 ## Verification (how to confirm the plan worked once built)
 
 - `npm test` (root) → runs `node --test server/test`, all unit and integration tests green.
