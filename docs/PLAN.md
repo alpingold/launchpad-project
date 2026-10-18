@@ -1917,6 +1917,118 @@ version without `/api/status`), waiting out an open room, and a rollback of a ve
 only failed once live. Also added `.dockerignore`: the generator's build context went from the
 whole repo (with `node_modules` and `server/data`) to 28 kB.
 
+## 31. Demo phase and bug reports (planned 2026-10-17)
+
+**Why:** the first real test on the live site found bugs in the site and in the games. The site
+should say plainly that it's a demo, and make reporting a problem take seconds, for the site as
+a whole and for each game, with the reports people agree on rising to the top.
+
+### 31a. "(demo)" everywhere (except in a game)
+
+- **A corner badge:** a small gold `(demo)` pill, fixed to the **bottom-left** corner of every
+  page. It's a link to the report form (31c), so it's useful as well as a label.
+- **Hidden while a game is on screen.** `GameFrame.jsx` already puts `in-game` on `<body>` for
+  the big screen and the phones, so one CSS rule hides it. It shows in lobbies, which aren't
+  the game yet.
+- **The home page:** the big title becomes `BoilerGames (demo)`, with "(demo)" smaller and in
+  gold. The tagline gets a quip, e.g. *"Party games on one big screen, played from everyone's
+  phones. Fair warning: it's a demo, so things will break. Tell me when they do: I want your
+  input on everything."*
+
+### 31b. Bug reports on each game's page
+
+A **"Bug reports"** section under "About this game", built like a comment section:
+
+- **Post:** a text box (10–1000 characters) and "Report". You need an account, like voting on
+  games: that keeps spam and drive-by abuse down, and gives every report a name.
+- **Each report shows:** the text (plain text, as everything typed on the site is), who wrote
+  it, how long ago, and the **device it came from** ("iPhone · Safari", worked out from the
+  browser when posting). Many game bugs only happen on one kind of phone.
+- **Votes, karma-style:** ▲ and ▼, with **one number shown: the total** (ups minus downs), which
+  can go negative. One vote per account per report; press again to take it back; you can't
+  vote on your own report. Reports are **ordered by total, then newest first**. So the issues
+  people agree on rise, and unhelpful ones sink.
+- **Sunk reports fold away:** at a total of **−5 or less**, a report collapses to "Hidden: voted
+  down (show)". That's the filter for spam and jokes, without deleting anything.
+- **Fixed:** the game's creator or an admin can mark a report **fixed**. It then moves to a
+  folded "Fixed (n)" list at the bottom, so the open list stays a to-do list.
+- **Deleting:** the author or an admin can delete a report.
+- **Long lists:** the top 20, then "Show more".
+- Reports exist only for games the viewer can see. Deleting a generated game deletes its
+  reports.
+
+### 31c. Site-wide reports: the footer and the form
+
+- **The footer:** *"BoilerGames is still in an early testing phase and I'd love your feedback!
+  [Report an issue](/report)"*. It's on every ordinary page. It's **not** on the room screens
+  (`/host`, `/join`: they're shown to a whole room, and the badge is still there), or on
+  `/report` itself. It's never shown during a game.
+- **The link remembers where you were** (`/report?from=/games/punchline`), so the report says
+  which page it's about without asking.
+- **The form (`/report`):**
+  - what kind: **Something's broken** / **An idea** / **Something else**;
+  - what happened (10–2000 characters);
+  - the page and device, filled in by themselves and shown so people know what's sent.
+  - If `from` is a game page, the form suggests: *"About Punchline? Reporting it on its page
+    lets others vote on it."* Both stay possible.
+- **Who may send it:** **anyone, logged in or not**, since lots of testers won't have an account.
+  Logged in, the report carries your username. Spam guards: at most 5 reports per address per
+  10 minutes (the same limiter as sign-up), and a hidden "honeypot" field that only bots fill.
+- **After sending:** *"Thanks! Your feedback is very, very, very much appreciated!"*, then
+  *"Redirecting back to the main site in 3…"*, counting down 3, 2, 1, and then going to `/`.
+  A "Go now" link is there for the impatient.
+- **Reading them:** `/admin` gets a **Reports** tab. It lists site reports newest first, with
+  their kind, page, device and author. "Done" marks one dealt with; "Delete" removes it. It
+  also lists the newest game reports across all games, with links to their pages.
+
+### Data (migration 10)
+
+```sql
+CREATE TABLE site_reports (           -- from /report
+  id INTEGER PRIMARY KEY, user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('bug', 'idea', 'other')),
+  page TEXT, body TEXT NOT NULL, device TEXT,
+  done_at INTEGER, created_at INTEGER NOT NULL);
+CREATE TABLE game_reports (           -- on a game's page
+  id INTEGER PRIMARY KEY, game_id TEXT NOT NULL,   -- official or "g-…": no foreign key, like game_pages
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  body TEXT NOT NULL, device TEXT,
+  fixed_at INTEGER, created_at INTEGER NOT NULL);
+CREATE TABLE game_report_votes (      -- like game_votes: +1 / -1, taking it back deletes the row
+  report_id INTEGER NOT NULL REFERENCES game_reports(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  value INTEGER NOT NULL CHECK (value IN (-1, 1)),
+  PRIMARY KEY (report_id, user_id));
+```
+
+The total is worked out when the list is read (`SUM(value)`), not stored, so it can never drift.
+At our size that's instant.
+
+### API
+
+| | |
+|---|---|
+| `GET /api/games/:id/reports` | the list: text, author, device, time, total, my vote, what I may do |
+| `POST /api/games/:id/reports` | post one (logged in; ≤ 10 per account per hour) |
+| `PUT /api/game-reports/:rid/vote` | `{ value: 1 \| -1 \| 0 }` → the new total |
+| `POST /api/game-reports/:rid/fixed` | `{ fixed: true \| false }` (the game's creator or an admin) |
+| `DELETE /api/game-reports/:rid` | the author or an admin |
+| `POST /api/reports` | the site form (anyone; rate-limited by address) |
+| `GET /api/admin/reports`, `POST …/:id/done`, `DELETE …/:id` | the admin tab |
+
+### Build order (each its own commits)
+
+1. The demo badge and the home page (client only).
+2. Migration 10 and the site form: the footer, `/report` with its countdown, `POST
+   /api/reports`, and the admin tab.
+3. Game reports: the API, then the section on the game page with votes, folding and fixed.
+4. Tests:
+   - unit tests for ordering, the vote rules and who may do what;
+   - integration tests for every route, including the limits and the honeypot;
+   - e2e tests: the badge is gone during a game; footer → form → thanks → back to `/` after
+     3 s; two accounts voting a report above another one.
+5. Deploy with `deploy/update.sh` (migration 10 runs on the trial copy first, §30).
+
 ## Verification (how to confirm the plan worked once built)
 
 - `npm test` (root) → runs `node --test server/test`, all unit and integration tests green.
