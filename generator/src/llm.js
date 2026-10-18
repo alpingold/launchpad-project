@@ -21,7 +21,7 @@ const RETRY_DELAYS_MS = [5_000, 15_000, 30_000];
 
 /**
  * @typedef {{ role: 'system' | 'user' | 'assistant', content: string }} Message
- * @typedef {{ content: string, seconds: number, usage: object | null }} ChatResult
+ * @typedef {{ content: string, thinking: string, seconds: number, usage: object | null }} ChatResult
  * @typedef {{ thinking: number, writing: number }} Progress  pieces received so far (about one token each)
  */
 
@@ -107,7 +107,7 @@ export async function chat(
       lastProblem = 'empty reply (often the rate limit)';
       continue;
     }
-    return { content: reply.content, seconds: Math.round((Date.now() - started) / 1000), usage: reply.usage };
+    return { content: reply.content, thinking: reply.thinking, seconds: Math.round((Date.now() - started) / 1000), usage: reply.usage };
   }
   throw new Error(`model call failed after ${RETRY_DELAYS_MS.length + 1} tries: ${lastProblem}`);
 }
@@ -141,18 +141,20 @@ function isEventStream(res) {
 /** A server that ignores `stream: true` answers with one JSON body. */
 async function readWhole(res) {
   const body = await res.json().catch(() => null);
-  return { content: body?.choices?.[0]?.message?.content, usage: body?.usage ?? null };
+  const message = body?.choices?.[0]?.message;
+  return { content: message?.content, thinking: message?.reasoning_content ?? '', usage: body?.usage ?? null };
 }
 
 /**
  * Reads a streamed reply: lines of `data: {json}`, ending with `data: [DONE]`. Each chunk
  * holds a small piece of the reply (`delta.content`) or of the model's thinking
- * (`delta.reasoning_content`, not kept); the last one carries the token counts.
+ * (`delta.reasoning_content`); the last one carries the token counts.
  */
 async function readStream(res, idle, onProgress) {
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   const parts = [];
+  const thoughts = [];
   const progress = { thinking: 0, writing: 0 };
   let usage = null;
   let buffer = '';
@@ -180,7 +182,10 @@ async function readStream(res, idle, onProgress) {
         parts.push(delta.content);
         progress.writing += 1;
       }
-      if (typeof delta.reasoning_content === 'string' && delta.reasoning_content) progress.thinking += 1;
+      if (typeof delta.reasoning_content === 'string' && delta.reasoning_content) {
+        thoughts.push(delta.reasoning_content);
+        progress.thinking += 1;
+      }
       if (chunk.usage) usage = chunk.usage;
     }
     if (Date.now() - reportedAt >= PROGRESS_EVERY_MS) {
@@ -188,5 +193,5 @@ async function readStream(res, idle, onProgress) {
       onProgress({ ...progress });
     }
   }
-  return { content: parts.join(''), usage };
+  return { content: parts.join(''), thinking: thoughts.join(''), usage };
 }

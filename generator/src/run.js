@@ -68,13 +68,14 @@ import { describeProblem } from '../../server/src/games/frameGame.js';
  * @property {boolean} [sizeLimit]        build: false leaves the 100 KB limit out of the prompt (plan §32's experiment)
  * @property {number} [maxAttempts]       build
  * @property {boolean} [edits]            build: false turns edit mode off (on by default, plan §23)
+ * @property {boolean} [keepThinking]     each attempt keeps the model's thinking (plan §38's look; off on the site)
  */
 
 /**
  * One build attempt, as the result lists it. mode: how the model answered (plan §23). An
  * "edits" attempt whose edits didn't fit the file has no source; its report lists why.
  * @typedef {{ attempt: number, mode?: 'whole' | 'edits', ok: boolean, problems: number, seconds: number,
- *   usage: { prompt_tokens?: number, completion_tokens?: number } | null,
+ *   usage: { prompt_tokens?: number, completion_tokens?: number } | null, thinking?: string,
  *   source?: string | null, report?: import('../../server/src/games/frameGame.js').CheckReport }} AttemptResult
  */
 
@@ -132,6 +133,7 @@ export async function runJob(job, deps = {}) {
   if (job.examples !== undefined && typeof job.examples !== 'boolean') return fail('examples must be true or false');
   if (job.edits !== undefined && typeof job.edits !== 'boolean') return fail('edits must be true or false');
   if (job.sizeLimit !== undefined && typeof job.sizeLimit !== 'boolean') return fail('sizeLimit must be true or false');
+  if (job.keepThinking !== undefined && typeof job.keepThinking !== 'boolean') return fail('keepThinking must be true or false');
 
   if (job.step === 'design') return design(job, model, deps);
   if (job.step === 'build') {
@@ -140,6 +142,9 @@ export async function runJob(job, deps = {}) {
   }
   return fail('the step must be "design" or "build"');
 }
+
+/** The model's thinking, for an attempt's record: only when the job asks (it's long). */
+const thinkingOf = (job, reply) => (job.keepThinking ? { thinking: reply.thinking ?? '' } : {});
 
 const isText = (value, min) => typeof value === 'string' && value.trim().length >= min && value.length <= MAX_IDEA_LENGTH;
 
@@ -169,7 +174,7 @@ async function design(job, model, { chatFn = chat, onStep = () => {} }) {
     messages.push({ role: 'assistant', content: reply.content });
     const text = extractDesign(reply.content);
     const missing = text ? missingHeadings(text, headings) : headings;
-    result.attempts.push({ attempt, seconds: reply.seconds, ok: missing.length === 0, problems: missing.length, usage: reply.usage });
+    result.attempts.push({ attempt, seconds: reply.seconds, ok: missing.length === 0, problems: missing.length, usage: reply.usage, ...thinkingOf(job, reply) });
     if (text) result.design = text;
     if (missing.length === 0) {
       onStep(`${what}: ready`);
@@ -236,7 +241,7 @@ async function build(job, model, { chatFn = chat, check = checkGame, onStep = ()
 
     let source;
     let attemptMode = mode;
-    const record = (fields) => result.attempts.push({ attempt, mode: attemptMode, seconds: reply.seconds, usage: reply.usage, ...fields });
+    const record = (fields) => result.attempts.push({ attempt, mode: attemptMode, seconds: reply.seconds, usage: reply.usage, ...thinkingOf(job, reply), ...fields });
     if (mode === 'edits' && !hasEdits(reply.content) && extractGameFile(reply.content)) {
       // Asked for edits, sent the whole file anyway: that's fine, use it.
       source = extractGameFile(reply.content);

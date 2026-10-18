@@ -14,7 +14,8 @@
 //
 // Saves to generator/out/<name>/: design.md (unless --fresh-design), then per build <label>-<n>/ with game.html,
 // result.json and the screenshots, and summary.md: a table of every build (passed, size,
-// attempts, tokens, time). Run it again with the same --name to add more builds.
+// attempts, tokens, time). Run it again with the same --name to add more builds. A variant with
+// "keepThinking": true also saves each attempt's thinking as attempt-<n>-thinking.txt (plan §38).
 //
 // Example (plan §32: does telling the model "At most 100 KB" change its games?):
 //   npm run compare-builds -- --name size-limit --idea "…" --runs 4 \
@@ -132,9 +133,13 @@ for (let run = 1; run <= runs; run++) {
     );
     const seconds = Math.round((Date.now() - started) / 1000);
     const { screenshots, ...playtest } = result.report?.playtest ?? {};
+    for (const a of result.attempts ?? []) {
+      if (typeof a.thinking === 'string') await writeFile(path.join(dir, `attempt-${a.attempt}-thinking.txt`), a.thinking);
+    }
+    const attempts = result.attempts?.map(({ thinking, ...a }) => a);
     await writeFile(
       path.join(dir, 'result.json'),
-      JSON.stringify({ label, options, seconds, ...result, source: undefined, report: result.report && { ...result.report, playtest } }, null, 2),
+      JSON.stringify({ label, options, seconds, ...result, attempts, source: undefined, report: result.report && { ...result.report, playtest } }, null, 2),
     );
     if (result.source) await writeFile(path.join(dir, 'game.html'), result.source);
     for (const [which, url] of Object.entries(screenshots ?? {})) {

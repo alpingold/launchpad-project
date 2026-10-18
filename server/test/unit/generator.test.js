@@ -102,10 +102,11 @@ function streamed(pieces, { usage = { total_tokens: 9 }, hangAfter = null } = {}
   });
 }
 
-test('chat: reads a streamed reply, keeping the answer and leaving out the thinking', async () => {
+test('chat: reads a streamed reply, keeping the answer and the thinking apart', async () => {
   const fetchImpl = async (_url, init) => streamed([['reasoning_content', 'Hmm, '], ['reasoning_content', 'let me see.'], ['content', 'Hello'], ['content', ', world']])(init.signal);
   const result = await chat([], { model: 'm', fetchImpl, sleep: noSleep });
   assert.equal(result.content, 'Hello, world');
+  assert.equal(result.thinking, 'Hmm, let me see.');
   assert.deepEqual(result.usage, { total_tokens: 9 });
 });
 
@@ -212,7 +213,7 @@ function fakeModel(replies) {
   const calls = [];
   const chatFn = async (messages) => {
     calls.push(messages.map((m) => ({ ...m })));
-    return { content: replies.shift(), seconds: 1, usage: null };
+    return { content: replies.shift(), thinking: 'Let me think.', seconds: 1, usage: null };
   };
   return { chatFn, calls };
 }
@@ -235,6 +236,11 @@ test('design job: one call, the design comes back; a draft missing headings is a
   const never = await runJob({ step: 'design', idea: 'A racing platformer for friends' }, { chatFn: fakeModel(['I cannot.', 'Still no.']).chatFn });
   assert.equal(never.ok, false);
   assert.match(never.error, /no design/);
+
+  // The thinking is kept only when the job asks (plan §38).
+  assert.equal(result.attempts[0].thinking, undefined);
+  const kept = await runJob({ step: 'design', idea: 'A racing platformer for friends', keepThinking: true }, { chatFn: fakeModel([DESIGN]).chatFn });
+  assert.equal(kept.attempts[0].thinking, 'Let me think.');
 });
 
 test('plan job: a change gets a plan with the plan headings', async () => {
@@ -309,6 +315,7 @@ test('bad jobs are refused before any model call', async () => {
     [{ step: 'build', idea: 'A long enough idea', design: 'd', edits: 'yes' }, /edits must be true or false/],
     [{ step: 'design', idea: 'A long enough idea', redraft: { draft: 'x' } }, /last draft/],
     [{ step: 'design', idea: 'A long enough idea', examples: 'no' }, /examples must be true or false/],
+    [{ step: 'design', idea: 'A long enough idea', keepThinking: 1 }, /keepThinking must be true or false/],
   ];
   for (const [job, error] of cases) assert.match((await runJob(job, { chatFn: model.chatFn })).error, error);
   assert.equal(model.calls.length, 0);
