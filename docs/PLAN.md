@@ -2187,6 +2187,39 @@ extra rounds to hit a number, instead of designing what fits the idea.
 - **What to look at:** the `minutes` each game claims, its rounds, and playing them.
   Results go in `generator/out/length-rule/summary.md`.
 
+## 36. Claim Jumpers rework, Stowaways refresh, and the timer bar (2026-10-18)
+
+From playing the official games: Doodle Drift, Punchline, Ballpark and Comet Crew are good.
+Claim Jumpers is bad, worst with two players. Stowaways is fine, but its "marks" confuse and
+seem to do nothing, and tapping a mark resets the timer bar.
+
+**a. The timer bar (a kit fix, for every game).** `party.ui.timer` took "the time left when
+I was made" as its 100%. A game that rebuilds its screen (Stowaways on every mark) makes a
+new timer, which started full again. Now the kit remembers the full length it first saw
+for each end time, so a rebuilt timer carries on where the old one was. AI games get the
+fix without changes. Stowaways also keeps its timer out of the part it rebuilds.
+
+**b. Stowaways: marks become public suspicions.**
+- **Suspect (everyone):** tap one crewmate at a time. The big screen shows how many suspect
+  each player (🔍 2 under the capsule), never who. The captain sees the counts while choosing.
+  They clear at each new test.
+- **Hacks move onto the aliens' covered role card** ("Hack a crewmate"), a separate,
+  clearly named action. Everyone is tapping to suspect anyway, so an alien tapping isn't a
+  tell. Before, an alien's mark was secretly a hack, and a human's mark did nothing.
+
+**c. Claim Jumpers, reworked: blind claim bids** (it keeps the name, theme and the reveal).
+- **Why the old one failed:** on a 6 × 6 board two players mostly expand into empty land and
+  never meet, clashes almost never happen, and the best move is nearly always obvious.
+- **A round:** players + 1 claims on the map, each worth 1–5 nuggets; one is a **?** (0–8,
+  shown at the reveal). Each phone spreads **5 prospectors** over the claims and locks in (25 s).
+- **The reveal, a claim at a time:** the biggest crew takes the gold; **a tie for biggest is a
+  claim jump: nobody gets it.**
+- **Dynamite, once per game:** put it on a claim and nobody gets it.
+- **Catch-up:** last place gets a 6th prospector next round.
+- **7 rounds;** the last is the **Mother Lode** (double values). Most gold wins.
+- **Why it works with two:** dividing a fixed crew over prizes ("Colonel Blotto") is a classic
+  two-player mind game, and it scales to 6. Every round is a choice: spread or pile up.
+
 ## Verification (how to confirm the plan worked once built)
 
 - `npm test` (root) → runs `node --test server/test`, all unit and integration tests green.
