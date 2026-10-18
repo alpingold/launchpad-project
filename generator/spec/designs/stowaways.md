@@ -16,7 +16,8 @@ secret, the TV is the evidence board.
 ## Big screen
 - **Always:** the station clock (big, top centre; red and ticking in the last 60 s), "Aliens aboard: 2",
   and the crew strip along the bottom: each player a capsule in their colour with their name, a
-  gold star on the captain, a small button icon while they still have their button.
+  gold star on the captain, a small button icon while they still have their button, and
+  during picks, tests and discussions, how many crewmates suspect them ("🔍 2"; never who).
 - **Roles:** "Check your phone. Tap to see your role." for 10 s. Nothing secret, ever.
 - **Captain picks:** "Captain Sam is choosing a test." The chosen test and players light up when locked.
 - **Test:** the tested players' capsules in the middle, a test timer, a tick as each one answers.
@@ -33,16 +34,17 @@ secret, the TV is the evidence board.
 ## Phones
 No sounds on phones (a neighbour could hear a secret). Your colour and name at the top.
 - **Role card:** covered; tap to show, tap to hide (so a neighbour can't read it).
-  "You are HUMAN" or "You are an ALIEN" (+ the other aliens, hacks left).
+  "You are HUMAN" or "You are an ALIEN" (+ the other aliens, hacks left). While an alien's
+  card is shown during a pick (from the second test), **Hack a crewmate** appears under it:
+  tap a name to hack them, again to take it back.
 - **The button:** a big red button at the bottom while you have it and pushing is allowed.
   Then pick exactly as many players as there are aliens (not yourself), and **Accuse** (25 s).
-- **Captain picks:** test type (Write, Draw, Opinion), then tap the players, then **Start test**.
-- **The crew grid (everyone but the captain, outside tests and votes):** a tap toggles your
-  private mark on a crewmate, for every role, always. **Every pick starts with a clean grid**
-  on every phone. For an alien during a pick (from the second test), a mark is a hack (if one
-  is left, and nobody else hacked that player), and unmarking takes it back; the covered role
-  card lists every hack. So every phone looks and reacts the same, all role text stays on the
-  role card, and a human's suspect marks last one round.
+- **Captain picks:** test type (Write, Draw, Opinion), then tap the players (each shows its
+  🔍 count), then **Start test**.
+- **Suspect (everyone but the captain, outside tests you're in and votes):** "Who do you
+  suspect?" with every name (your own greyed out). Tap one to suspect them, again to take it
+  back; one at a time. **Every pick starts with no suspicions.** Every phone's list looks the
+  same, so a glance says nothing about its role.
 - **Being tested:** your prompt and `party.ui.timer`. Write: `textInput` (60 chars). Draw:
   `drawPad`. Opinion: 4 big buttons (Strongly disagree … Strongly agree).
 - **Not tested:** "Sam, Ana and Lee are being tested" and your notes.
@@ -53,29 +55,32 @@ No sounds on phones (a neighbour could hear a secret). Your colour and name at t
   aliens. Revealed on the big screen only at the end, when each capsule flips.
 - **Hacks:** only the aliens know whom they hacked, until the hacked human's test.
 - **The prompts:** humans and aliens get different prompts, and only the reveal shows the
-  human one. **Votes** tick when cast, then show all at once. **Marks** on the crew grid are
-  private to each phone. No sounds on phones, so nobody overhears a secret.
+  human one. **Votes** tick when cast, then show all at once. **Suspicions** show only as a
+  count per player, never who suspects whom. Hacking happens under the covered role card,
+  and everyone is tapping their phone to suspect anyway, so it's no tell. No sounds on phones, so nobody overhears a secret.
 
 ## Rules
 1. Roles are dealt at random. 10 s to read them. The clock starts: 3 min + 1 min per player.
 2. The captain is a random player, then the next connected player in seat order after each test or failed vote.
 3. **Pick (25 s):** the captain picks a test type and players (themself allowed). Too slow: random.
-4. **Hacks (aliens, during the pick, not in the first test):** a hack is for the test being
+4. **Suspicions:** anyone may suspect one crewmate at a time, in the pick, test, discussion and
+   last call. The counts help the captain choose; they clear at the next pick.
+5. **Hacks (aliens, during the pick, not in the first test):** a hack is for the test being
    picked: if the captain picks that player, their test gives them the other prompt (a human
    gets the alien prompt and doesn't know; an alien gets the human one, as cover). Hacks lock
    when the pick locks; a hack on a player who wasn't picked (or in a pick that was abandoned)
    goes back to its alien.
-5. **Test:** Write 45 s, Draw 60 s, Opinion 20 s; ends early when all tested players answered.
+6. **Test:** Write 45 s, Draw 60 s, Opinion 20 s; ends early when all tested players answered.
    Humans get the prompt, aliens a close but different one (Write: "a pizza topping" vs
    "something you put on toast"; Draw: "a cat" vs "a fox"; Opinion: "Breakfast is the best
    meal" vs "Cereal is a soup"). About 20 hand-written pairs per type, none repeated in a game.
-6. **Reveal + discuss (60 s):** after 20 s the captain may tap **Next test**.
-7. **The button:** once per player per game, in the pick and discuss phases (not while people
+7. **Reveal + discuss (60 s):** after 20 s the captain may tap **Next test**.
+8. **The button:** once per player per game, in the pick and discuss phases (not while people
    are answering). The clock pauses. The presser picks the accused (25 s, or the use isn't
    spent), 15 s to argue, 20 s to vote. A missing vote counts as No.
-8. **All Eject:** the accused are ejected and the game ends. **Any No:** the vote fails, the
+9. **All Eject:** the accused are ejected and the game ends. **Any No:** the vote fails, the
    button is spent, a new captain, the clock runs on.
-9. **Last call:** at 0:00, 30 s in which anyone may push once more, even with their button spent.
+10. **Last call:** at 0:00, 30 s in which anyone may push once more, even with their button spent.
 
 ## Ending and winner
 - Humans win if an ejection removes exactly the aliens. Aliens win if an ejected player is
@@ -116,6 +121,6 @@ under 100 KB.
 - **Too few left:** with fewer than 3 connected, votes still work (only connected
   players vote); an all-disconnected room times out.
 - **Big screen reload:** everything is in one JSON object saved with `party.save` after each change:
-  phase and its end time (server time), clock left, roles, hacks (arrays), captain, buttons,
+  phase and its end time (server time), clock left, roles, hacks, suspicions, captain, buttons,
   used prompts, the current test and answers, the vote. A drawing is at most ~15 KB (the
   drawPad's cap; over 20 KB is refused), so a 4-drawing test stays under the save limit. A cut-off phase resumes with its deadline.
