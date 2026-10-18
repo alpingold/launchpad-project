@@ -21,8 +21,8 @@ export function extractGameFile(reply) {
   return start === -1 ? null : text.slice(start).trim() + '\n';
 }
 
-/** The longest design we keep (about 3× the length we ask for). */
-export const MAX_DESIGN_LENGTH = 12_000;
+/** The longest design we keep: room above DESIGN.md's "at most about 1,800 words" (≈ 12,000 characters). */
+export const MAX_DESIGN_LENGTH = 20_000;
 
 /**
  * The design (or change plan) in a reply: Markdown from its first `# ` heading on. Models
