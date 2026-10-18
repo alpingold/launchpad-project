@@ -1,4 +1,4 @@
-// `npm run compare-builds -- --name <name> --idea "<idea>" [--design <file>] [--runs 4]
+// `npm run compare-builds -- --name <name> --idea "<idea>" [--design <file> | --fresh-design] [--runs 4]
 //      --variant <label>='<job options as JSON>' --variant …`
 //
 // Builds ONE design several times with each variant of the build's options, to see what a
@@ -8,9 +8,11 @@
 // design, idea and model.
 //
 // Without --design, it asks the model for a design first (once) and builds that.
+// With --fresh-design, every build makes its own design first, with the variant's options: for a
+// change that shapes the design too (plan §35's 5–15 minute rule). Each is saved in its build's folder.
 // Runs one build at a time, like a job on the server would without others around.
 //
-// Saves to generator/out/<name>/: design.md, then per build <label>-<n>/ with game.html,
+// Saves to generator/out/<name>/: design.md (unless --fresh-design), then per build <label>-<n>/ with game.html,
 // result.json and the screenshots, and summary.md: a table of every build (passed, size,
 // attempts, tokens, time). Run it again with the same --name to add more builds.
 //
@@ -32,6 +34,7 @@ const { values } = parseArgs({
     name: { type: 'string' },
     idea: { type: 'string' },
     design: { type: 'string' },
+    'fresh-design': { type: 'boolean', default: false },
     runs: { type: 'string', default: '4' },
     model: { type: 'string' },
     variant: { type: 'string', multiple: true, default: [] },
@@ -39,6 +42,7 @@ const { values } = parseArgs({
 });
 const cwd = process.env.INIT_CWD || process.cwd(); // npm runs scripts from the repo root
 const runs = Number(values.runs);
+const freshDesign = values['fresh-design'];
 const model = values.model ?? DEFAULT_MODEL;
 
 /** @type {[string, object][]} */
@@ -53,8 +57,8 @@ try {
   console.error(err.message);
   process.exit(2);
 }
-if (!values.name || !/^[a-z0-9-]+$/.test(values.name) || !values.idea || !(runs >= 1) || variants.length === 0) {
-  console.error(`Usage: npm run compare-builds -- --name <name> --idea "<idea>" [--design <file>] [--runs 4]
+if (!values.name || !/^[a-z0-9-]+$/.test(values.name) || !values.idea || !(runs >= 1) || variants.length === 0 || (freshDesign && values.design)) {
+  console.error(`Usage: npm run compare-builds -- --name <name> --idea "<idea>" [--design <file> | --fresh-design] [--runs 4]
        --variant <label>='<job options as JSON>' [--variant …]
   (name: lowercase letters, digits and dashes)`);
   process.exit(2);
@@ -67,7 +71,9 @@ const log = (text) => console.log(`${new Date().toLocaleTimeString()}  ${text}`)
 // --- The design: given, saved from an earlier run, or made now (once) --------------------------
 const designFile = path.join(outDir, 'design.md');
 let design;
-if (values.design) {
+if (freshDesign) {
+  // made per build, below
+} else if (values.design) {
   design = await readFile(path.resolve(cwd, values.design), 'utf8');
   await writeFile(designFile, design);
 } else if (existsSync(designFile)) {
@@ -85,6 +91,15 @@ if (values.design) {
   log(`design saved: ${designFile}`);
 }
 
+/** --fresh-design: a design for one build, with the variant's options, saved in its folder. */
+async function designFor(name, dir, options) {
+  log(`${name}: designing`);
+  const result = await runGeneratorInSandbox({ step: 'design', idea: values.idea, model, ...options }, { onStep: (s) => log(`  ${name}: ${s}`) });
+  if (!result.ok) return { error: result.error };
+  await writeFile(path.join(dir, 'design.md'), result.design);
+  return { design: result.design };
+}
+
 // --- The builds, taking turns --------------------------------------------------------------------
 const taken = new Set(await readdir(outDir));
 const nextName = (label) => {
@@ -99,10 +114,20 @@ for (let run = 1; run <= runs; run++) {
     const name = nextName(label);
     const dir = path.join(outDir, name);
     await mkdir(dir);
-    log(`${name}: building (${run}/${runs})`);
     const started = Date.now();
+    let buildDesign = design;
+    if (freshDesign) {
+      const made = await designFor(name, dir, options);
+      if (made.error) {
+        log(`${name}: no design (${made.error})`);
+        await writeFile(path.join(dir, 'result.json'), JSON.stringify({ label, options, seconds: Math.round((Date.now() - started) / 1000), ok: false, error: `no design: ${made.error}` }, null, 2));
+        continue;
+      }
+      buildDesign = made.design;
+    }
+    log(`${name}: building (${run}/${runs})`);
     const result = await runGeneratorInSandbox(
-      { step: 'build', idea: values.idea, model, design, ...options },
+      { step: 'build', idea: values.idea, model, design: buildDesign, ...options },
       { onStep: (s) => log(`  ${name}: ${s}`) },
     );
     const seconds = Math.round((Date.now() - started) / 1000);
@@ -142,6 +167,7 @@ async function summary() {
       label: r.label,
       ok: r.ok === true,
       kb: game ? kb(game) : null,
+      minutes: game?.match(/"minutes"\s*:\s*\[\s*(\d+)\s*,\s*(\d+)\s*\]/)?.slice(1).join('–') ?? null, // the game's own estimate
       attempts: attempts.length,
       first: attempts[0]?.usage?.completion_tokens ?? null, // the first build: its thinking + the whole file
       completion: sum('completion_tokens'),
@@ -154,9 +180,9 @@ async function summary() {
     '',
     `Idea: ${values.idea}`,
     '',
-    '| Build | Passed | Size | Attempts | First reply (tokens) | All replies | All prompts | Time |',
-    '|---|---|---|---|---|---|---|---|',
-    ...rows.map((r) => `| ${r.entry} | ${r.ok ? 'yes' : 'no'} | ${r.kb ?? '–'} KB | ${r.attempts} | ${r.first ?? '–'} | ${r.completion} | ${r.prompt} | ${r.seconds} s |`),
+    '| Build | Passed | Size | Minutes | Attempts | First reply (tokens) | All replies | All prompts | Time |',
+    '|---|---|---|---|---|---|---|---|---|',
+    ...rows.map((r) => `| ${r.entry} | ${r.ok ? 'yes' : 'no'} | ${r.kb ?? '–'} KB | ${r.minutes ?? '–'} | ${r.attempts} | ${r.first ?? '–'} | ${r.completion} | ${r.prompt} | ${r.seconds} s |`),
     '',
     '| Variant | Builds | Passed | Avg size | Avg first reply | Avg time |',
     '|---|---|---|---|---|---|',
