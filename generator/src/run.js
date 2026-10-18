@@ -77,7 +77,8 @@ import { describeProblem } from '../../server/src/games/frameGame.js';
  * One build attempt, as the result lists it. mode: how the model answered (plan §23). An
  * "edits" attempt whose edits didn't fit the file has no source; its report lists why.
  * @typedef {{ attempt: number, mode?: 'whole' | 'edits', ok: boolean, problems: number, seconds: number,
- *   usage: { prompt_tokens?: number, completion_tokens?: number } | null, thinking?: string, reply?: string, outOfRoom?: true,
+ *   usage: { prompt_tokens?: number, completion_tokens?: number } | null, finishReason?: string | null, toolCallChars?: number,
+ *   thinking?: string, reply?: string, toolCalls?: string, outOfRoom?: true,
  *   source?: string | null, report?: import('../../server/src/games/frameGame.js').CheckReport }} AttemptResult
  */
 
@@ -146,8 +147,15 @@ export async function runJob(job, deps = {}) {
   return fail('the step must be "design" or "build"');
 }
 
-/** The model's thinking and whole reply, for an attempt's record: only when the job asks (they're long). */
-const thinkingOf = (job, reply) => (job.keepThinking ? { thinking: reply.thinking ?? '', reply: reply.content ?? '' } : {});
+/**
+ * For an attempt's record: why the reply stopped and how much came as tool calls (always:
+ * they're short), and the thinking, whole reply and tool calls themselves when the job asks.
+ */
+const thinkingOf = (job, reply) => ({
+  finishReason: reply.finishReason ?? null,
+  ...(reply.toolCalls && { toolCallChars: reply.toolCalls.length }),
+  ...(job.keepThinking && { thinking: reply.thinking ?? '', reply: reply.content ?? '', ...(reply.toolCalls && { toolCalls: reply.toolCalls }) }),
+});
 
 const isText = (value, min) => typeof value === 'string' && value.trim().length >= min && value.length <= MAX_IDEA_LENGTH;
 

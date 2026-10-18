@@ -155,6 +155,19 @@ test('chat: thinking until the context is full is "out of room", not the rate li
   assert.ok((await chat([], { model: 'm', fetchImpl: fetchStream, sleep: noSleep }).catch((e) => e)).outOfRoom);
 });
 
+test('chat: says why the reply stopped, and keeps any text the server sent as tool calls', async () => {
+  const pieces = [['content', 'let ti=0;\n['], ['tool_calls', [{ index: 0, function: { name: 'f', arguments: '{"a":' } }]], ['tool_calls', [{ index: 0, function: { arguments: '1}' } }]]];
+  const fetchImpl = async (_url, init) => streamed(pieces, { finishReason: 'tool_calls' })(init.signal);
+  const result = await chat([], { model: 'm', fetchImpl, sleep: noSleep });
+  assert.equal(result.content, 'let ti=0;\n[');
+  assert.equal(result.finishReason, 'tool_calls');
+  assert.equal(result.toolCalls, 'f({"a":1})');
+
+  // Only tool calls and no content is not "empty": it comes back, to be seen.
+  const only = async (_url, init) => streamed([['tool_calls', [{ index: 0, function: { name: 'g', arguments: '' } }]]])(init.signal);
+  assert.equal((await chat([], { model: 'm', fetchImpl: only, sleep: noSleep })).toolCalls, 'g()');
+});
+
 test('chat: a response format goes in the request as response_format', async () => {
   const { fetchImpl, calls } = fakeFetch([reply('{}')]);
   await chat([], { model: 'm', fetchImpl, sleep: noSleep, responseFormat: headingsFormat('plan') });
@@ -279,7 +292,7 @@ function fakeModel(replies) {
   const chatFn = async (messages, opts) => {
     calls.push(messages.map((m) => ({ ...m })));
     calls.at(-1).responseFormat = opts?.responseFormat;
-    return { content: replies.shift(), thinking: 'Let me think.', seconds: 1, usage: null };
+    return { content: replies.shift(), thinking: 'Let me think.', finishReason: 'stop', toolCalls: '', seconds: 1, usage: null };
   };
   return { chatFn, calls };
 }
@@ -314,6 +327,8 @@ test('design job: one call, the design comes back; a draft missing headings is a
   const kept = await runJob({ step: 'design', idea: 'A racing platformer for friends', keepThinking: true }, { chatFn: fakeModel([DESIGN]).chatFn });
   assert.equal(kept.attempts[0].thinking, 'Let me think.');
   assert.equal(kept.attempts[0].reply, DESIGN);
+  assert.equal(kept.attempts[0].finishReason, 'stop');
+  assert.equal(result.attempts[0].finishReason, 'stop', 'why it stopped is always kept');
 });
 
 test('plan job: a change gets a plan with the plan headings', async () => {

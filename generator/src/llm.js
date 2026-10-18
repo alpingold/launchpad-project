@@ -21,7 +21,10 @@ const RETRY_DELAYS_MS = [5_000, 15_000, 30_000];
 
 /**
  * @typedef {{ role: 'system' | 'user' | 'assistant', content: string }} Message
- * @typedef {{ content: string, thinking: string, seconds: number, usage: object | null }} ChatResult
+ * @typedef {{ content: string, thinking: string, finishReason: string | null, toolCalls: string, seconds: number, usage: object | null }} ChatResult
+ *   finishReason: why the reply stopped ("stop", "length", "tool_calls"…). toolCalls: any text the
+ *   server sent as tool calls instead of content (we use no tools; plan §40 suspects replies cut
+ *   off at a "[" went there), joined.
  * @typedef {{ thinking: number, writing: number }} Progress  pieces received so far (about one token each)
  */
 
@@ -31,12 +34,13 @@ const RETRY_DELAYS_MS = [5_000, 15_000, 30_000];
  * likely do the same, after another ~15 minutes. The caller decides; this keeps what's known.
  */
 export class OutOfRoomError extends Error {
-  /** @param {{ thinking: string, usage: object | null, seconds: number }} reply */
-  constructor({ thinking, usage, seconds }) {
+  /** @param {{ thinking: string, finishReason?: string | null, usage: object | null, seconds: number }} reply */
+  constructor({ thinking, finishReason = null, usage, seconds }) {
     const tokens = usage?.completion_tokens ? ` (${usage.completion_tokens.toLocaleString('en-US')} tokens)` : '';
     super(`the model ran out of room while thinking${tokens} and wrote no reply`);
     this.outOfRoom = true;
     this.thinking = thinking;
+    this.finishReason = finishReason;
     this.usage = usage;
     this.seconds = seconds;
   }
@@ -125,14 +129,15 @@ export async function chat(
       idle.stop();
     }
     const seconds = Math.round((Date.now() - started) / 1000);
-    const empty = typeof reply.content !== 'string' || reply.content === '';
+    // Nothing came at all (not even as tool calls): the cases below.
+    const empty = (typeof reply.content !== 'string' || reply.content === '') && !reply.toolCalls;
     // Stopped by the length limit, or thought and then said nothing: out of room, not the rate limit.
-    if (empty && (reply.finishReason === 'length' || reply.thinking)) throw new OutOfRoomError({ thinking: reply.thinking, usage: reply.usage, seconds });
+    if (empty && (reply.finishReason === 'length' || reply.thinking)) throw new OutOfRoomError({ thinking: reply.thinking, finishReason: reply.finishReason, usage: reply.usage, seconds });
     if (empty) {
       lastProblem = 'empty reply (often the rate limit)';
       continue;
     }
-    return { content: reply.content, thinking: reply.thinking, seconds, usage: reply.usage };
+    return { content: reply.content ?? '', thinking: reply.thinking, finishReason: reply.finishReason, toolCalls: reply.toolCalls, seconds, usage: reply.usage };
   }
   throw new Error(`model call failed after ${RETRY_DELAYS_MS.length + 1} tries: ${lastProblem}`);
 }
@@ -167,7 +172,8 @@ function isEventStream(res) {
 async function readWhole(res) {
   const body = await res.json().catch(() => null);
   const choice = body?.choices?.[0];
-  return { content: choice?.message?.content, thinking: choice?.message?.reasoning_content ?? '', finishReason: choice?.finish_reason ?? null, usage: body?.usage ?? null };
+  const toolCalls = (choice?.message?.tool_calls ?? []).map((c) => `${c.function?.name ?? ''}(${c.function?.arguments ?? ''})`).join('\n');
+  return { content: choice?.message?.content, thinking: choice?.message?.reasoning_content ?? '', finishReason: choice?.finish_reason ?? null, toolCalls, usage: body?.usage ?? null };
 }
 
 /**
@@ -181,6 +187,8 @@ async function readStream(res, idle, onProgress) {
   const decoder = new TextDecoder();
   const parts = [];
   const thoughts = [];
+  /** Tool-call pieces by index: the name once, the arguments in pieces. */
+  const calls = [];
   const progress = { thinking: 0, writing: 0 };
   let usage = null;
   let finishReason = null;
@@ -213,6 +221,12 @@ async function readStream(res, idle, onProgress) {
         thoughts.push(delta.reasoning_content);
         progress.thinking += 1;
       }
+      for (const call of Array.isArray(delta.tool_calls) ? delta.tool_calls : []) {
+        const at = Number.isInteger(call?.index) ? call.index : calls.length;
+        calls[at] ??= { name: '', args: '' };
+        if (typeof call.function?.name === 'string') calls[at].name += call.function.name;
+        if (typeof call.function?.arguments === 'string') calls[at].args += call.function.arguments;
+      }
       if (chunk.choices?.[0]?.finish_reason) finishReason = chunk.choices[0].finish_reason;
       if (chunk.usage) usage = chunk.usage;
     }
@@ -221,5 +235,6 @@ async function readStream(res, idle, onProgress) {
       onProgress({ ...progress });
     }
   }
-  return { content: parts.join(''), thinking: thoughts.join(''), finishReason, usage };
+  const toolCalls = calls.filter(Boolean).map((c) => `${c.name}(${c.args})`).join('\n');
+  return { content: parts.join(''), thinking: thoughts.join(''), finishReason, toolCalls, usage };
 }
