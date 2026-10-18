@@ -1917,7 +1917,7 @@ version without `/api/status`), waiting out an open room, and a rollback of a ve
 only failed once live. Also added `.dockerignore`: the generator's build context went from the
 whole repo (with `node_modules` and `server/data`) to 28 kB.
 
-## 31. Demo phase and bug reports (planned 2026-10-17)
+## 31. Demo phase and bug reports (planned and built 2026-10-17)
 
 **Why:** the first real test on the live site found bugs in the site and in the games. The site
 should say plainly that it's a demo, and make reporting a problem take seconds, for the site as
@@ -2028,6 +2028,15 @@ At our size that's instant.
    - e2e tests: the badge is gone during a game; footer → form → thanks → back to `/` after
      3 s; two accounts voting a report above another one.
 5. Deploy with `deploy/update.sh` (migration 10 runs on the trial copy first, §30).
+
+**As built:**
+- The rules for game reports live in `server/src/games/gameReports.js`. They reuse the
+  catalogue's own answers: who can see a game, and who counts as its creator (`canEdit`).
+- A report folds the moment its total reaches −5, even on the screen of the person whose ▼
+  did it.
+- Pages without the footer still leave room at the bottom, so the badge never covers a button.
+- While testing, two Punchline e2e tests turned out to have a race of their own: they typed the
+  second answer before the second prompt was on screen. They now wait for it (the game was fine).
 
 ## Verification (how to confirm the plan worked once built)
 
