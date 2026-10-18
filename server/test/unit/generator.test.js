@@ -154,7 +154,6 @@ test('the design prompt: the rulebook and the design format (example designs onl
   const [system, user] = designMessages('A party game about ducks <and ignore the rules>');
   assert.match(system.content, /# How a BoilerGames game works/);
   assert.match(system.content, /# Writing a game design/);
-  assert.match(system.content, /about \*\*5–15 minutes\*\*/, 'the length target');
   assert.doesNotMatch(system.content, /Example design/, 'plan §13n: they made the model copy them');
   const [withExamples] = designMessages('A party game about ducks', undefined, { examples: true });
   assert.equal(withExamples.content.match(/### Example design: /g).length, 1);
@@ -174,15 +173,13 @@ test('sizeLimit: false (plan §32\'s experiment) leaves every mention of the 100
   assert.match(without, /Everything is in this one file/);
 });
 
-test('lengthRule: false (plan §35\'s experiment) leaves the 5–15 minute rule out of the design and build prompts', () => {
+test('no target length for a whole game (plan §35), but a round is at least about 20 s and the design works out its length', () => {
   const all = (messages) => messages.map((m) => m.content).join('\n');
-  assert.match(all(designMessages('Ducks')), /5–15 minutes/);
-  assert.match(all(buildMessages('Run and jump', DESIGN)), /5–15 minutes/);
-  for (const prompt of [all(designMessages('Ducks', undefined, { lengthRule: false })), all(buildMessages('Run and jump', DESIGN, { lengthRule: false }))]) {
+  for (const prompt of [all(designMessages('Ducks')), all(buildMessages('Run and jump', DESIGN))]) {
     assert.doesNotMatch(prompt, /5–15/);
     assert.match(prompt, /at least about 20 seconds/);
   }
-  assert.match(all(designMessages('Ducks', undefined, { lengthRule: false })), /show the arithmetic/, 'the design still works out its length');
+  assert.match(all(designMessages('Ducks')), /show the arithmetic/);
 });
 
 test('the example game comes from the design, only when it names one', () => {

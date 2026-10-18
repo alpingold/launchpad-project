@@ -95,9 +95,8 @@ network, so there's nothing to fetch.)
   controls). Show the player who they are (name and colour) and what to do right now.
 - **Big screen:** readable from across the room: big text, high contrast, few words. Show
   whose turn it is, timers, scores, and what just happened.
-- **Length:** a game lasts about **5–15 minutes** unless the idea asks for something else,
-  and each round, level, race or fight takes at least about 20 seconds. Make a game long
-  enough with more rounds, longer levels or more to do, not with waiting.
+- **Length:** each round, level, race or fight takes at least about 20 seconds. Don't make a
+  game longer with waiting.
 - **Colours:** the game's own scene has its own colours. For page text, panels and buttons
   outside the scene, the colour variables below match the platform. A canvas can read them
   with `getComputedStyle(document.documentElement)`.
