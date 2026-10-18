@@ -1,0 +1,10 @@
+# What `docker build` (generator/Dockerfile) never needs: it copies only the folders it names,
+# but Docker first sends it the whole repo. This keeps it small, and keeps the database and
+# the key secret (server/data) out of Docker entirely.
+.git
+**/node_modules
+server/data
+client/dist
+e2e
+generator/out
+.claude
