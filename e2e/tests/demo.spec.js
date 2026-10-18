@@ -144,3 +144,16 @@ test('bug reports on a game page: post, votes move the agreed-with ones up, −5
   for (const c of [ana, ben, cal]) await c.context.close();
   await admin.close();
 });
+
+test('search engines (plan §33): the page describes itself, previews have a picture, and missing pages say noindex', async ({ page, request }) => {
+  await page.goto('/');
+  await expect(page.locator('meta[name="description"]')).toHaveAttribute('content', /party games on one big screen/i);
+  await expect(page.locator('meta[property="og:image"]')).toHaveAttribute('content', 'https://boilergames.party/og-image.png');
+  await expect(page.locator('meta[name="robots"]')).toHaveCount(0);
+  for (const file of ['/og-image.png', '/favicon.svg', '/apple-touch-icon.png']) expect((await request.get(file)).status(), file).toBe(200);
+
+  for (const missing of ['/no-such-page', '/games/no-such-game', '/u/nobody-at-all']) {
+    await page.goto(missing);
+    await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', 'noindex');
+  }
+});

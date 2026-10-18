@@ -3,7 +3,25 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <title>BoilerGames</title>
+    <title>BoilerGames · Party games for one big screen and everyone's phones</title>
+    <!-- For search results and link previews (plan §33). Link previews (Discord, iMessage)
+         don't run JavaScript, so this has to be in the page itself, not added by React. -->
+    <meta name="description" content="Free party games on one big screen, played from everyone's phones: no app, just a browser. Made at Purdue for LaunchPad." />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="BoilerGames" />
+    <meta property="og:title" content="BoilerGames" />
+    <meta property="og:description" content="Party games on one big screen, played from everyone's phones. No app, just a browser." />
+    <meta property="og:url" content="https://boilergames.party/" />
+    <meta property="og:image" content="https://boilergames.party/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <!-- The site's name, so search results can say "BoilerGames" instead of the address. -->
+    <script type="application/ld+json">
+      { "@context": "https://schema.org", "@type": "WebSite", "name": "BoilerGames", "alternateName": "BoilerGames Party", "url": "https://boilergames.party/" }
+    </script>
     <script>
       // Set the theme BEFORE the page draws, so people using dark mode don't see a white
       // flash on every page load. Same rules as src/settings/theme.js, which takes over

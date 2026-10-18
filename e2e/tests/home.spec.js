@@ -2,7 +2,7 @@ import { test, expect, devices } from '@playwright/test';
 
 test('home page explains the site and lists the games', async ({ page }) => {
   await page.goto('/');
-  await expect(page).toHaveTitle('BoilerGames');
+  await expect(page).toHaveTitle("BoilerGames · Party games for one big screen and everyone's phones");
   await expect(page.getByRole('heading', { name: 'BoilerGames', level: 1 })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'How it works' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Bumper Blobs' })).toBeVisible();

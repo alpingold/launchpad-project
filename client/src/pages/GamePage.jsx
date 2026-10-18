@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { usePageTitle } from '../usePageTitle.js';
+import { usePageTitle, NoIndex } from '../usePageTitle.js';
 import { useCurrentUser } from '../net/auth.js';
 import AiBadge from '../components/AiBadge.jsx';
 import GameReports from '../components/GameReports.jsx';
@@ -59,6 +59,7 @@ export default function GamePage({ id }) {
   if (game === null) {
     return (
       <main className="page">
+        <NoIndex />
         <h1>Game not found</h1>
         <p>
           There's no such game, or it isn't shared with you. See <a href="/games">all the games</a>.

@@ -1,9 +1,10 @@
-import { usePageTitle } from '../usePageTitle.js';
+import { usePageTitle, NoIndex } from '../usePageTitle.js';
 
 export default function NotFound() {
   usePageTitle('Page not found');
   return (
     <main className="page">
+      <NoIndex />
       <h1>Page not found</h1>
       <p>There's nothing at this address.</p>
       <p>

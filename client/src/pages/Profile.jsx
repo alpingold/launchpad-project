@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { usePageTitle } from '../usePageTitle.js';
+import { usePageTitle, NoIndex } from '../usePageTitle.js';
 import { useCurrentUser } from '../net/auth.js';
 import GameCard from '../components/GameCard.jsx';
 import Token from '../components/Token.jsx';
@@ -29,6 +29,7 @@ export default function Profile({ username }) {
   if (data === null) {
     return (
       <main className="page">
+        <NoIndex />
         <h1>No such account</h1>
         <p>
           Nobody here is called {username}. See <a href="/games">all the games</a>.
