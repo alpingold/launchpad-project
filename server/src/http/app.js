@@ -92,8 +92,8 @@ export function createApp({ games = new GameRegistry(), db = openDatabase(':memo
   // Every account: making games with your own GenAI Studio key, only your own games (plan §15).
   if (generation) app.use('/api', createAdminRouter({ db, generation, mine: true }));
 
-  // Bug reports: the site-wide form, and the admin's list (plan §31).
-  app.use('/api', createReportsRouter({ db, cfg }));
+  // Bug reports: the site-wide form, each game's reports, and the admin's list (plan §31).
+  app.use('/api', createReportsRouter({ db, games, cfg }));
 
   // Any other /api path is a clean JSON 404 instead of Express's HTML page.
   app.use('/api', (_req, res) => {

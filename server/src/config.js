@@ -86,6 +86,10 @@ export const config = {
   // logged in or not, so this is what stops one person flooding the admin's list.
   REPORTS_PER_WINDOW: Number(process.env.REPORTS_PER_WINDOW) || 5,
   REPORTS_WINDOW_MS: 10 * 60 * 1000,
+  // Reports on game pages (plan §31b) per account per window: they need an account, so it's
+  // counted per account, not per address.
+  GAME_REPORTS_PER_WINDOW: Number(process.env.GAME_REPORTS_PER_WINDOW) || 10,
+  GAME_REPORTS_WINDOW_MS: 60 * 60 * 1000,
 
   // Behind a reverse proxy (Caddy, M8) every request seems to come from the proxy itself.
   // Setting this (e.g. TRUST_PROXY=loopback) tells Express to use the visitor's real IP from

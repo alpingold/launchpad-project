@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
+import { deleteGameReportsFor } from './reports.js';
 
 // All SQL for AI-generated games (plan §11, versions since K6 §12e). The code itself is
 // stored here, not in the repo: only hand-made "official" games live in the repo.
@@ -388,9 +389,10 @@ export function listLiveVersions(db) {
 
 export function deleteGeneratedGame(db, id) {
   return db.transaction(() => {
-    // Its catalogue entry and votes (plan §16) go with it.
+    // Its catalogue entry and votes (plan §16), and its bug reports (§31b), go with it.
     db.prepare('DELETE FROM game_pages WHERE game_id = ?').run(id);
     db.prepare('DELETE FROM game_votes WHERE game_id = ?').run(id);
+    deleteGameReportsFor(db, id);
     return db.prepare('DELETE FROM generated_games WHERE id = ?').run(id).changes === 1;
   })();
 }

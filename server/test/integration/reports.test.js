@@ -10,7 +10,7 @@ let server;
 let baseUrl;
 
 beforeEach(async () => {
-  server = createGameServer({ REPORTS_PER_WINDOW: 3 });
+  server = createGameServer({ REPORTS_PER_WINDOW: 3, GAME_REPORTS_PER_WINDOW: 3 });
   await new Promise((resolve) => server.httpServer.listen(0, resolve));
   baseUrl = `http://localhost:${server.httpServer.address().port}`;
 });
@@ -20,6 +20,8 @@ afterEach(() => server.close());
 const get = (path, cookie) => fetch(`${baseUrl}${path}`, { headers: cookie ? { Cookie: cookie } : {} });
 const post = (path, body, cookie) => postJson(baseUrl, path, body, cookie ? { Cookie: cookie } : {});
 const send = (path, method, cookie) => fetch(`${baseUrl}${path}`, { method, headers: { Cookie: cookie } });
+const put = (path, body, cookie) =>
+  fetch(`${baseUrl}${path}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', Cookie: cookie }, body: JSON.stringify(body) });
 
 async function adminCookie() {
   const name = uniqueUsername('boss');
@@ -84,4 +86,93 @@ test('only admins read, mark done or delete reports', async () => {
   assert.equal((await send(`/api/admin/reports/${id}`, 'DELETE', admin)).status, 204);
   assert.equal((await send(`/api/admin/reports/${id}`, 'DELETE', admin)).status, 404);
   assert.deepEqual((await (await get('/api/admin/reports', admin)).json()).reports, []);
+});
+
+// --- On a game's page (plan §31b) ---
+
+const list = async (cookie) => (await get('/api/games/punchline/reports', cookie)).json();
+async function postReport(cookie, body) {
+  const res = await post('/api/games/punchline/reports', { body, device: 'Android phone · Chrome' }, cookie);
+  assert.equal(res.status, 201);
+  return (await res.json()).report;
+}
+
+test('game reports: anyone reads them; posting needs an account; a game nobody can see has none', async () => {
+  assert.deepEqual(await list(), { reports: [], canPost: false, canMarkFixed: false });
+  assert.equal((await post('/api/games/punchline/reports', { body: 'The timer never ends.' })).status, 401);
+  assert.equal((await get('/api/games/no-such-game/reports')).status, 404);
+
+  const cookie = await signUp(baseUrl);
+  assert.equal((await post('/api/games/punchline/reports', { body: 'short' }, cookie)).status, 400);
+  assert.equal((await post('/api/games/no-such-game/reports', { body: 'The timer never ends.' }, cookie)).status, 404);
+  const report = await postReport(cookie, '  The timer never ends on my phone.  ');
+  assert.equal(report.body, 'The timer never ends on my phone.');
+  assert.equal(report.device, 'Android phone · Chrome');
+  assert.deepEqual({ score: report.score, myVote: report.myVote, mine: report.mine, canVote: report.canVote, canDelete: report.canDelete, fixed: report.fixed }, { score: 0, myVote: 0, mine: true, canVote: false, canDelete: true, fixed: false });
+
+  const seen = await list();
+  assert.equal(seen.reports.length, 1);
+  assert.equal(seen.reports[0].mine, false, 'logged out, nothing is yours');
+});
+
+test('votes add up to one total, which can go negative; the most agreed-with come first', async () => {
+  const [ana, ben, cal] = [await signUp(baseUrl), await signUp(baseUrl), await signUp(baseUrl)];
+  const useless = await postReport(ana, 'This game is bad lol lol lol');
+  const real = await postReport(ben, 'Votes for the second matchup are lost.');
+  const later = await postReport(cal, 'The intro music is very loud.');
+  // Newest first while nobody has voted.
+  assert.deepEqual((await list()).reports.map((r) => r.id), [later.id, real.id, useless.id]);
+
+  const vote = (rid, value, cookie) => put(`/api/game-reports/${rid}/vote`, { value }, cookie);
+  assert.equal((await vote(real.id, 1, ana)).status, 200);
+  assert.equal((await vote(real.id, 1, cal)).status, 200);
+  assert.equal((await vote(useless.id, -1, ben)).status, 200);
+  const res = await vote(useless.id, -1, cal);
+  assert.deepEqual(((await res.json()).report).score, -2);
+
+  const seen = await list(cal);
+  assert.deepEqual(seen.reports.map((r) => [r.id, r.score, r.myVote]), [[real.id, 2, 1], [later.id, 0, 0], [useless.id, -2, -1]]);
+
+  // Change your mind, or take it back.
+  assert.equal((await (await vote(real.id, -1, cal)).json()).report.score, 0);
+  assert.equal((await (await vote(real.id, 0, cal)).json()).report.score, 1);
+
+  assert.equal((await vote(real.id, 1, ben)).status, 403, 'not your own');
+  assert.equal((await vote(real.id, 2, ana)).status, 400);
+  assert.equal((await vote(real.id, 1)).status, 401);
+  assert.equal((await vote(99999, 1, ana)).status, 404);
+});
+
+test("the game's creator (here: an admin, for an official game) marks reports fixed; the author or an admin deletes", async () => {
+  const [ana, ben] = [await signUp(baseUrl), await signUp(baseUrl)];
+  const admin = await adminCookie();
+  const report = await postReport(ana, 'The last round never starts.');
+  assert.equal((await list(admin)).canMarkFixed, true);
+  assert.equal((await list(ana)).canMarkFixed, false);
+
+  assert.equal((await post(`/api/game-reports/${report.id}/fixed`, { fixed: true }, ana)).status, 403);
+  const fixed = await post(`/api/game-reports/${report.id}/fixed`, { fixed: true }, admin);
+  assert.equal((await fixed.json()).report.fixed, true);
+  assert.equal((await list()).reports[0].fixed, true);
+
+  assert.equal((await send(`/api/game-reports/${report.id}`, 'DELETE', ben)).status, 403);
+  assert.equal((await send(`/api/game-reports/${report.id}`, 'DELETE', ana)).status, 204);
+  const other = await postReport(ben, 'Prompts repeat in the second round.');
+  assert.equal((await send(`/api/game-reports/${other.id}`, 'DELETE', admin)).status, 204);
+  assert.deepEqual((await list()).reports, []);
+});
+
+test('a few game reports per account per hour; the admin sees the newest across games', async () => {
+  const ana = await signUp(baseUrl);
+  for (let i = 1; i <= 3; i++) await postReport(ana, `Problem number ${i} in this game.`);
+  const res = await post('/api/games/punchline/reports', { body: 'Problem number 4 in this game.' }, ana);
+  assert.equal(res.status, 429);
+  assert.equal((await post('/api/games/punchline/reports', { body: 'Problem number 1 from Ben.' }, await signUp(baseUrl))).status, 201, 'per account');
+
+  const { gameReports } = await (await get('/api/admin/reports', await adminCookie())).json();
+  assert.equal(gameReports.length, 4);
+  assert.deepEqual(
+    { ...gameReports[0], id: undefined, createdAt: undefined, author: undefined },
+    { gameId: 'punchline', gameName: 'Punchline', body: 'Problem number 1 from Ben.', device: null, score: 0, fixed: false, id: undefined, createdAt: undefined, author: undefined },
+  );
 });
