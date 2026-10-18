@@ -2100,6 +2100,33 @@ check after the build enforces the limit anyway.
 - **The test:** a Drawful Animate-style idea, one design, 4 builds with the limit and 4
   without. Results go in `generator/out/size-limit/summary.md`, plus playing them.
 
+## 33. Being found: "boilergames" in search results (built 2026-10-17)
+
+For a made-up name that matches the domain, ranking first is mostly Google knowing the site
+exists and trusting it's the real one. So the work is setup, not content:
+
+- **Fixed:** `/robots.txt` and `/sitemap.xml` were answered with the website's page (the
+  server sends index.html for any address it doesn't know). Now they're real
+  (`server/src/http/seoRoutes.js`):
+  - robots.txt keeps crawlers out of private pages (admin, account, create, host, login,
+    report) and points to the sitemap;
+  - the sitemap lists home, /games, /kit and every public game. It's built per request, so
+    new games join it by themselves.
+- **In the page itself** (`client/index.html`, because link previews don't run
+  JavaScript):
+  - a description;
+  - a title that says what the site is;
+  - Open Graph tags with a 1200×630 card (`og-image.png`);
+  - the site name as structured data (JSON-LD), so results can say "BoilerGames";
+  - a favicon (the gold token with a B).
+- **Soft 404s:** every address answers 200, and only the browser knows a page is missing.
+  The not-found screens (no page, no such game, no such account) now add
+  `<meta name="robots" content="noindex">`.
+- **The owner's part:** Google Search Console (a Domain property, verified through
+  Cloudflare's DNS), submit the sitemap and request indexing; Bing Webmaster Tools (imports
+  from Search Console). And links from real places: LaunchPad's page, LinkedIn, r/Purdue,
+  club Discords.
+
 ## Verification (how to confirm the plan worked once built)
 
 - `npm test` (root) → runs `node --test server/test`, all unit and integration tests green.
