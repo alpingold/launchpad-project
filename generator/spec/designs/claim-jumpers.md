@@ -1,119 +1,120 @@
 # Claim Jumpers
 
 ## Genre and feel
-A short simultaneous-move board game about a gold rush. The board is a surveyor's map on the
-big screen; every turn **everyone secretly picks one square at the same time** on their phone,
-then the TV reveals all the moves at once: new claims pop up, a jumped claim flips colour, and
-two prospectors who picked the same square bounce off each other. Nobody ever waits for anyone
-else's turn, and the reveal is the moment the room reacts to ("you took MY gold?!").
+A gold-rush game of blind bids. Each round a few claims are staked out on the big screen's
+map, each worth some gold. Everyone **secretly** spreads their prospectors over the claims on
+their phone, then the TV reveals the claims one at a time: crews march in, the biggest crew
+takes the gold, and if two crews tie for biggest the claim is **jumped** and nobody gets it.
+Every round is a read on the room: pile up on the big claim, or slip a small crew onto the
+one everyone forgot? The reveal is the moment the room reacts ("you put FOUR on that?!").
 
 ## Players
-2–6 (`minPlayers` 2, `maxPlayers` 6). The board grows with the room so it stays crowded:
-- 2 players: 6 × 6 · 3–4 players: 7 × 7 · 5–6 players: 8 × 8.
-
-Why not more than 6: the phone shows the whole board, and an 8 × 8 board is the largest whose
-squares are still a comfortable tap (about 44 px on a 390 px phone). Each player also needs a
-shape that tells them apart without colour (see Art), and six shapes read clearly.
-
-## Rules
-1. **Camps.** Each player starts with one square, their **camp**, spread evenly around the
-   ring one square in from the edge (random seat order). A camp can never be taken, so
-   nobody is ever knocked out of the game.
-2. **Gold.** A few squares near the middle hold a gold nugget: 2 on 6 × 6 (the two centre
-   squares between the camps), 5 on 7 × 7 (a plus in the centre), 8 on 8 × 8 (the centre four
-   and four around them). Gold is placed symmetrically around the centre and never on the camp
-   ring, so no camp starts on or right next to it.
-3. **A turn (20 s):** every player picks one square on their phone:
-   - an **empty** square next to (up, down, left, right) a square they own: a **claim**;
-   - a square **another player owns** (not a camp) that touches theirs **on 2 or more sides**:
-     a **jump** (you take it from them).
-   The phone only lets you tap these. You can change your pick until time's up. The turn ends
-   early when every connected player has picked. No pick: you skip the turn.
-4. **The reveal (all at once).** Everything is judged on the board as it was at the start of
-   the turn, so the order of the picks never matters:
-   - **One player picked a square:** they get it (claim or jump).
-   - **Two or more picked the same square:** a **clash**. Nobody gets it; it stays as it was.
-5. **15 turns.** Then the game ends.
-
-## Ending and winner
-Score = 1 point per square you own, +2 more for each gold square (a gold square is worth 3).
-Most points wins. Ties: more gold first, then shared place in seat order. `party.end` gets
-everyone ranked by score; scores are the points.
+2–6 (`minPlayers` 2, `maxPlayers` 6).
+- Claims per round: players + 1 (3 with two players, 7 with six), so there's always more gold
+  than anyone can cover.
+- Why it works with two: splitting a fixed crew over prizes is a classic two-player mind game
+  ("Colonel Blotto"). Each round you're guessing where your rival will commit.
+- Why not more than 6: seven claims are the most that fit in one row on the TV and in one
+  list on a phone.
 
 ## Big screen
-- **The board** fills the height, centred: land squares, each owned square in its owner's
-  colour with their shape on it, camps with a thick ring and a bigger shape, gold nuggets.
-- **The side panel:** each player as a row (shape, colour, name, points, gold count), sorted by
-  points. During a pick, a ✓ appears on a row when that player has picked (never where).
-- **Top:** "Turn 4 of 15" and a timer bar.
-- **Intro (10 s):** the title and four rules, each one short line with a tiny picture.
-- **Reveal (about 4 s):** claims pop in, jumps flip like a turned tile with a little shake,
-  clashes burst with a red ✕ and the clashing players' colours. A line under the board sums it
-  up: "5 claims · 1 jump · 2 clashes".
-- **End (12 s):** the final board, the ranking with the winner's row in gold, then `party.end`.
+- **Top:** "Claim Jumpers", a timer bar while planning, and "Round 3 of 7" ("MOTHER LODE" on
+  the last).
+- **The claims:** a row of land plots on the map, each with two stakes, "Claim B", and its
+  gold ("4"; "?" for the mystery claim until it's revealed).
+- **The side panel:** each player as a row (shape, colour, name, a stick of dynamite while
+  they still have it, gold), sorted by gold. While planning, a ✓ once they've locked in
+  (never where they sent anyone).
+- **Intro (12 s):** the title and the five rules, one short line each with an icon.
+- **Reveal (about 1.7 s per claim):** claim by claim, the crews march in as rows (each
+  player's shape chip and count, biggest first; the side panel has the names); the winner's plot glows gold with "Ana +4"; a jump shakes with
+  a red burst and "CLAIM JUMPED! Nobody gets it"; dynamite greys the plot out with "BOOM!
+  Ben blew it up". The "?" shows its value when its turn comes. The side panel keeps the
+  scores from before the round until the reveal is over.
+- **Scores (5 s):** the side panel with each player's "+N", and "Best round: Cal (+8)".
+- **End (12 s):** the winner, their gold, then `party.end`.
 
 ## Phones
-- **Top:** your shape in your colour, your name, your points. "Turn 4 of 15", a timer bar.
-- **The board:** the whole board (the same as the TV, so you can plan without looking up),
-  with the squares you can pick glowing: claims with a white outline, jumps with a red dashed
-  outline. Tap one to pick it (it fills with your shape); tap another to change.
-- **Under the board:** one short line for what to do now ("Pick a square", "Picked. You can
-  change it until time's up", "No square you can reach: you skip this turn").
-- **After a reveal:** what happened to you, in a few words: "You claimed a square", "You
-  jumped Ben's square!", "Clash with Ana: nobody got it", "Cal jumped one of yours".
-- A `tap` sound when you pick. Nothing secret is lost by sound: it doesn't say which square.
+- **Top:** your shape in your colour, your name, your gold.
+- **Planning:** "Round 3 of 7: send your crew", the timer, and your prospectors as little
+  figures in your colour ("2 of 5 left"). Then a row per claim: its gold, "Claim B", a
+  **− count +** stepper, and a dynamite button (while you have it). Big **Lock in** at the
+  bottom ("Lock in (sit this one out)" with nobody sent). After locking: "Locked in ✓", and
+  nothing can change.
+- Every change is sent as a draft, so if time runs out before you lock in, your plan still counts.
+- **Reveal:** "Look up!"
+- **Scores:** "+4 gold this round" and a line per claim you were part of: "You took Claim B:
+  +4 gold!", "Claim A was jumped: you tied with Ben.", "Cal outbid you on Claim C.", "You
+  blew up Claim D.", "Ben blew up Claim D under your crew."
+- **End:** "You win!" / "You tied for 1st!" / "You came 3rd", and your gold.
 
 ## Secrets
-- **Each pick:** only its player, until the reveal. The big screen shows a ✓ when a player has
-  picked, never where, and the `tap` sound doesn't say which square.
+- **Each plan:** only its player's phone, until the reveal. The big screen shows only a ✓
+  when someone locks in. The phones' `tap` sound doesn't say which claim.
+- **The "?" claim's value:** nobody, until its turn in the reveal.
+
+## Rules
+1. **A round:** players + 1 claims, each worth 1–5 gold (random), plus one of them is a **"?"**
+   worth 0–8, shown only at the reveal.
+2. **Planning (25 s):** each player has **5 prospectors** to place on any claims (any split,
+   or none). Ends early when every connected player has locked in.
+3. **Catch-up:** the player(s) in last place get a **6th prospector** that round (not when
+   everyone is tied).
+4. **The reveal:** the biggest crew on a claim takes all its gold. A **tie for biggest** is a
+   claim jump: nobody gets it. Smaller crews get nothing.
+5. **Dynamite:** each player has one stick for the whole game. Put it on a claim (never one
+   you send prospectors to) and nobody gets that claim, whoever went there.
+6. **7 rounds.** The last is the **Mother Lode**: every claim's gold is doubled (the "?" up to 16).
+
+## Ending and winner
+Most gold wins. Ties: more claims won, then a shared place. `party.end` ranks everyone; scores
+are their gold.
 
 ## Length
-- Intro 10 s, then 15 turns × (up to 20 s picking, usually 8–15 s since a turn ends when
-  everyone has picked, + 4 s reveal), then 12 s at the end.
-- ≈ 15 × 12–24 s + 22 s ≈ **3.5–6.5 min**; a careful group that uses the whole timer, 6.5.
-  Short on purpose: it's a game to play two or three times in a row. `minutes` = [4, 7].
+Intro 12 s, then 7 rounds × (up to 25 s planning, usually 10–20 s since it ends when everyone
+has locked in, + reveal ≈ 1.7 s × claims + 1.8 s, + 5 s scores), then 12 s at the end.
+- 2 players (3 claims): 7 × (15–25 + 7 + 5) s ≈ 3.2–4.4 min + 24 s ≈ **4–5 min**.
+- 6 players (7 claims): 7 × (15–25 + 14 + 5) s ≈ 4–5.2 min + 24 s ≈ **4.5–6 min**.
+- Short on purpose: a game to play two or three times in a row. `minutes` = [4, 7].
 
 ## Art
-- **Palette (it's the map):** deep map teal `#123238` with faint
-  contour lines, land `#6f8f6a` (squares) on darker grid lines `#0d262b`, gold `#ffcc33`
-  with a dark outline, a jump red `#ff4d5e`, paper text `#f3efe2`.
-- **Player colours and shapes**, chosen so the colours stay apart for common colour
-  blindness AND every player has a shape: orange `#ff8a1f` circle, sky blue `#3db8ff` square,
-  pink `#ff5fa2` triangle, yellow-green `#b8e02e` diamond, violet `#a77bff` star, white
-  `#f1f1f1` plus. The shape is drawn in dark ink on the owner's colour.
-- **Style:** a hand-surveyed map: a slow contour-line background on canvas, square tiles
-  with rounded corners, chunky shapes, no fine detail.
-- **Motion:** claims pop (scale up with an overshoot), jumps flip, clashes shake with a red
-  burst; the leader's row in the side panel glows gold.
-- **Sound (big screen):** `tick` in the last 5 s, `pop` per claim, `coin` if gold was taken,
-  `buzz` for a clash, a short swoop (`sound({ notes: [300, 600], ms: 90, type: 'square' })`)
-  for a jump, `win` at the end.
-- Canvas for the background contour lines; HTML and CSS for the board, shapes and panel
-  (CSS `clip-path` makes the shapes).
+- **Palette (it's the map):** deep map teal `#123238` with faint contour lines, land plots
+  `#6f8f6a` with wooden stakes, gold `#ffcc33` nuggets, jump red `#ff4d5e`, paper text `#f3efe2`.
+- **Player colours and shapes**, so colour blindness never hides whose crew is whose: orange
+  `#ff8a1f` circle, sky blue `#3db8ff` square, pink `#ff5fa2` triangle, yellow-green `#b8e02e`
+  diamond, violet `#a77bff` star, white `#f1f1f1` plus. The shape is drawn in dark ink on
+  the owner's colour.
+- **Motion:** plots tilt a degree or two; crews march in with a little overshoot; the winner
+  glows; a jump shakes with a red burst; dynamite flashes and greys the plot.
+- **Sound (big screen):** `tick` in the last 5 s, `coin` per won claim, `buzz` for a jump, a
+  low boom (`sound({ notes: [140, 70, 50], ms: 160, type: 'sawtooth' })`) for dynamite, `go`
+  for the Mother Lode, `win` at the end. Phones: `tap` on each change.
+- Canvas for the background contour lines; HTML and CSS for the plots, crews and panel
+  (CSS `clip-path` makes the shapes and nuggets).
 
 ## Closest example
-`none`: Bumper Blobs is real-time and Stowaways is phases and secrets. This one is a shared
-board with simultaneous secret moves.
+`none`: Ballpark is guesses and bets on numbers; this is hidden allocation over prizes.
 
 ## Edge cases
-- **A player leaves:** they skip turns (the turn doesn't wait for them); their squares stay
-  and can be jumped. Back: their phone redraws from its state.
-- **No legal square:** the phone says so and that player counts as done for the early end.
-- **Nobody picks:** the 20 s timer ends the turn; nothing changes.
-- **A phone sends something odd:** a pick must be an integer square that is legal for that
-  player this turn, during a pick; anything else is ignored.
-- **Big-screen reload:** everything (board owners, camps, gold, turn, phase and its end time
-  as a server time, the picks, the last reveal) is one plain-JSON object saved after every
-  change. A cut-off pick resumes with its deadline; a cut-off reveal just finishes.
+- **A player leaves:** the round doesn't wait for them; a draft they sent still counts. Back:
+  their phone redraws from its state.
+- **Nobody sends anyone:** every claim says "Nobody came"; the game goes on.
+- **A phone sends something odd:** a plan must have one whole number per claim, add up to at
+  most that player's crew, and put dynamite only where they have none of their own (and only
+  if they still have it); anything else is ignored. Nothing is accepted after locking in.
+- **Big-screen reload:** everything (round, phase and its end time as a server time, the
+  claims, plans, locks, crews, dynamite left, gold, claims won, the last results) is one
+  plain-JSON object saved after every change. A cut-off plan resumes with its deadline; a
+  cut-off reveal shows the claims already revealed and carries on.
 
 ## Why these choices
-- **Simultaneous picks, not turns:** with 6 players, taking turns would mean watching 5 other
-  people move. Here everyone is busy at once, and the reveal is a shared moment.
-- **Clash = nobody gets it:** the simplest rule you can see at a glance, and it makes the gold
-  squares a bluffing game ("everyone will go for the gold, so I won't... or will they?").
-- **Jumps need 2 sides:** without stealing, the board fills by turn 8 and the rest is dull;
-  with free stealing it's chaos. "Touch it on 2 sides" is easy to see on the map and rewards
-  building solid land instead of long thin lines.
-- **Camps are safe:** being wiped out at a party is no fun, and you always have a way back in.
-- **Judged on the start-of-turn board:** so no player's move depends on whose phone sent first
-  (simultaneous really means simultaneous).
+- **Blind bids instead of a board:** the old board version (pick a square each turn) left two
+  players expanding into empty land without ever meeting, and the best move was nearly always
+  obvious. Here every round has a real choice (spread or pile up) and every claim is contested.
+- **Tie = nobody:** the simplest rule to see at a glance, and it turns the big claim into a
+  bluff: "everyone will go for the 5, so I'll put 3 there... or will they?"
+- **Dynamite once:** the answer to a rival going all-in, and a threat that hangs over every
+  round until it's used.
+- **The "?" claim:** a gamble each round, and a small reveal of its own.
+- **Catch-up and the Mother Lode:** whoever is behind gets a little help, and the last round
+  can still turn the game.
