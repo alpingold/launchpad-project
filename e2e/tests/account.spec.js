@@ -11,7 +11,7 @@ test('logged out: /account sends you to the login page; /create says to make an 
   await page.goto('/account');
   await expect(page).toHaveURL('/login?next=/account');
   await page.goto('/');
-  await page.getByRole('navigation', { name: 'Pages' }).getByRole('link', { name: 'Create' }).click();
+  await page.getByRole('navigation', { name: 'Pages' }).getByRole('link', { name: 'Make a game' }).click();
   await expect(page).toHaveURL('/create');
   await expect(page.getByText(/you need a free account, and then your own Purdue GenAI Studio API key/)).toBeVisible();
   await page.getByRole('link', { name: 'Create an account' }).click();

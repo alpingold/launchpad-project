@@ -6,7 +6,7 @@ import { ADMIN } from '../server/accounts.js';
 
 test('home says it is a demo; the corner badge is on every page and opens the report form for that page', async ({ page }) => {
   await page.goto('/');
-  await expect(page.getByRole('heading', { name: 'BoilerGames (demo)', level: 1 })).toBeVisible();
+  await expect(page.locator('.home-wordmark')).toHaveText('BoilerGames (demo)');
   await expect(page.getByText("Fair warning: it's a demo")).toBeVisible();
   const badge = page.getByRole('link', { name: '(demo)' });
   await expect(badge).toHaveAttribute('href', '/report');

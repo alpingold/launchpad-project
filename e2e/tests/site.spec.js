@@ -11,7 +11,7 @@ test('every page has Games, Docs and Sign up at the top; Account once logged in;
   for (const path of ['/', '/games', '/join', '/kit']) {
     await page.goto(path);
     const nav = page.getByRole('navigation', { name: 'Pages' });
-    await expect(nav.getByRole('link')).toHaveText(['Games', 'Create', 'Docs', 'Sign up']);
+    await expect(nav.getByRole('link')).toHaveText(['Games', 'Make a game', 'Docs', 'Sign up']);
   }
   await page.getByRole('navigation', { name: 'Pages' }).getByRole('link', { name: 'Sign up' }).click();
   await expect(page.getByRole('heading', { name: 'Create a host account' })).toBeVisible();
@@ -19,7 +19,7 @@ test('every page has Games, Docs and Sign up at the top; Account once logged in;
 
   const host = await people.host({ game: 'probe' });
   const nav = host.page.getByRole('navigation', { name: 'Pages' });
-  await expect(nav.getByRole('link')).toHaveText(['Games', 'Create', 'Docs', 'Account']);
+  await expect(nav.getByRole('link')).toHaveText(['Games', 'Make a game', 'Docs', 'Account']);
   // Once a game starts, the links step aside (home stays).
   await people.player(host.code, 'Alex');
   await host.page.getByRole('button', { name: 'Start game' }).click();
@@ -127,12 +127,12 @@ test('on the narrowest phones (320 px) the header fits, with the links in a ☰ 
     await page.goto(path);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), path).toBe(true);
     // The links are behind the ☰ menu here.
-    await expect(page.getByRole('link', { name: 'Create' })).toBeHidden();
+    await expect(page.getByRole('link', { name: 'Make a game' })).toBeHidden();
     await page.getByRole('button', { name: 'Menu' }).click();
     const menu = page.getByRole('navigation', { name: 'Pages' });
-    await expect(menu.getByRole('link')).toHaveText(['Games', 'Create', 'Docs', 'Sign up']);
+    await expect(menu.getByRole('link')).toHaveText(['Games', 'Make a game', 'Docs', 'Sign up']);
   }
-  await page.getByRole('link', { name: 'Create' }).click();
+  await page.getByRole('link', { name: 'Make a game' }).click();
   await expect(page).toHaveURL('/create');
   await context.close();
 });

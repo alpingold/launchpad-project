@@ -2,9 +2,9 @@ import { test, expect } from './helpers.js';
 
 // The game kit page (/kit): a short overview, with the full guides the AI reads folded below.
 
-test('the game kit page shows the overview and the full guides, linked from the home page', async ({ page }) => {
+test('the game kit page shows the overview and the full guides, linked from every page as Docs', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('link', { name: 'game kit' }).click();
+  await page.getByRole('navigation', { name: 'Pages' }).getByRole('link', { name: 'Docs' }).click();
   await expect(page).toHaveURL('/kit');
   await expect(page.getByRole('heading', { name: 'Game kit', level: 1 })).toBeVisible();
 
