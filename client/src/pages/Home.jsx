@@ -24,8 +24,13 @@ export default function Home() {
   return (
     <main className="page home">
       <section className="hero">
-        <h1>BoilerGames</h1>
+        <h1>
+          BoilerGames <span className="demo-tag">(demo)</span>
+        </h1>
         <p className="tagline">Party games on one big screen, played from everyone's phones.</p>
+        <p className="hero-quip">
+          Fair warning: it's a demo, so things will break. Tell me when they do: I want your input on everything.
+        </p>
         <p className="muted">Made for Purdue LaunchPad. No app to install: just a browser.</p>
       </section>
 

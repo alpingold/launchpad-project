@@ -533,6 +533,25 @@ body.in-game-player .site-header {
   margin: 0 0 0.5rem;
 }
 
+/* §31a: "(demo)" after the title, and the quip under the tagline. A gold pill with dark ink,
+   like the room code: gold as text on the light background would be too faint to read. */
+.demo-tag {
+  display: inline-block;
+  vertical-align: middle;
+  font-size: 0.35em;
+  font-weight: 700;
+  letter-spacing: 0;
+  padding: 0.2em 0.6em;
+  border-radius: 999px;
+  background: var(--gold);
+  color: var(--gold-ink);
+}
+
+.hero-quip {
+  max-width: 34rem;
+  margin: 0 0 0.5rem;
+}
+
 .home-actions {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
@@ -790,6 +809,30 @@ select {
 /* While a game is on screen (GameFrame.jsx), only ⚙ and home stay. */
 body.in-game .site-nav,
 body.in-game .site-menu {
+  display: none;
+}
+
+/* §31a: "(demo)" in the bottom-left corner of every page, except while a game is on screen. */
+.demo-badge {
+  position: fixed;
+  left: max(0.75rem, env(safe-area-inset-left));
+  bottom: max(0.75rem, env(safe-area-inset-bottom));
+  z-index: 50;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  background: var(--gold);
+  color: var(--gold-ink);
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-decoration: none;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.2);
+}
+
+.demo-badge:hover {
+  text-decoration: underline;
+}
+
+body.in-game .demo-badge {
   display: none;
 }
 
