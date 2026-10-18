@@ -1,26 +1,26 @@
 <script type="application/json" id="game-info">
   {
     "name": "Claim Jumpers",
-    "description": "A gold rush on one map. Everyone secretly picks a square at the same time: claim land, jump a rival's claim, and grab the gold. Pick the same square and nobody gets it.",
+    "description": "A gold rush of blind bids. Secretly send five prospectors to the claims: the biggest crew takes the gold, but tie for biggest and the claim is jumped. One stick of dynamite each.",
     "minPlayers": 2,
     "maxPlayers": 6,
-    "tags": ["board", "strategy"],
+    "tags": ["strategy", "bluffing"],
     "minutes": [4, 7]
   }
 </script>
 <!--
-  CLAIM JUMPERS: a simultaneous-move board game (design: generator/spec/designs/claim-jumpers.md).
+  CLAIM JUMPERS: blind claim bids (plan §36c; design: generator/spec/designs/claim-jumpers.md).
   One file, two roles:
-   - the big screen (role "host") is the referee. It holds the board, runs each turn's timer,
-     collects everyone's secret pick, and reveals them all at once: one picker gets the square,
-     two or more clash and nobody does. It draws the map for the room.
-   - each phone (role "player") shows the same board with the squares it may pick glowing, and
-     sends one pick per turn (changeable until time's up).
+   - the big screen (role "host") is the referee. Each round it stakes out the claims, collects
+     everyone's secret plan (how many prospectors on each claim, and maybe the dynamite), then
+     reveals the claims one at a time: the biggest crew takes the gold, a tie for biggest is a
+     claim jump (nobody gets it), dynamite blows a claim up.
+   - each phone (role "player") spreads its prospectors with − / + steppers and locks in.
   Everything that matters lives in one plain-JSON object `g`, saved with party.save after
   every change, so a big-screen reload carries on where it was (deadlines are server times).
 -->
 <style>
-  /* ---- The map's palette (the same in light and dark: it's the scene) ---- */
+  /* ---- The map's palette: it's the scene ---- */
   :root {
     --sea: #123238;
     --sea2: #0d262b;
@@ -34,25 +34,14 @@
   body.host, body.player {
     --bg: #123238; --surface: #1a4048; --text: #f3efe2; --muted: #a9c3bd; --border: #2d5a62;
     --accent: #ffcc33; --on-accent: #10201f; --good: #8be28b; --bad: #ff6b78; --gold: #ffcc33;
-    background: var(--sea); color: var(--text); color-scheme: dark;
+    background: var(--sea); color: var(--text);
   }
   [hidden] { display: none !important; }
   body.host { overflow: hidden; }
   :root[data-role='host'] { font-size: clamp(11px, min(1.5vw, 2.6vh), 32px); }
 
-  /* ---- The board: shared by the big screen and the phones ---- */
-  .board { display: grid; gap: var(--gap, 0.35rem); padding: var(--gap, 0.35rem); background: var(--sea2); border-radius: 1rem; box-sizing: border-box; aspect-ratio: 1; box-shadow: 0 0 0 3px rgba(243, 239, 226, 0.15), 0 1rem 3rem rgba(0, 0, 0, 0.35); }
-  .cell { position: relative; display: grid; place-items: center; border: none; padding: 0; margin: 0; min-width: 0; min-height: 0; border-radius: 18%; background: var(--land); box-shadow: inset 0 -0.18em 0 var(--land2); font: inherit; color: inherit; }
-  .cell.owned { background: var(--c); box-shadow: inset 0 -0.2em 0 rgba(0, 0, 0, 0.25); }
-  .cell .shape { display: none; width: 52%; height: 52%; background: var(--ink); }
-  .cell.owned .shape, .cell.picked .shape { display: block; }
-  .cell.camp { box-shadow: inset 0 0 0 0.32em var(--ink), inset 0 0 0 0.5em var(--c); }
-  .cell.camp .shape { width: 50%; height: 50%; }
-  .cell .nugget { display: none; position: absolute; width: 46%; height: 40%; background: var(--nugget); clip-path: polygon(18% 12%, 62% 0, 96% 30%, 88% 78%, 52% 100%, 8% 86%, 0 40%); filter: drop-shadow(0 0 0.12em rgba(0, 0, 0, 0.6)); }
-  .cell.gold .nugget { display: block; }
-  .cell.gold.owned .nugget, .cell.gold.picked .nugget { width: 30%; height: 26%; top: 6%; right: 6%; }
-
-  /* Shapes: every player has one, so nobody needs colour to find their land. */
+  /* Shapes: every player has one, so nobody needs colour to tell crews apart. */
+  .shape { display: block; background: var(--ink); }
   .s-circle { border-radius: 50%; }
   .s-square { border-radius: 10%; transform: scale(0.88); }
   .s-triangle { clip-path: polygon(50% 4%, 97% 92%, 3% 92%); }
@@ -60,37 +49,55 @@
   .s-star { clip-path: polygon(50% 0, 62% 34%, 98% 35%, 69% 57%, 80% 92%, 50% 71%, 20% 92%, 31% 57%, 2% 35%, 38% 34%); }
   .s-plus { clip-path: polygon(34% 0, 66% 0, 66% 34%, 100% 34%, 100% 66%, 66% 66%, 66% 100%, 34% 100%, 34% 66%, 0 66%, 0 34%, 34% 34%); }
   .chip { display: inline-grid; place-items: center; width: 1.6em; height: 1.6em; border-radius: 0.35em; background: var(--c); flex: none; }
-  .chip .shape { display: block; width: 62%; height: 62%; background: var(--ink); }
-
-  /* The reveal. */
-  .cell.pop { animation: pop 0.55s cubic-bezier(0.2, 1.6, 0.4, 1) both; }
-  @keyframes pop { from { transform: scale(0.2); } }
-  .cell.flip { animation: flip 0.7s ease-out both; }
-  @keyframes flip { 0% { transform: rotateY(0) scale(1.1); background: var(--from); } 50% { transform: rotateY(90deg) scale(1.15); background: var(--from); } 100% { transform: none; } }
-  .cell.clash { animation: shake 0.6s both; }
-  @keyframes shake { 20% { transform: translate(-12%, 4%); } 40% { transform: translate(12%, -6%); } 60% { transform: translate(-8%, 2%); } 80% { transform: translate(5%, -2%); } }
-  .burst { position: absolute; inset: -18%; pointer-events: none; z-index: 2; animation: burst 1.6s ease-out forwards; }
-  .burst::before { content: ''; position: absolute; inset: 0; background: var(--jump); clip-path: polygon(20% 0, 50% 30%, 80% 0, 100% 20%, 70% 50%, 100% 80%, 80% 100%, 50% 70%, 20% 100%, 0 80%, 30% 50%, 0 20%); }
-  .burst i { position: absolute; width: 34%; height: 34%; border-radius: 50%; background: var(--c); border: 0.12em solid var(--ink); }
-  @keyframes burst { 0% { transform: scale(0.3) rotate(-30deg); opacity: 0; } 20% { transform: scale(1.1); opacity: 1; } 75% { opacity: 1; } 100% { transform: scale(0.9); opacity: 0; } }
+  .chip .shape { width: 62%; height: 62%; }
+  .nug { display: inline-block; width: 0.95em; height: 0.85em; background: var(--nugget); clip-path: polygon(18% 12%, 62% 0, 96% 30%, 88% 78%, 52% 100%, 8% 86%, 0 40%); flex: none; }
+  .tnt { display: inline-block; width: 0.55em; height: 1.05em; border-radius: 0.12em; background: var(--jump); position: relative; flex: none; box-shadow: inset 0 -0.18em 0 rgba(0, 0, 0, 0.25); }
+  .tnt::after { content: ''; position: absolute; left: 50%; top: -0.35em; width: 0.08em; height: 0.35em; background: var(--paper); }
 
   /* ---- Big screen ---- */
   #map { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
-  #host { position: fixed; inset: 0; display: grid; grid-template-columns: 1fr 24rem; grid-template-rows: auto 1fr auto; gap: 0.6rem 2rem; padding: 1.4vh 2.5vw; box-sizing: border-box; }
+  #host { position: fixed; inset: 0; display: grid; grid-template-columns: minmax(0, 1fr) 22rem; grid-template-rows: auto 1fr auto; gap: 0.6rem 2rem; padding: 1.4vh 2.5vw; box-sizing: border-box; }
   .top { grid-column: 1 / -1; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 2rem; }
   .brand { font-weight: 900; font-size: 1.6rem; color: var(--nugget); letter-spacing: 0.02em; text-shadow: 0 0.15rem 0 var(--sea2); }
   .turn { font-weight: 900; font-size: 1.8rem; justify-self: end; }
+  .turn.lode { color: var(--nugget); }
   .bar { height: 0.8rem; border-radius: 1rem; background: rgba(243, 239, 226, 0.15); overflow: hidden; }
   .bar > i { display: block; height: 100%; width: 100%; background: var(--nugget); border-radius: 1rem; }
   .bar.off { visibility: hidden; }
   .stage { position: relative; min-height: 0; display: flex; align-items: center; justify-content: center; }
-  .stage .board { height: 100%; max-width: 100%; --gap: 0.45rem; font-size: 1.4rem; }
+  .stage.wide { grid-column: 1 / -1; }
+  /* One row of claims, whatever the count (3 to 7): they share the width and fit the height. */
+  .claims { display: flex; gap: 1.1rem; justify-content: center; align-items: center; width: 100%; height: 100%; padding-top: 1rem; box-sizing: border-box; }
+  .claim { position: relative; flex: 1 1 0; min-width: 0; max-width: 12rem; height: min(100%, 24rem); box-sizing: border-box; display: flex; flex-direction: column; align-items: center; gap: 0.6rem; padding: 0.9rem 0.6rem; border-radius: 1.1rem; background: var(--land); box-shadow: inset 0 -0.4rem 0 var(--land2), 0 0.8rem 2rem rgba(0, 0, 0, 0.35); transform: rotate(var(--tilt, 0deg)); transition: filter 0.4s, opacity 0.4s; }
+  .claim::before, .claim::after { content: ''; position: absolute; top: -0.6rem; width: 0.35rem; height: 1.6rem; background: #b98a4f; border-radius: 0.15rem; box-shadow: 0 0.15rem 0 rgba(0, 0, 0, 0.3); }
+  .claim::before { left: 0.8rem; } .claim::after { right: 0.8rem; }
+  .claim .letter { font-weight: 900; font-size: 1.4rem; color: var(--ink); opacity: 0.7; }
+  .claim .value { display: flex; align-items: center; gap: 0.35rem; font-weight: 900; font-size: 3.2rem; line-height: 1; color: var(--paper); text-shadow: 0 0.2rem 0 rgba(0, 0, 0, 0.35); }
+  .claim .value .nug { font-size: 2.6rem; }
+  .claim.mystery .value { color: var(--nugget); }
+  .claim .crews { flex: 1; width: 100%; display: flex; flex-direction: column; gap: 0.35rem; justify-content: flex-start; }
+  .claim .crew { display: flex; align-items: center; gap: 0.45rem; font-size: 1.5rem; font-weight: 900; padding: 0.2rem 0.5rem; border-radius: 0.6rem; background: rgba(13, 38, 43, 0.6); animation: march 0.45s cubic-bezier(0.2, 1.5, 0.4, 1) both; }
+  .claim .crew .n { margin-left: auto; font-size: 1.6rem; }
+  .claim .crew.top { background: var(--paper); color: var(--ink); }
+  @keyframes march { from { transform: translateY(1.5rem) scale(0.6); opacity: 0; } }
+  .claim .verdict { min-height: 2.2rem; font-weight: 900; font-size: 1.3rem; text-align: center; line-height: 1.1; }
+  .claim.won { box-shadow: inset 0 -0.4rem 0 var(--land2), 0 0 0 0.35rem var(--nugget), 0 0 2.5rem rgba(255, 204, 51, 0.55); }
+  .claim.jumped { animation: shake 0.6s both; }
+  .claim.jumped .verdict { color: var(--jump); text-shadow: 0 0.1rem 0 var(--ink); }
+  .claim.blown-up { filter: grayscale(0.8) brightness(0.6); }
+  .claim.blown-up .verdict { color: var(--nugget); }
+  .claim.dim { opacity: 0.55; }
+  @keyframes shake { 20% { transform: translate(-6%, 2%) rotate(var(--tilt, 0deg)); } 40% { transform: translate(6%, -3%) rotate(var(--tilt, 0deg)); } 60% { transform: translate(-4%, 1%) rotate(var(--tilt, 0deg)); } 80% { transform: translate(2%, -1%) rotate(var(--tilt, 0deg)); } }
+  .burst { position: absolute; inset: 15% 5%; pointer-events: none; z-index: 2; animation: burst 1.3s ease-out forwards; }
+  .burst::before { content: ''; position: absolute; inset: 0; background: var(--c, var(--jump)); clip-path: polygon(20% 0, 50% 30%, 80% 0, 100% 20%, 70% 50%, 100% 80%, 80% 100%, 50% 70%, 20% 100%, 0 80%, 30% 50%, 0 20%); }
+  @keyframes burst { 0% { transform: scale(0.3) rotate(-30deg); opacity: 0; } 20% { transform: scale(1.1); opacity: 1; } 70% { opacity: 0.9; } 100% { transform: scale(1.2); opacity: 0; } }
   .side { min-height: 0; display: flex; flex-direction: column; gap: 0.6rem; justify-content: center; }
-  .row { display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 0.7rem; padding: 0.55rem 0.8rem; border-radius: 0.8rem; background: rgba(13, 38, 43, 0.85); border: 2px solid var(--border); font-size: 1.35rem; font-weight: 800; transition: transform 0.4s; }
-  .row .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .row .pts { font-size: 1.7rem; font-weight: 900; min-width: 2ch; text-align: right; }
-  .row .au { display: flex; align-items: center; gap: 0.3rem; color: var(--nugget); font-size: 1.1rem; }
-  .row .au::before { content: ''; width: 0.9rem; height: 0.8rem; background: var(--nugget); clip-path: polygon(18% 12%, 62% 0, 96% 30%, 88% 78%, 52% 100%, 8% 86%, 0 40%); }
+  .row { display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 0.7rem; padding: 0.55rem 0.8rem; border-radius: 0.8rem; background: rgba(13, 38, 43, 0.85); border: 2px solid var(--border); font-size: 1.35rem; font-weight: 800; }
+  .row .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: flex; align-items: center; gap: 0.4rem; }
+  .row .name .tnt { font-size: 1rem; }
+  .row .pts { display: flex; align-items: center; gap: 0.3rem; font-size: 1.7rem; font-weight: 900; color: var(--nugget); }
+  .row .pts .nug { font-size: 1.1rem; }
+  .row .gain { color: var(--good); font-size: 1.2rem; font-weight: 900; min-width: 2.5ch; text-align: right; }
   .row.lead { border-color: var(--nugget); box-shadow: 0 0 1.2rem rgba(255, 204, 51, 0.35); }
   .row.away { opacity: 0.45; }
   .row .chip { font-size: 1.3rem; }
@@ -100,43 +107,42 @@
   .tick.off { border: 3px dashed var(--muted); animation: spin 3s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
   .say { grid-column: 1 / -1; text-align: center; font-size: 1.7rem; font-weight: 900; min-height: 2.2rem; margin: 0; }
-  .say .clash { color: var(--jump); }
-  .overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1.2rem; background: rgba(13, 38, 43, 0.9); border-radius: 1.2rem; text-align: center; padding: 2rem; animation: fade 0.5s both; }
+  .overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1.2rem; background: rgba(13, 38, 43, 0.92); border-radius: 1.2rem; text-align: center; padding: 2rem; animation: fade 0.5s both; z-index: 3; }
   @keyframes fade { from { opacity: 0; transform: scale(0.96); } }
   .overlay h1 { margin: 0; font-size: 4.2rem; font-weight: 900; color: var(--nugget); line-height: 1; }
   .overlay h2 { margin: 0; font-size: 3rem; font-weight: 900; line-height: 1.1; }
-  .rules { list-style: none; padding: 0; margin: 0; display: grid; gap: 1rem; text-align: left; font-size: 1.6rem; font-weight: 700; }
+  .rules { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.9rem; text-align: left; font-size: 1.7rem; font-weight: 700; }
   .rules li { display: flex; align-items: center; gap: 1rem; }
-  .mini { display: grid; grid-template-columns: repeat(3, 2.2rem); gap: 0.25rem; flex: none; font-size: 0.9rem; }
-  .mini .cell { width: 2.2rem; height: 2.2rem; }
-  .mini .hint { box-shadow: inset 0 0 0 0.2rem var(--paper); }
-  .mini .hint-jump { outline: 0.18rem dashed var(--jump); outline-offset: -0.2rem; }
-  .mini .cross::after { content: ''; position: absolute; inset: 15%; background: var(--jump); clip-path: polygon(20% 0, 50% 30%, 80% 0, 100% 20%, 70% 50%, 100% 80%, 80% 100%, 50% 70%, 20% 100%, 0 80%, 30% 50%, 0 20%); }
+  .rules .ico { flex: none; width: 3rem; display: grid; place-items: center; font-size: 2rem; font-weight: 900; color: var(--nugget); }
 
   /* ---- Phones ---- */
   body.player { user-select: none; -webkit-user-select: none; }
   .ph { gap: 0.7rem; }
   .me { display: flex; align-items: center; gap: 0.6rem; font-weight: 900; font-size: 1.25rem; }
   .me .chip { font-size: 1.3rem; }
-  .me .pts { margin-left: auto; font-size: 1.5rem; }
-  .me .pts small { font-size: 0.85rem; color: var(--muted); font-weight: 700; margin-left: 0.25rem; }
+  .me .pts { margin-left: auto; display: flex; align-items: center; gap: 0.3rem; font-size: 1.5rem; color: var(--nugget); }
   .status { font-weight: 800; font-size: 1.15rem; margin: 0; }
-  .ph .board { width: 100%; --gap: 0.25rem; font-size: 0.9rem; }
-  .ph .cell:disabled { opacity: 1; cursor: default; }
-  .ph .cell.legal { cursor: pointer; box-shadow: inset 0 0 0 0.22em var(--paper); animation: glow 1.4s ease-in-out infinite; }
-  .ph .cell.legal.jump { box-shadow: none; outline: 0.2em dashed var(--jump); outline-offset: -0.24em; }
-  @keyframes glow { 50% { filter: brightness(1.25); } }
-  .ph .cell.picked { background: var(--c); animation: none; filter: none; box-shadow: inset 0 0 0 0.22em var(--paper), 0 0 0 0.18em var(--paper); }
-  .ph .cell.picked .shape { opacity: 0.75; }
-  .ph .cell.mine:not(.picked) { outline: 0.14em solid rgba(243, 239, 226, 0.6); outline-offset: -0.14em; }
+  .left { display: flex; align-items: center; gap: 0.5rem; font-weight: 800; font-size: 1.1rem; margin: 0; }
+  .left .men { display: flex; gap: 0.25rem; }
+  .left .man { width: 0.9rem; height: 1.3rem; border-radius: 0.45rem 0.45rem 0.2rem 0.2rem; background: var(--c); }
+  .left .man.out { background: transparent; box-shadow: inset 0 0 0 2px var(--border); }
+  .plots { display: flex; flex-direction: column; gap: 0.5rem; }
+  .plot { display: grid; grid-template-columns: 3.2rem 1fr auto auto; align-items: center; gap: 0.5rem; padding: 0.45rem 0.55rem; border-radius: 0.9rem; background: var(--surface); border: 2px solid var(--border); }
+  .plot.has { border-color: var(--c); }
+  .plot.blown { border-color: var(--jump); background: rgba(255, 77, 94, 0.12); }
+  .plot .val { display: flex; align-items: center; justify-content: center; gap: 0.2rem; font-weight: 900; font-size: 1.5rem; color: var(--nugget); }
+  .plot .lbl { font-weight: 800; font-size: 1rem; line-height: 1.15; }
+  .plot .lbl small { display: block; color: var(--muted); font-weight: 700; }
+  .step { display: flex; align-items: center; gap: 0.35rem; }
+  .step button { width: 2.9rem; height: 2.9rem; padding: 0; font-size: 1.6rem; font-weight: 900; border-radius: 0.7rem; }
+  .step .n { min-width: 1.6ch; text-align: center; font-size: 1.6rem; font-weight: 900; }
+  .boom { width: 2.9rem; height: 2.9rem; padding: 0; display: grid; place-items: center; border-radius: 0.7rem; background: transparent; border: 2px dashed var(--border); font-size: 1.3rem; }
+  .boom[aria-pressed='true'] { background: var(--jump); border: 2px solid var(--jump); }
+  .boom[aria-pressed='true'] .tnt { background: var(--paper); }
   .note { margin: 0; font-size: 1.05rem; font-weight: 700; min-height: 1.4em; }
   .note.bad { color: var(--bad); }
   .note.good { color: var(--good); }
-  .legend { display: flex; gap: 1rem; flex-wrap: wrap; font-size: 0.85rem; color: var(--muted); margin: 0; }
-  .legend span { display: inline-flex; align-items: center; gap: 0.35rem; }
-  .legend i { display: inline-block; width: 0.9rem; height: 0.9rem; border-radius: 0.2rem; }
-  .legend .l1 { box-shadow: inset 0 0 0 2px var(--paper); background: var(--land); }
-  .legend .l2 { outline: 2px dashed var(--jump); outline-offset: -2px; background: var(--land); }
+  .news { margin: 0; padding-left: 1.2rem; display: grid; gap: 0.3rem; font-weight: 700; font-size: 1.1rem; }
   .result { text-align: center; }
   .result b { display: block; font-size: 2.2rem; font-weight: 900; color: var(--nugget); }
 </style>
@@ -148,144 +154,96 @@
 <script>
   'use strict';
 
-  // ---- Shared: the rules (pure functions of the board) ----------------------------------
+  // ---- Shared: the rules (pure functions) ------------------------------------------------
   const COLORS = [
     ['#ff8a1f', 'circle', 'Orange'], ['#3db8ff', 'square', 'Blue'], ['#ff5fa2', 'triangle', 'Pink'],
     ['#b8e02e', 'diamond', 'Lime'], ['#a77bff', 'star', 'Violet'], ['#f1f1f1', 'plus', 'White'],
   ];
-  const TURNS = 15;
-  const INTRO_MS = 10000, PICK_MS = 20000, REVEAL_MS = 4200, END_MS = 12000;
-  const sizeFor = (n) => (n <= 2 ? 6 : n <= 4 ? 7 : 8);
+  const ROUNDS = 7;
+  const CREW = 5; // prospectors a round; the player in last place gets one more
+  const LETTERS = 'ABCDEFG';
+  const INTRO_MS = 12000, PICK_MS = 25000, STEP_MS = 1700, SCORES_MS = 5000, END_MS = 12000;
+  /** The reveal: one claim at a time, then a beat to read the last one. */
+  const revealMs = (claims) => claims * STEP_MS + 1800;
 
-  /** The up/down/left/right neighbours of square i on a size × size board. */
-  function around(i, size) {
-    const r = Math.floor(i / size), c = i % size;
-    const out = [];
-    if (r > 0) out.push(i - size);
-    if (r < size - 1) out.push(i + size);
-    if (c > 0) out.push(i - 1);
-    if (c < size - 1) out.push(i + 1);
-    return out;
+  /**
+   * The claims for a round: players + 1 of them, each worth 1–5 gold, and one "?" worth 0–8
+   * (shown only at the reveal). The last round is the Mother Lode: every value doubled.
+   * @returns {{ value: number, mystery: boolean }[]}
+   */
+  function makeClaims(n, round, rand = Math.random) {
+    const count = n + 1;
+    const pool = [1, 2, 3, 4, 5];
+    const claims = [];
+    for (let k = 0; k < count - 1; k++) claims.push({ value: pool[Math.floor(rand() * pool.length)], mystery: false });
+    claims.splice(Math.floor(rand() * count), 0, { value: Math.floor(rand() * 9), mystery: true });
+    if (round === ROUNDS) for (const c of claims) c.value *= 2;
+    return claims;
+  }
+
+  /** How many prospectors each player gets this round: CREW, +1 for last place (not when all are tied). */
+  function crewSizes(scores) {
+    const low = Math.min(...scores);
+    const allTied = scores.every((s) => s === low);
+    return scores.map((s) => (s === low && !allTied ? CREW + 1 : CREW));
   }
 
   /**
-   * What player p may pick on this board: { [square]: 'claim' | 'jump' }.
-   * claim: an empty square next to p's land. jump: another player's square (not a camp) that
-   * touches p's land on 2 or more sides.
+   * A phone's plan, checked: { crew: [count per claim], tnt: claim index | null }.
+   * At most `size` prospectors in all; dynamite only while you still have it, and never on a
+   * claim you send prospectors to (they'd blow up with it). Returns null if it's not valid.
    */
-  function movesFor(b, p) {
-    const out = {};
-    for (let i = 0; i < b.cells.length; i++) {
-      const owner = b.cells[i];
-      if (owner === p) continue;
-      const touching = around(i, b.size).filter((j) => b.cells[j] === p).length;
-      if (owner === -1 && touching >= 1) out[i] = 'claim';
-      else if (owner !== -1 && touching >= 2 && b.camps[owner] !== i) out[i] = 'jump';
-    }
-    return out;
-  }
-
-  /** Points: 1 per square, 3 for a gold square. */
-  function pointsOf(b, p) {
-    let pts = 0;
-    for (let i = 0; i < b.cells.length; i++) if (b.cells[i] === p) pts += b.gold.includes(i) ? 3 : 1;
-    return pts;
-  }
-  const goldOf = (b, p) => b.gold.filter((i) => b.cells[i] === p).length;
-
-  /** Everyone, best first: points, then gold, then seat. */
-  function standings(b, n) {
-    return [...Array(n).keys()].sort((a, c) => pointsOf(b, c) - pointsOf(b, a) || goldOf(b, c) - goldOf(b, a) || a - c);
+  function checkPlan(plan, claims, size, hasTnt) {
+    if (!plan || typeof plan !== 'object' || !Array.isArray(plan.crew) || plan.crew.length !== claims) return null;
+    if (!plan.crew.every((x) => Number.isInteger(x) && x >= 0)) return null;
+    if (plan.crew.reduce((a, b) => a + b, 0) > size) return null;
+    const tnt = plan.tnt ?? null;
+    if (tnt !== null && (!hasTnt || !Number.isInteger(tnt) || tnt < 0 || tnt >= claims || plan.crew[tnt] > 0)) return null;
+    return { crew: [...plan.crew], tnt };
   }
 
   /**
-   * Resolves one turn's picks ({ [player]: square }) all at once, on the board as it was at the
-   * start of the turn. Returns the new cells and what happened.
+   * Reveals a round: for every claim, who sent how many, and who takes it.
+   * Dynamite: nobody gets it. Otherwise the biggest crew takes the gold; a tie for biggest is a
+   * claim jump and nobody gets it. Returns the results and each player's gold gained.
    */
-  function resolve(b, picks) {
-    const by = {};
-    for (const [p, i] of Object.entries(picks)) (by[i] ??= []).push(Number(p));
-    const cells = [...b.cells];
-    const claims = []; // [square, player, previous owner (-1: it was empty)]
-    const clashes = []; // [square, [players]]
-    for (const [i, ps] of Object.entries(by)) {
-      const sq = Number(i);
-      if (ps.length > 1) clashes.push([sq, ps.sort((a, c) => a - c)]);
-      else {
-        claims.push([sq, ps[0], b.cells[sq]]);
-        cells[sq] = ps[0];
+  function resolveRound(claims, plans, n) {
+    const gains = Array(n).fill(0);
+    const results = claims.map((claim, i) => {
+      const crews = [];
+      for (let p = 0; p < n; p++) if (plans[p]?.crew[i] > 0) crews.push([p, plans[p].crew[i]]);
+      crews.sort((a, b) => b[1] - a[1] || a[0] - b[0]);
+      const boom = [...Array(n).keys()].filter((p) => plans[p]?.tnt === i);
+      let winner = -1;
+      let jumped = [];
+      if (boom.length === 0 && crews.length > 0) {
+        const top = crews.filter(([, k]) => k === crews[0][1]).map(([p]) => p);
+        if (top.length === 1) winner = top[0];
+        else jumped = top;
       }
-    }
-    return { cells, claims, clashes };
+      if (winner >= 0) gains[winner] += claim.value;
+      return { value: claim.value, mystery: claim.mystery, crews, winner, jumped, boom };
+    });
+    return { results, gains };
   }
 
-  /** The ring one square in from the edge, clockwise from its top-left corner. */
-  function ring(size) {
-    const lo = 1, hi = size - 2, out = [];
-    for (let c = lo; c < hi; c++) out.push(lo * size + c);
-    for (let r = lo; r < hi; r++) out.push(r * size + hi);
-    for (let c = hi; c > lo; c--) out.push(hi * size + c);
-    for (let r = hi; r > lo; r--) out.push(r * size + lo);
-    return out;
+  /** Everyone, best first: gold, then claims won, then seat. */
+  function standings(scores, won) {
+    return [...scores.keys()].sort((a, b) => scores[b] - scores[a] || won[b] - won[a] || a - b);
   }
 
-  /** Gold squares: in the middle, the same distance from every side. */
-  function goldFor(size) {
-    const at = (r, c) => r * size + c;
-    if (size === 6) return [at(2, 3), at(3, 2)];
-    if (size === 7) return [at(3, 3), at(2, 3), at(4, 3), at(3, 2), at(3, 4)];
-    return [at(3, 3), at(3, 4), at(4, 3), at(4, 4), at(2, 2), at(2, 5), at(5, 2), at(5, 5)];
-  }
-
-  function shuffle(list) {
-    const a = [...list];
-    for (let i = a.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [a[i], a[j]] = [a[j], a[i]];
-    }
-    return a;
-  }
   const plural = (n, word, many = `${word}s`) => `${n} ${n === 1 ? word : many}`;
   /** Sets a player colour on an element (style objects can't hold CSS variables). */
   const tint = (node, color) => (node.style.setProperty('--c', color), node);
   const ordinal = (n) => `${n}${['th', 'st', 'nd', 'rd'][n % 100 > 10 && n % 100 < 14 ? 0 : Math.min(n % 10, 4) % 4] ?? 'th'}`;
 
-  // ---- Shared: drawing the board ----------------------------------------------------------
-  /** A board element with size × size squares (buttons on a phone, so they can be tapped). */
-  function makeBoard(size, tag) {
-    const { el } = party.ui;
-    const board = el('div', { class: 'board', style: { gridTemplateColumns: `repeat(${size}, 1fr)`, gridTemplateRows: `repeat(${size}, 1fr)` } });
-    const cells = [];
-    for (let i = 0; i < size * size; i++) {
-      const cell = el(tag, { class: 'cell', 'data-i': String(i), ...(tag === 'button' ? { type: 'button', disabled: '' } : {}) }, el('span', { class: 'nugget' }), el('span', { class: 'shape' }));
-      cells.push(cell);
-      board.append(cell);
-    }
-    return { board, cells };
-  }
-
-  /** Paints the board's squares from the game: owners, camps, gold. */
-  function paint(cells, b) {
-    cells.forEach((cell, i) => {
-      const owner = b.cells[i];
-      const shape = cell.querySelector('.shape');
-      cell.className = 'cell';
-      shape.className = 'shape';
-      cell.style.removeProperty('--c');
-      if (b.gold.includes(i)) cell.classList.add('gold');
-      if (owner >= 0) {
-        cell.classList.add('owned');
-        cell.style.setProperty('--c', COLORS[owner][0]);
-        shape.classList.add(`s-${COLORS[owner][1]}`);
-        if (b.camps[owner] === i) cell.classList.add('camp');
-      }
-    });
-  }
-
+  // ---- Shared: drawing ----------------------------------------------------------------------
   function chip(p) {
     const { el } = party.ui;
     return tint(el('span', { class: 'chip' }, el('span', { class: `shape s-${COLORS[p][1]}` })), COLORS[p][0]);
   }
+  const nug = () => party.ui.el('span', { class: 'nug', 'aria-hidden': 'true' });
+  const tntIcon = () => party.ui.el('span', { class: 'tnt', 'aria-hidden': 'true' });
 
   party.ready(({ role, me, restored }) => {
     document.body.className = role;
@@ -302,17 +260,26 @@
     const connected = (p) => party.players[p]?.connected !== false;
 
     /** The whole game, as plain JSON (party.save). */
-    let g = restored && restored.v === 1 && Array.isArray(restored.cells) ? restored : newGame();
+    let g = restored && restored.v === 2 && Array.isArray(restored.scores) ? restored : newGame();
     let ended = false;
 
     function newGame() {
-      const size = sizeFor(n);
-      const spots = ring(size);
-      const camps = shuffle([...Array(n).keys()].map((k) => spots[Math.round((k * spots.length) / n) % spots.length]));
-      const cells = Array(size * size).fill(-1);
-      camps.forEach((sq, p) => (cells[sq] = p));
       const now = party.now();
-      return { v: 1, size, cells, camps, gold: goldFor(size), turn: 0, phase: 'intro', at: now, endsAt: now + INTRO_MS, picks: {}, last: null };
+      return {
+        v: 2,
+        round: 0,
+        phase: 'intro',
+        at: now,
+        endsAt: now + INTRO_MS,
+        claims: [],
+        sizes: Array(n).fill(CREW),
+        plans: {}, // player → their plan so far (secret until the reveal)
+        locked: {}, // player → true once they press Lock in
+        hasTnt: Array(n).fill(true),
+        scores: Array(n).fill(0),
+        won: Array(n).fill(0), // claims won, for ties
+        last: null, // { results, gains }
+      };
     }
 
     function enter(phase, ms, now = party.now()) {
@@ -322,47 +289,59 @@
       changed();
     }
 
-    function startPick(now = party.now()) {
-      g.turn += 1;
-      g.picks = {};
+    function startRound(now = party.now()) {
+      g.round += 1;
+      g.claims = makeClaims(n, g.round);
+      g.sizes = crewSizes(g.scores);
+      g.plans = {};
+      g.locked = {};
+      g.last = null;
       enter('pick', PICK_MS, now);
     }
 
     function reveal(now = party.now()) {
-      const { cells, claims, clashes } = resolve(g, g.picks);
-      g.cells = cells;
-      g.last = { claims, clashes, picks: g.picks };
-      enter('reveal', REVEAL_MS, now);
+      const plans = [...Array(n).keys()].map((p) => g.plans[p] ?? null);
+      const { results, gains } = resolveRound(g.claims, plans, n);
+      for (let p = 0; p < n; p++) {
+        g.scores[p] += gains[p];
+        if (plans[p]?.tnt !== null && plans[p]?.tnt !== undefined) g.hasTnt[p] = false;
+      }
+      for (const r of results) if (r.winner >= 0) g.won[r.winner] += 1;
+      g.last = { results, gains };
+      enter('reveal', revealMs(g.claims.length), now);
     }
 
     function timeUp(now) {
-      if (g.phase === 'intro') return startPick(now);
+      if (g.phase === 'intro') return startRound(now);
       if (g.phase === 'pick') return reveal(now);
-      if (g.phase === 'reveal') return g.turn >= TURNS ? enter('end', END_MS, now) : startPick(now);
+      if (g.phase === 'reveal') return enter('scores', SCORES_MS, now);
+      if (g.phase === 'scores') return g.round >= ROUNDS ? enter('end', END_MS, now) : startRound(now);
       if (g.phase === 'end' && !ended) {
         ended = true;
         g.phase = 'over';
         party.save(g);
-        const order = standings(g, n);
-        party.end({ rankings: order.map((p) => ids[p]), scores: Object.fromEntries(order.map((p) => [ids[p], pointsOf(g, p)])) });
+        const order = standings(g.scores, g.won);
+        party.end({ rankings: order.map((p) => ids[p]), scores: Object.fromEntries(order.map((p) => [ids[p], g.scores[p]])) });
       }
     }
 
-    /** A player is done picking when they picked, or there's nowhere they can go. */
-    const isDone = (p) => p in g.picks || Object.keys(movesFor(g, p)).length === 0;
     function checkEarly() {
       if (g.phase !== 'pick') return;
       const here = [...Array(n).keys()].filter(connected);
-      if (here.length > 0 && here.every(isDone)) reveal();
+      if (here.length > 0 && here.every((p) => g.locked[p])) reveal();
     }
 
-    // -- What phones send: every pick is checked. --
+    // -- What phones send: every plan is checked. A draft counts if time runs out. --
     party.on('event', (from, data) => {
       const p = ids.indexOf(from);
-      if (p < 0 || ended || g.phase !== 'pick' || !data || typeof data !== 'object') return;
-      const sq = data.pick;
-      if (!Number.isInteger(sq) || !(sq in movesFor(g, p))) return;
-      g.picks[p] = sq;
+      if (p < 0 || ended || g.phase !== 'pick' || g.locked[p] || !data || typeof data !== 'object') return;
+      const plan = checkPlan(data.plan, g.claims.length, g.sizes[p], g.hasTnt[p]);
+      if (!plan) return;
+      g.plans[p] = plan;
+      if (data.lock === true) {
+        g.locked[p] = true;
+        sound('tap');
+      }
       changed();
       checkEarly();
     });
@@ -372,52 +351,49 @@
       checkEarly();
     });
 
-    // -- Every phone: the public board, plus its own moves, pick and news. --
+    // -- Every phone: the public claims, plus its own plan and news. --
     function newsFor(p) {
-      if (!g.last) return null;
-      const bits = [];
-      let tone = '';
-      for (const [sq, who, prev] of g.last.claims) {
-        if (who === p && prev === -1) bits.push(g.gold.includes(sq) ? 'You struck gold! +3' : 'You claimed a square.');
-        else if (who === p) { bits.push(`You jumped ${nameOf(prev)}'s ${g.gold.includes(sq) ? 'gold' : 'square'}!`); tone = 'good'; }
-        else if (prev === p) { bits.push(`${nameOf(who)} jumped one of yours.`); tone = 'bad'; }
-      }
-      for (const [, ps] of g.last.clashes) {
-        if (ps.includes(p)) {
-          const others = ps.filter((q) => q !== p).map(nameOf);
-          bits.push(`Clash with ${others.join(' and ')}: nobody got it.`);
-          tone = 'bad';
-        }
-      }
-      if (!(p in g.last.picks) && bits.length === 0) bits.push('You skipped this turn.');
-      return bits.length ? { text: bits.join(' '), tone } : null;
+      if (!g.last) return [];
+      const out = [];
+      g.last.results.forEach((r, i) => {
+        const mine = r.crews.find(([q]) => q === p)?.[1] ?? 0;
+        const claim = `Claim ${LETTERS[i]}`;
+        if (r.boom.includes(p)) out.push(`You blew up ${claim}${r.boom.length > 1 ? ` (so did ${r.boom.filter((q) => q !== p).map(nameOf).join(' and ')})` : ''}.`);
+        else if (r.boom.length && mine) out.push(`${r.boom.map(nameOf).join(' and ')} blew up ${claim} under your crew.`);
+        else if (r.winner === p) out.push(`You took ${claim}: +${r.value} gold!`);
+        else if (r.jumped.includes(p)) out.push(`${claim} was jumped: you tied with ${r.jumped.filter((q) => q !== p).map(nameOf).join(' and ')}.`);
+        else if (mine) out.push(`${nameOf(r.winner)} outbid you on ${claim}.`);
+      });
+      if (out.length === 0) out.push('You sat this round out.');
+      return out;
     }
 
     function phoneState(id) {
       const p = ids.indexOf(id);
       const s = {
         phase: g.phase,
-        at: g.at,
         endsAt: g.endsAt,
-        turn: g.turn,
-        turns: TURNS,
-        size: g.size,
-        cells: g.cells,
-        camps: g.camps,
-        gold: g.gold,
+        round: g.round,
+        rounds: ROUNDS,
         me: p,
-        points: pointsOf(g, p),
-        gotGold: goldOf(g, p),
+        gold: g.scores[p],
+        hasTnt: g.hasTnt[p],
       };
       if (g.phase === 'pick') {
-        s.moves = movesFor(g, p);
-        s.picked = g.picks[p] ?? null;
+        s.claims = g.claims.map((c) => (c.mystery ? { mystery: true, lode: g.round === ROUNDS } : { value: c.value }));
+        s.size = g.sizes[p];
+        s.bonus = g.sizes[p] > CREW;
+        s.plan = g.plans[p] ?? null;
+        s.locked = Boolean(g.locked[p]);
       }
-      if (g.phase === 'reveal') s.news = newsFor(p);
+      if (g.phase === 'scores') {
+        s.news = newsFor(p);
+        s.gain = g.last.gains[p];
+      }
       if (g.phase === 'end' || g.phase === 'over') {
-        const order = standings(g, n);
+        const order = standings(g.scores, g.won);
         s.place = order.indexOf(p) + 1;
-        const top = order.filter((q) => pointsOf(g, q) === pointsOf(g, order[0]) && goldOf(g, q) === goldOf(g, order[0]));
+        const top = order.filter((q) => g.scores[q] === g.scores[order[0]] && g.won[q] === g.won[order[0]]);
         s.won = top.includes(p);
         s.tied = s.won && top.length > 1;
       }
@@ -442,111 +418,137 @@
     const side = el('div', { class: 'side' });
     const say = el('p', { class: 'say' });
     root.append(stage, side, say);
-    const { board, cells } = makeBoard(g.size, 'div');
-    stage.append(board);
-    let overlay = null;
     let shown = '';
+    let timers = [];
 
-    function render() {
-      paint(cells, g);
-      turnEl.textContent = g.turn > 0 ? `Turn ${Math.min(g.turn, TURNS)} of ${TURNS}` : '';
-      barEl.classList.toggle('off', g.phase !== 'pick');
+    function sidePanel() {
+      // During the reveal, the scores from before it: the claims tell who won, one at a time.
+      const shownScores = g.phase === 'reveal' && g.last ? g.scores.map((x, p) => x - g.last.gains[p]) : g.scores;
+      const order = standings(shownScores, g.won);
+      const lead = shownScores[order[0]];
+      const allTied = order.every((p) => shownScores[p] === lead);
+      side.replaceChildren(...order.map((p) => {
+        let right;
+        if (g.phase === 'pick') right = el('span', { class: `tick ${g.locked[p] ? 'on' : 'off'}`, 'aria-label': g.locked[p] ? 'locked in' : 'planning' });
+        else if (g.phase === 'scores' && g.last?.gains[p]) right = el('span', { class: 'gain' }, `+${g.last.gains[p]}`);
+        else right = el('span', { class: 'gain' });
+        return el('div', { class: `row${shownScores[p] === lead && !allTied ? ' lead' : ''}${connected(p) ? '' : ' away'}` },
+          chip(p),
+          el('span', { class: 'name' }, nameOf(p), g.hasTnt[p] ? tntIcon() : null),
+          el('span', { class: 'pts' }, nug(), String(shownScores[p])),
+          right);
+      }));
+    }
 
-      // The side panel: everyone by points; during a pick, a tick once they've picked.
-      const order = standings(g, n);
-      const lead = pointsOf(g, order[0]);
-      const allTied = order.every((p) => pointsOf(g, p) === lead);
-      side.replaceChildren(
-        ...order.map((p) =>
-          el(
-            'div',
-            { class: `row${pointsOf(g, p) === lead && !allTied ? ' lead' : ''}${connected(p) ? '' : ' away'}` },
-            chip(p),
-            el('span', { class: 'name' }, nameOf(p)),
-            el('span', { class: 'au' }, String(goldOf(g, p))),
-            g.phase === 'pick' ? el('span', { class: `tick ${isDone(p) ? 'on' : 'off'}`, 'aria-label': isDone(p) ? 'picked' : 'picking' }) : el('span', { class: 'pts' }, String(pointsOf(g, p))),
-          ),
-        ),
-      );
+    /** The claims as plots on the map, each slightly crooked, with room for the crews. */
+    function plots() {
+      return el('div', { class: 'claims' }, g.claims.map((c, i) => {
+        const card = el('div', { class: `claim${c.mystery ? ' mystery' : ''}`, 'data-i': String(i) },
+          el('div', { class: 'letter' }, `Claim ${LETTERS[i]}`),
+          el('div', { class: 'value' }, nug(), el('span', { class: 'v' }, c.mystery ? '?' : String(c.value))),
+          el('div', { class: 'crews' }),
+          el('div', { class: 'verdict' }));
+        card.style.setProperty('--tilt', `${[-1.5, 1, -0.5, 1.5, -1, 0.5, -1.2][i % 7]}deg`);
+        return card;
+      }));
+    }
 
-      const key = `${g.phase}-${g.at}`;
-      const fresh = key !== shown;
-      shown = key;
-      if (g.phase === 'pick') {
-        const picked = Object.keys(g.picks).length;
-        say.textContent = `Pick a square on your phone (${picked} of ${n} picked)`;
-      }
-      if (!fresh) return;
-
-      overlay?.remove();
-      overlay = null;
-      if (g.phase === 'intro') {
-        // Tiny pictures of the rules: [player or -1, extra classes] per square.
-        const mini = (squares) =>
-          el('div', { class: 'mini' }, ...squares.map(([p, cls = '']) => {
-            const owned = p >= 0 ? ` owned` : '';
-            const cell = el('div', { class: `cell${owned} ${cls}` }, el('span', { class: 'nugget' }), el('span', { class: `shape s-${COLORS[Math.max(p, 0)][1]}` }));
-            return p >= 0 ? tint(cell, COLORS[p][0]) : cell;
-          }));
-        overlay = el(
-          'div',
-          { class: 'overlay' },
-          el('h1', {}, 'Claim Jumpers'),
-          el(
-            'ul',
-            { class: 'rules' },
-            el('li', {}, mini([[0], [-1, 'hint'], [-1]]), 'Each turn, everyone secretly picks a square next to their land.'),
-            el('li', {}, mini([[-1], [-1, 'gold'], [-1]]), 'Gold squares are worth 3 points.'),
-            el('li', {}, mini([[0], [-1, 'hint cross'], [1]]), 'Two people pick the same square? Nobody gets it.'),
-            el('li', {}, mini([[0], [1, 'hint-jump'], [0]]), 'Touch a rival’s square on 2 sides to jump it. Camps are safe.'),
-          ),
-        );
-        stage.append(overlay);
-        say.textContent = `${TURNS} turns. Most points wins.`;
-      } else if (g.phase === 'pick') {
-        if (g.turn === TURNS) sound('go');
-      } else if (g.phase === 'reveal') {
-        animateReveal();
-      } else if (g.phase === 'end' || g.phase === 'over') {
-        const winners = order.filter((p) => pointsOf(g, p) === lead && goldOf(g, p) === goldOf(g, order[0]));
-        overlay = el(
-          'div',
-          { class: 'overlay' },
-          el('h2', {}, winners.length > 1 ? `${winners.map(nameOf).join(' and ')} tie!` : `${nameOf(winners[0])} wins!`),
-          el('div', { class: 'row lead', style: { fontSize: '1.8rem' } }, chip(winners[0]), el('span', { class: 'name' }, nameOf(winners[0])), el('span', { class: 'au' }, String(goldOf(g, winners[0]))), el('span', { class: 'pts' }, `${lead} points`)),
-        );
-        stage.append(overlay);
-        say.textContent = 'Final map';
-        setTimeout(() => sound('win'), 300);
+    function showResult(card, r, animate) {
+      card.querySelector('.v').textContent = String(r.value);
+      const crews = card.querySelector('.crews');
+      crews.replaceChildren(...r.crews.map(([p, k], j) => {
+        // The shape and colour say whose crew it is (the side panel has the names); a name won't fit 7 across.
+        const row = el('div', { class: `crew${p === r.winner ? ' top' : ''}`, 'aria-label': `${nameOf(p)}: ${k}` }, chip(p), el('span', { class: 'n' }, String(k)));
+        row.style.animationDelay = animate ? `${j * 120}ms` : '0ms';
+        return row;
+      }));
+      const verdict = card.querySelector('.verdict');
+      if (r.boom.length) {
+        card.classList.add('blown-up');
+        verdict.textContent = `BOOM! ${r.boom.map(nameOf).join(' & ')} blew it up`;
+        if (animate) {
+          card.append(tint(el('span', { class: 'burst' }), 'var(--nugget)'));
+          sound({ notes: [140, 70, 50], ms: 160, type: 'sawtooth', volume: 0.35 });
+        }
+      } else if (r.winner >= 0) {
+        card.classList.add('won');
+        verdict.textContent = `${nameOf(r.winner)} +${r.value}`;
+        if (animate) sound(r.value > 0 ? 'coin' : 'pop');
+      } else if (r.jumped.length) {
+        card.classList.add('jumped');
+        verdict.textContent = 'CLAIM JUMPED! Nobody gets it';
+        if (animate) {
+          card.append(tint(el('span', { class: 'burst' }), 'var(--jump)'));
+          sound('buzz');
+        }
+      } else {
+        card.classList.add('dim');
+        verdict.textContent = 'Nobody came';
       }
     }
 
-    function animateReveal() {
-      const { claims, clashes } = g.last;
-      const jumps = claims.filter(([, , prev]) => prev >= 0);
-      const parts = [plural(claims.length - jumps.length, 'claim'), plural(jumps.length, 'jump'), plural(clashes.length, 'clash', 'clashes')];
-      say.replaceChildren(...[0, 1, 2].flatMap((k) => [k ? ', ' : '', el('span', { class: k === 2 && clashes.length ? 'clash' : '' }, parts[k])]));
-      claims.forEach(([sq, , prev], k) => {
-        const cell = cells[sq];
-        const delay = k * 90;
-        cell.style.animationDelay = `${delay}ms`;
-        if (prev >= 0) {
-          cell.style.setProperty('--from', COLORS[prev][0]);
-          cell.classList.add('flip');
-          setTimeout(() => sound({ notes: [300, 600], ms: 90, type: 'square', volume: 0.3 }), delay);
-        } else {
-          cell.classList.add('pop');
-          setTimeout(() => sound(g.gold.includes(sq) ? 'coin' : 'pop'), delay);
-        }
-      });
-      clashes.forEach(([sq, ps], k) => {
-        const cell = cells[sq];
-        cell.classList.add('clash');
-        const burst = el('span', { class: 'burst' }, ...ps.slice(0, 4).map((p, j) => tint(el('i', { style: { left: `${[0, 66, 0, 66][j]}%`, top: `${[0, 0, 66, 66][j]}%` } }), COLORS[p][0])));
-        cell.append(burst);
-        setTimeout(() => burst.remove(), 1700);
-        setTimeout(() => sound('buzz'), 350 + k * 150);
-      });
+    function render() {
+      sidePanel();
+      const lode = g.round === ROUNDS;
+      turnEl.textContent = g.round > 0 ? (lode ? 'MOTHER LODE' : `Round ${g.round} of ${ROUNDS}`) : '';
+      turnEl.classList.toggle('lode', lode);
+      barEl.classList.toggle('off', g.phase !== 'pick');
+      if (g.phase === 'pick') {
+        const locked = Object.keys(g.locked).length;
+        say.textContent = `Send your prospectors on your phone (${locked} of ${n} locked in)`;
+      }
+
+      const wide = g.phase === 'intro' || g.phase === 'end' || g.phase === 'over';
+      stage.classList.toggle('wide', wide);
+      side.hidden = wide;
+
+      const key = `${g.phase}-${g.at}`;
+      if (key === shown) return;
+      shown = key;
+      timers.forEach(clearTimeout);
+      timers = [];
+
+      if (g.phase === 'intro') {
+        stage.replaceChildren(el('div', { class: 'overlay' },
+          el('h1', {}, 'Claim Jumpers'),
+          el('ul', { class: 'rules' },
+            el('li', {}, el('span', { class: 'ico' }, '5'), 'Secretly send your 5 prospectors to the claims.'),
+            el('li', {}, el('span', { class: 'ico' }, nug()), 'The biggest crew on a claim takes its gold.'),
+            el('li', {}, el('span', { class: 'ico', style: { color: 'var(--jump)' } }, '='), 'Tie for biggest? Claim jumped: nobody gets it.'),
+            el('li', {}, el('span', { class: 'ico' }, tntIcon()), 'Dynamite, once a game: nobody gets that claim.'),
+            el('li', {}, el('span', { class: 'ico' }, '+1'), `Last place gets a 6th prospector. Round ${ROUNDS}: double gold!`))));
+        say.textContent = `${ROUNDS} rounds. Most gold wins.`;
+      } else if (g.phase === 'pick') {
+        stage.replaceChildren(plots());
+        if (lode) sound('go');
+      } else if (g.phase === 'reveal') {
+        // Reloaded partway through: the claims already shown appear at once.
+        const board = plots();
+        stage.replaceChildren(board);
+        const cards = [...board.children];
+        const passed = Math.floor((party.now() - g.at) / STEP_MS);
+        g.last.results.forEach((r, i) => {
+          if (i < passed) showResult(cards[i], r, false);
+          else timers.push(setTimeout(() => showResult(cards[i], r, true), (i - Math.max(passed, 0)) * STEP_MS + 400));
+        });
+        const jumps = g.last.results.filter((r) => r.jumped.length).length;
+        say.textContent = jumps ? plural(jumps, 'claim') + ' jumped this round!' : 'The crews march in…';
+      } else if (g.phase === 'scores') {
+        const board = plots();
+        stage.replaceChildren(board);
+        g.last.results.forEach((r, i) => showResult(board.children[i], r, false));
+        const best = Math.max(...g.last.gains);
+        const top = g.last.gains.map((x, p) => [x, p]).filter(([x]) => x === best && x > 0).map(([, p]) => nameOf(p));
+        say.textContent = top.length ? `Best round: ${top.join(' and ')} (+${best})` : 'Nobody struck gold this round!';
+      } else if (g.phase === 'end' || g.phase === 'over') {
+        const order = standings(g.scores, g.won);
+        const winners = order.filter((p) => g.scores[p] === g.scores[order[0]] && g.won[p] === g.won[order[0]]);
+        stage.replaceChildren(el('div', { class: 'overlay' },
+          el('h2', {}, winners.length > 1 ? `${winners.map(nameOf).join(' and ')} tie!` : `${nameOf(winners[0])} wins!`),
+          el('div', { class: 'row lead', style: { fontSize: '1.8rem' } }, chip(winners[0]), el('span', { class: 'name' }, nameOf(winners[0])), el('span', { class: 'pts' }, nug(), `${g.scores[winners[0]]} gold`), el('span'))));
+        say.textContent = 'The rush is over';
+        timers.push(setTimeout(() => sound('win'), 300));
+      }
     }
 
     // -- The map behind everything: slow contour lines. --
@@ -610,70 +612,43 @@
     changed();
   }
 
-  // ---- A phone: your view of the map, and your secret pick ------------------------------
+  // ---- A phone: your prospectors, and your secret plan ----------------------------------
   function phone(me) {
     const { el, timer, sound } = party.ui;
     const root = document.getElementById('phone');
     root.hidden = false;
     let s = null;
-    let built = null; // { size, board, cells }
+    let plan = null; // this round's plan as you build it: { crew: [...], tnt }
+    let planFor = null;
     let timerFor = null;
     let tm = null;
 
     const head = el('div', { class: 'me' });
     const status = el('p', { class: 'status' });
     const clock = el('div');
-    const boardBox = el('div');
-    const note = el('p', { class: 'note' });
-    const legend = el('p', { class: 'legend' }, el('span', {}, el('i', { class: 'l1' }), 'claim'), el('span', {}, el('i', { class: 'l2' }), 'jump (touching on 2 sides)'));
-    const result = el('div', { class: 'result' });
-    root.append(head, status, clock, boardBox, note, el('div', { class: 'grow' }), legend, result);
+    const body = el('div', { class: 'stack' });
+    root.append(head, status, clock, body);
     status.textContent = 'Waiting for the big screen…';
-    legend.hidden = true;
 
     party.on('state', (state) => {
       s = state;
       draw();
     });
 
-    function pick(sq) {
-      if (!s || s.phase !== 'pick' || !(sq in s.moves)) return;
+    const used = () => plan.crew.reduce((a, b) => a + b, 0);
+    function change(fn) {
+      if (!s || s.phase !== 'pick' || s.locked) return;
+      fn();
       sound('tap');
-      s.picked = sq; // show it at once; the big screen's state confirms it
+      party.send({ plan }); // a draft: it counts if time runs out before you lock in
       draw();
-      party.send({ pick: sq });
     }
 
     function draw() {
       const myName = party.players.find((p) => p.id === me)?.name ?? 'You';
-      head.replaceChildren(chip(s.me), el('span', {}, myName), el('span', { class: 'pts' }, String(s.points), el('small', {}, s.points === 1 ? 'point' : 'points')));
+      head.replaceChildren(chip(s.me), el('span', {}, myName), el('span', { class: 'pts' }, nug(), String(s.gold)));
 
-      if (!built || built.size !== s.size) {
-        const { board, cells } = makeBoard(s.size, 'button');
-        cells.forEach((cell, i) => cell.addEventListener('click', () => pick(i)));
-        built = { size: s.size, board, cells };
-        boardBox.replaceChildren(board);
-      }
-      paint(built.cells, s);
-      const moves = s.phase === 'pick' ? s.moves : {};
-      built.cells.forEach((cell, i) => {
-        if (s.cells[i] === s.me) cell.classList.add('mine');
-        const kind = moves[i];
-        cell.disabled = !kind;
-        if (kind) {
-          cell.classList.add('legal');
-          if (kind === 'jump') cell.classList.add('jump');
-          const r = Math.floor(i / s.size) + 1, c = (i % s.size) + 1;
-          cell.setAttribute('aria-label', `${kind === 'jump' ? 'Jump' : 'Claim'} row ${r} column ${c}`);
-        } else cell.removeAttribute('aria-label');
-        if (s.picked === i) {
-          cell.classList.add('picked');
-          cell.style.setProperty('--c', COLORS[s.me][0]);
-          cell.querySelector('.shape').className = `shape s-${COLORS[s.me][1]}`;
-        }
-      });
-
-      // The clock: only while picking.
+      // The clock: only while planning.
       if (s.phase === 'pick') {
         if (timerFor !== s.endsAt) {
           tm?.destroy();
@@ -688,27 +663,64 @@
         clock.replaceChildren();
       }
 
-      const canMove = Object.keys(moves).length > 0;
-      legend.hidden = s.phase !== 'pick' || !canMove;
-      note.className = 'note';
-      result.replaceChildren();
       if (s.phase === 'intro') {
         status.textContent = 'Get ready!';
-        note.textContent = `Your camp is the big ${COLORS[s.me][1]}. Grow your land from it.`;
+        body.replaceChildren(el('p', { class: 'note' }, 'Each round, send your prospectors to the claims. The biggest crew takes the gold; a tie for biggest gets nothing.'));
       } else if (s.phase === 'pick') {
-        status.textContent = `Turn ${s.turn} of ${s.turns}: pick a square`;
-        if (!canMove) note.textContent = 'No square you can reach: you skip this turn.';
-        else if (s.picked !== null && s.picked !== undefined) note.textContent = 'Picked. You can change it until time’s up.';
-        else note.textContent = 'Tap a glowing square.';
+        if (planFor !== s.round) {
+          plan = s.plan ? { crew: [...s.plan.crew], tnt: s.plan.tnt } : { crew: s.claims.map(() => 0), tnt: null };
+          planFor = s.round;
+        }
+        drawPlan();
       } else if (s.phase === 'reveal') {
-        status.textContent = `Turn ${s.turn} of ${s.turns}: look up!`;
-        note.textContent = s.news?.text ?? 'Look at the big screen.';
-        if (s.news?.tone) note.classList.add(s.news.tone);
+        status.textContent = `${s.round === s.rounds ? 'Mother Lode' : `Round ${s.round}`}: look up!`;
+        body.replaceChildren(el('p', { class: 'note' }, 'The crews march in on the big screen…'));
+      } else if (s.phase === 'scores') {
+        status.textContent = s.gain > 0 ? `+${s.gain} gold this round` : 'No gold this round';
+        body.replaceChildren(el('ul', { class: 'news' }, s.news.map((line) => el('li', {}, line))));
       } else if (s.phase === 'end' || s.phase === 'over') {
         status.textContent = 'Game over';
-        note.textContent = '';
-        result.append(el('b', {}, s.won ? (s.tied ? 'You tied for 1st!' : 'You win!') : `You came ${ordinal(s.place)}`), el('span', { class: 'muted' }, `${plural(s.points, 'point')}, ${plural(s.gotGold, 'gold square')}`));
+        body.replaceChildren(el('div', { class: 'result' }, el('b', {}, s.won ? (s.tied ? 'You tied for 1st!' : 'You win!') : `You came ${ordinal(s.place)}`), el('span', { class: 'muted' }, `${s.gold} gold`)));
       }
+    }
+
+    function drawPlan() {
+      const lode = s.round === s.rounds;
+      status.textContent = s.locked ? 'Locked in. Watch the others sweat.' : `${lode ? 'MOTHER LODE (double gold)' : `Round ${s.round} of ${s.rounds}`}: send your crew`;
+      const left = s.size - used();
+      const color = COLORS[s.me][0];
+      const men = el('span', { class: 'men' }, Array.from({ length: s.size }, (_, k) => tint(el('span', { class: `man${k < left ? '' : ' out'}` }), color)));
+      const nodes = [el('p', { class: 'left' }, men, `${left} of ${s.size} left${s.bonus ? ' (last place: +1!)' : ''}`)];
+
+      nodes.push(el('div', { class: 'plots' }, s.claims.map((c, i) => {
+        const k = plan.crew[i];
+        const blown = plan.tnt === i;
+        const name = `Claim ${LETTERS[i]}`;
+        const row = el('div', { class: `plot${k ? ' has' : ''}${blown ? ' blown' : ''}`, 'data-i': String(i) },
+          el('span', { class: 'val' }, nug(), c.mystery ? '?' : String(c.value)),
+          el('span', { class: 'lbl' }, name, el('small', {}, c.mystery ? `worth 0–${c.lode ? 16 : 8}` : blown ? 'dynamite!' : `${c.value} gold`)),
+          el('span', { class: 'step' },
+            el('button', { type: 'button', class: 'secondary', 'aria-label': `Fewer on ${name}`, disabled: s.locked || k === 0, onClick: () => change(() => (plan.crew[i] -= 1)) }, '−'),
+            el('span', { class: 'n', 'aria-label': `${name}: ${plural(k, 'prospector')}` }, String(k)),
+            el('button', { type: 'button', 'aria-label': `More on ${name}`, disabled: s.locked || left === 0 || blown, onClick: () => change(() => (plan.crew[i] += 1)) }, '+')),
+          s.hasTnt
+            ? el('button', { type: 'button', class: 'boom', 'aria-label': `Dynamite on ${name}`, 'aria-pressed': blown ? 'true' : 'false', disabled: s.locked, onClick: () => change(() => {
+              if (blown) plan.tnt = null;
+              else {
+                plan.tnt = i;
+                plan.crew[i] = 0; // nobody stands on the dynamite
+              }
+            }) }, tntIcon())
+            : el('span'));
+        return tint(row, color);
+      })));
+
+      if (s.locked) nodes.push(el('button', { type: 'button', class: 'big', disabled: true }, 'Locked in ✓'));
+      else {
+        nodes.push(el('button', { type: 'button', class: 'big', onClick: () => { sound('tap'); party.send({ plan, lock: true }); } }, used() === 0 && plan.tnt === null ? 'Lock in (sit this one out)' : 'Lock in'));
+        nodes.push(el('p', { class: 'note' }, s.hasTnt ? 'Your dynamite works once a game: nobody gets the claim it blows up.' : 'Your dynamite is used up.'));
+      }
+      body.replaceChildren(...nodes);
     }
   }
 </script>
