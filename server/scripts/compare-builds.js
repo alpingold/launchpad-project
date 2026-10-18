@@ -15,7 +15,8 @@
 // Saves to generator/out/<name>/: design.md (unless --fresh-design), then per build <label>-<n>/ with game.html,
 // result.json and the screenshots, and summary.md: a table of every build (passed, size,
 // attempts, tokens, time). Run it again with the same --name to add more builds. A variant with
-// "keepThinking": true also saves each attempt's thinking and whole reply as
+// "keepThinking": true also saves each attempt as it ends (so a build that's stopped or times out
+// keeps what it had), with its thinking and whole reply as
 // attempt-<n>-thinking.txt and attempt-<n>-reply.txt (plan §38), and any tool calls the server
 // split off the reply as attempt-<n>-toolcalls.txt (plan §40).
 //
@@ -117,12 +118,41 @@ const nextName = (label) => {
   return `${label}-${n}`;
 };
 
+/** Builds still going, with the attempts heard so far: saved if the script is stopped (plan §40). */
+const running = new Map();
+
+/** Each attempt's thinking, reply and tool calls as text files; returns the attempts without them. */
+async function saveAttempts(dir, attempts) {
+  for (const a of attempts) {
+    if (typeof a.thinking === 'string') await writeFile(path.join(dir, `attempt-${a.attempt}-thinking.txt`), a.thinking);
+    if (typeof a.reply === 'string') await writeFile(path.join(dir, `attempt-${a.attempt}-reply.txt`), a.reply);
+    if (typeof a.toolCalls === 'string') await writeFile(path.join(dir, `attempt-${a.attempt}-toolcalls.txt`), a.toolCalls);
+  }
+  return attempts.map(({ thinking, reply, toolCalls, ...a }) => a);
+}
+
+// Stopped (Ctrl+C, or killed): save what each unfinished build has, then the summary. Its
+// sandbox is left behind: `openshell sandbox list`, then `openshell sandbox delete <name>`.
+for (const signal of ['SIGINT', 'SIGTERM']) {
+  process.once(signal, async () => {
+    for (const [name, b] of running) {
+      const attempts = await saveAttempts(b.dir, b.heard);
+      const seconds = Math.round((Date.now() - b.started) / 1000);
+      await writeFile(path.join(b.dir, 'result.json'), JSON.stringify({ label: b.label, options: b.options, seconds, ok: false, stopped: true, error: 'stopped before the build finished', attempts }, null, 2));
+      log(`${name}: stopped; saved ${attempts.length} attempt(s)`);
+    }
+    await writeFile(path.join(outDir, 'summary.md'), await summary());
+    process.exit(130);
+  });
+}
+
 /** One build of one variant, saved in its own folder. */
 async function buildOne(label, options, run) {
   const name = nextName(label);
   const dir = path.join(outDir, name);
   await mkdir(dir);
   const started = Date.now();
+  const heard = [];
   let buildDesign = design;
   if (freshDesign) {
     const made = await designFor(name, dir, options);
@@ -134,18 +164,16 @@ async function buildOne(label, options, run) {
     buildDesign = made.design;
   }
   log(`${name}: building (${run}/${runs})`);
+  running.set(name, { dir, label, options, started, heard });
   const result = await runGeneratorInSandbox(
     { step: 'build', idea: values.idea, model, design: buildDesign, ...options },
-    { onStep: (s) => log(`  ${name}: ${s}`) },
+    { onStep: (s) => log(`  ${name}: ${s}`), onAttempt: (a) => heard.push(a) },
   );
+  running.delete(name);
   const seconds = Math.round((Date.now() - started) / 1000);
   const { screenshots, ...playtest } = result.report?.playtest ?? {};
-  for (const a of result.attempts ?? []) {
-    if (typeof a.thinking === 'string') await writeFile(path.join(dir, `attempt-${a.attempt}-thinking.txt`), a.thinking);
-    if (typeof a.reply === 'string') await writeFile(path.join(dir, `attempt-${a.attempt}-reply.txt`), a.reply);
-    if (typeof a.toolCalls === 'string') await writeFile(path.join(dir, `attempt-${a.attempt}-toolcalls.txt`), a.toolCalls);
-  }
-  const attempts = result.attempts?.map(({ thinking, reply, toolCalls, ...a }) => a);
+  // A build that timed out comes back with no attempts: keep the ones heard on the way.
+  const attempts = await saveAttempts(dir, result.attempts?.length ? result.attempts : heard);
   await writeFile(
     path.join(dir, 'result.json'),
     JSON.stringify({ label, options, seconds, ...result, attempts, source: undefined, report: result.report && { ...result.report, playtest } }, null, 2),
