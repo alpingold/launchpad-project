@@ -2127,6 +2127,31 @@ exists and trusting it's the real one. So the work is setup, not content:
   from Search Console). And links from real places: LaunchPad's page, LinkedIn, r/Purdue,
   club Discords.
 
+## 34. Dark only (decided and built 2026-10-17)
+
+**Why:** BoilerGames is played on a TV in a living room, with phones held next to it. Light
+mode made the phone screenshots and many screens look wrong, and keeping two themes meant
+every game had to be designed and checked for both.
+
+**What changed:**
+- **The site:** one set of colours, the old dark ones, in `styles.css`. The setting is gone.
+  It was the only setting, so the ⚙ button and its panel are gone too (they can come back
+  with a second setting). So is the script in `index.html` that picked a theme before the
+  first paint. `color-scheme` and `theme-color` say dark from the first paint.
+- **Games:** the frame's base colours (`base.css`) are dark only, and the platform always
+  tells games `theme: 'dark'`. Games written before this keep working: `party.theme` is
+  `'dark'`, and a `'theme'` listener simply never fires.
+- **The guide:**
+  - no `theme` in `party.ready`, no `party.theme`, no `'theme'` event;
+  - no "Both themes" advice ("the colour variables match the platform");
+  - nothing about looking right in both themes.
+  - Two official designs lost their theme remarks.
+- **The checker** plays games in dark, so new screenshots are dark. Bumper Blobs' and Comet
+  Crew's phone pictures (the light ones) were retaken. The other official games paint their
+  own scenes.
+- **Not retaken:** screenshots of AI games built before this. They change when a new version
+  of the game is built.
+
 ## Verification (how to confirm the plan worked once built)
 
 - `npm test` (root) → runs `node --test server/test`, all unit and integration tests green.
