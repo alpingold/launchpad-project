@@ -4,9 +4,11 @@ BoilerGames is a party platform: a host puts a **big screen** (a TV or laptop) i
 the room, and 1–12 players join on their **phones**. A game is **one HTML file**. The same
 file runs on the big screen and on every phone, each inside a sandboxed iframe:
 
-- **The big screen (role `"host"`) is the referee.** It holds the whole game: rules, timers,
-  physics, scores, the world. It draws the big picture for the room, and tells each phone
-  what to show.
+- **The big screen (role `"host"`) is the referee, in plain sight.** It holds the whole game:
+  rules, timers, physics, scores, the world, and every player's secrets. It draws the big
+  picture for the room, and tells each phone what to show. **Everyone in the room can see
+  it**, so it only ever shows what everyone may know. ("host" is the shared screen, not a
+  person running the game who may know everything.)
 - **Each phone (role `"player"`) is a controller.** It shows what the big screen tells it,
   and sends the player's input (taps, a joystick, a choice, a drawing) to the big screen.
 
@@ -54,7 +56,7 @@ network, so there's nothing to fetch.)
   `party` SDK, its helpers and the base styles are already loaded before your code runs.
 - **At most 100 KB.** Everything is in this one file: no other files exist.
 
-## The rules (the checks enforce them)
+## The rules (the checks enforce most of them; break none)
 
 1. **No network and no outside files.** No `fetch`, `XMLHttpRequest`, `WebSocket`,
    `import`, workers, `<script src>`, `<link>`, CDN libraries, Google Fonts, or pictures
@@ -77,6 +79,14 @@ network, so there's nothing to fetch.)
    player's turn, is the value one of the allowed ones, is the number in range.
 9. **Text from players is text.** Use `party.ui.el` or `textContent`, never `innerHTML`,
    with names or anything a player typed.
+10. **Secrets stay on their own phone.** The big screen is a TV the whole room watches.
+    Never show on it anything only some players may know (a role, a secret word, a hand of
+    cards, an answer before its reveal): not as text, and not as a hint either, like a
+    different colour or icon, the order of a list, or a caption such as "Ana is the spy".
+    Send a secret only to its owner, with `party.setState(thatPlayer, …)` or
+    `party.sendTo(thatPlayer, …)`, never to `'all'` or with `sendAll`. The big screen reveals
+    a secret only on purpose, at the moment the design's Secrets section says. No sound on a
+    phone that gives a secret away: the people next to it hear it.
 
 ## Design for the room
 
@@ -123,7 +133,7 @@ party.on('message', (data) => ...)  // one-off messages ("you were hit!")
 
 ```js
 party.on('event', (playerId, data) => ...)   // a phone's party.send
-party.setState(playerId | 'all', state)      // what a phone shows now; replaces its last state
+party.setState(playerId | 'all', state)      // what a phone shows now; replaces its last state ('all': the same for every phone, so never a secret)
 party.sendTo(playerId, data) / party.sendAll(data)   // one-off messages
 party.save(snapshot)                         // keep the game's state; see "Reloads"
 party.on('left', (playerId) => ...)          // a phone disconnected (it may come back)

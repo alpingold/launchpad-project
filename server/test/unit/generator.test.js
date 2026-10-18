@@ -178,6 +178,7 @@ test('the build prompt: the rulebook and the design; the example game only when 
   const [system, user] = buildMessages('Run and jump', design, { exampleGame: true });
   assert.match(system.content, /"name": "Bumper Blobs"/, 'the example game');
   assert.match(user.content, /<design>\n# Bumper Blobs/);
+  assert.match(system.content, /10\. \*\*Secrets stay on their own phone\.\*\*/, 'the rulebook, with the secrets rule');
 
   const [plain] = buildMessages('Run and jump', design);
   assert.doesNotMatch(plain.content, /"name": "Bumper Blobs"/, 'plan §13o: no example game by default');
