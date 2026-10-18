@@ -19,6 +19,12 @@ What the room sees, part by part: the world or board, scores, timers, whose turn
 ## Phones
 What each phone shows and its controls, phase by phase. Name the `party.ui` pieces used.
 
+## Secrets
+What only some players may know: roles, secret words, cards, answers or picks before their
+reveal. For each one: who knows it, and when (if ever) the big screen reveals it. Until
+then the big screen shows at most that someone has done something ("Ana locked in"), never
+what, and no hint of it either (a colour, an icon, the order of a list). Or `none`.
+
 ## Rules
 Step by step, from the start to the end, with numbers: timers, points, speeds, health.
 

@@ -18,6 +18,9 @@ A real-time party brawler on ice: chaotic, slippery and quick. Rounds last under
   then 1.6 s to cool down, shown by the button fading back in).
 - Wins so far.
 
+## Secrets
+none: everything happens on the big screen.
+
 ## Rules
 1. Each round: blobs start evenly spaced on a circle around the middle; 3 s countdown; then go.
 2. The joystick accelerates the blob (ice: it keeps sliding, losing half its speed per

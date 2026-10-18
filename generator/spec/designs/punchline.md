@@ -63,6 +63,11 @@ Your colour and name at the top. Big buttons at the bottom, one thumb.
   your own) to vote for.
 - **End:** "You came 2nd of 5 with 1,400 points." (or "You won!").
 
+## Secrets
+- **Each answer:** only its writer, until its matchup. Then the answers are shown **without
+  names**, and who wrote which is revealed after the votes.
+- **Each vote:** only its voter, until the matchup's reveal drops every chip at once.
+
 ## Rules
 1. **Intro** 8 s.
 2. **Writing** 75 s (rounds 1–2, two prompts) or 45 s (The Last Word, one prompt). It ends

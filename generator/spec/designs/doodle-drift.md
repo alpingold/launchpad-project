@@ -49,6 +49,10 @@ Your colour and name at the top. Big targets, the main control at the bottom.
   with who made it; tap one to vote. Your own pages can't be picked.
 - **Final:** how many votes you got and your place.
 
+## Secrets
+- **Every phrase, drawing and guess:** only the player who made it and the next player in the
+  book, until that book's reveal. The big screen shows who's done, never what they wrote or drew.
+
 ## Rules
 1. **Write:** everyone writes a phrase at once. Time runs out with nothing sent: the big
    screen picks one of the built-in suggestions for you.

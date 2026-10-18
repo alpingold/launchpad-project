@@ -48,6 +48,14 @@ No sounds on phones (a neighbour could hear a secret). Your colour and name at t
 - **Not tested:** "Sam, Ana and Lee are being tested" and your notes.
 - **Vote:** the accused's names, **Eject** / **Keep**. The accused don't vote.
 
+## Secrets
+- **Roles:** only your own phone knows yours, behind a covered card. Aliens also see the other
+  aliens. Revealed on the big screen only at the end, when each capsule flips.
+- **Hacks:** only the aliens know whom they hacked, until the hacked human's test.
+- **The prompts:** humans and aliens get different prompts, and only the reveal shows the
+  human one. **Votes** tick when cast, then show all at once. **Marks** on the crew grid are
+  private to each phone. No sounds on phones, so nobody overhears a secret.
+
 ## Rules
 1. Roles are dealt at random. 10 s to read them. The clock starts: 3 min + 1 min per player.
 2. The captain is a random player, then the next connected player in seat order after each test or failed vote.

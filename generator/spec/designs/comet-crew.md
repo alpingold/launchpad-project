@@ -67,6 +67,9 @@ and one line of what to do. The station's controls fill the bottom half.
 - **Between waves:** "Next wave you're on: GUNNER" with its one-line how-to. **End:** the
   team result and your own log line.
 
+## Secrets
+none: it's co-op, and every station's job is shown to the whole room.
+
 ## Rules
 1. 6 waves of 35 s, with a 7 s break between (10 s before the first). Hull starts at 100.
 2. **Rocks** drift in from the front (from wave 4 also from above and below). The turret's

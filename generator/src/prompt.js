@@ -59,7 +59,7 @@ export const MAX_WHOLE_FILE_LENGTH = 60 * 1024;
 export const MAX_GAME_BYTES = 100 * 1024;
 
 /** The headings every design has, in order (generator/spec/DESIGN.md). */
-export const DESIGN_HEADINGS = ['Genre and feel', 'Players', 'Big screen', 'Phones', 'Rules', 'Ending and winner', 'Length', 'Art', 'Closest example', 'Edge cases'];
+export const DESIGN_HEADINGS = ['Genre and feel', 'Players', 'Big screen', 'Phones', 'Secrets', 'Rules', 'Ending and winner', 'Length', 'Art', 'Closest example', 'Edge cases'];
 /** The headings every change plan has. */
 export const PLAN_HEADINGS = ['What changes', 'What stays the same', 'Risks'];
 

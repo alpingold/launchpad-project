@@ -74,6 +74,12 @@ Your colour and name at the top, your score, and the question.
   and **Lock bets**.
 - **Reveal and scores:** what you won or lost this question, and your place.
 
+## Secrets
+- **Each guess:** only its guesser, until the Bet phase puts every guess on the plates. Until
+  then the big screen shows only a tick when a player has locked in.
+- **Bets:** where a token goes is public as it's placed (a chip above the plate), but **how
+  many chips** are on it stays with its player until the reveal.
+
 ## Length
 Per question: 40 s guess + 30 s bets + 11 s reveal + 6 s scores, at most ~1.5 min; usually
 ~1 min, since phases end when everyone has locked in. 7 questions + intro and end: **6–10

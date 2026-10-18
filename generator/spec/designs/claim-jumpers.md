@@ -63,6 +63,10 @@ everyone ranked by score; scores are the points.
   jumped Ben's square!", "Clash with Ana: nobody got it", "Cal jumped one of yours".
 - A `tap` sound when you pick. Nothing secret is lost by sound: it doesn't say which square.
 
+## Secrets
+- **Each pick:** only its player, until the reveal. The big screen shows a ✓ when a player has
+  picked, never where, and the `tap` sound doesn't say which square.
+
 ## Length
 - Intro 10 s, then 15 turns × (up to 20 s picking, usually 8–15 s since a turn ends when
   everyone has picked, + 4 s reveal), then 12 s at the end.
