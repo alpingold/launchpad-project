@@ -313,6 +313,7 @@ test('design job: one call, the design comes back; a draft missing headings is a
   assert.equal(result.attempts[0].thinking, undefined);
   const kept = await runJob({ step: 'design', idea: 'A racing platformer for friends', keepThinking: true }, { chatFn: fakeModel([DESIGN]).chatFn });
   assert.equal(kept.attempts[0].thinking, 'Let me think.');
+  assert.equal(kept.attempts[0].reply, DESIGN);
 });
 
 test('plan job: a change gets a plan with the plan headings', async () => {

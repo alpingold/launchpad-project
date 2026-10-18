@@ -70,14 +70,14 @@ import { describeProblem } from '../../server/src/games/frameGame.js';
  * @property {number} [maxAttempts]       build
  * @property {boolean} [edits]            build: false turns edit mode off (on by default, plan §23)
  * @property {boolean} [briefThinking]    build: asks for a short plan before the file (plan §40's experiment)
- * @property {boolean} [keepThinking]     each attempt keeps the model's thinking (plan §38's look; off on the site)
+ * @property {boolean} [keepThinking]     each attempt keeps the model's thinking and whole reply (plan §38's look; off on the site)
  */
 
 /**
  * One build attempt, as the result lists it. mode: how the model answered (plan §23). An
  * "edits" attempt whose edits didn't fit the file has no source; its report lists why.
  * @typedef {{ attempt: number, mode?: 'whole' | 'edits', ok: boolean, problems: number, seconds: number,
- *   usage: { prompt_tokens?: number, completion_tokens?: number } | null, thinking?: string, outOfRoom?: true,
+ *   usage: { prompt_tokens?: number, completion_tokens?: number } | null, thinking?: string, reply?: string, outOfRoom?: true,
  *   source?: string | null, report?: import('../../server/src/games/frameGame.js').CheckReport }} AttemptResult
  */
 
@@ -146,8 +146,8 @@ export async function runJob(job, deps = {}) {
   return fail('the step must be "design" or "build"');
 }
 
-/** The model's thinking, for an attempt's record: only when the job asks (it's long). */
-const thinkingOf = (job, reply) => (job.keepThinking ? { thinking: reply.thinking ?? '' } : {});
+/** The model's thinking and whole reply, for an attempt's record: only when the job asks (they're long). */
+const thinkingOf = (job, reply) => (job.keepThinking ? { thinking: reply.thinking ?? '', reply: reply.content ?? '' } : {});
 
 const isText = (value, min) => typeof value === 'string' && value.trim().length >= min && value.length <= MAX_IDEA_LENGTH;
 
