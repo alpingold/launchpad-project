@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { formatTime } from './Admin.jsx';
 
 // The admin's "Reports" tab (plan §31c): what people sent from the /report form, newest first.
-// "Done" marks one dealt with (it stays, faded); "Delete" removes it for good.
+// "Done" marks one dealt with (it stays, faded); "Delete" removes it for good. Below them, the
+// newest reports from game pages (§31b), which are dealt with on those pages.
 
 const KIND_TEXT = { bug: 'Broken', idea: 'Idea', other: 'Other' };
 
@@ -22,11 +23,15 @@ async function call(path, { method = 'GET', body } = {}) {
 
 export default function AdminReports() {
   const [reports, setReports] = useState(null);
+  const [gameReports, setGameReports] = useState([]);
   const [error, setError] = useState(null);
 
   const refresh = useCallback(async () => {
     const res = await call('/api/admin/reports');
-    if (res.ok) setReports(res.reports);
+    if (res.ok) {
+      setReports(res.reports);
+      setGameReports(res.gameReports);
+    }
     else setError(res.message ?? 'Could not load the reports.');
   }, []);
   useEffect(() => {
@@ -87,6 +92,26 @@ export default function AdminReports() {
           </li>
         ))}
       </ul>
+
+      {gameReports.length > 0 && (
+        <section aria-labelledby="game-reports-heading">
+          <h2 id="game-reports-heading">On game pages</h2>
+          <p className="muted">The newest {gameReports.length}. Vote, mark fixed or delete them on the game's page.</p>
+          <ul className="report-list">
+            {gameReports.map((r) => (
+              <li key={r.id} className={`card site-report${r.fixed ? ' is-done' : ''}`}>
+                <p className="report-meta muted small">
+                  <a href={`/games/${encodeURIComponent(r.gameId)}#reports`}>{r.gameName ?? r.gameId}</a> · total {r.score} ·{' '}
+                  {formatTime(r.createdAt)} · {r.author}
+                  {r.device && ` · ${r.device}`}
+                  {r.fixed && ' · fixed'}
+                </p>
+                <p className="report-body">{r.body}</p>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
     </main>
   );
 }

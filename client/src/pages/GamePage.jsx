@@ -2,10 +2,11 @@ import { useEffect, useState } from 'react';
 import { usePageTitle } from '../usePageTitle.js';
 import { useCurrentUser } from '../net/auth.js';
 import AiBadge from '../components/AiBadge.jsx';
+import GameReports from '../components/GameReports.jsx';
 import { Creator, playersText, minutesText } from '../components/GameCard.jsx';
 
-// One game's page (plan §16): its screenshots, description, who made it, votes, and Host this
-// game. Its creator (or an admin) can change how it's shown here and in the catalogue: never
+// One game's page (plan §16): its screenshots, description, who made it, votes, Host this
+// game, and its bug reports (§31b). Its creator (or an admin) can change how it's shown here and in the catalogue: never
 // the game itself. Everything typed is shown as plain text.
 
 const SHOT_NAMES = { host: 'The big screen', phone: 'A phone' };
@@ -103,6 +104,7 @@ export default function GamePage({ id }) {
         </section>
       )}
       {game.canEdit && <PageEditor game={game} onSaved={setGame} />}
+      <GameReports game={game} />
     </main>
   );
 }

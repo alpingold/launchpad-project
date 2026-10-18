@@ -2129,3 +2129,99 @@ body.in-game .demo-badge-room {
 .site-report.is-done {
   opacity: 0.6;
 }
+
+/* §31b: bug reports on a game's page, like comments: the total between ▲ and ▼ on the left. */
+.game-reports {
+  margin-top: 2rem;
+}
+
+.report-new {
+  margin-bottom: 1rem;
+}
+
+.game-report {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.game-report-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.game-report .report-meta {
+  display: block; /* a line of text that wraps like one, not the admin cards' row of parts */
+  margin: 0;
+}
+
+.game-report .report-meta .report-kind {
+  margin-left: 0.5rem;
+}
+
+.game-report .report-actions {
+  margin-top: 0.35rem;
+}
+
+.report-votes {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 2.25rem;
+}
+
+.vote-arrow {
+  font: inherit;
+  font-size: 0.9rem;
+  line-height: 1;
+  width: 2rem;
+  height: 1.75rem;
+  border: none;
+  border-radius: 0.4rem;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.vote-arrow:hover:not(:disabled) {
+  background: var(--chip);
+}
+
+.vote-arrow[aria-pressed='true'] {
+  color: var(--accent);
+}
+
+.vote-arrow:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.report-score {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.report-score.is-negative {
+  color: var(--danger);
+}
+
+.game-report.is-sunk {
+  display: block;
+  padding: 0.5rem 0;
+}
+
+.report-kind.kind-fixed {
+  background: var(--good-tint);
+}
+
+.reports-fixed summary {
+  cursor: pointer;
+  font-weight: 600;
+  margin: 0.5rem 0;
+}
+
+.game-reports .report-list {
+  gap: 0;
+}

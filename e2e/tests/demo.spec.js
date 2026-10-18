@@ -1,4 +1,4 @@
-import { test, expect } from './helpers.js';
+import { test, expect, uniqueUsername } from './helpers.js';
 import { ADMIN } from '../server/accounts.js';
 
 // The demo phase (plan §31): "(demo)" on every page except during a game, the footer on most
@@ -69,5 +69,78 @@ test('sending a report: thanks, a 3-second countdown, then home; the admin reads
   await expect(report).toContainText('logged out');
   await report.getByRole('button', { name: 'Done' }).click();
   await expect(report.getByRole('button', { name: 'Not done' })).toBeVisible();
+  await admin.close();
+});
+
+/** A browser context with a fresh account, logged in. */
+async function account(browser) {
+  const context = await browser.newContext();
+  const res = await context.request.post('/api/signup', { data: { username: uniqueUsername(), password: 'test-password-123' } });
+  expect(res.status()).toBe(201);
+  const page = await context.newPage();
+  page.on('dialog', (dialog) => dialog.accept());
+  return { context, page };
+}
+
+test('bug reports on a game page: post, votes move the agreed-with ones up, −5 folds away, the admin marks fixed', async ({ browser, page }) => {
+  const tag = Date.now();
+  const [ana, ben, cal] = [await account(browser), await account(browser), await account(browser)];
+  const reports = (p) => p.locator('#reports .report-list').first().locator('> li');
+
+  for (const [who, text] of [[ana, `Useless report lol ${tag}`], [ben, `Votes in round 2 are lost ${tag}`]]) {
+    await who.page.goto('/games/stowaways');
+    await who.page.getByLabel('Report a problem').fill(text);
+    await who.page.getByRole('button', { name: 'Report', exact: true }).click();
+    await expect(who.page.locator('.game-report', { hasText: text })).toBeVisible();
+  }
+  // Newest first while nobody has voted: Ben's is on top.
+  await cal.page.goto('/games/stowaways');
+  const mine = reports(cal.page).filter({ hasText: String(tag) });
+  await expect(mine).toHaveText([/Votes in round 2/, /Useless report/]);
+
+  // Cal agrees with Ben's (+1) and not with Ana's (−1): one total each, and the order holds.
+  const report = (p, text) => p.locator('.game-report', { hasText: text });
+  await report(cal.page, 'Votes in round 2').getByRole('button', { name: "I've hit this too" }).click();
+  await expect(report(cal.page, 'Votes in round 2').locator('.report-score')).toHaveText('1');
+  await report(cal.page, 'Useless report').getByRole('button', { name: 'Not helpful' }).click();
+  await expect(report(cal.page, 'Useless report').locator('.report-score')).toHaveText('-1');
+  // Your own report: no voting on it.
+  await ana.page.reload();
+  await expect(report(ana.page, 'Useless report').getByRole('button', { name: 'Not helpful' })).toBeDisabled();
+
+  // Four more people vote Ana's down: at −5 it folds away (and can be shown again).
+  for (let i = 0; i < 4; i++) {
+    const voter = await account(browser);
+    await voter.page.goto('/games/stowaways');
+    await report(voter.page, 'Useless report').getByRole('button', { name: 'Not helpful' }).click();
+    // The fourth vote makes it −5: it folds away at once, even for the voter.
+    if (i < 3) await expect(report(voter.page, 'Useless report').locator('.report-score')).toHaveText(String(-2 - i));
+    else await expect(voter.page.locator('.game-report.is-sunk', { hasText: '(-5)' })).toBeVisible();
+    await voter.context.close();
+  }
+  await cal.page.reload();
+  await expect(cal.page.locator('.game-report', { hasText: 'Useless report' })).toHaveCount(0);
+  const sunk = cal.page.locator('.game-report.is-sunk', { hasText: 'Hidden: voted down (-5)' });
+  await expect(sunk).toBeVisible();
+  await sunk.getByRole('button', { name: 'Show' }).click();
+  await expect(report(cal.page, 'Useless report')).toBeVisible();
+
+  // The admin (the creator of an official game) marks Ben's fixed: it moves to "Fixed".
+  const admin = await browser.newContext();
+  expect((await admin.request.post('/api/login', { data: ADMIN })).status()).toBe(200);
+  const adminPage = await admin.newPage();
+  await adminPage.goto('/games/stowaways');
+  await report(adminPage, 'Votes in round 2').getByRole('button', { name: 'Mark fixed' }).click();
+  await expect(adminPage.locator('.reports-fixed summary')).toHaveText(/Fixed \(\d+\)/);
+  await expect(reports(adminPage).filter({ hasText: 'Votes in round 2' })).toHaveCount(0);
+  await adminPage.locator('.reports-fixed summary').click();
+  await expect(adminPage.locator('.reports-fixed .game-report', { hasText: 'Votes in round 2' })).toContainText('Fixed');
+
+  // Logged out: read only.
+  await page.goto('/games/stowaways');
+  await expect(page.getByRole('link', { name: 'Log in' })).toBeVisible();
+  await expect(page.getByLabel('Report a problem')).toHaveCount(0);
+  await expect(report(page, 'Useless report').locator('.report-score')).toHaveCount(0); // folded
+  for (const c of [ana, ben, cal]) await c.context.close();
   await admin.close();
 });
