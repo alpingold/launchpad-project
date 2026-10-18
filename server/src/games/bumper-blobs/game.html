@@ -178,7 +178,9 @@
     function physics(dt, now) {
       if (phase !== 'play') return;
       const elapsed = now - phaseAt;
-      if (elapsed > MELT_AFTER_MS) radius = Math.max(0, radius - MELT_SPEED * dt);
+      // From the round's own clock, not frame by frame: a slow or paused big screen still
+      // melts on time, so every round ends (plan §41).
+      radius = Math.max(0, ARENA - (MELT_SPEED * Math.max(0, elapsed - MELT_AFTER_MS)) / 1000);
 
       for (const b of blobs) {
         if (b.alive) {
