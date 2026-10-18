@@ -42,7 +42,6 @@ const ALIVE_EVERY_MS = 2000; // how often the big screen tells the server its ga
  */
 export default function GameFrame({ run, role, me = null, roomPlayers, send, onBroken }) {
   const iframeRef = useRef(null);
-  const theme = useResolvedTheme();
   const srcDoc = useMemo(() => buildFrameDocument(run.source, window.location.origin), [run.source]);
 
   // The game's players (fixed at the start), with who's connected right now.
@@ -59,7 +58,7 @@ export default function GameFrame({ run, role, me = null, roomPlayers, send, onB
   // What the message handlers need, always current, without re-subscribing.
   const live = useRef(null);
   live.current ??= { ready: false, queue: [], tokens: RATE_BURST, refilledAt: Date.now(), aliveSentAt: 0, loads: 0 };
-  Object.assign(live.current, { players, theme, send, role, me, onBroken });
+  Object.assign(live.current, { players, send, role, me, onBroken });
   const [broken, setBroken] = useState(false);
 
   // While a game is on screen, the site's links at the top stay out of the way (plan §16);
@@ -159,7 +158,7 @@ export default function GameFrame({ run, role, me = null, roomPlayers, send, onB
             role: state.role,
             me: state.me,
             players: state.players,
-            theme: state.theme,
+            theme: 'dark', // always (plan §34); games written before that may still read it
             assets,
             restored: run.restored, // the big screen's save, if this page reloaded mid-game
             clockOffset: run.clockOffset,
@@ -205,13 +204,10 @@ export default function GameFrame({ run, role, me = null, roomPlayers, send, onB
     };
   }, [run]);
 
-  // Who's connected, and the theme, can change during a game.
+  // Who's connected can change during a game.
   useEffect(() => {
     if (live.current.ready) iframeRef.current?.contentWindow?.postMessage({ type: 'players', players }, '*');
   }, [players]);
-  useEffect(() => {
-    if (live.current.ready) iframeRef.current?.contentWindow?.postMessage({ type: 'theme', theme }, '*');
-  }, [theme]);
 
   // The first load is our document. Any later one means the game loaded another page into
   // its frame (or reloaded itself): it's no longer the game that was reviewed. Remove it.
@@ -239,14 +235,3 @@ export default function GameFrame({ run, role, me = null, roomPlayers, send, onB
   );
 }
 
-/** 'light' or 'dark': what the site shows right now (settings/theme.js sets it on <html>). */
-function useResolvedTheme() {
-  const read = () => (document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light');
-  const [theme, setTheme] = useState(read);
-  useEffect(() => {
-    const observer = new MutationObserver(() => setTheme(read()));
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
-    return () => observer.disconnect();
-  }, []);
-  return theme;
-}

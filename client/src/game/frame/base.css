@@ -1,29 +1,12 @@
 /* THE BASE STYLE of every frame game (plan §13, F2): BoilerGames' look, inside the frame.
-   A game that brings no CSS of its own still looks right, in light and dark mode, on a
-   phone and on a TV. Every rule here is inside :where(), which gives it no weight at all:
-   any CSS the game writes wins, so a game can restyle or ignore all of this.
+   A game that brings no CSS of its own still looks right, on a phone and on a TV. Every
+   rule here is inside :where(), which gives it no weight at all: any CSS the game writes
+   wins, so a game can restyle or ignore all of this.
 
-   The SDK puts data-theme="light|dark" and data-role="host|player" on <html>. */
+   Dark only, like the site (plan §34). The SDK puts data-role="host|player" on <html>
+   (and data-theme="dark", for games written when there were two themes). */
 
 :root {
-  color-scheme: light;
-  --bg: #f5f5fa;
-  --surface: #ffffff;
-  --text: #1a1a2e;
-  --muted: #6b6b80;
-  --border: #e2e2f0;
-  --accent: #4a3aff;
-  --on-accent: #ffffff;
-  --good: #1a7f37;
-  --bad: #b00020;
-  --gold: #b88700;
-  --radius: 12px;
-  --font: system-ui, sans-serif;
-  --mono: ui-monospace, 'Cascadia Mono', Menlo, Consolas, monospace;
-  font-size: 16px;
-}
-
-:root[data-theme='dark'] {
   color-scheme: dark;
   --bg: #14141f;
   --surface: #1f1f2e;
@@ -35,6 +18,10 @@
   --good: #4ade80;
   --bad: #ff6b81;
   --gold: #ffd84d;
+  --radius: 12px;
+  --font: system-ui, sans-serif;
+  --mono: ui-monospace, 'Cascadia Mono', Menlo, Consolas, monospace;
+  font-size: 16px;
 }
 
 /* The big screen is seen from across the room: everything measured in rem/em grows. */
@@ -294,7 +281,7 @@
 }
 
 
-/* Drawings are always on white paper, so they look the same in light and dark mode. */
+/* Drawings are always on white paper, whatever the scene around them. */
 :where(.pu-paper) {
   display: block;
   width: 100%;

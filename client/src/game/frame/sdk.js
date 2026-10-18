@@ -8,7 +8,7 @@
 // A game is the same page on the big screen (role 'host': the referee) and on every phone
 // (role 'player': the controller):
 //
-//   party.ready(({ role, me, players, theme, restored }) => { ... })   start here, once connected
+//   party.ready(({ role, me, players, restored }) => { ... })   start here, once connected
 //   party.now()                                               server time in ms
 //   party.asset(id)                                           URL of an approved picture
 //   party.on(name, fn)                                        listen (see below)
@@ -26,7 +26,9 @@
 //                     party.on('left', fn(playerId)) / party.on('back', fn(playerId))
 //                     party.end({ rankings: [playerId, ...], scores?: { playerId: number } })
 //   Both:             party.on('players', fn(players))        [{ id, name, connected }]
-//                     party.on('theme', fn('light' | 'dark'))
+//
+// There's one theme, dark (plan §34). Games written when there were two may still read
+// `theme` (always 'dark') or listen for 'theme' (it never fires): both keep working.
 
 (function () {
   'use strict';
@@ -163,11 +165,11 @@
           role: msg.role,
           me: msg.me,
           players: copyPlayers(msg.players),
-          theme: msg.theme,
+          theme: 'dark',
           assets: msg.assets || {},
           restored: msg.restored, // the big screen's last save, after a reload (else undefined)
         });
-        document.documentElement.dataset.theme = info.theme;
+        document.documentElement.dataset.theme = 'dark';
         document.documentElement.dataset.role = info.role; // base.css makes the big screen bigger
         // The heartbeat: while this keeps ticking, the game isn't stuck. (If the game hangs,
         // this whole page hangs with it; the server notices the silence: plan §13e.)
@@ -213,12 +215,6 @@
         });
         break;
       }
-      case 'theme':
-        if (!info) return;
-        info = Object.freeze(Object.assign({}, info, { theme: msg.theme }));
-        document.documentElement.dataset.theme = msg.theme;
-        emit('theme', [msg.theme]);
-        break;
       case 'refused':
         console.warn('[party] the platform refused a message:', msg.reason);
         break;
@@ -260,7 +256,7 @@
       return info ? info.players : [];
     },
     get theme() {
-      return info ? info.theme : 'light';
+      return 'dark';
     },
 
     // A phone's events, for the big screen.

@@ -186,7 +186,7 @@ export async function playtest(source, opts = {}) {
     if (msg === null || typeof msg !== 'object' || typeof msg.type !== 'string') return;
     if (msg.type === 'loaded') {
       const restored = screen.role === 'host' ? screen.restored : undefined;
-      const init = { type: 'init', role: screen.role, me: screen.me, players: playerList(), theme: 'light', assets, restored, clockOffset: 0 };
+      const init = { type: 'init', role: screen.role, me: screen.me, players: playerList(), theme: 'dark', assets, restored, clockOffset: 0 };
       screen.page.evaluate((m) => window.__toGame(m), init).catch(() => {});
       screen.ready = true;
       screen.loadedAt = Date.now();
