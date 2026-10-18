@@ -2170,6 +2170,23 @@ every game had to be designed and checked for both.
 - **Not retaken:** screenshots of AI games built before this. They change when a new version
   of the game is built.
 
+## 35. Experiment: does the 5–15 minute rule help? (2026-10-18)
+
+The rulebook says a game lasts "about 5–15 minutes unless the idea asks for something else",
+and the design guide's Length section says "Aim for 5–15 minutes… change the design
+instead of just reporting it." The worry: it's fluff that makes the model pad games with
+extra rounds to hit a number, instead of designing what fits the idea.
+- **The switch:** the `lengthRule: false` job option (design and build steps). It drops the
+  5–15 minutes from both files. The rulebook keeps "each round takes at least about 20 s"
+  and "don't make a game longer with waiting"; the design still works out its length.
+- **Why every build gets its own design:** the rule mostly shapes the *design* (how many
+  rounds), so one shared design would hide its effect. `compare-builds --fresh-design`
+  designs first, per build, with that side's options.
+- **The test:** the same Drawful Animate-style idea as §32, 4 builds with the rule and 4
+  without. The size line stays in on both sides, so only one thing changes.
+- **What to look at:** the `minutes` each game claims, its rounds, and playing them.
+  Results go in `generator/out/length-rule/summary.md`.
+
 ## Verification (how to confirm the plan worked once built)
 
 - `npm test` (root) → runs `node --test server/test`, all unit and integration tests green.
