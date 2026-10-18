@@ -4,8 +4,8 @@
 // Builds ONE design several times with each variant of the build's options, to see what a
 // prompt change does (plan §32). The model gives a different game every time, so one build
 // per side says little: this builds each variant `runs` times, taking turns (A, B, A, B, …)
-// so both sides meet the same GenAI Studio load. Everything else stays the same: the same
-// design, idea and model.
+// so both sides meet the same GenAI Studio load (or, with --parallel, both at once). Everything
+// else stays the same: the same design, idea and model.
 //
 // Without --design, it asks the model for a design first (once) and builds that.
 // With --fresh-design, every build makes its own design first, with the variant's options: for a
@@ -15,7 +15,12 @@
 // Saves to generator/out/<name>/: design.md (unless --fresh-design), then per build <label>-<n>/ with game.html,
 // result.json and the screenshots, and summary.md: a table of every build (passed, size,
 // attempts, tokens, time). Run it again with the same --name to add more builds. A variant with
-// "keepThinking": true also saves each attempt's thinking as attempt-<n>-thinking.txt (plan §38).
+// "keepThinking": true also saves each attempt's thinking and whole reply as
+// attempt-<n>-thinking.txt and attempt-<n>-reply.txt (plan §38).
+//
+// --parallel builds each round's variants at the same time (A and B together, then again), so
+// both still meet the same GenAI Studio load. Each build is one long request at a time, well
+// under GenAI Studio's 20 requests a minute.
 //
 // Example (plan §32: does telling the model "At most 100 KB" change its games?):
 //   npm run compare-builds -- --name size-limit --idea "…" --runs 4 \
@@ -39,6 +44,7 @@ const { values } = parseArgs({
     runs: { type: 'string', default: '4' },
     model: { type: 'string' },
     variant: { type: 'string', multiple: true, default: [] },
+    parallel: { type: 'boolean', default: false },
   },
 });
 const cwd = process.env.INIT_CWD || process.cwd(); // npm runs scripts from the repo root
@@ -59,7 +65,7 @@ try {
   process.exit(2);
 }
 if (!values.name || !/^[a-z0-9-]+$/.test(values.name) || !values.idea || !(runs >= 1) || variants.length === 0 || (freshDesign && values.design)) {
-  console.error(`Usage: npm run compare-builds -- --name <name> --idea "<idea>" [--design <file> | --fresh-design] [--runs 4]
+  console.error(`Usage: npm run compare-builds -- --name <name> --idea "<idea>" [--design <file> | --fresh-design] [--runs 4] [--parallel]
        --variant <label>='<job options as JSON>' [--variant …]
   (name: lowercase letters, digits and dashes)`);
   process.exit(2);
@@ -110,43 +116,51 @@ const nextName = (label) => {
   return `${label}-${n}`;
 };
 
+/** One build of one variant, saved in its own folder. */
+async function buildOne(label, options, run) {
+  const name = nextName(label);
+  const dir = path.join(outDir, name);
+  await mkdir(dir);
+  const started = Date.now();
+  let buildDesign = design;
+  if (freshDesign) {
+    const made = await designFor(name, dir, options);
+    if (made.error) {
+      log(`${name}: no design (${made.error})`);
+      await writeFile(path.join(dir, 'result.json'), JSON.stringify({ label, options, seconds: Math.round((Date.now() - started) / 1000), ok: false, error: `no design: ${made.error}` }, null, 2));
+      return;
+    }
+    buildDesign = made.design;
+  }
+  log(`${name}: building (${run}/${runs})`);
+  const result = await runGeneratorInSandbox(
+    { step: 'build', idea: values.idea, model, design: buildDesign, ...options },
+    { onStep: (s) => log(`  ${name}: ${s}`) },
+  );
+  const seconds = Math.round((Date.now() - started) / 1000);
+  const { screenshots, ...playtest } = result.report?.playtest ?? {};
+  for (const a of result.attempts ?? []) {
+    if (typeof a.thinking === 'string') await writeFile(path.join(dir, `attempt-${a.attempt}-thinking.txt`), a.thinking);
+    if (typeof a.reply === 'string') await writeFile(path.join(dir, `attempt-${a.attempt}-reply.txt`), a.reply);
+  }
+  const attempts = result.attempts?.map(({ thinking, reply, ...a }) => a);
+  await writeFile(
+    path.join(dir, 'result.json'),
+    JSON.stringify({ label, options, seconds, ...result, attempts, source: undefined, report: result.report && { ...result.report, playtest } }, null, 2),
+  );
+  if (result.source) await writeFile(path.join(dir, 'game.html'), result.source);
+  for (const [which, url] of Object.entries(screenshots ?? {})) {
+    await writeFile(path.join(dir, `${which}.jpg`), Buffer.from(url.split(',')[1], 'base64'));
+  }
+  log(`${name}: ${result.ok ? 'passed' : `failed (${result.error})`}, ${result.source ? `${kb(result.source)} KB` : 'no file'}, ${seconds} s`);
+  for (const p of result.report?.problems ?? []) log(`  ✗ ${describeProblem(p)}`);
+}
+
 for (let run = 1; run <= runs; run++) {
-  for (const [label, options] of variants) {
-    const name = nextName(label);
-    const dir = path.join(outDir, name);
-    await mkdir(dir);
-    const started = Date.now();
-    let buildDesign = design;
-    if (freshDesign) {
-      const made = await designFor(name, dir, options);
-      if (made.error) {
-        log(`${name}: no design (${made.error})`);
-        await writeFile(path.join(dir, 'result.json'), JSON.stringify({ label, options, seconds: Math.round((Date.now() - started) / 1000), ok: false, error: `no design: ${made.error}` }, null, 2));
-        continue;
-      }
-      buildDesign = made.design;
-    }
-    log(`${name}: building (${run}/${runs})`);
-    const result = await runGeneratorInSandbox(
-      { step: 'build', idea: values.idea, model, design: buildDesign, ...options },
-      { onStep: (s) => log(`  ${name}: ${s}`) },
-    );
-    const seconds = Math.round((Date.now() - started) / 1000);
-    const { screenshots, ...playtest } = result.report?.playtest ?? {};
-    for (const a of result.attempts ?? []) {
-      if (typeof a.thinking === 'string') await writeFile(path.join(dir, `attempt-${a.attempt}-thinking.txt`), a.thinking);
-    }
-    const attempts = result.attempts?.map(({ thinking, ...a }) => a);
-    await writeFile(
-      path.join(dir, 'result.json'),
-      JSON.stringify({ label, options, seconds, ...result, attempts, source: undefined, report: result.report && { ...result.report, playtest } }, null, 2),
-    );
-    if (result.source) await writeFile(path.join(dir, 'game.html'), result.source);
-    for (const [which, url] of Object.entries(screenshots ?? {})) {
-      await writeFile(path.join(dir, `${which}.jpg`), Buffer.from(url.split(',')[1], 'base64'));
-    }
-    log(`${name}: ${result.ok ? 'passed' : `failed (${result.error})`}, ${result.source ? `${kb(result.source)} KB` : 'no file'}, ${seconds} s`);
-    for (const p of result.report?.problems ?? []) log(`  ✗ ${describeProblem(p)}`);
+  if (values.parallel) {
+    await Promise.all(variants.map(([label, options]) => buildOne(label, options, run)));
+  } else {
+    for (const [label, options] of variants) await buildOne(label, options, run);
   }
 }
 
