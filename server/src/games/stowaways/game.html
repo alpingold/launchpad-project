@@ -89,6 +89,7 @@
   .cap .tag { font-size: 0.75rem; font-weight: 900; letter-spacing: 0.08em; padding: 0.1em 0.5em; border-radius: 0.4em; background: var(--paper); color: var(--ink); }
   .cap .tag.alien { background: #7dff9b; }
   .cap .tag.no { background: var(--alarm); color: #fff; }
+  .cap .sus { font-size: 0.85rem; font-weight: 900; padding: 0.05em 0.5em; border-radius: 0.6em; background: rgba(255, 201, 74, 0.18); color: var(--amber); }
   .cap.big .pod { width: 6rem; height: 6rem; }
   .cap.big .pod::after { inset: 1.1rem; }
   .cap.big { width: 8rem; }
@@ -160,6 +161,12 @@
   .grid button.on { border-color: var(--cyan); box-shadow: inset 0 0 0 2px var(--cyan); }
   .grid button.on::after { content: ''; margin-left: auto; flex: none; width: 0.8rem; height: 0.8rem; border-radius: 50%; background: var(--cyan); }
   .grid button.pick.on { background: var(--cyan); color: var(--ink); }
+  .grid button .sus { margin-left: auto; font-size: 0.85rem; font-weight: 900; color: var(--amber); }
+  .grid button.on .sus { margin-left: 0.4rem; }
+  .hackbox { border: 2px solid #7dff9b; border-radius: 0.9rem; padding: 0.6rem; display: flex; flex-direction: column; gap: 0.5rem; background: rgba(125, 255, 155, 0.08); }
+  .hackbox b { color: #7dff9b; }
+  .hackbox .grid button.on { border-color: #7dff9b; box-shadow: inset 0 0 0 2px #7dff9b; }
+  .hackbox .grid button.on::after { background: #7dff9b; }
   .types { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; }
   .types button { padding: 0.4rem; font-size: 1.05rem; }
   .types button.on { background: var(--amber); color: var(--ink); }
@@ -282,6 +289,7 @@
 
     /** The whole game, as plain JSON (party.save). */
     let g = restored && restored.v === 1 && restored.roles ? restored : newGame();
+    g.suspects ??= {}; // a save from before suspicions (plan §36b)
     let ended = false;
 
     function newGame() {
@@ -293,7 +301,7 @@
         roles,
         hacksLeft: Object.fromEntries(aliens.map((id) => [id, 2])),
         hacks: {}, // target id → the alien who placed it, for the test being picked now
-        notes: {}, // id → the ids they marked as suspects (private)
+        suspects: {}, // id → the one crewmate they suspect now; the big screen shows the counts
         buttons: Object.fromEntries(ids.map((id) => [id, true])),
         lastPushed: {}, // in last call, everyone gets one more push
         captain: Math.floor(Math.random() * ids.length),
@@ -356,9 +364,8 @@
 
     function startPick(now = party.now()) {
       g.test = null;
-      // A clean grid for everyone at every pick: marks clear on every phone at the same moment,
-      // so for an alien, what's marked during the pick is exactly what's hacked.
-      g.notes = {};
+      // Suspicions are about the latest test: every pick starts with none.
+      g.suspects = {};
       refundHacks();
       runClock(true, now);
       enter('pick', PICK_MS, now);
@@ -488,30 +495,34 @@
 
     // -- What phones send: every event is checked. --
     const isId = (x) => typeof x === 'string' && ids.includes(x);
+    const SUSPECT_PHASES = ['pick', 'test', 'discuss', 'lastcall'];
+    /** How many suspect each player now: public (the big screen shows it), never who. */
+    function suspicion() {
+      const counts = Object.fromEntries(ids.map((id) => [id, 0]));
+      for (const t of Object.values(g.suspects)) counts[t] += 1;
+      return counts;
+    }
     party.on('event', (from, data) => {
       if (!ids.includes(from) || !data || typeof data !== 'object' || ended) return;
       const now = party.now();
       const alien = g.roles[from] === 'alien';
 
-      // A tap on the crew grid toggles your private mark, for every role, in every phase: the
-      // same thing happens on every phone, so a glance at one says nothing about its role.
-      // Every pick starts with a clean grid (startPick). For an alien, during a captain's pick
-      // (from the second test on), marking a crewmate also hacks them if it can, and unmarking
-      // takes the hack back. (A crewmate another alien already hacked stays theirs; the covered
-      // role card lists every hack.)
-      if ('note' in data && isId(data.note)) {
-        const t = data.note;
-        const mine = g.notes[from] ?? [];
-        const marking = !mine.includes(t);
-        g.notes[from] = marking ? [...mine, t] : mine.filter((x) => x !== t);
-        if (alien && g.phase === 'pick' && g.testNo > 0) {
-          if (marking && !g.hacks[t] && g.hacksLeft[from] > 0) {
-            g.hacks[t] = from;
-            g.hacksLeft[from] -= 1;
-          } else if (!marking && g.hacks[t] === from) {
-            delete g.hacks[t];
-            g.hacksLeft[from] += 1;
-          }
+      // Suspect: one crewmate at a time (tap them again to stop). Public as a count, never who.
+      if ('suspect' in data && isId(data.suspect) && data.suspect !== from && SUSPECT_PHASES.includes(g.phase)) {
+        if (g.suspects[from] === data.suspect) delete g.suspects[from];
+        else g.suspects[from] = data.suspect;
+        return changed();
+      }
+      // Hack (aliens, from their covered role card): during a captain's pick, from the second
+      // test on. Tap again to take it back. A crewmate another alien already hacked stays theirs.
+      if ('hack' in data && isId(data.hack) && data.hack !== from && alien && g.phase === 'pick' && g.testNo > 0) {
+        const t = data.hack;
+        if (!g.hacks[t] && g.hacksLeft[from] > 0) {
+          g.hacks[t] = from;
+          g.hacksLeft[from] -= 1;
+        } else if (g.hacks[t] === from) {
+          delete g.hacks[t];
+          g.hacksLeft[from] += 1;
         }
         return changed();
       }
@@ -593,14 +604,18 @@
         lastCall: g.phase === 'lastcall' || g.back?.phase === 'lastcall',
         hasButton: g.buttons[id],
         crew: ids.map((p) => ({ id: p, name: nameOf(p), color: colorOf(p)[0], away: !connected(p) })),
-        marks: g.notes[id] ?? [],
+        suspect: g.suspects[id] ?? null,
       };
       if (alien) {
         s.allies = ids.filter((p) => p !== id && g.roles[p] === 'alien').map(nameOf);
         s.hacksLeft = g.hacksLeft[id];
-        s.hacked = Object.entries(g.hacks).map(([t, by]) => `${nameOf(t)}${by === id ? '' : ` (by ${nameOf(by)})`}`);
+        s.canHack = g.phase === 'pick' && g.testNo > 0;
+        s.hacks = Object.entries(g.hacks).map(([t, by]) => ({ id: t, by: by === id ? null : nameOf(by) }));
       }
-      if (g.phase === 'pick' && s.isCaptain) s.k = Math.max(1, Math.min(testSize(ids.length), ids.filter(connected).length));
+      if (g.phase === 'pick' && s.isCaptain) {
+        s.k = Math.max(1, Math.min(testSize(ids.length), ids.filter(connected).length));
+        s.counts = suspicion();
+      }
       if (g.phase === 'test') {
         s.tested = g.test.picked.map(nameOf);
         s.type = g.test.type;
@@ -627,10 +642,10 @@
       return s;
     }
 
-    // The big screen redraws only when something PUBLIC changed: a private note or a hack
-    // must not make it flicker (the room would see that someone tapped).
+    // The big screen redraws only when something PUBLIC changed: a hack must not make it
+    // flicker (the room would see that someone tapped). Suspicion counts are public.
     let shownKey = '';
-    const publicKey = () => JSON.stringify([g.phase, g.at, g.endsAt, g.captain, g.testNo, g.buttons, g.test?.done, g.press, Object.keys(g.votes), g.verdict, g.result, party.players.map((p) => p.connected)]);
+    const publicKey = () => JSON.stringify([g.phase, g.at, g.endsAt, g.captain, g.testNo, g.buttons, g.test?.done, g.press, Object.keys(g.votes), g.verdict, g.result, party.players.map((p) => p.connected), suspicion()]);
     function changed() {
       for (const id of ids) party.setState(id, phoneState(id));
       party.save(g);
@@ -668,12 +683,13 @@
     let stage = null;
     let clockEl = null;
 
-    function capsule(id, { big = false, tag = null, tagClass = '', star = false, button = false, dim = false } = {}) {
+    function capsule(id, { big = false, tag = null, tagClass = '', star = false, button = false, dim = false, sus = 0 } = {}) {
       return el('div', { class: `cap${big ? ' big' : ''}${connected(id) ? '' : ' away'}${dim ? ' dim' : ''}` },
         star ? el('div', { class: 'star' }) : null,
         el('div', { class: 'pod', style: { background: colorOf(id)[0] } }),
         button ? el('div', { class: 'btn', title: 'Has the button' }) : null,
         el('div', { class: 'nm' }, nameOf(id)),
+        sus ? el('div', { class: 'sus', 'aria-label': `${plural(sus, 'suspect')}` }, `🔍 ${sus}`) : null,
         tag ? el('div', { class: `tag ${tagClass}` }, tag) : null);
     }
     function bar(red = false) {
@@ -727,7 +743,9 @@
         clockEl,
         el('div', { class: 'aboard' }, Array.from({ length: A }, () => el('span', { class: 'blip' })), `${plural(A, 'alien')} aboard`));
       stage = el('div', { class: 'stage' });
+      const counts = SUSPECT_PHASES.includes(p) ? suspicion() : {};
       const crew = el('div', { class: 'crew' }, ids.map((id) => capsule(id, {
+        sus: counts[id] ?? 0,
         star: id === captainId() && !showEnd,
         button: g.buttons[id] && !showEnd,
         dim: inLock.includes(id),
@@ -885,9 +903,11 @@
 
     const head = el('div', { class: 'me' });
     const roleCard = el('button', { class: 'role', type: 'button', onClick: () => { peek = !peek; drawRole(); } });
+    // An alien's hacks: under the role card, only while it's shown (a separate action from suspecting).
+    const hackBox = el('div', { class: 'hackbox', hidden: true });
     const main = el('div', { class: 'stack' });
     const foot = el('div', { class: 'stack' });
-    root.append(head, roleCard, main, el('div', { class: 'grow' }), foot);
+    root.append(head, roleCard, hackBox, main, el('div', { class: 'grow' }), foot);
     head.append(el('span', { class: 'dot' }), el('span', {}, party.players.find((p) => p.id === me)?.name ?? 'You'));
     roleCard.append('Waiting for the big screen…');
 
@@ -901,6 +921,7 @@
       const alien = s.role === 'alien';
       roleCard.className = `role${peek ? ' open' : ''}${peek && alien ? ' alien' : ''}`;
       roleCard.setAttribute('aria-label', peek ? 'Your role (tap to hide)' : 'Your role (tap to show)');
+      drawHacks();
       if (!peek) {
         roleCard.replaceChildren('Your secret role: tap to show');
         return;
@@ -910,8 +931,7 @@
         lines.push(el('b', {}, 'You are an ALIEN'));
         lines.push(el('span', { class: 'fine' }, 'Your tests are a little different. Blend in, and keep them from ejecting you.'));
         if (s.allies?.length) lines.push(el('span', { class: 'fine' }, `The other ${s.allies.length === 1 ? 'alien is' : 'aliens are'} ${listNames(s.allies)}.`));
-        lines.push(el('span', { class: 'fine' }, `Hacks left: ${s.hacksLeft}. ${s.testNo === 0 ? 'From the second test on, while' : 'While'} the captain picks, mark a crewmate to hack them: if they're picked, their test gets the other prompt. Unmark to take it back. Unused hacks come back to you.`));
-        if (s.hacked?.length) lines.push(el('span', { class: 'fine' }, `Hacked now: ${listNames(s.hacked)}.`));
+        lines.push(el('span', { class: 'fine' }, `Hacks left: ${s.hacksLeft}. A hacked crewmate who gets picked for the test gets the other prompt. ${s.canHack ? 'Hack below, while the captain picks.' : `You can hack while the captain picks${s.testNo === 0 ? ', from the second test on' : ''}.`} Unused hacks come back to you.`));
       } else {
         lines.push(el('b', {}, 'You are HUMAN'));
         lines.push(el('span', { class: 'fine' }, `Find the ${plural(s.aliens, 'alien')}. Answer honestly; look for answers that are off.`));
@@ -920,28 +940,52 @@
       roleCard.replaceChildren(...lines);
     }
 
-    function grid(onTap, chosen, { pickMode = false, disabledAway = false, notMe = false } = {}) {
+    function drawHacks() {
+      const show = peek && s.role === 'alien' && s.canHack;
+      hackBox.hidden = !show;
+      if (!show) return hackBox.replaceChildren();
+      const mine = s.hacks.filter((h) => !h.by).map((h) => h.id);
+      const theirs = Object.fromEntries(s.hacks.filter((h) => h.by).map((h) => [h.id, h.by]));
+      hackBox.replaceChildren(
+        el('b', {}, `Hack a crewmate (${s.hacksLeft} left)`),
+        el('div', { class: 'grid' }, s.crew.filter((c) => c.id !== me).map((c) => el('button', {
+          type: 'button',
+          class: mine.includes(c.id) ? 'on' : '',
+          disabled: Boolean(theirs[c.id]) || (!mine.includes(c.id) && s.hacksLeft === 0),
+          'aria-pressed': mine.includes(c.id) ? 'true' : 'false',
+          onClick: () => party.send({ hack: c.id }),
+        }, el('span', { class: 'dot', style: { background: c.color } }), c.name + (theirs[c.id] ? ` (${theirs[c.id]})` : '')))),
+      );
+    }
+
+    function grid(onTap, chosen, { pickMode = false, disabledAway = false, notMe = false, meOff = false, counts = null } = {}) {
       return el('div', { class: 'grid' }, s.crew.filter((c) => !notMe || c.id !== me).map((c) =>
         el('button', {
           type: 'button',
           class: `${chosen.includes(c.id) ? 'on' : ''}${pickMode ? ' pick' : ''}`,
-          disabled: disabledAway && c.away,
+          disabled: (disabledAway && c.away) || (meOff && c.id === me),
           'aria-pressed': chosen.includes(c.id) ? 'true' : 'false',
           onClick: () => onTap(c.id),
-        }, el('span', { class: 'dot', style: { background: c.color } }), c.name + (c.away ? ' (away)' : ''))));
+        }, el('span', { class: 'dot', style: { background: c.color } }), c.name + (c.away ? ' (away)' : ''), counts?.[c.id] ? el('span', { class: 'sus', 'aria-hidden': 'true' }, `🔍 ${counts[c.id]}`) : null)));
     }
-    const crewGrid = () => grid((id) => party.send({ note: id }), s.marks);
+    // Every name, yours too (disabled), so every phone's list looks the same.
+    const crewGrid = () => grid((id) => party.send({ suspect: id }), s.suspect ? [s.suspect] : [], { meOff: true });
+    // One timer per deadline, moved into each rebuilt screen, so a tap never restarts its bar.
+    let timerFor = null;
     const timerBox = () => {
-      const box = el('div');
-      timer(box, { endsAt: s.endsAt });
-      return box;
+      if (timerFor?.endsAt !== s.endsAt) {
+        const box = el('div');
+        timer(box, { endsAt: s.endsAt });
+        timerFor = { endsAt: s.endsAt, box };
+      }
+      return timerFor.box;
     };
     const say = (text) => el('p', { class: 'say-big' }, text);
 
     /** The main part of the phone: rebuilt only when what it shows changes. */
     function view() {
       const p = s.phase;
-      const crewKey = JSON.stringify([s.crew.map((c) => c.away), s.marks]);
+      const crewKey = JSON.stringify([s.crew.map((c) => c.away), s.suspect, s.counts]);
       const pickFor = `${p}-${s.testNo}-${s.endsAt}`;
       if (local.for !== pickFor) local = { for: pickFor, type: null, picked: [], accused: [] };
 
@@ -955,7 +999,8 @@
             grid((id) => {
               local.picked = local.picked.includes(id) ? local.picked.filter((x) => x !== id) : [...local.picked, id].slice(-s.k);
               draw(true);
-            }, local.picked, { pickMode: true, disabledAway: true }),
+            }, local.picked, { pickMode: true, disabledAway: true, counts: s.counts }),
+            el('p', { class: 'muted' }, '🔍 = how many crewmates suspect them.'),
             el('button', { class: 'big', type: 'button', disabled: !ready, onClick: () => party.send({ pick: { type: local.type, players: local.picked } }) }, 'Start test'),
             timerBox(),
           ];
@@ -987,7 +1032,7 @@
         else line = 'LAST CALL! Hit the button now if you are sure.';
         const showNext = p === 'discuss' && s.isCaptain;
         return [p + s.testNo + crewKey + showNext + s.captain, () => {
-          const nodes = [say(line), el('p', { class: 'muted' }, 'Crew (tap to mark):'), crewGrid(), timerBox()];
+          const nodes = [say(line), el('p', { class: 'muted' }, 'Who do you suspect? Tap one (again to take it back). The big screen shows how many suspect each player, never who.'), crewGrid(), timerBox()];
           if (showNext) {
             const next = el('button', { class: 'big secondary', type: 'button', disabled: party.now() < s.nextAt, onClick: () => party.send({ next: true }) }, 'Next test');
             if (party.now() < s.nextAt) setTimeout(() => (next.disabled = false), s.nextAt - party.now());
