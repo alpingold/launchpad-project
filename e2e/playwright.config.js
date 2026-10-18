@@ -39,6 +39,7 @@ export default defineConfig({
         DB_PATH: ':memory:',
         // Every test host signs up from 127.0.0.1, so lift the per-address sign-up limit.
         AUTH_ATTEMPTS_PER_WINDOW: '100000',
+        REPORTS_PER_WINDOW: '100000',
         // AI games on, using the fake generator (no Docker or API key needed).
         GENERATION_ENABLED: '1',
       },

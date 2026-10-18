@@ -24,7 +24,7 @@ function tempDir(t) {
 test('a new database gets every table and the latest version', () => {
   const db = openDatabase(':memory:');
   assert.equal(db.pragma('user_version', { simple: true }), LATEST_VERSION);
-  assert.deepEqual(tables(db), ['build_attempts', 'game_pages', 'game_versions', 'game_votes', 'genai_keys', 'generated_games', 'sessions', 'users']);
+  assert.deepEqual(tables(db), ['build_attempts', 'game_pages', 'game_report_votes', 'game_reports', 'game_versions', 'game_votes', 'genai_keys', 'generated_games', 'sessions', 'site_reports', 'users']);
 });
 
 test('an existing pre-migration database (like the one from M7) is upgraded, keeping its data, with a backup', (t) => {
@@ -40,7 +40,7 @@ test('an existing pre-migration database (like the one from M7) is upgraded, kee
   const db = openDatabase(file);
   assert.equal(db.pragma('user_version', { simple: true }), LATEST_VERSION);
   assert.deepEqual(listUsers(db), [{ id: 1, username: 'alpingold', isAdmin: false, createdAt: 1 }]);
-  assert.deepEqual(tables(db), ['build_attempts', 'game_pages', 'game_versions', 'game_votes', 'genai_keys', 'generated_games', 'sessions', 'users']);
+  assert.deepEqual(tables(db), ['build_attempts', 'game_pages', 'game_report_votes', 'game_reports', 'game_versions', 'game_votes', 'genai_keys', 'generated_games', 'sessions', 'site_reports', 'users']);
   db.close();
 
   // The copy made before migrating is the old database, untouched.
@@ -124,7 +124,7 @@ test('migration 9 (plan §23): earlier build attempts were whole files; the mode
   db.exec(SCHEMA);
   migrate(db, { migrations: MIGRATIONS.filter((m) => m.version <= 8) });
   db.prepare("INSERT INTO build_attempts (game_id, version, build, attempt, ok, created_at) VALUES ('g-1', 1, 1, 1, 0, 5)").run();
-  assert.deepEqual(migrate(db), [9]);
+  assert.deepEqual(migrate(db, { migrations: MIGRATIONS.filter((m) => m.version <= 9) }), [9]);
   assert.equal(db.prepare('SELECT mode FROM build_attempts').pluck().get(), 'whole');
   assert.throws(() => db.prepare("UPDATE build_attempts SET mode = 'diff'").run(), /CHECK constraint failed/);
 });

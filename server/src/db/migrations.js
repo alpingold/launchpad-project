@@ -217,6 +217,48 @@ export const MIGRATIONS = [
       UPDATE build_attempts SET mode = 'whole';
     `,
   },
+  {
+    version: 10,
+    description: 'bug reports: from the site-wide form, and on each game page with votes (plan §31)',
+    sql: `
+      -- Sent from the /report form. Anyone may send one, so user_id is NULL when logged out
+      -- (or once the account is deleted). page: where the form was opened from; device: e.g.
+      -- "iPhone · Safari". done_at: when an admin marked it dealt with.
+      CREATE TABLE site_reports (
+        id         INTEGER PRIMARY KEY,
+        user_id    INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        kind       TEXT    NOT NULL CHECK (kind IN ('bug', 'idea', 'other')),
+        page       TEXT,
+        body       TEXT    NOT NULL,
+        device     TEXT,
+        done_at    INTEGER,
+        created_at INTEGER NOT NULL
+      );
+
+      -- Posted on a game's page. game_id is an official game's id or a generated game's id,
+      -- so there's no foreign key (like game_pages); deleting a generated game deletes its
+      -- reports. fixed_at: when the game's creator or an admin marked it fixed.
+      CREATE TABLE game_reports (
+        id         INTEGER PRIMARY KEY,
+        game_id    TEXT    NOT NULL,
+        user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        body       TEXT    NOT NULL,
+        device     TEXT,
+        fixed_at   INTEGER,
+        created_at INTEGER NOT NULL
+      );
+      CREATE INDEX game_reports_by_game ON game_reports (game_id);
+
+      -- One vote per account per report, +1 or -1 (like game_votes). A report's total is the
+      -- sum, worked out when the list is read, so it can never drift.
+      CREATE TABLE game_report_votes (
+        report_id INTEGER NOT NULL REFERENCES game_reports(id) ON DELETE CASCADE,
+        user_id   INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        value     INTEGER NOT NULL CHECK (value IN (-1, 1)),
+        PRIMARY KEY (report_id, user_id)
+      );
+    `,
+  },
 ];
 
 /** The version a fully up-to-date database has. */

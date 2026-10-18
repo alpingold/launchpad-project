@@ -15,6 +15,9 @@ export const TABLE_NOTES = {
   genai_keys: "A user's own GenAI Studio key, encrypted; the secret that opens it is not in the database (plan §15).",
   game_pages: "What a game's creator changed about how it's shown in the catalogue, never the game file (plan §16). NULL: what the file says.",
   game_votes: 'Up/down votes: one per account per game (plan §16).',
+  site_reports: 'Sent from the /report form, by anyone: logged out, user_id is NULL (plan §31c).',
+  game_reports: "Bug reports on a game's page (plan §31b). No foreign key on game_id, like game_pages.",
+  game_report_votes: 'Up/down votes on game reports: one per account per report. The total is their sum (plan §31b).',
 };
 
 /**

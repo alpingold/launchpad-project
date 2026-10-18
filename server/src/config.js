@@ -82,6 +82,11 @@ export const config = {
   AUTH_ATTEMPTS_PER_WINDOW: Number(process.env.AUTH_ATTEMPTS_PER_WINDOW) || 10,
   AUTH_WINDOW_MS: 15 * 60 * 1000,
 
+  // Reports from the site-wide form (plan §31c) per IP address per window. Anyone may send one,
+  // logged in or not, so this is what stops one person flooding the admin's list.
+  REPORTS_PER_WINDOW: Number(process.env.REPORTS_PER_WINDOW) || 5,
+  REPORTS_WINDOW_MS: 10 * 60 * 1000,
+
   // Behind a reverse proxy (Caddy, M8) every request seems to come from the proxy itself.
   // Setting this (e.g. TRUST_PROXY=loopback) tells Express to use the visitor's real IP from
   // the X-Forwarded-For header, but only when the request came from that trusted proxy.
