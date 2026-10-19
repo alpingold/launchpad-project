@@ -76,6 +76,8 @@ test('secret crews, a claim jump, a split, dynamite, a big-screen reload, and a 
   await expect(frame(ben).getByRole('button', { name: /^Dynamite on/ })).toHaveCount(3);
   await send(ana, 'B', 1);
   await lockIn(ana);
+  // The big screen has her lock-in (and has saved it) before it reloads.
+  await expect(frame(host.page).getByLabel('locked in')).toHaveCount(1);
   await host.page.reload();
   await expect(frame(host.page).getByText('Round 4 of 7')).toBeVisible({ timeout: 15_000 });
   await expect(frame(host.page).getByLabel('locked in')).toHaveCount(1);
