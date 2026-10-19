@@ -4,7 +4,7 @@ import { requireJsonPosts } from './requireJson.js';
 import { GenerationError } from '../generation/service.js';
 import { gameStatus, mainVersion, listBuildAttempts } from '../db/generatedGames.js';
 import { changedLines } from '../generation/lineDiff.js';
-import { isAdminUser } from '../db/users.js';
+import { isAdminUser, usernamesById } from '../db/users.js';
 
 /**
  * Admin routes (plan §11 A5, versions §12e K6), mounted under /api/admin. Every route needs
@@ -23,6 +23,10 @@ import { isAdminUser } from '../db/users.js';
  *   POST   /api/admin/generations/:id/versions/:v/discard               → { game }       the newest version only
  *   POST   /api/admin/generations/:id/versions/:v/playtest → { game }   only you can start that version
  *   POST   /api/admin/generations/:id/publish        → { game }   the playtest version goes to everyone
+ *   Asking to publish (plan §44):
+ *   POST   /api/admin/generations/:id/submit         → { game }   its creator asks for the playtest version
+ *   POST   /api/admin/generations/:id/withdraw       → { game }   ...and takes it back
+ *   POST   /api/admin/generations/:id/send-back { note } → { game }   not published (yet), with a note (admins)
  *   POST   /api/admin/generations/:id/stop-playtest  → { game }
  *   POST   /api/admin/generations/:id/unpublish      → { game }   no version for other hosts any more
  *   DELETE /api/admin/generations/:id                → 204        the game and all its versions
@@ -66,7 +70,7 @@ export function createAdminRouter({ db, generation, mine = false }) {
   }
 
   /** The list view: no code (it can be long), just what the admin page's table shows. */
-  const summary = (game) => {
+  const summary = (game, names = usernamesById(db)) => {
     const main = mainVersion(game);
     const latest = game.versions.at(-1);
     return {
@@ -78,6 +82,12 @@ export function createAdminRouter({ db, generation, mine = false }) {
       model: latest.model,
       error: latest.status === 'failed' ? latest.error : null,
       ownerUserId: game.ownerUserId,
+      ownerName: names.get(game.ownerUserId) ?? null,
+      // Asking to publish (plan §44): waiting while the request is for the version being playtested.
+      waitingForApproval: game.submittedVersion !== null && game.submittedVersion === game.playtestVersion,
+      submittedAt: game.submittedAt,
+      reviewNote: game.reviewNote,
+      reviewedAt: game.reviewedAt,
       publishedVersion: game.publishedVersion,
       playtestVersion: game.playtestVersion,
       latestVersion: latest.version,
@@ -140,7 +150,8 @@ export function createAdminRouter({ db, generation, mine = false }) {
       const games = mine ? generation.list().filter((g) => g.ownerUserId === req.user.id) : generation.list();
       // canGenerate: whether this person's jobs can run at all (their own key, or an admin).
       const info = { ...generation.info(), canGenerate: generation.hasKey(req.user.id), isAdmin: isAdminUser(db, req.user.id) };
-      res.json({ info, games: games.map(summary) });
+      const names = usernamesById(db);
+      res.json({ info, games: games.map((g) => summary(g, names)) });
     }),
   );
 
@@ -212,6 +223,29 @@ export function createAdminRouter({ db, generation, mine = false }) {
       '/generations/:id/publish',
       handle(async (req, res) => {
         res.json({ game: detail(await generation.publish(req.params.id)) });
+      }),
+    );
+  }
+
+  router.post(
+    '/generations/:id/submit',
+    handle((req, res) => {
+      res.json({ game: detail(generation.submit(req.params.id)) });
+    }),
+  );
+
+  router.post(
+    '/generations/:id/withdraw',
+    handle((req, res) => {
+      res.json({ game: detail(generation.withdraw(req.params.id)) });
+    }),
+  );
+
+  if (!mine) {
+    router.post(
+      '/generations/:id/send-back',
+      handle((req, res) => {
+        res.json({ game: detail(generation.sendBack(req.params.id, req.body?.note)) });
       }),
     );
   }

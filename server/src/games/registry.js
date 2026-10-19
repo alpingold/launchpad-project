@@ -25,6 +25,12 @@ export class GameRegistry {
   constructor() {
     /** @type {Map<string, { game: import('./frameGame.js').FrameGame, meta: GameMeta }>} */
     this.entries = new Map();
+    /**
+     * May this user see someone else's playtest game (by its base id)? The server sets this:
+     * an admin, while its creator has asked to publish it (plan §44), so they can try it first.
+     * @type {(baseId: string, userId: number) => boolean}
+     */
+    this.canReview = () => false;
   }
 
   /**
@@ -57,7 +63,7 @@ export class GameRegistry {
    */
   get(id, { userId = null } = {}) {
     const entry = this.entries.get(id);
-    return entry && isVisible(entry.meta, userId) ? entry.game : undefined;
+    return entry && this.isVisible(entry.meta, userId) ? entry.game : undefined;
   }
 
   /**
@@ -69,7 +75,7 @@ export class GameRegistry {
    */
   shot(id, which, { userId = null } = {}) {
     const entry = this.entries.get(id);
-    if (!entry || !isVisible(entry.meta, userId) || !Object.hasOwn(entry.meta.shots, which)) return undefined;
+    if (!entry || !this.isVisible(entry.meta, userId) || !Object.hasOwn(entry.meta.shots, which)) return undefined;
     return entry.meta.shots[which];
   }
 
@@ -81,7 +87,7 @@ export class GameRegistry {
    */
   list({ userId = null } = {}) {
     return [...this.entries.values()]
-      .filter(({ meta }) => isVisible(meta, userId))
+      .filter(({ meta }) => this.isVisible(meta, userId))
       .map(({ game: { id, name, description, minPlayers, maxPlayers, tags, minutes }, meta }) => ({
         id,
         name,
@@ -98,10 +104,11 @@ export class GameRegistry {
         ...(meta.source === 'generated' && { status: meta.status, version: meta.version }),
       }));
   }
-}
 
-/** Official and published games are for everyone; a playtest game only for its owner. */
-function isVisible(meta, userId) {
-  if (meta.source === 'official' || meta.status === 'published') return true;
-  return meta.status === 'playtest' && userId !== null && userId === meta.ownerUserId;
+  /** Official and published games are for everyone; a playtest game for its owner (and reviewers). */
+  isVisible(meta, userId) {
+    if (meta.source === 'official' || meta.status === 'published') return true;
+    if (meta.status !== 'playtest' || userId === null) return false;
+    return userId === meta.ownerUserId || this.canReview(meta.baseId, userId);
+  }
 }

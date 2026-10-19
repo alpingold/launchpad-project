@@ -259,6 +259,19 @@ export const MIGRATIONS = [
       );
     `,
   },
+  {
+    version: 11,
+    description: 'asking for a game to be published, and the admin sending it back (plan §44)',
+    sql: `
+      -- submitted_version: the playtest version its creator asked to publish (NULL: not
+      -- asked). review_note: why an admin sent it back, shown to the creator until they ask
+      -- again. Times are in ms.
+      ALTER TABLE generated_games ADD COLUMN submitted_version INTEGER;
+      ALTER TABLE generated_games ADD COLUMN submitted_at INTEGER;
+      ALTER TABLE generated_games ADD COLUMN review_note TEXT;
+      ALTER TABLE generated_games ADD COLUMN reviewed_at INTEGER;
+    `,
+  },
 ];
 
 /** The version a fully up-to-date database has. */

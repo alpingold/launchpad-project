@@ -23,6 +23,8 @@ import {
   saveVersionSource,
   markVersionFailed,
   setLiveVersions,
+  setSubmission,
+  isSubmitted,
   getGeneratedGame,
   listGeneratedGames,
   listBusyVersions,
@@ -55,6 +57,10 @@ export const MAX_WAITING = 4;
 const MAX_STEPS = 50;
 
 /** A refusal with an HTTP status and a code the admin page can show. */
+/** An admin's note when sending a game back (plan §44). */
+export const MIN_NOTE_LENGTH = 3;
+export const MAX_NOTE_LENGTH = 500;
+
 export class GenerationError extends Error {
   constructor(status, code, message) {
     super(message);
@@ -393,7 +399,41 @@ export class GenerationService {
     this.unload(game, 'playtest');
     await this.load(game, version, 'playtest');
     setLiveVersions(this.db, id, { playtestVersion: version.version });
+    // A request to publish was for the version being playtested then: a different one needs asking again.
+    if (game.submittedVersion !== null && game.submittedVersion !== version.version) setSubmission(this.db, id, { submittedVersion: null, submittedAt: null });
     this.log(`[generate] ${id}: playtesting v${version.version}`);
+    return this.get(id);
+  }
+
+  /**
+   * Its creator asks for the version they're playtesting to be published (plan §44): it shows
+   * in the admins' "To approve" list, and admins may host it too, to try it.
+   */
+  submit(id, { now = Date.now() } = {}) {
+    const game = this.get(id);
+    if (game.playtestVersion === null) throw new GenerationError(409, 'WRONG_STATUS', 'Playtest a version first: that is the one you ask to publish.');
+    setSubmission(this.db, id, { submittedVersion: game.playtestVersion, submittedAt: now, reviewNote: null, reviewedAt: null, now });
+    this.log(`[generate] ${id}: v${game.playtestVersion} submitted for publishing`);
+    return this.get(id);
+  }
+
+  /** Its creator takes the request back. */
+  withdraw(id) {
+    this.get(id);
+    setSubmission(this.db, id, { submittedVersion: null, submittedAt: null });
+    return this.get(id);
+  }
+
+  /** An admin doesn't publish it (yet): the request ends, with a note for its creator. */
+  sendBack(id, note, { now = Date.now() } = {}) {
+    this.get(id);
+    if (!isSubmitted(this.db, id)) throw new GenerationError(409, 'WRONG_STATUS', "This game isn't waiting for approval.");
+    const text = typeof note === 'string' ? note.trim() : '';
+    if (text.length < MIN_NOTE_LENGTH || text.length > MAX_NOTE_LENGTH) {
+      throw new GenerationError(400, 'INVALID_NOTE', `Say why in ${MIN_NOTE_LENGTH}–${MAX_NOTE_LENGTH} characters.`);
+    }
+    setSubmission(this.db, id, { submittedVersion: null, submittedAt: null, reviewNote: text, reviewedAt: now, now });
+    this.log(`[generate] ${id}: sent back`);
     return this.get(id);
   }
 
@@ -407,6 +447,7 @@ export class GenerationService {
     await this.load(game, version, 'published', { replace: true });
     this.unload(game, 'playtest');
     setLiveVersions(this.db, id, { publishedVersion: version.version, playtestVersion: null });
+    setSubmission(this.db, id, { submittedVersion: null, submittedAt: null, reviewNote: null, reviewedAt: Date.now() }); // answered
     this.log(`[generate] ${id}: published v${version.version}`);
     return this.get(id);
   }
@@ -416,6 +457,7 @@ export class GenerationService {
     const game = this.get(id);
     this.unload(game, as);
     setLiveVersions(this.db, id, as === 'published' ? { publishedVersion: null } : { playtestVersion: null });
+    if (as === 'playtest') setSubmission(this.db, id, { submittedVersion: null, submittedAt: null }); // nothing left to publish
     this.log(`[generate] ${id}: ${as} version taken down`);
     return this.get(id);
   }
