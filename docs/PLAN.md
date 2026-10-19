@@ -2395,6 +2395,14 @@ Also: `players is not defined` crashed many builds: the rulebook's skeleton unpa
 in `party.ready` but never passed it on. The skeleton (and /kit's) no longer does, and the SDK
 list says to write `party.players` in your own functions.
 
+**The sentence, part by part (24 builds).** Without "work out only the tricky parts", thinking
+was no longer (median 3.4K against 5.2K) and the games no less complete, though first files
+passed least often (1 of 8); "plan briefly" is what keeps it short. Without "follow the reading
+closest to its words", the heist games had ~25% more code, some of it real design detail (cameras
+scaling with players), some dead (a whole drawing function written twice, one never called),
+plus a solo-mode bug; the bake-off's extra size was spacing. Same pass rates (7 of 8 each). The
+full sentence stays. Reading the code mattered: keyword checklists missed things both ways.
+
 ## 44. Games to approve (2026-10-18)
 
 - A creator's page has **Submit for publishing** once a version is ready: it becomes the playtest
@@ -2415,6 +2423,20 @@ list says to write `party.players` in your own functions.
 - **To decide when it's built:** whether official games can be remixed; whether a remix shows
   where it came from ("remixed from X by Y"); what happens to remixes when the original's
   creator turns remixing off later; and how a remix goes through approval (§44).
+
+## 46. The playtest catches player names put in as HTML (2026-10-19)
+
+- **Why:** reading the test games' code (§43) found names built into HTML strings and set with
+  `innerHTML`. Names may contain `<` and `>` (16 characters is enough for `<svg onload=…>`), so a
+  phone player's name could run as code in the big screen's frame: fake results, show secrets.
+  The rulebook forbids it; the static check couldn't tell a player's name from the game's own
+  constants (`ing.name`, `ROUND_NAMES`), and a false alarm fails a build.
+- **How:** the second bot is called `Bo&Jo` (it reads normally on screen). The playtest watches
+  `innerHTML`, `outerHTML` and `insertAdjacentHTML` in the game's frame: a string with `Bo&Jo` in
+  it (not `Bo&amp;Jo`) is an `html` problem, with the game's line, so the fix round fixes it.
+  It counts after the clock jump too (§41): that's often what reaches the reveal and the scores.
+- **Tried on 24 games:** the 7 official games are clean; it caught 2 generated games; the others a
+  rough scan suspected show names with `party.ui.el`, `textContent` or a canvas, which is fine.
 
 ## Verification (how to confirm the plan worked once built)
 
