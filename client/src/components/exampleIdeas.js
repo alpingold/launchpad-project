@@ -3,19 +3,19 @@
 /** Ideas to start from: games that fit a big screen and phones (plan §18). */
 export const EXAMPLE_IDEAS = [
   {
-    label: 'Find the spy',
-    idea: 'Everyone but one player sees the same secret place on their phone; the spy sees nothing. Take turns answering a question about it, then vote for who the spy is.',
+    label: 'Spot the lie',
+    idea: 'Everyone secretly writes two true facts about themselves and one lie. Each round the big screen shows one player\'s three, shuffled, and everyone else votes on their phone for the lie. A point for every lie you spot, and the writer gets a point for everyone they fooled. Everyone gets one turn; the best detective wins.',
   },
   {
-    label: 'Draw and guess',
-    idea: 'One player draws a secret word on their phone while it appears on the big screen; everyone else types guesses. Faster right guesses score more.',
+    label: 'Grab or share',
+    idea: 'A heist crew splits the loot. Each round a pile of gold appears on the big screen and everyone secretly taps Share or Grab. If everyone shares, the gold is split evenly. If exactly one player grabs, they take it all. If two or more grab, the alarm goes off and nobody gets anything. Talk it over out loud first. Richest after 6 rounds wins.',
   },
   {
-    label: 'Think alike',
-    idea: 'Each round asks a question like "name a pizza topping". Everyone answers secretly on their phone; you score a point for every other player who wrote the same thing.',
+    label: 'Read the judge',
+    idea: 'Each round one player is the judge and the big screen shows 5 things to rank, like breakfast foods or superpowers. The judge secretly puts them in order from best to worst; everyone else tries to put them in the order the judge chose. A point for each one in the right place. The judge changes every round until everyone has judged once.',
   },
   {
-    label: 'Bluff the answer',
-    idea: 'Show a strange trivia question. Everyone writes a fake answer that sounds true, then everyone votes for the real one among all of them. Points for finding it and for fooling others.',
+    label: 'Lowest unique number',
+    idea: 'Each round everyone secretly picks a number from 1 to 10 on their phone. The lowest number that nobody else picked wins the round and scores that many points. Picks that someone else also made score nothing. The big screen reveals the picks one number at a time, from 1 up. First to 15 points wins.',
   },
 ];
