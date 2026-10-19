@@ -2377,6 +2377,17 @@ of room at 57,873 tokens; pond took 19 min), so the short-plan sentence stays. W
 6. **Play them:** a short scorecard (ran as designed, real choices, art matched, the big moment
    landed, how long it took).
 
+## 44. Games to approve (2026-10-18)
+
+- A creator's page has **Submit for publishing** once a version is ready: it becomes the playtest
+  version and waits for an admin ("Waiting for approval", with "Take back the request").
+- /admin has a **To approve** tab: submitted games, oldest first, with their maker, idea and
+  checks. **Play it** (an admin may host a submitted game, to try it), **Publish**, or **Send
+  back…** with a note the maker sees on their page until they submit again.
+- A request ends when the game is published, sent back, taken back, a different version is
+  playtested, or the playtest stops. Stored in generated_games (migration 11).
+- The AI games list shows who made each game; "Playtest (only you)" is now "(only its maker)".
+
 ## Verification (how to confirm the plan worked once built)
 
 - `npm test` (root) → runs `node --test server/test`, all unit and integration tests green.
