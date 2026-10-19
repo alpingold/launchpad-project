@@ -251,6 +251,9 @@ test('briefThinking (plan §40): the short-plan sentence comes just before the a
   const user = (opts) => buildMessages('Run and jump', DESIGN, opts)[1].content;
   assert.doesNotMatch(user(), /plan briefly/);
   assert.match(user({ briefThinking: true }), /plan briefly:[^\n]*\n\nReply with the complete game file/);
+  // Plan §43's variants: the look in the plan, or the art asked for outright.
+  assert.match(user({ briefThinking: true, briefVariant: 'look' }), /reloads, and the look: each character and the big moment/);
+  assert.match(user({ briefThinking: true, briefVariant: 'art' }), /write the file in your reply\. Draw the characters and the big moment[^\n]*\n\nReply with/);
 });
 
 test('no target length for a whole game (plan §35), but a round is at least about 20 s and the design works out its length', () => {
@@ -460,6 +463,7 @@ test('bad jobs are refused before any model call', async () => {
     [{ step: 'design', idea: 'A long enough idea', keepThinking: 1 }, /keepThinking must be true or false/],
     [{ step: 'build', idea: 'A long enough idea', design: 'd', briefThinking: 'yes' }, /briefThinking must be true or false/],
     [{ step: 'build', idea: 'A long enough idea', design: 'd', reasoningEffort: 'high' }, /reasoningEffort must be one of low, medium, xhigh/],
+    [{ step: 'build', idea: 'A long enough idea', design: 'd', briefVariant: 'pretty' }, /briefVariant must be/],
   ];
   for (const [job, error] of cases) assert.match((await runJob(job, { chatFn: model.chatFn })).error, error);
   assert.equal(model.calls.length, 0);

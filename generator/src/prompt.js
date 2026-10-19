@@ -237,10 +237,24 @@ const BUILD_SIZE = ` At most ${MAX_GAME_BYTES / 1024} KB.`;
 export const BRIEF_THINKING = `Before writing, plan briefly: the big screen's state, what each phone is sent, every timer, and what happens when a player leaves or a screen reloads. Work out only the tricky parts in detail; don't draft the whole file in your thinking. Where the design is unclear, follow the reading closest to its words. Once the plan is set, write the file in your reply.`;
 
 /**
+ * Plan §43's experiment (job.briefVariant): games keep the design's mechanics but lose its
+ * art (an emoji judge, circles for hooded thieves). 'look' adds the look to the plan;
+ * 'art' asks for the design's characters and big moment as drawn shapes.
+ */
+export const BRIEF_VARIANTS = {
+  look: BRIEF_THINKING.replace(
+    'what happens when a player leaves or a screen reloads.',
+    'what happens when a player leaves or a screen reloads, and the look: each character and the big moment, as the design describes them.',
+  ),
+  art: `${BRIEF_THINKING} Draw the characters and the big moment the way the design describes them, with shapes; don't replace them with emoji or plain circles.`,
+};
+
+/**
  * Building a new game from its approved design.
  * @param {string} idea
  * @param {string} design
- * @param {{ sizeLimit?: boolean, briefThinking?: boolean }} [opts]  sizeLimit: see buildSystemPrompt; briefThinking: BRIEF_THINKING
+ * @param {{ sizeLimit?: boolean, briefThinking?: boolean, briefVariant?: 'look' | 'art' }} [opts]
+ *   sizeLimit: see buildSystemPrompt; briefThinking: BRIEF_THINKING (briefVariant: one of BRIEF_VARIANTS instead)
  * @returns {import('./llm.js').Message[]}
  */
 export function buildMessages(idea, design, opts = {}) {
@@ -248,7 +262,7 @@ export function buildMessages(idea, design, opts = {}) {
     { role: 'system', content: buildSystemPrompt(opts) },
     {
       role: 'user',
-      content: `Build this game. The design was approved by the game's owner.\n\n<design>\n${String(design).trim()}\n</design>\n\nThe idea it came from, for context:\n\n${data('game-idea', idea)}\n\n${opts.briefThinking ? `${BRIEF_THINKING}\n\n` : ''}${BUILD_ANSWER}${opts.sizeLimit === false ? '' : BUILD_SIZE}`,
+      content: `Build this game. The design was approved by the game's owner.\n\n<design>\n${String(design).trim()}\n</design>\n\nThe idea it came from, for context:\n\n${data('game-idea', idea)}\n\n${opts.briefThinking ? `${BRIEF_VARIANTS[opts.briefVariant] ?? BRIEF_THINKING}\n\n` : ''}${BUILD_ANSWER}${opts.sizeLimit === false ? '' : BUILD_SIZE}`,
     },
   ];
 }
