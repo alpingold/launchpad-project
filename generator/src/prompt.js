@@ -17,10 +17,15 @@ import { readFileSync } from 'node:fs';
 
 const read = (relative) => readFileSync(new URL(relative, import.meta.url), 'utf8');
 
-/** Longest idea or feedback we accept (the server checks this too). */
+// What people may type: the server checks with these same numbers (service.js imports them).
+/** Shortest idea or change request. */
+export const MIN_IDEA_LENGTH = 10;
+/** Shortest feedback on a design ("make it 2 rounds" may be short). */
+export const MIN_FEEDBACK_LENGTH = 3;
+/** Longest idea or feedback. */
 export const MAX_IDEA_LENGTH = 1000;
 /**
- * Longest change request (the server checks this too). Longer than an idea: a change can list
+ * Longest change request. Longer than an idea: a change can list
  * several fixes, each with what's wrong and where (a review's bugs, plan §47, run ~200
  * characters each). 4000 characters is ~1K tokens, small next to the game in the prompt.
  */

@@ -46,13 +46,10 @@ import { BrowserSlot } from './browserSlot.js';
 import { isAdminUser } from '../db/users.js';
 import { MODELS, DEFAULT_MODEL, isAllowedModel } from '../../../generator/src/models.js';
 import { MAX_DESIGN_LENGTH } from '../../../generator/src/extract.js';
+// What people may type: the same numbers the generator checks (generator/src/prompt.js says why).
+import { MIN_IDEA_LENGTH, MIN_FEEDBACK_LENGTH, MAX_IDEA_LENGTH, MAX_REQUEST_LENGTH } from '../../../generator/src/prompt.js';
 
-export const MIN_IDEA_LENGTH = 10;
-export const MAX_IDEA_LENGTH = 1000;
-/** A change request may list several fixes (generator/src/prompt.js says why 4000). */
-export const MAX_REQUEST_LENGTH = 4000;
-/** Feedback on a design ("make it 2 rounds") may be shorter than an idea. */
-export const MIN_FEEDBACK_LENGTH = 3;
+export { MIN_IDEA_LENGTH, MIN_FEEDBACK_LENGTH, MAX_IDEA_LENGTH, MAX_REQUEST_LENGTH };
 /** A design the admin edits by hand. */
 export const MIN_DESIGN_LENGTH = 20;
 export { MAX_DESIGN_LENGTH };

@@ -53,6 +53,8 @@ import {
   NO_CODE_MESSAGE,
   DESIGN_HEADINGS,
   PLAN_HEADINGS,
+  MIN_IDEA_LENGTH,
+  MIN_FEEDBACK_LENGTH,
   MAX_IDEA_LENGTH,
   MAX_REQUEST_LENGTH,
   MAX_SOURCE_LENGTH,
@@ -135,10 +137,10 @@ export async function runJob(job, deps = {}) {
   const fail = (error) => ({ ok: false, model, attempts: [], error });
   if (!job || typeof job !== 'object') return fail('the job must be an object');
   if (!isAllowedModel(model)) return fail(`unknown model ${JSON.stringify(model)}`);
-  if (!isText(job.idea, 10)) return fail(`the game idea must be 10–${MAX_IDEA_LENGTH} characters`);
+  if (!isText(job.idea, MIN_IDEA_LENGTH)) return fail(`the game idea must be ${MIN_IDEA_LENGTH}–${MAX_IDEA_LENGTH} characters`);
   const { change, redraft } = job;
   if (change !== undefined) {
-    if (!isText(change?.request, 10, MAX_REQUEST_LENGTH)) return fail(`the change request must be 10–${MAX_REQUEST_LENGTH} characters`);
+    if (!isText(change?.request, MIN_IDEA_LENGTH, MAX_REQUEST_LENGTH)) return fail(`the change request must be ${MIN_IDEA_LENGTH}–${MAX_REQUEST_LENGTH} characters`);
     if (typeof change.source !== 'string' || change.source.length === 0) return fail('a change needs the current game file');
     // Without edit mode, the old game and the new one must both fit (prompt.js explains the numbers).
     const limit = job.edits === false ? MAX_WHOLE_FILE_LENGTH : MAX_SOURCE_LENGTH;
@@ -146,7 +148,7 @@ export async function runJob(job, deps = {}) {
       return fail(`the game is too big for the AI to change (${Math.round(change.source.length / 1024)} KB; at most ${limit / 1024} KB fits in the model's context)`);
     }
   }
-  if (redraft !== undefined && (typeof redraft?.draft !== 'string' || !isText(redraft.feedback, 3))) {
+  if (redraft !== undefined && (typeof redraft?.draft !== 'string' || !isText(redraft.feedback, MIN_FEEDBACK_LENGTH))) {
     return fail('a new draft needs the last draft and what to change');
   }
   if (job.examples !== undefined && typeof job.examples !== 'boolean') return fail('examples must be true or false');

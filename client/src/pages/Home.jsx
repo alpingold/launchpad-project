@@ -133,7 +133,7 @@ function IdeaHero() {
         <textarea
           id="home-idea"
           rows={3}
-          maxLength={1000}
+          maxLength={1000} // an idea's longest (generator/src/prompt.js: MAX_IDEA_LENGTH); /create checks it again
           value={idea}
           onChange={(e) => setIdea(e.target.value)}
           placeholder="Everyone secretly picks a number on their phone. The big screen reveals them one by one…"
