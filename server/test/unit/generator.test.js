@@ -14,6 +14,7 @@ import {
   PLAN_HEADINGS,
 } from '../../../generator/src/prompt.js';
 import { runJob, formatReport } from '../../../generator/src/run.js';
+import { numberLines, reviewMessages, CHECKLIST_FORMAT, REVIEW_FORMAT } from '../../../generator/src/review.js';
 
 // The generator (plan §13i, F5): pulling designs and game files out of replies, the
 // prompts for both steps, calling the model, and the design and build jobs, run here with
@@ -486,7 +487,7 @@ test('bad jobs are refused before any model call', async () => {
     [{ step: 'design', idea: 'short' }, /idea must be/],
     [{ step: 'design', idea: 'A long enough idea', model: 'gpt-9' }, /unknown model/],
     [{ step: 'build', idea: 'A long enough idea' }, /needs the approved design/],
-    [{ step: 'dance', idea: 'A long enough idea' }, /must be "design" or "build"/],
+    [{ step: 'dance', idea: 'A long enough idea' }, /must be "design", "build", "checklist" or "review"/],
     [{ step: 'design', idea: 'A long enough idea', change: { request: 'Make it better please', source: '' } }, /current game file/],
     [{ step: 'design', idea: 'A long enough idea', change: { request: 'Make it better please', source: 'x'.repeat(110_000) } }, /too big for the AI to change \(107 KB; at most 100 KB fits/],
     [{ step: 'build', idea: 'A long enough idea', edits: false, change: { request: 'Make it better please', source: 'x'.repeat(70_000) } }, /\(68 KB; at most 60 KB fits/],
@@ -506,4 +507,27 @@ test('bad jobs are refused before any model call', async () => {
 test('formatReport: problems with their line and screen, then warnings', () => {
   const text = formatReport({ problems: ['no game info', { message: 'Threw', line: 3, code: 'x()', screen: 'phone 1', count: 2 }], warnings: [{ message: 'Never saves' }] });
   assert.equal(text, 'Problems (each must be fixed):\n- no game info\n- line 3: Threw\n    code: x() (on the phone 1, 2 times)\n\nAlso worth fixing:\n- Never saves');
+});
+
+test('the reviewer (plan §47): a checklist from the design, then a review of the code with line numbers, both held to a schema', async () => {
+  assert.equal(numberLines('a\nb'), '1| a\n2| b');
+  const checklist = [{ id: 'R1', area: 'rules', text: '3 rounds' }];
+  const messages = reviewMessages(checklist, 'let rounds = 3;');
+  assert.match(messages[1].content, /R1 \[rules\] 3 rounds/);
+  assert.match(messages[1].content, /1\| let rounds = 3;/);
+
+  const asked = [];
+  const chatFn = async (msgs, opts) => {
+    asked.push(opts.responseFormat.json_schema.name);
+    return opts.responseFormat === CHECKLIST_FORMAT
+      ? { content: JSON.stringify({ items: checklist }), usage: null, seconds: 1 }
+      : { content: JSON.stringify({ items: [{ id: 'R1', status: 'implemented', lines: [1], note: '' }], bugs: [], deadCode: [] }), usage: null, seconds: 1 };
+  };
+  const made = await runJob({ step: 'checklist', idea: 'A racing platformer for friends', design: DESIGN }, { chatFn });
+  assert.deepEqual([made.ok, made.checklist], [true, checklist]);
+  const reviewed = await runJob({ step: 'review', idea: 'A racing platformer for friends', checklist, source: GAME }, { chatFn });
+  assert.equal(reviewed.review.items[0].status, 'implemented');
+  assert.deepEqual(asked, ['checklist', 'review']);
+  assert.equal(REVIEW_FORMAT.json_schema.schema.properties.items.items.properties.status.enum.length, 4);
+  assert.match((await runJob({ step: 'review', idea: 'A racing platformer for friends', source: GAME }, { chatFn })).error, /needs the checklist/);
 });

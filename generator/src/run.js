@@ -31,6 +31,7 @@
 
 import { pathToFileURL } from 'node:url';
 import { chat } from './llm.js';
+import { makeChecklist, reviewGame } from './review.js';
 import { extractGameFile, extractHeadings, extractChangelog, missingHeadings } from './extract.js';
 import { applyReply, hasEdits, withoutEdits } from './edits.js';
 import {
@@ -151,11 +152,20 @@ export async function runJob(job, deps = {}) {
   if (job.briefVariant !== undefined && !Object.hasOwn(BRIEF_VARIANTS, job.briefVariant)) return fail(`briefVariant must be one of ${Object.keys(BRIEF_VARIANTS).join(', ')}`);
 
   if (job.step === 'design') return design(job, model, deps);
+  // The reviewer (plan §47, experiments only): a design's checklist, then a game's review.
+  if (job.step === 'checklist') {
+    if (typeof job.design !== 'string') return fail('a checklist needs the design');
+    return makeChecklist(job, model, deps);
+  }
+  if (job.step === 'review') {
+    if (!Array.isArray(job.checklist) || typeof job.source !== 'string') return fail('a review needs the checklist and the game file');
+    return reviewGame(job, model, deps);
+  }
   if (job.step === 'build') {
     if (change === undefined && typeof job.design !== 'string') return fail('building needs the approved design');
     return build(job, model, deps);
   }
-  return fail('the step must be "design" or "build"');
+  return fail('the step must be "design", "build", "checklist" or "review"');
 }
 
 /**

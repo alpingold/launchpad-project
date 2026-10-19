@@ -14,6 +14,7 @@
     "schema": "node server/scripts/schema.js",
     "generate": "node server/scripts/generate.js",
     "compare-builds": "node server/scripts/compare-builds.js",
+    "review-builds": "node server/scripts/review-builds.js",
     "check-game": "node generator/src/check/cli.js",
     "test:check": "npm --prefix generator test"
   }
