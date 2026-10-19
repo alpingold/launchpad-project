@@ -8,6 +8,7 @@ here. Section numbers (§) are the plan's. Oldest first:
 |---|---|---|
 | [model-comparisons.md](model-comparisons.md) | Which model writes the games? | §11g, §12j, §13n |
 | [example-designs.md](example-designs.md) | Do example designs help, or get copied? | §13n |
+| [helper-library.md](helper-library.md) | Which helpers, and does the build need the example game? | §13o |
 | [party-kit.md](party-kit.md) | Does `party.kit` help? | §20 |
 | [edit-mode.md](edit-mode.md) | Edits or whole files for changes and fixes? | §23 |
 | [size-limit.md](size-limit.md) | Does "At most 100 KB" in the prompt change the games? | §32 |
