@@ -71,6 +71,8 @@ import { describeProblem } from '../../server/src/games/frameGame.js';
  * @property {boolean} [edits]            build: false turns edit mode off (on by default, plan §23)
  * @property {'low' | 'medium' | 'xhigh'} [reasoningEffort]  for every step, instead of the model's own (models.js; plan §40's experiment)
  * @property {boolean} [briefThinking]    build: asks for a short plan before the file (on by default, plan §40)
+ * @property {boolean} [fixBrief]          build: false leaves the short-plan sentence out of fix requests (plan §43 test 1)
+ * @property {boolean} [wholeOnParseError] build: after a file that doesn't parse, ask for a whole file, not edits (plan §43 test 1)
  * @property {'noart' | 'look' | 'art'} [briefVariant]  build: a variant of that sentence (plan §43's experiments)
  * @property {boolean} [keepThinking]     each attempt keeps the model's thinking and whole reply (plan §38's look; off on the site)
  */
@@ -142,6 +144,9 @@ export async function runJob(job, deps = {}) {
   if (job.keepThinking !== undefined && typeof job.keepThinking !== 'boolean') return fail('keepThinking must be true or false');
   if (job.reasoningEffort !== undefined && !REASONING_EFFORTS.includes(job.reasoningEffort)) return fail(`reasoningEffort must be one of ${REASONING_EFFORTS.join(', ')}`);
   if (job.briefThinking !== undefined && typeof job.briefThinking !== 'boolean') return fail('briefThinking must be true or false');
+  for (const flag of ['fixBrief', 'wholeOnParseError']) {
+    if (job[flag] !== undefined && typeof job[flag] !== 'boolean') return fail(`${flag} must be true or false`);
+  }
   if (job.briefVariant !== undefined && !['noart', 'look', 'art'].includes(job.briefVariant)) return fail('briefVariant must be "noart", "look" or "art"');
 
   if (job.step === 'design') return design(job, model, deps);
@@ -258,7 +263,9 @@ async function build(job, model, { chatFn = chat, check = checkGame, onStep = ()
   const prompt = change ? changeBuildMessages({ idea: job.idea, ...change }, plan, { edits }) : buildMessages(job.idea, job.design, { sizeLimit: job.sizeLimit ?? true, briefThinking: job.briefThinking ?? true, briefVariant: job.briefVariant });
   // A fix shows the model its last file as its own reply. For a change, that file replaces
   // the old one in the prompt (withCode: false), so the game is in the conversation once.
-  const fixPrompt = (asEdits) => (change ? changeBuildMessages({ idea: job.idea, ...change }, plan, { edits: asEdits, withCode: false }) : prompt);
+  // Plan §43 test 1: job.fixBrief === false leaves the short-plan sentence out of fix requests.
+  const newGameFixPrompt = job.fixBrief === false ? buildMessages(job.idea, job.design, { sizeLimit: job.sizeLimit ?? true, briefThinking: false }) : prompt;
+  const fixPrompt = (asEdits) => (change ? changeBuildMessages({ idea: job.idea, ...change }, plan, { edits: asEdits, withCode: false }) : newGameFixPrompt);
   const fixMessages = (source, reportText, asEdits) => [...fixPrompt(asEdits), { role: 'assistant', content: `\`\`\`html\n${source}\`\`\`` }, { role: 'user', content: fixMessage(reportText, { edits: asEdits }) }];
 
   let messages = prompt;
@@ -267,12 +274,15 @@ async function build(job, model, { chatFn = chat, check = checkGame, onStep = ()
   /** What the checks found in `current` (null: nothing yet, e.g. a change's old game). */
   let currentProblems = null;
   let failedInARow = 0;
+  /** Plan §43 test 1 (job.wholeOnParseError): the last file didn't parse, so ask for a whole one. */
+  let wholeNext = false;
   let changelog = null;
   const result = { ok: false, model, source: null, report: null, changelog: null, attempts: watched(onAttempt) };
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     // Edits need a file to apply to: a new game's first attempt is always a whole file.
-    const mode = edits && current !== null ? 'edits' : 'whole';
+    const mode = edits && current !== null && !wholeNext ? 'edits' : 'whole';
+    wholeNext = false;
     const asking = `attempt ${attempt}/${maxAttempts}${mode === 'edits' ? ' (edits)' : ''}: asking ${model}`;
     onStep(asking);
     let reply;
@@ -349,7 +359,8 @@ async function build(job, model, { chatFn = chat, check = checkGame, onStep = ()
     current = source;
     currentProblems = formatReport(report);
     // Only the game file goes back (not the model's chatter around it), to keep it short.
-    messages = fixMessages(current, currentProblems, edits);
+    wholeNext = job.wholeOnParseError === true && report.problems.some((p) => p?.rule === 'syntax');
+    messages = fixMessages(current, currentProblems, edits && !wholeNext);
   }
   const outOfRoom = result.attempts.at(-1)?.outOfRoom ? ' (the last one ran out of room while thinking)' : '';
   return { ...result, error: `no passing game after ${maxAttempts} attempts${outOfRoom}` };

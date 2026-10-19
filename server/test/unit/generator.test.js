@@ -394,6 +394,33 @@ test('reasoning effort per step (plan §40): medium for designs, first builds an
   assert.equal(overridden.calls[0].reasoningEffort, 'xhigh');
 });
 
+test('plan §43 test 1: wholeOnParseError asks for a whole file after one that doesn\'t parse; fixBrief: false drops the sentence from fixes', async () => {
+  const syntaxOnce = (() => {
+    let n = 0;
+    return async () => (n++ === 0 ? { ok: false, problems: [{ rule: 'syntax', line: 3, message: "This script doesn't parse: Unexpected end of input." }], warnings: [] } : passing());
+  })();
+  const model = fakeModel([fenced('html', GAME), fenced('html', GAME)]);
+  const result = await runJob(
+    { step: 'build', idea: 'A racing platformer for friends', design: DESIGN, wholeOnParseError: true, fixBrief: false },
+    { chatFn: model.chatFn, check: syntaxOnce },
+  );
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.attempts.map((a) => a.mode), ['whole', 'whole'], 'not edits to a file that does not parse');
+  assert.match(model.calls[1].at(-1).content, /reply with the complete corrected game file/);
+  assert.match(model.calls[0][1].content, /plan briefly/);
+  assert.doesNotMatch(model.calls[1][1].content, /plan briefly/, 'the fix request leaves the sentence out');
+
+  // Without the options: edits, and the sentence stays.
+  const plain = fakeModel([fenced('html', GAME), '<<<<<<< SEARCH\nnope\n=======\nx\n>>>>>>> REPLACE']);
+  const again = (() => {
+    let n = 0;
+    return async () => (n++ === 0 ? { ok: false, problems: [{ rule: 'syntax', message: 'x' }], warnings: [] } : passing());
+  })();
+  await runJob({ step: 'build', idea: 'A racing platformer for friends', design: DESIGN, maxAttempts: 2 }, { chatFn: plain.chatFn, check: again });
+  assert.match(plain.calls[1].at(-1).content, /Reply with EDITS/);
+  assert.match(plain.calls[1][1].content, /plan briefly/);
+});
+
 test('build job: an attempt that ran out of room is recorded (with its thinking, if kept), and the next asks again', async () => {
   const model = fakeModel([fenced('html', GAME)]);
   let first = true;
@@ -465,6 +492,7 @@ test('bad jobs are refused before any model call', async () => {
     [{ step: 'build', idea: 'A long enough idea', design: 'd', briefThinking: 'yes' }, /briefThinking must be true or false/],
     [{ step: 'build', idea: 'A long enough idea', design: 'd', reasoningEffort: 'high' }, /reasoningEffort must be one of low, medium, xhigh/],
     [{ step: 'build', idea: 'A long enough idea', design: 'd', briefVariant: 'pretty' }, /briefVariant must be/],
+    [{ step: 'build', idea: 'A long enough idea', design: 'd', wholeOnParseError: 'yes' }, /wholeOnParseError must be true or false/],
   ];
   for (const [job, error] of cases) assert.match((await runJob(job, { chatFn: model.chatFn })).error, error);
   assert.equal(model.calls.length, 0);
