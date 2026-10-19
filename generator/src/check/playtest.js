@@ -72,6 +72,9 @@ const HARNESS_HTML = `<!doctype html>
 </script></body></html>`;
 
 /** Runs in every frame before its own scripts; in the game's frame it reports CSP violations. */
+/** The bot whose name shows whether names reach the page as HTML (plan §46): reads normally either way. */
+const UNSAFE_NAME = 'Bo&Jo';
+
 const INIT_SCRIPT = `(() => {
   if (window === window.top) return;
   document.addEventListener('securitypolicyviolation', (e) => {
@@ -79,6 +82,28 @@ const INIT_SCRIPT = `(() => {
       window.__report('csp', { directive: e.effectiveDirective, blocked: e.blockedURI, line: e.lineNumber, sample: e.sample });
     } catch {}
   });
+
+  // Player names as HTML (plan §46): one bot is called "Bo&Jo". Escaped, that's "Bo&amp;Jo"; if
+  // the name itself reaches innerHTML (or outerHTML, insertAdjacentHTML), a player could name
+  // themselves markup or code. Report where (the game's line, from the stack).
+  const MARK = ${JSON.stringify(UNSAFE_NAME)};
+  const htmlSeen = (how) => (html) => {
+    if (typeof html !== 'string' || !html.includes(MARK)) return;
+    try {
+      window.__report('html', { how, stack: String(new Error().stack) });
+    } catch {}
+  };
+  for (const prop of ['innerHTML', 'outerHTML']) {
+    const d = Object.getOwnPropertyDescriptor(Element.prototype, prop);
+    const seen = htmlSeen(prop);
+    Object.defineProperty(Element.prototype, prop, { ...d, set(value) { seen(value); d.set.call(this, value); } });
+  }
+  const insert = Element.prototype.insertAdjacentHTML;
+  const seenInsert = htmlSeen('insertAdjacentHTML');
+  Element.prototype.insertAdjacentHTML = function (where, html) {
+    seenInsert(html);
+    return insert.call(this, where, html);
+  };
 
   // The time warp (plan §41): __warp(ms) moves every clock the game can read ms ahead
   // (Date.now, so party.now too; performance.now; animation-frame times) and runs at once
@@ -142,7 +167,7 @@ const INIT_SCRIPT = `(() => {
 
 /**
  * @typedef {Object} PlaytestFinding
- * @property {string} rule     csp | error | network | navigation | hang | blank | silent | stuck | refused | results | load
+ * @property {string} rule     csp | error | network | navigation | hang | blank | silent | stuck | html | refused | results | load
  * @property {string} message
  * @property {string} [screen] where it happened: 'big screen', 'phone 2', or several ('big screen, phone 1')
  * @property {number} [line]   in the game file
@@ -316,7 +341,18 @@ export async function playtest(source, opts = {}) {
   });
   await context.exposeBinding('__report', ({ page }, kind, data) => {
     const screen = [...screens.values()].find((s) => s.page === page);
-    if (!screen || kind !== 'csp' || typeof data !== 'object' || data === null) return;
+    if (!screen || typeof data !== 'object' || data === null) return;
+    if (kind === 'html') {
+      const at = /about:srcdoc:(\d+):\d+/.exec(String(data.stack ?? ''));
+      findings.add({
+        rule: 'html',
+        screen: screen.label,
+        message: `A player's name went into the page as HTML (\`${String(data.how)}\`), so a player could name themselves code. Show anything a player typed with \`textContent\` or \`party.ui.el\`, never in an HTML string.`,
+        ...(at ? gameLine(Number(at[1])) : {}),
+      });
+      return;
+    }
+    if (kind !== 'csp') return;
     const what = String(data.blocked || data.directive);
     findings.add({
       rule: 'csp',
@@ -597,11 +633,15 @@ class Findings {
   constructor() {
     this.problems = [];
     this.warnings = [];
-    /** After the clock jump (plan §41) only its own finding counts: a game may catch up on 2 minutes clumsily. */
+    /**
+     * After the clock jump (plan §41) only its own finding counts (a game may catch up on 2
+     * minutes clumsily), and a name put in as HTML (§46): the jump is often what reaches the
+     * screens that show names (a reveal, the final scores), and that's no clumsiness.
+     */
     this.onlyStuck = false;
   }
   add(f) {
-    if (this.onlyStuck) return;
+    if (this.onlyStuck && f.rule !== 'html') return;
     this.#push(this.problems, f);
   }
   warn(f) {
@@ -696,6 +736,6 @@ function mulberry32(seed) {
   };
 }
 
-const BOT_NAMES = ['Ada', 'Bo', 'Cy', 'Dee', 'Eli', 'Fay', 'Gus', 'Hal', 'Ivy', 'Jo', 'Kai', 'Lu'];
+const BOT_NAMES = ['Ada', UNSAFE_NAME, 'Cy', 'Dee', 'Eli', 'Fay', 'Gus', 'Hal', 'Ivy', 'Jo', 'Kai', 'Lu'];
 const WORDS = ['banana', 'robot', 'purple', 'yes', 'pizza party', 'zzz'];
 const KEYS = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Space', 'Enter'];

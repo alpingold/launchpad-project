@@ -1,0 +1,15 @@
+<script type="application/json" id="game-info">{ "name": "Name HTML", "description": "A broken test game.", "minPlayers": 1, "maxPlayers": 4 }</script>
+<div id="app"></div>
+<script>
+  // Lists the players with innerHTML: a name like "<svg onload=…>" would run as code.
+  party.ready(({ role }) => {
+    const app = document.getElementById('app');
+    const show = (names) => (app.innerHTML = '<h1>Players</h1><ul>' + names.map((n) => '<li>' + n + '</li>').join('') + '</ul>');
+    if (role === 'host') {
+      show(party.players.map((p) => p.name));
+      party.setState('all', { text: 'Wait' });
+    } else {
+      party.on('state', (s) => (app.textContent = s.text));
+    }
+  });
+</script>

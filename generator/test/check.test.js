@@ -74,6 +74,16 @@ test('a game that never leaves its first screen gets a "stuck" warning once ever
   }
 });
 
+test('a player\'s name put into the page as HTML is caught, with its line; an escaped one is fine (plan §46)', opts, async () => {
+  const report = await check('name-html');
+  const html = report.problems.find((p) => p.rule === 'html');
+  assert.ok(html, JSON.stringify(report.problems));
+  assert.match(html.message, /went into the page as HTML \(`innerHTML`\)/);
+  assert.match(html.code, /app\.innerHTML/);
+  const escaped = await check('name-escaped');
+  assert.deepEqual(rules(escaped.problems).filter((r) => r === 'html'), [], JSON.stringify(escaped.problems));
+});
+
 test('results naming someone who isn\'t playing are refused', opts, async () => {
   const report = await check('bad-end');
   assert.ok(rules(report.problems).includes('results'), JSON.stringify(report.problems));
