@@ -8,12 +8,14 @@
 //        e             edit design.md yourself (in any editor), then press Enter to build it
 //        q             stop here
 //   2. The build: game.html, checked in the sandbox (static check + a browser playtest),
-//      with its report and screenshots.
+//      with its report and screenshots. Then the code review, as on the site (plan §47): its
+//      crashes and dead ends fixed, and what it found printed and saved in result.json.
 //
 // Options:
 //   --model <id>        which model (see generator/src/models.js)
 //   --design <file>     skip step 1: build from a design you already have
 //   --yes               build the first design without asking (for scripts)
+//   --no-review         skip the code review (~10 minutes faster)
 //
 // Nothing is stored in the database and nothing runs on the server. If you like the game:
 //   npm run admin -- import-game generator/out/<time>/game.html --owner <you>
@@ -29,7 +31,7 @@ import { MODELS, DEFAULT_MODEL } from '../../generator/src/models.js';
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
-  options: { model: { type: 'string' }, design: { type: 'string' }, yes: { type: 'boolean', default: false } },
+  options: { model: { type: 'string' }, design: { type: 'string' }, yes: { type: 'boolean', default: false }, 'no-review': { type: 'boolean', default: false } },
 });
 const [idea] = positionals;
 const model = values.model ?? DEFAULT_MODEL;
@@ -89,7 +91,7 @@ if (design === null) {
 // --- Step 2: the build --------------------------------------------------------------------
 started = Date.now();
 console.log('\nBuilding it…');
-const result = await runGeneratorInSandbox({ step: 'build', idea, model, design }, { onStep });
+const result = await runGeneratorInSandbox({ step: 'build', idea, model, design, review: !values['no-review'] }, { onStep });
 const { screenshots, ...playtest } = result.report?.playtest ?? {};
 await writeFile(path.join(outDir, 'result.json'), JSON.stringify({ idea, design, ...result, report: result.report && { ...result.report, playtest } }, null, 2));
 if (result.source) await writeFile(path.join(outDir, 'game.html'), result.source);
@@ -102,6 +104,8 @@ if (result.report) {
   for (const p of result.report.problems) console.log(`  ✗ ${describeProblem(p)}`);
   for (const w of result.report.warnings ?? []) console.log(`  ! ${describeProblem(w)}`);
 }
+if (result.review?.error) console.log(`\nThe code review couldn't finish: ${result.review.error}`);
+for (const b of result.review?.bugs ?? []) console.log(`  ${b.fixed ? '✓ fixed' : '·'} ${b.severity}: ${b.what}`);
 if (result.ok) {
   console.log(`\nSaved to ${relative('game.html')} (screenshots next to it). Read it, then if you like it:`);
   console.log(`  npm run admin -- import-game ${relative('game.html')} --owner <your username>`);
