@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { formatTime } from './Admin.jsx';
+import { formatTime } from '../components/generation/text.js';
 
 // The admin's "Reports" tab (plan §31c): what people sent from the /report form, newest first.
 // "Done" marks one dealt with (it stays, faded); "Delete" removes it for good. Below them, the

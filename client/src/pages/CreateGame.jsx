@@ -16,18 +16,11 @@ import {
 } from '../net/admin.js';
 import { usePageTitle } from '../usePageTitle.js';
 import Markdown from '../components/Markdown.jsx';
-import CodeReview from '../components/CodeReview.jsx';
-import {
-  POLL_MS,
-  VERSION_STATUS_TEXT,
-  PLAN_STATUS_TEXT,
-  ChangedLines,
-  Attempts,
-  DesignEditor,
-  Report,
-  SourceCode,
-  formatTime,
-} from './Admin.jsx';
+import CodeReview from '../components/generation/CodeReview.jsx';
+import ChangeForm from '../components/generation/ChangeForm.jsx';
+import { DesignEditor } from '../components/generation/DesignEditor.jsx';
+import { ChangedLines, Attempts, Report, SourceCode } from '../components/generation/VersionDetails.jsx';
+import { POLL_MS, VERSION_STATUS_TEXT, PLAN_STATUS_TEXT, formatTime } from '../components/generation/text.js';
 
 // One game you're making with AI, /create/<id> (plan §19): a board-game track shows the four
 // steps (Idea → Design → Build → Play, or Change → Plan → Build → Play for a change), and
@@ -493,67 +486,13 @@ function ReadyToPlay({ summary, game, version: v, info, busy, run }) {
           ? 'Everyone can play this version.'
           : "Only you can start it for now. Open it on a big screen (a laptop or TV) and your friends join on their phones. When you're happy with it, submit it: the site admin plays it and decides whether everyone gets it."}
       </p>
-      <ChangeForm game={game} summary={summary} info={info} busy={busy} run={run} />
+      <ChangeForm
+        game={game}
+        info={info}
+        disabled={!info.enabled || busy}
+        onAsk={(text, basedOn, smallFix) => run(() => requestChanges(summary.id, text, basedOn, smallFix))}
+      />
     </>
-  );
-}
-
-/** "Ask for changes": each change makes a new version, with a plan first (or straight to code for a small fix). */
-function ChangeForm({ game, summary, info, busy, run }) {
-  const ready = game.versions.filter((v) => v.status === 'ready');
-  // Same default as the server: the playtest version, else the published one, else the newest ready one.
-  const fallback = game.playtestVersion ?? game.publishedVersion ?? ready.at(-1)?.version ?? null;
-  const [text, setText] = useState('');
-  const [basedOn, setBasedOn] = useState(fallback);
-  const [smallFix, setSmallFix] = useState(false);
-  const base = ready.some((v) => v.version === basedOn) ? basedOn : fallback;
-  const length = text.trim().length;
-
-  async function handleSubmit(event) {
-    event.preventDefault();
-    if (await run(() => requestChanges(summary.id, text, base, smallFix))) {
-      setText('');
-      setSmallFix(false);
-    }
-  }
-
-  return (
-    <form className="admin-form create-change" onSubmit={handleSubmit}>
-      <h3>Want it different?</h3>
-      <label>
-        What should change
-        <textarea
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          rows={3}
-          maxLength={info.maxRequestLength}
-          placeholder="e.g. Rounds are too long: make them 20 seconds. Show the scores after each round."
-          disabled={!info.enabled || busy}
-        />
-      </label>
-      <label className="create-check">
-        <input type="checkbox" checked={smallFix} onChange={(e) => setSmallFix(e.target.checked)} disabled={!info.enabled || busy} />
-        <span>
-          It's a small fix: skip the plan <span className="muted">(go straight to building)</span>
-        </span>
-      </label>
-      {ready.length > 1 && (
-        <label className="create-base">
-          Change version
-          <select value={base} onChange={(e) => setBasedOn(Number(e.target.value))} disabled={!info.enabled || busy}>
-            {[...ready].reverse().map((v) => (
-              <option key={v.version} value={v.version}>
-                {v.version}
-                {v.version === game.publishedVersion ? ' (everyone plays this one)' : v.version === game.playtestVersion ? ' (the one you play)' : ''}
-              </option>
-            ))}
-          </select>
-        </label>
-      )}
-      <button type="submit" className="primary-button" disabled={!info.enabled || busy || length < info.minIdeaLength}>
-        {smallFix ? 'Make the fix' : 'Write a plan'}
-      </button>
-    </form>
   );
 }
 

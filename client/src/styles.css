@@ -1348,8 +1348,7 @@ a.wordmark-mark:hover .wordmark-name {
   margin-left: 0.35rem;
 }
 
-.status-failed,
-.status-rejected {
+.status-failed {
   color: var(--danger);
 }
 
@@ -1466,14 +1465,6 @@ a.wordmark-mark:hover .wordmark-name {
 
 .gen-change {
   margin: 1rem 0 1.5rem;
-}
-
-.gen-change-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
 }
 
 .gen-version {
@@ -1599,11 +1590,6 @@ code {
   padding-top: 0.5rem;
 }
 
-.gen-small-fix {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-}
 
 /* The game kit guide (/kit, F5). */
 .kit-section {
@@ -1976,7 +1962,6 @@ code {
 
 .create-lede,
 .create-idea,
-.page-lede,
 .page > h1 + p.muted:not(.small) {
   font-size: 1.2rem;
   line-height: 1.5;
