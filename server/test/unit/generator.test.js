@@ -14,7 +14,7 @@ import {
   PLAN_HEADINGS,
 } from '../../../generator/src/prompt.js';
 import { runJob, formatReport } from '../../../generator/src/run.js';
-import { numberLines, reviewMessages, verify, CHECKLIST_FORMAT, REVIEW_FORMAT } from '../../../generator/src/review.js';
+import { numberLines, reviewMessages, verify, score, fixRequest, CHECKLIST_FORMAT, REVIEW_FORMAT } from '../../../generator/src/review.js';
 
 // The generator (plan §13i, F5): pulling designs and game files out of replies, the
 // prompts for both steps, calling the model, and the design and build jobs, run here with
@@ -550,4 +550,18 @@ test('the reviewer: an answer counts only when it is about its own item and cite
   assert.equal(verify(checklist, [answer('R1', 'guards patrol', [9])], source)[0].verified, false);
   assert.equal(verify(checklist, [answer('R1', 'guards patrol', [6])], source)[0].verified, false);
   assert.deepEqual([verify(checklist, [], source)[1].status, verify(checklist, [], source)[1].verified], ['missing', true]);
+  assert.deepEqual(score(verify(checklist, [answer('R1', 'guard patrol speed', [1]), { ...answer('R2', 'three rounds', [6]), status: 'partial' }], source)), { points: 1.5, of: 2, unverified: 0 });
+});
+
+test('the reviewer: bugs come with a severity, and the critical ones become a change request', () => {
+  const bug = REVIEW_FORMAT.json_schema.schema.properties.bugs.items;
+  assert.deepEqual([bug.required.includes('severity'), bug.properties.severity.enum], [true, ['crash', 'stuck', 'spoils', 'minor']]);
+  const crash = { what: 'roundScores2 is not defined', lines: [164], severity: 'crash' };
+  const { request, included, left } = fixRequest([crash]);
+  assert.deepEqual([included, left], [1, 0]);
+  assert.match(request, /Fix each one, and change nothing else/);
+  assert.match(request, /- roundScores2 is not defined \(around line 164\)/);
+  // Only what fits in a change request goes in.
+  const many = fixRequest(Array.from({ length: 20 }, () => ({ ...crash, what: 'x'.repeat(100) })));
+  assert.ok(many.request.length <= 1000 && many.included > 0 && many.left > 0 && many.included + many.left === 20);
 });

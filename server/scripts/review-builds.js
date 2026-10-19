@@ -18,7 +18,7 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { runGeneratorInSandbox } from '../src/generation/sandbox.js';
-import { AREAS, verify } from '../../generator/src/review.js';
+import { AREAS, verify, score } from '../../generator/src/review.js';
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
@@ -81,13 +81,6 @@ for (const folder of positionals.map((p) => path.resolve(cwd, p))) {
   console.log(`\n${await summary(folder, name, checklist)}`);
 }
 
-/** implemented 1, partial ½ (only when verified). */
-function score(items, area) {
-  const of = items.filter((i) => !area || i.area === area);
-  const points = of.reduce((n, i) => n + (!i.verified ? 0 : i.status === 'implemented' ? 1 : i.status === 'partial' ? 0.5 : 0), 0);
-  return { points, of: of.length, unverified: of.filter((i) => !i.verified).length };
-}
-
 async function summary(folder, name, checklist) {
   const rows = [];
   for (const build of (await readdir(folder)).sort()) {
@@ -110,7 +103,7 @@ async function summary(folder, name, checklist) {
   for (const { build, r } of rows) {
     if (r.bugs.length + r.deadCode.length === 0) continue;
     lines.push(`## ${build}`, '');
-    for (const b of r.bugs) lines.push(`- bug (lines ${b.lines.join(', ') || '?'}): ${b.what}`);
+    for (const b of r.bugs) lines.push(`- ${b.severity ?? 'bug'} (lines ${b.lines.join(', ') || '?'}): ${b.what}`);
     for (const d of r.deadCode) lines.push(`- dead code (lines ${d.lines.join(', ') || '?'}): ${d.what}`);
     lines.push('');
   }

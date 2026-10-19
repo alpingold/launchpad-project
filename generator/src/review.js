@@ -17,6 +17,9 @@ import { reasoningEffortFor } from './models.js';
 
 export const AREAS = ['rules', 'big screen', 'phones', 'art', 'sound', 'ending', 'edge cases'];
 export const STATUSES = ['implemented', 'partial', 'missing', 'wrong'];
+/** How bad a bug is. The first two are CRITICAL: worth fixing before anyone plays. */
+export const SEVERITIES = ['crash', 'stuck', 'spoils', 'minor'];
+export const CRITICAL = ['crash', 'stuck'];
 
 const lines = { type: 'array', items: { type: 'integer' } };
 
@@ -61,7 +64,12 @@ export const REVIEW_FORMAT = {
         },
         bugs: {
           type: 'array',
-          items: { type: 'object', properties: { lines, what: { type: 'string' } }, required: ['lines', 'what'], additionalProperties: false },
+          items: {
+            type: 'object',
+            properties: { lines, what: { type: 'string' }, severity: { type: 'string', enum: SEVERITIES } },
+            required: ['lines', 'what', 'severity'],
+            additionalProperties: false,
+          },
         },
         deadCode: {
           type: 'array',
@@ -96,7 +104,12 @@ For EVERY checklist item, in order: its id, then "about": the item's own words, 
 Cite the line numbers that show it (for missing: []). Be strict: a comment, a constant that is never used, a function that is never called, or a variable named after the feature is not an implementation. Something drawn as an emoji or a plain shape when the item describes a character with features is partial.
 
 Then list:
-- bugs: things in the code that would break or spoil play that the item list doesn't cover (an undefined name, a phase that can never be reached, a button that does nothing), with lines
+- bugs: things in the code that would break or spoil play that the item list doesn't cover (an undefined name, a phase that can never be reached, a button that does nothing), with lines and a severity:
+  - crash: an error is thrown during normal play (an undefined name, a method called on the wrong kind of value)
+  - stuck: play can't go on or can't be won (a goal that can't be reached, a phase that never ends, a control that never works)
+  - spoils: it plays, but wrongly (a wrong score or winner, a screen that doesn't update)
+  - minor: harmless or only looks wrong
+  Only call it crash or stuck if you can point to the lines that make it happen.
 - deadCode: functions or blocks that are never used, with lines
 
 Notes are short and plain.`;
@@ -190,4 +203,26 @@ export function verify(checklist, items, source) {
     const cited = got.status === 'missing' || (lines.length > 0 && keywords(`${it.text} ${got.note}`).some((w) => text.includes(w)));
     return { ...got, area: it.area, text: it.text, misaligned, verified: !misaligned && cited };
   });
+}
+
+/** A review's score: implemented 1, partial ½, only when verified (of every item, or one area's). */
+export function score(items, area) {
+  const of = items.filter((i) => !area || i.area === area);
+  const points = of.reduce((n, i) => n + (!i.verified ? 0 : i.status === 'implemented' ? 1 : i.status === 'partial' ? 0.5 : 0), 0);
+  return { points, of: of.length, unverified: of.filter((i) => !i.verified).length };
+}
+
+/**
+ * The change request that asks the builder to fix a review's critical bugs: as many as fit in
+ * a change request (`max` characters), most important first. `left` is how many didn't fit.
+ */
+export function fixRequest(bugs, max = 1000) {
+  const head = 'A review of the code found these bugs. Fix each one, and change nothing else:';
+  const lines = [];
+  for (const b of bugs) {
+    const line = `- ${b.what}${b.lines.length ? ` (around line ${b.lines.join(', ')})` : ''}`;
+    if ([head, ...lines, line].join('\n').length > max) break;
+    lines.push(line);
+  }
+  return { request: [head, ...lines].join('\n'), included: lines.length, left: bugs.length - lines.length };
 }
