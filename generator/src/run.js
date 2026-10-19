@@ -42,6 +42,7 @@ import {
   editsFailedMessage,
   missingHeadingsMessage,
   headingsFormat,
+  BRIEF_VARIANTS,
   NO_CODE_MESSAGE,
   DESIGN_HEADINGS,
   PLAN_HEADINGS,
@@ -73,7 +74,7 @@ import { describeProblem } from '../../server/src/games/frameGame.js';
  * @property {boolean} [briefThinking]    build: asks for a short plan before the file (on by default, plan §40)
  * @property {boolean} [fixBrief]          build: true keeps the short-plan sentence in fix requests (off by default, plan §43 test 1)
  * @property {boolean} [wholeOnParseError] build: after a file that doesn't parse, ask for a whole file, not edits (plan §43 test 1)
- * @property {'noart' | 'look' | 'art'} [briefVariant]  build: a variant of that sentence (plan §43's experiments)
+ * @property {'noart' | 'look' | 'art' | 'notricky' | 'nounclear'} [briefVariant]  build: a variant of that sentence (plan §43's experiments)
  * @property {boolean} [keepThinking]     each attempt keeps the model's thinking and whole reply (plan §38's look; off on the site)
  */
 
@@ -147,7 +148,7 @@ export async function runJob(job, deps = {}) {
   for (const flag of ['fixBrief', 'wholeOnParseError']) {
     if (job[flag] !== undefined && typeof job[flag] !== 'boolean') return fail(`${flag} must be true or false`);
   }
-  if (job.briefVariant !== undefined && !['noart', 'look', 'art'].includes(job.briefVariant)) return fail('briefVariant must be "noart", "look" or "art"');
+  if (job.briefVariant !== undefined && !Object.hasOwn(BRIEF_VARIANTS, job.briefVariant)) return fail(`briefVariant must be one of ${Object.keys(BRIEF_VARIANTS).join(', ')}`);
 
   if (job.step === 'design') return design(job, model, deps);
   if (job.step === 'build') {

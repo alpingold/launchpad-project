@@ -255,6 +255,11 @@ test('briefThinking (plan §40): the short-plan sentence comes just before the a
   assert.match(user({ briefThinking: true }), /write the file in your reply\. Draw the characters and the big moment[^\n]*\n\nReply with/);
   assert.doesNotMatch(user({ briefThinking: true, briefVariant: 'noart' }), /Draw the characters/);
   assert.match(user({ briefThinking: true, briefVariant: 'look' }), /reloads, and the look: each character and the big moment/);
+  // Without one part each (plan §43): the rest stays, in order.
+  assert.doesNotMatch(user({ briefThinking: true, briefVariant: 'notricky' }), /only the tricky parts/);
+  assert.match(user({ briefThinking: true, briefVariant: 'notricky' }), /reloads\. Where the design is unclear/);
+  assert.doesNotMatch(user({ briefThinking: true, briefVariant: 'nounclear' }), /closest to its words/);
+  assert.match(user({ briefThinking: true, briefVariant: 'nounclear' }), /in your thinking\. Once the plan is set/);
 });
 
 test('no target length for a whole game (plan §35), but a round is at least about 20 s and the design works out its length', () => {
@@ -491,7 +496,7 @@ test('bad jobs are refused before any model call', async () => {
     [{ step: 'design', idea: 'A long enough idea', keepThinking: 1 }, /keepThinking must be true or false/],
     [{ step: 'build', idea: 'A long enough idea', design: 'd', briefThinking: 'yes' }, /briefThinking must be true or false/],
     [{ step: 'build', idea: 'A long enough idea', design: 'd', reasoningEffort: 'high' }, /reasoningEffort must be one of low, medium, xhigh/],
-    [{ step: 'build', idea: 'A long enough idea', design: 'd', briefVariant: 'pretty' }, /briefVariant must be/],
+    [{ step: 'build', idea: 'A long enough idea', design: 'd', briefVariant: 'pretty' }, /briefVariant must be one of noart, look, art, notricky, nounclear/],
     [{ step: 'build', idea: 'A long enough idea', design: 'd', wholeOnParseError: 'yes' }, /wholeOnParseError must be true or false/],
   ];
   for (const [job, error] of cases) assert.match((await runJob(job, { chatFn: model.chatFn })).error, error);
