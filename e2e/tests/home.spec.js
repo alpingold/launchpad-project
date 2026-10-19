@@ -18,8 +18,8 @@ base('home page leads with making a game, then lists the games', async ({ page }
 
 base('the idea box opens /create with the idea, and keeps it through signing up', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: 'Find the spy' }).click();
-  await expect(page.getByLabel('Your game idea')).toHaveValue(/the spy sees nothing/);
+  await page.getByRole('button', { name: 'Spot the lie' }).click();
+  await expect(page.getByLabel('Your game idea')).toHaveValue(/two true facts about themselves and one lie/);
   await page.getByLabel('Your game idea').fill('Everyone hums a song; the others guess it.');
   await page.getByRole('button', { name: 'Make this game' }).click();
   await expect(page).toHaveURL('/create?idea=Everyone%20hums%20a%20song%3B%20the%20others%20guess%20it.');
