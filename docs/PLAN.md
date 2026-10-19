@@ -2396,6 +2396,16 @@ The heist's art was drawn by every variant. That sentence is now part of BRIEF_T
   playtested, or the playtest stops. Stored in generated_games (migration 11).
 - The AI games list shows who made each game; "Playtest (only you)" is now "(only its maker)".
 
+## 45. Later: Remix (planned, not built)
+
+- **What:** a "Remix" button on a game's page makes your own copy of it (a fork) that you change
+  with the AI, the way you change your own games now (a change request, a plan, a build).
+- **On by default:** every game can be remixed unless its creator turns remixing off, game by
+  game (a switch on their game's page).
+- **To decide when it's built:** whether official games can be remixed; whether a remix shows
+  where it came from ("remixed from X by Y"); what happens to remixes when the original's
+  creator turns remixing off later; and how a remix goes through approval (§44).
+
 ## Verification (how to confirm the plan worked once built)
 
 - `npm test` (root) → runs `node --test server/test`, all unit and integration tests green.
