@@ -272,6 +272,17 @@ export const MIGRATIONS = [
       ALTER TABLE generated_games ADD COLUMN reviewed_at INTEGER;
     `,
   },
+  {
+    version: 12,
+    description: 'the code review after every build, and "Review again" versions (plan §47)',
+    sql: `
+      -- code_review_json: what the AI reviewer found in this version's code, and what it fixed,
+      -- for the game's creator (NULL: not reviewed). kind 'recheck': a version made by "Review
+      -- again" (another review round on the version it's based on); NULL: any other version.
+      ALTER TABLE game_versions ADD COLUMN code_review_json TEXT;
+      ALTER TABLE game_versions ADD COLUMN kind TEXT CHECK (kind IS NULL OR kind = 'recheck');
+    `,
+  },
 ];
 
 /** The version a fully up-to-date database has. */

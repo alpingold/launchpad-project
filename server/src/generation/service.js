@@ -6,6 +6,9 @@
 //   and clicks "Build it": then the code is written from the approved design. Asking for
 //   changes adds the next version the same way, with a short plan of the change first
 //   (or, for a small fix, straight to the code).
+// - Every build ends with a code review (plan §47): the AI reads the code against the design,
+//   fixes the crashes and dead ends it finds, and what it found is kept for the creator.
+//   "Review again" makes the next version with one more review round.
 // - Every model step is a job. Jobs run ONE AT A TIME, each in its own OpenShell sandbox
 //   (sandbox.js): GenAI Studio allows only 20 requests a minute, and each sandbox needs
 //   memory. A game has at most one version in progress at a time.
@@ -53,6 +56,8 @@ export const MIN_FEEDBACK_LENGTH = 3;
 /** A design the admin edits by hand. */
 export const MIN_DESIGN_LENGTH = 20;
 export { MAX_DESIGN_LENGTH };
+/** A "Review again" version's request (plan §47): it has none of its own. */
+export const RECHECK_REQUEST = 'Review the code again, and fix any crashes or dead ends it finds.';
 /** At most this many jobs waiting in line (besides those running), so nobody can queue up hours of work. */
 export const MAX_WAITING = 4;
 /** Progress lines kept per job (the admin page shows them while it runs). */
@@ -180,7 +185,7 @@ export class GenerationService {
    * with a plan of the change, unless `skipDesign` (a small fix: straight to the code).
    * @param {{ id: string, request: unknown, basedOn?: unknown, model?: unknown, skipDesign?: unknown }} change  untrusted input
    */
-  requestChanges({ id, request, basedOn, model = DEFAULT_MODEL, skipDesign = false }) {
+  requestChanges({ id, request, basedOn, model = DEFAULT_MODEL, skipDesign = false, kind = null }) {
     const game = this.get(id);
     const trimmed = checkText(request, 'INVALID_REQUEST', 'Describe the change', MAX_REQUEST_LENGTH);
     checkModel(model);
@@ -197,9 +202,19 @@ export class GenerationService {
     if (!base || base.status !== 'ready') {
       throw new GenerationError(409, 'NO_BASE_VERSION', 'Changes can only be made to a version that passed the tests.');
     }
-    addVersion(this.db, id, { request: trimmed, basedOn: base.version, model, status: skipDesign === true ? 'generating' : 'designing' });
+    addVersion(this.db, id, { request: trimmed, basedOn: base.version, model, kind, status: skipDesign === true ? 'generating' : 'designing' });
     this.enqueue(id);
     return this.get(id);
+  }
+
+  /**
+   * "Review again" (plan §47): the next version is another code review round on version
+   * `basedOn` (by default the same as for changes). Crashes and dead ends it finds are fixed;
+   * if there are none, the new version has the same code, with the new review.
+   * @param {{ id: string, basedOn?: unknown, model?: unknown }} recheck  untrusted input
+   */
+  reviewAgain({ id, basedOn, model = DEFAULT_MODEL }) {
+    return this.requestChanges({ id, request: RECHECK_REQUEST, basedOn, model, skipDesign: true, kind: 'recheck' });
   }
 
   /**
@@ -308,7 +323,8 @@ export class GenerationService {
     // The owner's own key (plan §15); none: an admin's job uses the server's key. Never logged.
     const apiKey = this.userKeys?.keyFor(game.ownerUserId) ?? null;
 
-    this.log(`[generate] ${id} v${version.version}: ${designing ? (job.redraft ? 'new draft' : 'design') : 'build'} started with ${version.model}${apiKey ? " (the owner's key)" : ''}`);
+    const what = designing ? (job.redraft ? 'new draft' : 'design') : job.step === 'recheck' ? 'code review' : 'build';
+    this.log(`[generate] ${id} v${version.version}: ${what} started with ${version.model}${apiKey ? " (the owner's key)" : ''}`);
     let result;
     if (!apiKey && !isAdminUser(this.db, game.ownerUserId)) {
       result = { ok: false, error: "Your GenAI Studio key couldn't be used. Save it again on your account page, then try again." };
@@ -335,8 +351,12 @@ export class GenerationService {
     if (Array.isArray(result.attempts) && result.attempts.length > 0) saveBuildAttempts(this.db, id, version.version, result.attempts);
     const changelog = result.changelog ?? null;
     if (result.ok && result.source) {
-      const { name, description } = result.report?.game ?? {};
-      saveVersionSource(this.db, id, version.version, { source: result.source, report: result.report, name, description, changelog });
+      // A code review that changed nothing comes back without a report: the code's own still holds.
+      const base = findVersion(game, version.basedOn);
+      const report = result.report ?? (result.source === base?.source ? base.report : null);
+      const { name, description } = report?.game ?? {};
+      const codeReview = result.review ?? null;
+      saveVersionSource(this.db, id, version.version, { source: result.source, report, name, description, changelog, codeReview });
       this.log(`[generate] ${id} v${version.version}: ready for review (${name ?? 'unnamed'})`);
     } else {
       const saved = { source: result.source ?? null, report: result.report ?? null, changelog };
@@ -348,7 +368,9 @@ export class GenerationService {
   /** The sandbox job for a version's next step (generator/src/run.js describes them). */
   jobFor(game, version) {
     const designing = version.status === 'designing';
-    const job = { step: designing ? 'design' : 'build', idea: game.prompt, model: version.model };
+    const job = { step: designing ? 'design' : version.kind === 'recheck' ? 'recheck' : 'build', idea: game.prompt, model: version.model };
+    // Every build is reviewed, and its crashes and dead ends fixed (plan §47).
+    if (job.step === 'build') job.review = true;
     if (version.basedOn !== null) {
       // The requests that led to the base version, oldest first, so the model knows the history.
       const earlierRequests = [];

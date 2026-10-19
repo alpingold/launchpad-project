@@ -12,7 +12,9 @@ import { deleteGameReportsFor } from './reports.js';
 //   design_ready → generating (the admin clicked "Build it")
 //   generating → ready        (passed the checks; code + report saved)
 //   generating → failed       (the generator gave up; the design stays, to change or retry)
-// A small fix can skip the design: its version starts at "generating".
+// A small fix can skip the design: its version starts at "generating". So does a "Review
+// again" version (kind 'recheck', plan §47): another code review of the version it's based on.
+// Every build is followed by a code review (plan §47): codeReview holds what it found.
 // A game has at most two LIVE versions, chosen by the admin:
 //   published_version: the one every host can start
 //   playtest_version:  one only its owner can start, to try before publishing
@@ -35,6 +37,9 @@ export const BUSY_STATUSES = Object.freeze(['designing', 'generating']);
  * @property {string} request            v1: the idea; later: the change request
  * @property {number | null} basedOn     the version that was changed (null for v1)
  * @property {string | null} changelog   the model's "- …" list of what it changed
+ * @property {'recheck' | null} kind       'recheck': made by "Review again" (plan §47)
+ * @property {object | null} codeReview    what the code review found and fixed (generator/src/review.js: CreatorReview),
+ *                                         or { error } if it couldn't finish; null: not reviewed
  * @property {string | null} model
  * @property {VersionStatus} status
  * @property {string | null} design        the latest draft (once built: the design it was built from)
@@ -84,6 +89,8 @@ function versionFromRow(row) {
     request: row.request,
     basedOn: row.based_on,
     changelog: row.changelog,
+    kind: row.kind ?? null,
+    codeReview: row.code_review_json ? JSON.parse(row.code_review_json) : null,
     model: row.model,
     status: row.status,
     design: row.design,
@@ -154,13 +161,13 @@ const startStatus = (status) => {
  * its plan ("designing"), or for a small fix straight at "generating".
  * @returns {number} the new version's number
  */
-export function addVersion(db, gameId, { request, basedOn, model = null, status = 'designing', now = Date.now() }) {
+export function addVersion(db, gameId, { request, basedOn, model = null, status = 'designing', kind = null, now = Date.now() }) {
   return db.transaction(() => {
     const { next } = db.prepare('SELECT COALESCE(MAX(version), 0) + 1 AS next FROM game_versions WHERE game_id = ?').get(gameId);
     db.prepare(
-      `INSERT INTO game_versions (game_id, version, request, based_on, model, status, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(gameId, next, request, basedOn, model, startStatus(status), now, now);
+      `INSERT INTO game_versions (game_id, version, request, based_on, model, status, kind, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(gameId, next, request, basedOn, model, startStatus(status), kind, now, now);
     touch(db, gameId, now);
     return next;
   })();
@@ -215,7 +222,7 @@ export function designFailed(db, gameId, version, error, { now = Date.now() } = 
 export function startBuild(db, gameId, version, { now = Date.now() } = {}) {
   db.prepare(
     `UPDATE game_versions
-     SET status = 'generating', error = NULL, source = NULL, source_sha256 = NULL, report_json = NULL, changelog = NULL, updated_at = ?
+     SET status = 'generating', error = NULL, source = NULL, source_sha256 = NULL, report_json = NULL, changelog = NULL, code_review_json = NULL, updated_at = ?
      WHERE game_id = ? AND version = ?`,
   ).run(now, gameId, version);
   touch(db, gameId, now);
@@ -231,12 +238,12 @@ export function deleteVersion(db, gameId, version, { now = Date.now() } = {}) {
  * Saves a version's finished code and test report: it's "ready". The fingerprint makes it
  * possible to prove later that the code that runs is exactly the code that was reviewed.
  */
-export function saveVersionSource(db, gameId, version, { source, report, name, description, changelog = null, now = Date.now() }) {
+export function saveVersionSource(db, gameId, version, { source, report, name, description, changelog = null, codeReview = null, now = Date.now() }) {
   db.prepare(
     `UPDATE game_versions
-     SET status = 'ready', source = ?, source_sha256 = ?, report_json = ?, name = ?, description = ?, changelog = ?, error = NULL, updated_at = ?
+     SET status = 'ready', source = ?, source_sha256 = ?, report_json = ?, name = ?, description = ?, changelog = ?, code_review_json = ?, error = NULL, updated_at = ?
      WHERE game_id = ? AND version = ?`,
-  ).run(source, sha256(source), JSON.stringify(report ?? null), name ?? null, description ?? null, changelog, now, gameId, version);
+  ).run(source, sha256(source), JSON.stringify(report ?? null), name ?? null, description ?? null, changelog, codeReview === null ? null : JSON.stringify(codeReview), now, gameId, version);
   touch(db, gameId, now);
 }
 

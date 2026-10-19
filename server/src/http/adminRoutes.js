@@ -21,6 +21,8 @@ import { isAdminUser, usernamesById } from '../db/users.js';
  *   POST   /api/admin/generations/:id/versions/:v/design   { design }   → { game }       your own edit
  *   POST   /api/admin/generations/:id/versions/:v/build                 → 202 { game }   "Build it"
  *   POST   /api/admin/generations/:id/versions/:v/discard               → { game }       the newest version only
+ *   POST   /api/admin/generations/:id/versions/:v/review-again      → 202 { game }   another code review round
+ *                                                    (plan §47): the next version, with what it fixed
  *   POST   /api/admin/generations/:id/versions/:v/playtest → { game }   only you can start that version
  *   POST   /api/admin/generations/:id/publish        → { game }   the playtest version goes to everyone
  *   Asking to publish (plan §44):
@@ -111,6 +113,9 @@ export function createAdminRouter({ db, generation, mine = false }) {
           request: v.request,
           basedOn: v.basedOn,
           changelog: v.changelog,
+          kind: v.kind,
+          // What the code review found and fixed (plan §47), for the game's creator.
+          codeReview: v.codeReview,
           model: v.model,
           design: v.design,
           drafts: v.drafts,
@@ -207,6 +212,14 @@ export function createAdminRouter({ db, generation, mine = false }) {
     '/generations/:id/versions/:version/discard',
     handle((req, res) => {
       res.json({ game: detail(generation.discard(versionOf(req))) });
+    }),
+  );
+
+  router.post(
+    '/generations/:id/versions/:version/review-again',
+    handle((req, res) => {
+      const { id, version } = versionOf(req);
+      res.status(202).json({ game: detail(generation.reviewAgain({ id, basedOn: version, model: req.body?.model })) });
     }),
   );
 

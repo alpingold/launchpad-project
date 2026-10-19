@@ -4,7 +4,7 @@ import { openDatabase } from '../../src/db/database.js';
 import { createUser, setAdmin } from '../../src/db/users.js';
 import { createGeneratedGame, getGeneratedGame, gameStatus, saveDraft, startRedraft, listBuildAttempts } from '../../src/db/generatedGames.js';
 import { GameRegistry } from '../../src/games/registry.js';
-import { GenerationService, MAX_WAITING } from '../../src/generation/service.js';
+import { GenerationService, MAX_WAITING, RECHECK_REQUEST } from '../../src/generation/service.js';
 import { renamedSource } from '../helpers/frameGames.js';
 
 // The generation queue, designs, versions and going live (plan §11 A5, §12e K6, §13i F5).
@@ -97,7 +97,7 @@ test('a new game: its design is written first, then built when the admin says so
 
   service.build({ id: game.id, version: 1 });
   assert.equal(gameStatus(service.get(game.id)), 'generating');
-  assert.deepEqual(calls[1].job, { step: 'build', idea: IDEA, model: 'qwen3.8:27b', design: DESIGN });
+  assert.deepEqual(calls[1].job, { step: 'build', idea: IDEA, model: 'qwen3.8:27b', design: DESIGN, review: true });
   calls[1].finish(PASSED);
   await service.current;
   saved = getGeneratedGame(db, game.id);
@@ -342,7 +342,7 @@ test('asking for changes: the model gets the base code and the earlier requests;
   // The plan job, then the build job with the approved plan. Both see the game's design.
   const change = { request: 'Make the rounds shorter', source: GOOD_SOURCE, design: DESIGN, earlierRequests: [] };
   assert.deepEqual(calls.at(-2).job, { step: 'design', idea: IDEA, model: 'qwen3.8:27b', change });
-  assert.deepEqual(calls.at(-1).job, { step: 'build', idea: IDEA, model: 'qwen3.8:27b', change: { ...change, plan: PLAN } });
+  assert.deepEqual(calls.at(-1).job, { step: 'build', idea: IDEA, model: 'qwen3.8:27b', change: { ...change, plan: PLAN }, review: true });
   assert.deepEqual([v2.request, v2.basedOn, v2.changelog, v2.status, v2.design], ['Make the rounds shorter', 1, '- Renamed it', 'ready', PLAN]);
 
   await changed(ctx, id, 'Add a scoreboard after each round');
@@ -487,4 +487,49 @@ test('every build attempt is kept, passing or not, as one build per "Build it" (
   await service.current;
   const attempts = listBuildAttempts(db, id).get(1);
   assert.deepEqual(attempts.map((a) => [a.build, a.attempt, a.ok]), [[1, 1, false], [2, 1, false], [2, 2, true]]);
+});
+
+test('the code review (plan §47): every build asks for one, and what it found is kept with the version', async () => {
+  const ctx = setup();
+  const codeReview = { score: { points: 30, of: 40 }, bugs: [{ severity: 'crash', what: 'scores is not defined', fixed: true }], missing: [], fix: { ok: true, changelog: '- Defined scores' } };
+  const id = await reviewed(ctx, { ...PASSED, review: codeReview });
+  assert.equal(ctx.calls.at(-1).job.review, true);
+  assert.deepEqual(ctx.service.get(id).versions[0].codeReview, codeReview);
+  // A review that couldn't finish is kept too: the creator sees why.
+  const other = await reviewed(ctx, { ...PASSED, review: { error: 'no review: the model wrote no review' } });
+  assert.deepEqual(ctx.service.get(other).versions[0].codeReview, { error: 'no review: the model wrote no review' });
+});
+
+test('"Review again" (plan §47): the next version is a code review round on the one it names', async () => {
+  const ctx = setup();
+  const { service, calls } = ctx;
+  const id = await reviewed(ctx);
+  await changed(ctx, id);
+
+  // Nothing to fix: the same code, its report carried over, and the new review.
+  const look = { score: { points: 1, of: 1 }, bugs: [{ severity: 'spoils', what: 'the timer never turns red', fixed: false }], missing: [], fix: null };
+  service.reviewAgain({ id, basedOn: 2 });
+  const job = calls.at(-1).job;
+  assert.deepEqual(job, {
+    step: 'recheck',
+    idea: IDEA,
+    model: 'qwen3.8:27b',
+    change: { request: RECHECK_REQUEST, source: CHANGED_SOURCE, design: DESIGN, earlierRequests: ['Give it a new name please'], plan: null },
+  });
+  calls.at(-1).finish({ ok: true, model: 'qwen3.8:27b', source: CHANGED_SOURCE, report: null, changelog: null, attempts: [], review: look });
+  await service.current;
+  const v3 = service.get(id).versions.at(-1);
+  assert.deepEqual([v3.kind, v3.basedOn, v3.status, v3.source, v3.name, v3.codeReview], ['recheck', 2, 'ready', CHANGED_SOURCE, 'Majority Rules 2', look]);
+  assert.deepEqual(v3.report, service.get(id).versions[1].report);
+
+  // A fix: the new code, its own report and the fix's list of changes.
+  service.reviewAgain({ id, basedOn: 3 });
+  calls.at(-1).finish({ ...CHANGED, source: renamedSource('Majority Rules 3'), changelog: '- Fixed the crash', review: { ...look, fix: { ok: true, changelog: '- Fixed the crash' } } });
+  await service.current;
+  const v4 = service.get(id).versions.at(-1);
+  assert.deepEqual([v4.kind, v4.changelog, v4.source], ['recheck', '- Fixed the crash', renamedSource('Majority Rules 3')]);
+
+  // Like a change: not while another version is being made, and only on a version that passed.
+  service.reviewAgain({ id });
+  assert.throws(() => service.reviewAgain({ id }), /already being made/);
 });
