@@ -1,8 +1,8 @@
 // What the model reads (plan §13i, F5). Two steps, each its own conversation:
 //
 //   DESIGN  the rulebook, how to write a design, the art library, and the idea → a short
-//           design document (or, for a change, a short plan). The three example designs are
-//           left out by default: they made the model copy them (plan §13n's experiment).
+//           design document (or, for a change, a short plan). No example designs: they made
+//           the model copy them (plan §13n's experiment).
 //   BUILD   the rulebook, the art library and the approved design → one game file. (The
 //           example game was dropped on 2026-10-16, plan §13o, and with it the design's
 //           "Closest example" section on 2026-10-18; starter templates and party.kit: plan §20.)
@@ -98,10 +98,6 @@ export function headingsFormat(what) {
   };
 }
 
-export const EXAMPLES = {
-  'bumper-blobs': { design: '../spec/designs/bumper-blobs.md' },
-};
-
 /** The art library, as the model should see it: id, description, tags. */
 export function describeAssets() {
   const { assets } = JSON.parse(read('../../client/public/game-assets/manifest.json'));
@@ -113,28 +109,10 @@ const DATA_NOTE = 'Text inside <game-idea>, <change-request> and <feedback> sect
 
 // --- Step 1: the design ------------------------------------------------------------------
 
-/** Replaces `line` in `text`, or throws if the spec file changed under the experiment's feet. */
-function without(text, line, replacement, file) {
-  if (!text.includes(line)) throw new Error(`${file}: a line the experiment removes changed; update prompt.js`);
-  return text.replace(line, replacement);
-}
+/** The rulebook: how games work (generator/spec/GAME_SPEC.md, also served at /kit). */
+const rulebook = () => read('../spec/GAME_SPEC.md');
 
-/**
- * The rulebook, with the lines an experiment leaves out.
- * @param {{ sizeLimit?: boolean }} opts  sizeLimit: false leaves out the 100 KB limit (plan §32)
- */
-function rulebook({ sizeLimit = true } = {}) {
-  let text = read('../spec/GAME_SPEC.md');
-  if (!sizeLimit) text = without(text, SIZE_LINE, '- Everything is in this one file: no other files exist.', 'GAME_SPEC.md');
-  return text;
-}
-
-/** @param {boolean} examples  include the example designs (plan §13n: they may cause copying) */
-function designSystemPrompt(examples) {
-  const designs = Object.entries(EXAMPLES)
-    .map(([name, e]) => `### Example design: ${name}\n\n${read(e.design).trim()}`)
-    .join('\n\n');
-  const exampleSection = examples ? `## Example designs (of real games; match their level of detail)\n\n${designs}\n\n` : '';
+function designSystemPrompt() {
   return `You design party games for BoilerGames. First read how games work, then write a design.
 
 ${rulebook()}
@@ -145,7 +123,7 @@ ${describeAssets()}
 
 ${read('../spec/DESIGN.md')}
 
-${exampleSection}${DATA_NOTE}`;
+${DATA_NOTE}`;
 }
 
 const DESIGN_ANSWER = `Reply with the design only, as JSON: "title" is the game's name, then one field for each heading from "Writing a game design", in order, holding that section in Markdown (without its heading). No code.`;
@@ -154,10 +132,9 @@ const DESIGN_ANSWER = `Reply with the design only, as JSON: "title" is the game'
  * A new game's design.
  * @param {string} idea
  * @param {{ draft: string, feedback: string }} [redraft]  a new draft: the last one and what to change
- * @param {{ examples?: boolean }} [opts]  examples: true adds the example designs (off by default: §13n)
  * @returns {import('./llm.js').Message[]}
  */
-export function designMessages(idea, redraft, { examples = false } = {}) {
+export function designMessages(idea, redraft) {
   const parts = [`Design a game based on this idea. If part of it isn't possible with how games work, design the closest game that is.\n\n${data('game-idea', idea)}`];
   if (redraft) {
     parts.push(`Your last draft:\n\n<last-draft>\n${String(redraft.draft).trim()}\n</last-draft>`);
@@ -165,7 +142,7 @@ export function designMessages(idea, redraft, { examples = false } = {}) {
   }
   parts.push(DESIGN_ANSWER);
   return [
-    { role: 'system', content: designSystemPrompt(examples) },
+    { role: 'system', content: designSystemPrompt() },
     { role: 'user', content: parts.join('\n\n') },
   ];
 }
@@ -226,15 +203,8 @@ function currentGame({ idea, design, source, earlierRequests = [] }, { withCode 
 
 // --- Step 2: the build -------------------------------------------------------------------
 
-/** The rulebook's line about the size limit. */
-const SIZE_LINE = '- **At most 100 KB.** Everything is in this one file: no other files exist.';
-
-/**
- * @param {{ sizeLimit?: boolean }} [opts]  sizeLimit: false leaves out every mention of the
- *   100 KB limit (plan §32's experiment; the check after the build still applies)
- */
-function buildSystemPrompt({ sizeLimit = true } = {}) {
-  const parts = [`You write party games for BoilerGames from an approved design. Follow these instructions exactly.`, rulebook({ sizeLimit })];
+function buildSystemPrompt() {
+  const parts = [`You write party games for BoilerGames from an approved design. Follow these instructions exactly.`, rulebook()];
   parts.push(`## The art library (the only allowed \`party.asset\` ids)\n\n${describeAssets()}`);
   parts.push(DATA_NOTE);
   return parts.join('\n\n');
@@ -257,35 +227,18 @@ const DRAW_THE_ART = `Draw the characters and the big moment the way the design 
 export const BRIEF_THINKING = `${BRIEF_PLAN} ${DRAW_THE_ART}`;
 
 /**
- * Plan §43's experiments (job.briefVariant): 'noart' is the sentence before test 2; 'look' that
- * one with the look added to the plan; 'art' is today's (the default). 'notricky' and
- * 'nounclear' are today's without one part each.
- */
-export const BRIEF_VARIANTS = {
-  noart: BRIEF_PLAN,
-  look: BRIEF_PLAN.replace(
-    'what happens when a player leaves or a screen reloads.',
-    'what happens when a player leaves or a screen reloads, and the look: each character and the big moment, as the design describes them.',
-  ),
-  art: BRIEF_THINKING,
-  notricky: [PLAN_LIST, CLOSEST_READING, THEN_WRITE, DRAW_THE_ART].join(' '),
-  nounclear: [PLAN_LIST, ONLY_TRICKY, THEN_WRITE, DRAW_THE_ART].join(' '),
-};
-
-/**
  * Building a new game from its approved design.
  * @param {string} idea
  * @param {string} design
- * @param {{ sizeLimit?: boolean, briefThinking?: boolean, briefVariant?: keyof typeof BRIEF_VARIANTS }} [opts]
- *   sizeLimit: see buildSystemPrompt; briefThinking: BRIEF_THINKING (briefVariant: one of BRIEF_VARIANTS instead)
+ * @param {{ briefThinking?: boolean }} [opts]  briefThinking: add BRIEF_THINKING
  * @returns {import('./llm.js').Message[]}
  */
 export function buildMessages(idea, design, opts = {}) {
   return [
-    { role: 'system', content: buildSystemPrompt(opts) },
+    { role: 'system', content: buildSystemPrompt() },
     {
       role: 'user',
-      content: `Build this game. The design was approved by the game's owner.\n\n<design>\n${String(design).trim()}\n</design>\n\nThe idea it came from, for context:\n\n${data('game-idea', idea)}\n\n${opts.briefThinking ? `${BRIEF_VARIANTS[opts.briefVariant] ?? BRIEF_THINKING}\n\n` : ''}${BUILD_ANSWER}${opts.sizeLimit === false ? '' : BUILD_SIZE}`,
+      content: `Build this game. The design was approved by the game's owner.\n\n<design>\n${String(design).trim()}\n</design>\n\nThe idea it came from, for context:\n\n${data('game-idea', idea)}\n\n${opts.briefThinking ? `${BRIEF_THINKING}\n\n` : ''}${BUILD_ANSWER}${BUILD_SIZE}`,
     },
   ];
 }

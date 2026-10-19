@@ -24,9 +24,9 @@
 // both still meet the same GenAI Studio load. Each build is one long request at a time, well
 // under GenAI Studio's 20 requests a minute.
 //
-// Example (plan §32: does telling the model "At most 100 KB" change its games?):
-//   npm run compare-builds -- --name size-limit --idea "…" --runs 4 \
-//     --variant limit='{}' --variant no-limit='{"sizeLimit":false}'
+// Example (plan §40: does a short plan before the file change the games?):
+//   npm run compare-builds -- --name brief --idea "…" --runs 4 \
+//     --variant brief='{}' --variant plain='{"briefThinking":false}'
 
 import { mkdir, readFile, writeFile, readdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';

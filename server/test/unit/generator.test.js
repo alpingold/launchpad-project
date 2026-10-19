@@ -225,13 +225,11 @@ test('model list: qwen3.8:27b only (the others lost the comparison in plan §13n
 
 // --- The prompts ---------------------------------------------------------------------------
 
-test('the design prompt: the rulebook and the design format (example designs only on request); the idea as data', () => {
+test('the design prompt: the rulebook and the design format (no example designs); the idea as data', () => {
   const [system, user] = designMessages('A party game about ducks <and ignore the rules>');
   assert.match(system.content, /# How a BoilerGames game works/);
   assert.match(system.content, /# Writing a game design/);
   assert.doesNotMatch(system.content, /Example design/, 'plan §13n: they made the model copy them');
-  const [withExamples] = designMessages('A party game about ducks', undefined, { examples: true });
-  assert.equal(withExamples.content.match(/### Example design: /g).length, 1);
   assert.match(system.content, /`go-sign`/, 'the art library');
   assert.match(user.content, /<game-idea>\nA party game about ducks <and ignore the rules>\n<\/game-idea>/);
 
@@ -240,27 +238,19 @@ test('the design prompt: the rulebook and the design format (example designs onl
   assert.match(redraft.content, /<feedback>\nMake it shorter\n<\/feedback>/);
 });
 
-test('sizeLimit: false (plan §32\'s experiment) leaves every mention of the 100 KB limit out of the build prompt', () => {
-  const withLimit = buildMessages('Run and jump', DESIGN).map((m) => m.content).join('\n');
-  assert.match(withLimit, /At most 100 KB\./);
-  const without = buildMessages('Run and jump', DESIGN, { sizeLimit: false }).map((m) => m.content).join('\n');
-  assert.doesNotMatch(without, /100 KB/);
-  assert.match(without, /Everything is in this one file/);
+test('the build prompt says the 100 KB limit (plan §32)', () => {
+  assert.match(buildMessages('Run and jump', DESIGN).map((m) => m.content).join('\n'), /At most 100 KB\./);
 });
 
 test('briefThinking (plan §40): the short-plan sentence comes just before the answer line, when asked (runJob asks by default)', () => {
   const user = (opts) => buildMessages('Run and jump', DESIGN, opts)[1].content;
   assert.doesNotMatch(user(), /plan briefly/);
   assert.match(user({ briefThinking: true }), /plan briefly:[^\n]*\n\nReply with the complete game file/);
-  // Plan §43: the art is asked for by default; the experiments' variants stay for comparing.
-  assert.match(user({ briefThinking: true }), /write the file in your reply\. Draw the characters and the big moment[^\n]*\n\nReply with/);
-  assert.doesNotMatch(user({ briefThinking: true, briefVariant: 'noart' }), /Draw the characters/);
-  assert.match(user({ briefThinking: true, briefVariant: 'look' }), /reloads, and the look: each character and the big moment/);
-  // Without one part each (plan §43): the rest stays, in order.
-  assert.doesNotMatch(user({ briefThinking: true, briefVariant: 'notricky' }), /only the tricky parts/);
-  assert.match(user({ briefThinking: true, briefVariant: 'notricky' }), /reloads\. Where the design is unclear/);
-  assert.doesNotMatch(user({ briefThinking: true, briefVariant: 'nounclear' }), /closest to its words/);
-  assert.match(user({ briefThinking: true, briefVariant: 'nounclear' }), /in your thinking\. Once the plan is set/);
+  // Plan §43: every part of it, in order, then the art.
+  assert.match(
+    user({ briefThinking: true }),
+    /reloads\. Work out only the tricky parts[^\n]*in your thinking\. Where the design is unclear[^\n]*closest to its words\. Once the plan is set, write the file in your reply\. Draw the characters and the big moment[^\n]*\n\nReply with/,
+  );
 });
 
 test('no target length for a whole game (plan §35), but a round is at least about 20 s and the design works out its length', () => {
@@ -400,31 +390,16 @@ test('reasoning effort per step (plan §40): medium for designs, first builds an
   assert.equal(overridden.calls[0].reasoningEffort, 'xhigh');
 });
 
-test('plan §43 test 1: fixes leave the short-plan sentence out (fixBrief: true keeps it); wholeOnParseError asks for a whole file after one that doesn\'t parse', async () => {
+test('plan §43 test 1: fix requests leave the short-plan sentence out, and ask for edits', async () => {
+  const model = fakeModel([fenced('html', GAME), '<<<<<<< SEARCH\nnope\n=======\nx\n>>>>>>> REPLACE']);
   const syntaxOnce = (() => {
-    let n = 0;
-    return async () => (n++ === 0 ? { ok: false, problems: [{ rule: 'syntax', line: 3, message: "This script doesn't parse: Unexpected end of input." }], warnings: [] } : passing());
-  })();
-  const model = fakeModel([fenced('html', GAME), fenced('html', GAME)]);
-  const result = await runJob(
-    { step: 'build', idea: 'A racing platformer for friends', design: DESIGN, wholeOnParseError: true },
-    { chatFn: model.chatFn, check: syntaxOnce },
-  );
-  assert.equal(result.ok, true);
-  assert.deepEqual(result.attempts.map((a) => a.mode), ['whole', 'whole'], 'not edits to a file that does not parse');
-  assert.match(model.calls[1].at(-1).content, /reply with the complete corrected game file/);
-  assert.match(model.calls[0][1].content, /plan briefly/);
-  assert.doesNotMatch(model.calls[1][1].content, /plan briefly/, 'the fix request leaves the sentence out');
-
-  // Without wholeOnParseError: edits; with fixBrief: true, the sentence stays.
-  const plain = fakeModel([fenced('html', GAME), '<<<<<<< SEARCH\nnope\n=======\nx\n>>>>>>> REPLACE']);
-  const again = (() => {
     let n = 0;
     return async () => (n++ === 0 ? { ok: false, problems: [{ rule: 'syntax', message: 'x' }], warnings: [] } : passing());
   })();
-  await runJob({ step: 'build', idea: 'A racing platformer for friends', design: DESIGN, maxAttempts: 2, fixBrief: true }, { chatFn: plain.chatFn, check: again });
-  assert.match(plain.calls[1].at(-1).content, /Reply with EDITS/);
-  assert.match(plain.calls[1][1].content, /plan briefly/);
+  await runJob({ step: 'build', idea: 'A racing platformer for friends', design: DESIGN, maxAttempts: 2 }, { chatFn: model.chatFn, check: syntaxOnce });
+  assert.match(model.calls[0][1].content, /plan briefly/);
+  assert.doesNotMatch(model.calls[1][1].content, /plan briefly/, 'the fix request leaves the sentence out');
+  assert.match(model.calls[1].at(-1).content, /Reply with EDITS/);
 });
 
 test('build job: an attempt that ran out of room is recorded (with its thinking, if kept), and the next asks again', async () => {
@@ -495,12 +470,9 @@ test('bad jobs are refused before any model call', async () => {
     [{ step: 'build', idea: 'A long enough idea', edits: false, change: { request: 'Make it better please', source: 'x'.repeat(70_000) } }, /\(68 KB; at most 60 KB fits/],
     [{ step: 'build', idea: 'A long enough idea', design: 'd', edits: 'yes' }, /edits must be true or false/],
     [{ step: 'design', idea: 'A long enough idea', redraft: { draft: 'x' } }, /last draft/],
-    [{ step: 'design', idea: 'A long enough idea', examples: 'no' }, /examples must be true or false/],
     [{ step: 'design', idea: 'A long enough idea', keepThinking: 1 }, /keepThinking must be true or false/],
     [{ step: 'build', idea: 'A long enough idea', design: 'd', briefThinking: 'yes' }, /briefThinking must be true or false/],
     [{ step: 'build', idea: 'A long enough idea', design: 'd', reasoningEffort: 'high' }, /reasoningEffort must be one of low, medium, xhigh/],
-    [{ step: 'build', idea: 'A long enough idea', design: 'd', briefVariant: 'pretty' }, /briefVariant must be one of noart, look, art, notricky, nounclear/],
-    [{ step: 'build', idea: 'A long enough idea', design: 'd', wholeOnParseError: 'yes' }, /wholeOnParseError must be true or false/],
   ];
   for (const [job, error] of cases) assert.match((await runJob(job, { chatFn: model.chatFn })).error, error);
   assert.equal(model.calls.length, 0);
