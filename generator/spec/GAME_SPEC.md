@@ -175,8 +175,12 @@ function bigScreen(restored) {
 ```
 
 Timers don't survive a reload: store deadlines as `party.now()` times and set them again.
+Do this for **every** phase, the short ones too: a reload during the intro, a countdown or
+the final screen must still move on (after the final screen, still call `party.end`). Save
+which phase it is by name and pick what to do next from that name.
 The snapshot travels as JSON: keep it to plain objects, arrays, strings, numbers and
-booleans. A `Set`, `Map`, class instance or function comes back broken (a `Set` becomes `{}`).
+booleans. A `Set`, `Map`, class instance or function comes back broken (a `Set` becomes `{}`,
+a function is dropped), so never save a callback for what happens next.
 
 ## `party.ui`: ready-made pieces
 

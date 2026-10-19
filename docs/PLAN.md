@@ -1910,6 +1910,9 @@ build on the site now ends with one review round.
   never ends after a reload on its final screen, and (on some runs) a bake-off that keeps a
   function in its save, so scoring crashes after a reload. Reloads at the wrong moment are where
   these games break; the bots' timing decides whether a run hits one.
+- **So the rulebook says it** (GAME_SPEC.md, "Reloads"): every phase resumes after a reload, the
+  intro, countdowns and the final screen included (which still calls `party.end`); the phase is
+  saved by name, and a callback is never saved (a function is dropped from the JSON).
 
 ## Verification (how to confirm the plan worked once built)
 
