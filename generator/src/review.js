@@ -9,7 +9,8 @@
 //              partial, missing or wrong, with the lines that show it; plus bugs and dead code.
 //
 // The replies are JSON held to a schema (GenAI Studio's response_format), so no item is skipped.
-// The script checks the cited lines afterwards: a model can claim what it didn't see.
+// verify() checks the answers afterwards: a model can claim what it didn't see, and on a long
+// list it can drift, putting one item's answer under the next item's id.
 
 import { chat } from './llm.js';
 import { reasoningEffortFor } from './models.js';
@@ -53,8 +54,8 @@ export const REVIEW_FORMAT = {
           type: 'array',
           items: {
             type: 'object',
-            properties: { id: { type: 'string' }, status: { type: 'string', enum: STATUSES }, lines, note: { type: 'string' } },
-            required: ['id', 'status', 'lines', 'note'],
+            properties: { id: { type: 'string' }, about: { type: 'string' }, status: { type: 'string', enum: STATUSES }, lines, note: { type: 'string' } },
+            required: ['id', 'about', 'status', 'lines', 'note'],
             additionalProperties: false,
           },
         },
@@ -87,7 +88,7 @@ Split sentences that hold several things into several items. Keep the design's n
 
 const REVIEW_SYSTEM = `You review the code of a party game (one HTML file: the big screen and every phone run it) against a checklist made from its design. Read the code carefully; each line starts with its number.
 
-For EVERY checklist item, decide:
+For EVERY checklist item, in order: its id, then "about": the item's own words, shortened (so it's clear which item you're judging), then decide:
 - implemented: the code does it as the item says (the numbers match)
 - partial: it does some of it, or with different numbers or a simpler version (say what differs)
 - missing: nothing in the code does it
@@ -158,4 +159,35 @@ export async function reviewGame(job, model, { chatFn = chat, onStep = () => {} 
   const review = parse(reply.content);
   if (!review || !Array.isArray(review.items)) return { ok: false, model, error: 'the model wrote no review' };
   return { ok: true, model, review, usage: reply.usage, seconds: reply.seconds };
+}
+
+/** Words worth comparing: lower case, 4+ letters, cut to their first 5 (so "guards" meets "guard"). */
+function keywords(text) {
+  const stop = new Set(['with', 'when', 'each', 'that', 'this', 'from', 'their', 'shows', 'show', 'every', 'after', 'into', 'than', 'then', 'they', 'have', 'there']);
+  return [...new Set((String(text).toLowerCase().match(/[a-z]{4,}/g) ?? []).filter((w) => !stop.has(w)).map((w) => w.slice(0, 5)))];
+}
+
+/**
+ * Checks each answer against its item and the code. An answer is `verified` when its "about"
+ * shares a word with the item (otherwise it's `misaligned`: it was written about another item),
+ * and, unless it says missing, it cites lines that exist with a word from the item or the note
+ * (or a camelCase part of one) on or near them.
+ */
+export function verify(checklist, items, source) {
+  const code = String(source).split('\n');
+  const near = (lines) =>
+    lines
+      .flatMap((n) => code.slice(Math.max(0, n - 3), n + 2))
+      .join('\n')
+      .replace(/([a-z])([A-Z])/g, '$1 $2')
+      .toLowerCase();
+  return checklist.map((it) => {
+    const got = items.find((x) => x.id === it.id) ?? { id: it.id, about: it.text, status: 'missing', lines: [], note: '(the reviewer skipped it)' };
+    const words = keywords(it.text);
+    const misaligned = words.length > 0 && !keywords(got.about).some((w) => words.includes(w));
+    const lines = (got.lines ?? []).filter((n) => Number.isInteger(n) && n >= 1 && n <= code.length);
+    const text = near(lines);
+    const cited = got.status === 'missing' || (lines.length > 0 && keywords(`${it.text} ${got.note}`).some((w) => text.includes(w)));
+    return { ...got, area: it.area, text: it.text, misaligned, verified: !misaligned && cited };
+  });
 }

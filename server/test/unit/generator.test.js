@@ -14,7 +14,7 @@ import {
   PLAN_HEADINGS,
 } from '../../../generator/src/prompt.js';
 import { runJob, formatReport } from '../../../generator/src/run.js';
-import { numberLines, reviewMessages, CHECKLIST_FORMAT, REVIEW_FORMAT } from '../../../generator/src/review.js';
+import { numberLines, reviewMessages, verify, CHECKLIST_FORMAT, REVIEW_FORMAT } from '../../../generator/src/review.js';
 
 // The generator (plan §13i, F5): pulling designs and game files out of replies, the
 // prompts for both steps, calling the model, and the design and build jobs, run here with
@@ -530,4 +530,24 @@ test('the reviewer (plan §47): a checklist from the design, then a review of th
   assert.deepEqual(asked, ['checklist', 'review']);
   assert.equal(REVIEW_FORMAT.json_schema.schema.properties.items.items.properties.status.enum.length, 4);
   assert.match((await runJob({ step: 'review', idea: 'A racing platformer for friends', source: GAME }, { chatFn })).error, /needs the checklist/);
+});
+
+test('the reviewer: an answer counts only when it is about its own item and cites lines that show it', () => {
+  const checklist = [
+    { id: 'R1', area: 'rules', text: 'Guards patrol at 80 units/s' },
+    { id: 'R2', area: 'rules', text: 'Three rounds' },
+  ];
+  const source = 'const GUARD_SPEED = 80;\n\n\n\n\nlet rounds = 3;'; // lines 1 and 6: too far apart to count for each other
+  const answer = (id, about, lines, note = '') => ({ id, about, status: 'implemented', lines, note });
+  const [r1, r2] = verify(checklist, [answer('R1', 'guard patrol speed', [1]), answer('R2', 'three rounds', [6], 'rounds = 3')], source);
+  assert.deepEqual([r1.verified, r2.verified], [true, true]);
+  // Drifted: R1's answer is about rounds (the next item), so it doesn't count, even with real lines.
+  assert.deepEqual(
+    verify(checklist, [answer('R1', 'three rounds', [6]), answer('R2', 'rounds', [6])], source).map((i) => [i.misaligned, i.verified]),
+    [[true, false], [false, true]],
+  );
+  // Lines that don't exist, or don't mention the item, don't count either; a skipped item is missing.
+  assert.equal(verify(checklist, [answer('R1', 'guards patrol', [9])], source)[0].verified, false);
+  assert.equal(verify(checklist, [answer('R1', 'guards patrol', [6])], source)[0].verified, false);
+  assert.deepEqual([verify(checklist, [], source)[1].status, verify(checklist, [], source)[1].verified], ['missing', true]);
 });

@@ -6,9 +6,10 @@
 // reviews every build's game.html against it (review.json in the build's folder), and writes
 // review.md: a table of every build's score, by area, with the bugs the reviewer saw.
 //
-// The reviewer is a model, so its claims are checked: an item marked implemented, partial or
-// wrong must cite lines that exist and mention something from the item; if not, it's counted
-// as "unverified" (and as 0 in the score).
+// The reviewer is a model, so its claims are checked (verify() in generator/src/review.js): an
+// answer must restate its own item, and one marked implemented, partial or wrong must cite lines
+// that exist and mention something from the item; if not, it's "unverified" (0 in the score). If
+// many answers are about the wrong item, the review drifted and is worth running again.
 //
 // --again reviews builds that already have a review.json; --only reviews just that build.
 
@@ -17,7 +18,7 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { runGeneratorInSandbox } from '../src/generation/sandbox.js';
-import { AREAS } from '../../generator/src/review.js';
+import { AREAS, verify } from '../../generator/src/review.js';
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
@@ -71,39 +72,13 @@ for (const folder of positionals.map((p) => path.resolve(cwd, p))) {
       const review = { ...res.review, items: verify(checklist, res.review.items, source), usage: res.usage, seconds: res.seconds };
       await writeFile(path.join(folder, build, 'review.json'), JSON.stringify(review, null, 2));
       const s = score(review.items);
-      log(`${name}/${build}: ${s.points}/${s.of} (${s.unverified} unverified), ${review.bugs.length} bug(s), ${res.seconds} s`);
+      const off = review.items.filter((i) => i.misaligned).length;
+      const drift = off > review.items.length / 10 ? ` DRIFTED: ${off} answers about the wrong item, run it --again` : '';
+      log(`${name}/${build}: ${s.points}/${s.of} (${s.unverified} unverified), ${review.bugs.length} bug(s), ${res.seconds} s${drift}`);
     }),
   );
   await writeFile(path.join(folder, 'review.md'), await summary(folder, name, checklist));
   console.log(`\n${await summary(folder, name, checklist)}`);
-}
-
-/** Words worth looking for: lower case, 4+ letters, from the item and the reviewer's note. */
-function keywords(text) {
-  const stop = new Set(['with', 'when', 'each', 'that', 'this', 'from', 'their', 'shows', 'show', 'every', 'after', 'into', 'than', 'then', 'they', 'have', 'there']);
-  return [...new Set(String(text).toLowerCase().match(/[a-z]{4,}/g) ?? [])].filter((w) => !stop.has(w));
-}
-
-/**
- * Checks each claim against the code: the lines must exist, and some word from the item or the
- * note (or a camelCase part of one) must appear on or near them. Adds `verified` to each item.
- */
-export function verify(checklist, items, source) {
-  const code = source.split('\n');
-  const near = (lines) =>
-    lines
-      .flatMap((n) => code.slice(Math.max(0, n - 3), n + 2))
-      .join('\n')
-      .replace(/([a-z])([A-Z])/g, '$1 $2')
-      .toLowerCase();
-  return checklist.map((it) => {
-    const got = items.find((x) => x.id === it.id) ?? { id: it.id, status: 'missing', lines: [], note: '(the reviewer skipped it)' };
-    if (got.status === 'missing') return { ...got, area: it.area, text: it.text, verified: true };
-    const lines = (got.lines ?? []).filter((n) => Number.isInteger(n) && n >= 1 && n <= code.length);
-    const text = near(lines);
-    const verified = lines.length > 0 && keywords(`${it.text} ${got.note}`).some((w) => text.includes(w.slice(0, 6)));
-    return { ...got, area: it.area, text: it.text, verified };
-  });
 }
 
 /** implemented 1, partial ½ (only when verified). */
@@ -127,9 +102,9 @@ async function summary(folder, name, checklist) {
     '',
     `${checklist.length} checklist items (checklist.json). implemented = 1, partial = ½, unverified = 0.`,
     '',
-    `| Build | Score | ${AREAS.join(' | ')} | Unverified | Bugs |`,
-    `|---|---|${AREAS.map(() => '---').join('|')}|---|---|`,
-    ...rows.map(({ build, r, total }) => `| ${build} | ${total.points}/${total.of} (${pct(total)}) | ${AREAS.map((a) => pct(score(r.items, a))).join(' | ')} | ${total.unverified} | ${r.bugs.length} |`),
+    `| Build | Score | ${AREAS.join(' | ')} | Unverified | Wrong item | Bugs |`,
+    `|---|---|${AREAS.map(() => '---').join('|')}|---|---|---|`,
+    ...rows.map(({ build, r, total }) => `| ${build} | ${total.points}/${total.of} (${pct(total)}) | ${AREAS.map((a) => pct(score(r.items, a))).join(' | ')} | ${total.unverified} | ${r.items.filter((i) => i.misaligned).length} | ${r.bugs.length} |`),
     '',
   ];
   for (const { build, r } of rows) {
