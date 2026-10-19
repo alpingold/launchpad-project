@@ -18,4 +18,20 @@ export const EXAMPLE_IDEAS = [
     label: 'Lowest unique number',
     idea: 'Each round everyone secretly picks a number from 1 to 10 on their phone. The lowest number that nobody else picked wins the round and scores that many points. Picks that someone else also made score nothing. The big screen reveals the picks one number at a time, from 1 up. First to 15 points wins.',
   },
+  {
+    label: 'Find the spy',
+    idea: 'Each round everyone but one player sees the same secret place on their phone, like a beach or a hospital; the spy only sees "You are the spy". The big screen asks three questions about the place ("What would you wear there?") and everyone types a short answer, shown with their name. Then everyone votes for the spy. If the spy is caught, everyone else scores; if not, the spy scores. New spy and place each round; most points after 5 rounds wins.',
+  },
+  {
+    label: 'Draw and guess',
+    idea: 'Each round one player gets a secret word and draws it on their phone; the drawing appears on the big screen as they draw. Everyone else types guesses on their phone for 60 seconds. The first right guess scores 3 points, later right guesses 1, and the drawer gets a point for each player who got it. Everyone draws twice; most points wins.',
+  },
+  {
+    label: 'Think alike',
+    idea: 'Each round the big screen asks for something like "a pizza topping" or "something in a garage". Everyone answers secretly on their phone, then the big screen reveals the answers grouped together (ignoring capitals and extra spaces). You score a point for every other player who wrote the same thing as you. Most points after 8 rounds wins.',
+  },
+  {
+    label: 'Bluff the answer',
+    idea: 'Each round the big screen shows a strange but true trivia question. Everyone writes a fake answer that sounds true. Then all the fakes and the real answer are shown shuffled, and everyone votes for the one they think is real (not their own). 2 points for finding the real answer, 1 point for each player your fake fooled. Most points after 6 questions wins.',
+  },
 ];
