@@ -2438,6 +2438,43 @@ full sentence stays. Reading the code mattered: keyword checklists missed things
 - **Tried on 24 games:** the 7 official games are clean; it caught 2 generated games; the others a
   rough scan suspected show names with `party.ui.el`, `textContent` or a canvas, which is fine.
 
+## 47. The code review (2026-10-19)
+
+An AI reviewer reads a finished game's code against its design. Built first to measure build
+variants (§43) on more than "did it pass the checks"; it found bugs the checks can't, so every
+build on the site now ends with one review round.
+
+- **How it reads** (generator/src/review.js): the design (plus any changes since) becomes a
+  checklist of 30–150 concrete items; then the reviewer marks each item implemented, partial,
+  missing or wrong, citing line numbers, and lists bugs with a severity: **crash**, **stuck** (play
+  can't go on or be won), **spoils** (plays wrong), **minor**. Both replies are JSON held to a schema.
+- **Its claims are checked** (verify()): each answer restates its item first, and an answer about
+  a different item doesn't count (a long review once drifted, putting each answer under the next
+  item's id: 44 of 95); a claim must cite lines that exist and mention the item.
+- **Calibration** on the §43 games (11 games, 95- and 149-item checklists): it found everything
+  found by reading the code by hand, plus bugs no check caught: an exit that can't be reached
+  (clamped to x ≤ 960, the win needs x > 960), a vault wing won without the diamond, a big screen
+  drawn once and never again, a tie-break that crashes. Two reviews of the same game agree on 83–95%
+  of items; scores move by up to ~6%, so small score gaps between builds are noise. The serious
+  bugs mostly came back the second time, but not always: one review missed the vault bug the
+  other found (and said the opposite).
+- **The review-and-fix test** (server/scripts/review-fix.js): the critical bugs of each game went
+  back as a small change request. 12 critical bugs on 9 games: 10 real (all fixed correctly), 2
+  false alarms (harmless, equivalent code). Every fix passed the checks, changing 2–13 lines; no
+  design score dropped. But 2 games still couldn't be won after it: a bug the review hadn't
+  listed. One round makes games clearly better, not bug-free.
+- **On the site:** a build that passes gets one round: review, then its crashes and dead ends
+  sent back as a small fix (3 attempts). A fix that fails the checks is dropped, keeping the game
+  that passed; a review that fails (one more try first) never fails the build. The creator's page
+  and the admin page show what it fixed, what's worth a look (with **Ask the AI to fix these**:
+  a small fix) and what from the design it couldn't find. **Review again** runs another round as
+  the next version (kind 'recheck', migration 12). Adds ~10 minutes to a build.
+- **Change requests may be 4000 characters** (ideas stay 1000): a request can list several fixes.
+  Earlier requests in a change's prompt are still cut to 1000 each.
+- **Still open:** the playtest should catch a big screen that never changes (a deterministic
+  check beats the reviewer there); a "spoils" bug like the vault one isn't fixed automatically,
+  only shown.
+
 ## Verification (how to confirm the plan worked once built)
 
 - `npm test` (root) → runs `node --test server/test`, all unit and integration tests green.
