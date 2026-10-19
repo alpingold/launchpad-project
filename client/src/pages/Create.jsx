@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react';
 import { useCurrentUser } from '../net/auth.js';
 import { useOwnGamesApi, listGenerations, startGeneration } from '../net/admin.js';
 import { usePageTitle } from '../usePageTitle.js';
-import { MiniTrack, whereIsSummary, timeAgo } from './CreateGame.jsx';
+import { MiniTrack, whereIsSummary } from './CreateGame.jsx';
+import { timeAgo } from '../components/timeAgo.js';
+import { EXAMPLE_IDEAS } from '../components/exampleIdeas.js';
 
 // Make your own games with AI (plan §15, guided flow §19), for any account, with your own
 // GenAI Studio key: describe a game here, then each game has its own page, /create/<id>,
@@ -19,26 +21,6 @@ const createNext = () => {
   const idea = ideaFromAddress();
   return idea ? encodeURIComponent(`/create?idea=${encodeURIComponent(idea)}`) : '/create';
 };
-
-/** Ideas to start from: games that fit a big screen and phones (plan §18). */
-export const EXAMPLE_IDEAS = [
-  {
-    label: 'Find the spy',
-    idea: 'Everyone but one player sees the same secret place on their phone; the spy sees nothing. Take turns answering a question about it, then vote for who the spy is.',
-  },
-  {
-    label: 'Draw and guess',
-    idea: 'One player draws a secret word on their phone while it appears on the big screen; everyone else types guesses. Faster right guesses score more.',
-  },
-  {
-    label: 'Think alike',
-    idea: 'Each round asks a question like "name a pizza topping". Everyone answers secretly on their phone; you score a point for every other player who wrote the same thing.',
-  },
-  {
-    label: 'Bluff the answer',
-    idea: 'Show a strange trivia question. Everyone writes a fake answer that sounds true, then everyone votes for the real one among all of them. Points for finding it and for fooling others.',
-  },
-];
 
 /** What a game is doing, in a few words, for the list. */
 const STATUS_WORDS = {

@@ -1,14 +1,10 @@
+import { lazy, Suspense } from 'react';
 import Home from './pages/Home.jsx';
 import Host from './pages/Host.jsx';
 import Join from './pages/Join.jsx';
 import NotFound from './pages/NotFound.jsx';
 import Login from './pages/Login.jsx';
-import Admin from './pages/Admin.jsx';
-import Kit from './pages/Kit.jsx';
 import Games from './pages/Games.jsx';
-import Create from './pages/Create.jsx';
-import CreateGame from './pages/CreateGame.jsx';
-import Account from './pages/Account.jsx';
 import GamePage from './pages/GamePage.jsx';
 import Profile from './pages/Profile.jsx';
 import Report from './pages/Report.jsx';
@@ -16,6 +12,14 @@ import HomeLink from './components/HomeLink.jsx';
 import SiteNav from './components/SiteNav.jsx';
 import DemoBadge from './components/DemoBadge.jsx';
 import SiteFooter from './components/SiteFooter.jsx';
+
+// Pages only some visitors open load when they're opened: a phone joining a game doesn't
+// download the admin page or the game maker.
+const Admin = lazy(() => import('./pages/Admin.jsx'));
+const Kit = lazy(() => import('./pages/Kit.jsx'));
+const Create = lazy(() => import('./pages/Create.jsx'));
+const CreateGame = lazy(() => import('./pages/CreateGame.jsx'));
+const Account = lazy(() => import('./pages/Account.jsx'));
 
 // The site's pages, by URL path. Plain links (<a href>) do a full page load, which is all a
 // handful of pages needs (decision D12: no router library). Adding a page = one line here.
@@ -76,7 +80,7 @@ export default function App() {
           <SiteNav />
         </div>
       </header>
-      {pageFor(path)}
+      <Suspense fallback={<main className="page" aria-busy="true" />}>{pageFor(path)}</Suspense>
       <SiteFooter path={path} />
       <DemoBadge />
     </>

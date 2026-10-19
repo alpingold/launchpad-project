@@ -4,7 +4,7 @@ import { usePageTitle } from '../usePageTitle.js';
 import { useCurrentUser, logOut } from '../net/auth.js';
 import GameCard from '../components/GameCard.jsx';
 import { filterGames, NO_FILTERS } from '../components/catalogue.js';
-import { EXAMPLE_IDEAS } from './Create.jsx';
+import { EXAMPLE_IDEAS } from '../components/exampleIdeas.js';
 
 /** How many games each row of the front page shows; the rest are on /games. */
 const HOME_GAMES = 3;

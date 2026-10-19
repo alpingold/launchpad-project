@@ -17,10 +17,11 @@ import {
 import { usePageTitle } from '../usePageTitle.js';
 import Markdown from '../components/Markdown.jsx';
 import CodeReview from '../components/generation/CodeReview.jsx';
+import { timeAgo } from '../components/timeAgo.js';
 import ChangeForm from '../components/generation/ChangeForm.jsx';
 import { DesignEditor } from '../components/generation/DesignEditor.jsx';
 import { ChangedLines, Attempts, Report, SourceCode } from '../components/generation/VersionDetails.jsx';
-import { POLL_MS, VERSION_STATUS_TEXT, PLAN_STATUS_TEXT, formatTime } from '../components/generation/text.js';
+import { POLL_MS, VERSION_STATUS_TEXT, PLAN_STATUS_TEXT } from '../components/generation/text.js';
 
 // One game you're making with AI, /create/<id> (plan §19): a board-game track shows the four
 // steps (Idea → Design → Build → Play, or Change → Plan → Build → Play for a change), and
@@ -59,15 +60,6 @@ export function whereIsSummary(game) {
   const at = { designing: 1, design: 1, generating: 2, failed: 2 }[game.status] ?? 3;
   const state = game.status === 'failed' ? 'failed' : game.progress ? 'working' : 'yours';
   return { at, state };
-}
-
-/** "just now", "5 min ago", "3 h ago", or the date. */
-export function timeAgo(ms) {
-  const minutes = Math.round((Date.now() - ms) / 60_000);
-  if (minutes < 1) return 'just now';
-  if (minutes < 60) return `${minutes} min ago`;
-  if (minutes < 24 * 60) return `${Math.round(minutes / 60)} h ago`;
-  return formatTime(ms);
 }
 
 /** The first letter of a game's name, for its token. */
