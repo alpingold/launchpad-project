@@ -394,14 +394,14 @@ test('reasoning effort per step (plan §40): medium for designs, first builds an
   assert.equal(overridden.calls[0].reasoningEffort, 'xhigh');
 });
 
-test('plan §43 test 1: wholeOnParseError asks for a whole file after one that doesn\'t parse; fixBrief: false drops the sentence from fixes', async () => {
+test('plan §43 test 1: fixes leave the short-plan sentence out (fixBrief: true keeps it); wholeOnParseError asks for a whole file after one that doesn\'t parse', async () => {
   const syntaxOnce = (() => {
     let n = 0;
     return async () => (n++ === 0 ? { ok: false, problems: [{ rule: 'syntax', line: 3, message: "This script doesn't parse: Unexpected end of input." }], warnings: [] } : passing());
   })();
   const model = fakeModel([fenced('html', GAME), fenced('html', GAME)]);
   const result = await runJob(
-    { step: 'build', idea: 'A racing platformer for friends', design: DESIGN, wholeOnParseError: true, fixBrief: false },
+    { step: 'build', idea: 'A racing platformer for friends', design: DESIGN, wholeOnParseError: true },
     { chatFn: model.chatFn, check: syntaxOnce },
   );
   assert.equal(result.ok, true);
@@ -410,13 +410,13 @@ test('plan §43 test 1: wholeOnParseError asks for a whole file after one that d
   assert.match(model.calls[0][1].content, /plan briefly/);
   assert.doesNotMatch(model.calls[1][1].content, /plan briefly/, 'the fix request leaves the sentence out');
 
-  // Without the options: edits, and the sentence stays.
+  // Without wholeOnParseError: edits; with fixBrief: true, the sentence stays.
   const plain = fakeModel([fenced('html', GAME), '<<<<<<< SEARCH\nnope\n=======\nx\n>>>>>>> REPLACE']);
   const again = (() => {
     let n = 0;
     return async () => (n++ === 0 ? { ok: false, problems: [{ rule: 'syntax', message: 'x' }], warnings: [] } : passing());
   })();
-  await runJob({ step: 'build', idea: 'A racing platformer for friends', design: DESIGN, maxAttempts: 2 }, { chatFn: plain.chatFn, check: again });
+  await runJob({ step: 'build', idea: 'A racing platformer for friends', design: DESIGN, maxAttempts: 2, fixBrief: true }, { chatFn: plain.chatFn, check: again });
   assert.match(plain.calls[1].at(-1).content, /Reply with EDITS/);
   assert.match(plain.calls[1][1].content, /plan briefly/);
 });

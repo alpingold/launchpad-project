@@ -71,7 +71,7 @@ import { describeProblem } from '../../server/src/games/frameGame.js';
  * @property {boolean} [edits]            build: false turns edit mode off (on by default, plan §23)
  * @property {'low' | 'medium' | 'xhigh'} [reasoningEffort]  for every step, instead of the model's own (models.js; plan §40's experiment)
  * @property {boolean} [briefThinking]    build: asks for a short plan before the file (on by default, plan §40)
- * @property {boolean} [fixBrief]          build: false leaves the short-plan sentence out of fix requests (plan §43 test 1)
+ * @property {boolean} [fixBrief]          build: true keeps the short-plan sentence in fix requests (off by default, plan §43 test 1)
  * @property {boolean} [wholeOnParseError] build: after a file that doesn't parse, ask for a whole file, not edits (plan §43 test 1)
  * @property {'noart' | 'look' | 'art'} [briefVariant]  build: a variant of that sentence (plan §43's experiments)
  * @property {boolean} [keepThinking]     each attempt keeps the model's thinking and whole reply (plan §38's look; off on the site)
@@ -263,8 +263,10 @@ async function build(job, model, { chatFn = chat, check = checkGame, onStep = ()
   const prompt = change ? changeBuildMessages({ idea: job.idea, ...change }, plan, { edits }) : buildMessages(job.idea, job.design, { sizeLimit: job.sizeLimit ?? true, briefThinking: job.briefThinking ?? true, briefVariant: job.briefVariant });
   // A fix shows the model its last file as its own reply. For a change, that file replaces
   // the old one in the prompt (withCode: false), so the game is in the conversation once.
-  // Plan §43 test 1: job.fixBrief === false leaves the short-plan sentence out of fix requests.
-  const newGameFixPrompt = job.fixBrief === false ? buildMessages(job.idea, job.design, { sizeLimit: job.sizeLimit ?? true, briefThinking: false }) : prompt;
+  // Fix requests leave the short-plan sentence out (plan §43 test 1: with it, fixes spiralled
+  // into edits that didn't fit; without it, every broken first file was fixed in one round).
+  // job.fixBrief: true keeps it, to compare.
+  const newGameFixPrompt = job.fixBrief === true ? prompt : buildMessages(job.idea, job.design, { sizeLimit: job.sizeLimit ?? true, briefThinking: false });
   const fixPrompt = (asEdits) => (change ? changeBuildMessages({ idea: job.idea, ...change }, plan, { edits: asEdits, withCode: false }) : newGameFixPrompt);
   const fixMessages = (source, reportText, asEdits) => [...fixPrompt(asEdits), { role: 'assistant', content: `\`\`\`html\n${source}\`\`\`` }, { role: 'user', content: fixMessage(reportText, { edits: asEdits }) }];
 
