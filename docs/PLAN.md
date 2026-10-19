@@ -1,6 +1,6 @@
 # BoilerGames: Implementation Plan (MVP lobby + extension structure)
 
-> **Status (2026-10-16):** M0–M7 done; AI generation, frame games (§13, now `main`; the old block games are in the `block-games` branch), the catalogue (§14), bring-your-own-key (§15), game pages/votes/profiles (§16), a room per game (§17), the guided /create flow (§19) and better phones (§21) are built. **Focus (§22): the games that fit a big screen with phones as controllers** (drawing and guessing, writing and voting, bluffing and secrets, trivia, board games, loose real-time action), not platformers or RPGs. **Live at https://boilergames.party since 2026-10-17** (M8, §27–29). Next: play-tests with people. This file is the living plan: decisions and changes are recorded here as they happen, so `git log docs/PLAN.md` shows how it evolved.
+> **Status (2026-10-16):** M0–M7 done; AI generation, frame games (§13, now `main`; the old block games are in the `block-games` branch), the catalogue (§14), bring-your-own-key (§15), game pages/votes/profiles (§16), a room per game (§17), the guided /create flow (§19) and better phones (§21) are built. **Focus (§22): the games that fit a big screen with phones as controllers** (drawing and guessing, writing and voting, bluffing and secrets, trivia, board games, loose real-time action), not platformers or RPGs. **Live at https://boilergames.party since 2026-10-17** (M8, §27–29). Next: play-tests with people. This file is the living plan: decisions and changes are recorded here as they happen, so `git log docs/PLAN.md` shows how it evolved. Experiments keep their method and numbers in [docs/experiments/](experiments/README.md); the plan keeps what was decided, with a link.
 
 _Site renamed from "LaunchPad Party" to **BoilerGames** on 2026-10-11 (built for the Purdue LaunchPad club; the club name stays where it refers to the club)._
 
@@ -641,22 +641,10 @@ Changes from today's contract (§4), all made in A1:
 
 ### 11g. Model comparison (A4, 2026-10-13)
 
-Three ideas, each generated once per model in the sandbox with `npm run generate` (six runs in parallel):
-
-| Idea | gpt-oss:120b | qwen3.8:27b |
-|---|---|---|
-| Purdue trivia (5 questions, first correct = 2 points) | ✅ 1st try, 31 s | ✅ 1st try, 40 s |
-| Hot Potato (pass a potato, it explodes, 2 lives) | ✅ 2nd try, 49 s | ✅ 4th try, 354 s |
-| Rock paper scissors party (a point per player beaten) | ✅ 1st try, 31 s | ✅ 1st try, 68 s |
-
-Plus "Hot or Not: Food" on gpt-oss: ✅ 1st try, 27 s.
-
-**Takeaways:**
-- Every run ended with a passing game; the check → fix loop rescued both Hot Potato runs.
-- gpt-oss is much faster and needed fewer fixes here, so it stays the default.
-- Both copy the example games' structure closely, so the examples are the main lever on quality.
-- **The tests can't check facts or game logic.** Both trivia games contained wrong or made-up "facts": qwen marked "Blue and Gold" as Purdue's colors and *The Daily Titan* as its newspaper. "Hot or Not" awarded a "minority" point when everyone voted the same way. Human review stays essential. For fact games, put the facts in the idea yourself.
-- Sample size is tiny (one run per cell); revisit with more runs if the defaults ever matter more.
+Three ideas, once per model (gpt-oss:120b and qwen3.8:27b): every run ended with a passing
+game; gpt-oss was faster. **The tests can't check facts or game logic:** both trivia games made
+up "facts". Human review stays essential. The table:
+[experiments/model-comparisons.md](experiments/model-comparisons.md).
 
 ---
 
@@ -796,35 +784,12 @@ The client components stay hand-written. The existing sync test is extended so t
 
 ### 12j. Model comparison on v3 (K5, 2026-10-14)
 
-Four ideas, run in the sandbox with `npm run generate` (six runs in parallel). The original drawing and reflex prompts weren't saved, so these are rewritten versions of them.
-
-| Idea | gpt-oss:120b | qwen3.8:27b |
-|---|---|---|
-| Drawing: everyone draws a different silly prompt, then votes on the gallery | ✅ 1st try, 52 s | ✅ 1st try, 131 s |
-| Reflex: reaction, mashing, timing bar and tap-target rounds | ✅ 2nd try, 95 s | ✅ 2nd try, 317 s |
-| Guess the Number (slider) | ✅ 2nd try, 76 s | not run |
-| Rank It (rank) | ✅ 1st try, 51 s | not run |
-
-**What reading the code found** (the tests can't judge game logic):
-
-| Game | Good | Wrong |
-|---|---|---|
-| Drawing, gpt-oss | drawPad, gallery, timer and progress bars | The gallery has no names or numbers, but the vote buttons say "Vote for Alex's drawing": you can't tell which drawing is whose, and votes aren't anonymous |
-| Drawing, qwen | The best of the batch: numbered gallery, your own drawing left out of your vote, names revealed afterwards | Crashed when fewer than 2 players drew (an empty grid). Found by the stronger bots below |
-| Reflex, gpt-oss | All 4 widgets | Mashing and tap-target rounds end at the exact moment phones send their results, so most results would be lost. The reaction widget only appears at GO, so false starts are impossible |
-| Reflex, qwen | All 4 widgets used correctly: sent once, never re-sent, 1.5 s grace for late results | False starts and players with no result can still win placement points |
-| Guess the Number, gpt-oss | slider, reveal grid | The slider gives the answer away: max = 2 × answer + 20, and the start value *is* the answer when it's under 50 |
-| Rank It, gpt-oss | rank, average-ranking reveal | Never says what the order means (best? favorite?); the reveal's "points earned here" is always 0 (player scores read by item index) |
-
-**Fixed because of this run:**
-- **Platform:** a full drawing is up to 18 KB, so a gallery of 12 is ~220 KB, over the 96 KB screen limit. Both drawing games would have crashed at a full party. The bots only drew ~0.4 KB scribbles, so the harness never saw it. Now one bot drawing in four uses all the ink, and screens may be 256 KB.
-- **Spec:** wait ~2 s after a `mash`/`tapTargets` ends before ending the round; never let a slider's range or start value depend on the answer.
-
-**Takeaways:**
-- **The kit does its job.** Every run used the block made for the idea (drawPad, all four widgets, slider, rank), and all 6 passed, 3 on the first try. Before K1, the drawing and reflex games couldn't be made at all.
-- **qwen designs better games again** (fewer logic bugs, and it followed the widget rules), but it's 2–3× slower. **Decided 2026-10-14: qwen3.8:27b is the only model; gpt-oss:120b is dropped.** Better games are worth a few minutes' wait, especially with a good spec. The admin page shows the model instead of a picker; adding one back is a line in `generator/src/models.js`.
-- **Passing the tests ≠ a good game.** Every gpt-oss game had a logic or design bug that only reading or playtesting finds. That's what K6's "ask for changes" is for: describe the bug, get a new version.
-- The bots matter as much as the checks: a test is only as good as the inputs it tries.
+Four ideas on the kit (contract v3). Every run used the block made for the idea and all 6
+passed; reading the code found a logic bug in every gpt-oss game. **Decided 2026-10-14:
+qwen3.8:27b is the only model; gpt-oss:120b is dropped.** Better games are worth a few minutes'
+wait. Also fixed because of it: drawings could make a gallery too big to send, and the spec now
+says to wait after a `mash`/`tapTargets` round ends. The details:
+[experiments/model-comparisons.md](experiments/model-comparisons.md).
 
 ---
 
@@ -1135,37 +1100,11 @@ classes, 30 s turns and Defend-on-timeout). On `main`, examples were the biggest
 - **Build step:** examples teach the SDK, saving and reloads. Removing them probably means
   more failed attempts; measure later (each build ~10 min).
 
-**Result of the design experiment (2026-10-15, qwen3.8:27b, 5 ideas × with/without the
-example designs, one design each, all passed the heading check in 32–72 s):**
-
-| Idea | With examples | Without |
-|---|---|---|
-| Racing platformer | ASCII, Tower Dash's 7 tiles/s | canvas, its own physics |
-| Fantasy RPG | Knight/Mage/Cleric/Rogue (+2 more) | no classes: the room votes as one party |
-| Cooking | real-time orders | rounds per order |
-| Space shooter | similar either way (canvas, joystick) | similar |
-| Thief mystery | similar either way (alibi cards) | similar |
-
-- **Copying is real but narrow:** where an example is close (platformer, RPG), it supplies
-  the specifics: numbers, class lists, ASCII. Without it the model invents its own.
-- **The names still anchor it:** without the designs, it still names `bumper-blobs` and
-  `dungeon-party` as closest examples, because DESIGN.md lists them. That's harmless (the
-  build step needs the choice), but it shows how much the prompt's words steer.
-- **Designs without examples are ~20% longer** and sometimes slower (up to 72 s).
-- **Length is short either way** except the RPGs: 1.5–7 min for the party games, even with
-  the Length heading. So option 2 (a default target) looks needed regardless.
-- One hallucination: a "with" design claimed Dungeon Party has a secret thief role.
-
-**Decided (2026-10-15):** the design step leaves the example designs out by default (the job
-switch `examples: true` brings them back); the build step keeps its example game. And the
-rulebook gets the default length target (option 2 above).
-
-**Check of the length target (2026-10-15, the three shortest ideas again, no examples):**
-cooking 4 → 6.5 min, space shooter 2 → 4.5–6 min, thief mystery 5.5–7 → **2 min**. It helps
-but doesn't hold: the model calls 4.5 min "within 5–15", and for the thief it shortened the
-game and argued that "a session plays 3–5 games". Ideas for next time: a fixed
-"Total: about N min" line the server reads and shows on the admin page (flagged when outside
-the target), or option 3 (a length choice), so the target is an input, not a hint.
+**The design experiment (2026-10-15):** 5 ideas with and without the example designs. Copying is
+real but narrow (where an example is close, it supplies the numbers and class lists). **Decided:
+the design step has no example designs**, and the rulebook got a default length target (removed
+again in §35). The results, and a check of the length target:
+[experiments/example-designs.md](experiments/example-designs.md).
 
 **The longer idea: every game made becomes data.** We already keep the idea, every design
 draft *with the admin's feedback*, the approved design, every code attempt with its check
@@ -1225,25 +1164,11 @@ once there are ~10 published games; (d) revisit fine-tuning at a few hundred gam
 lab's help.
 
 
-**Model comparison, 2026-10-15** (`generator/out/compare/`, not in git). Same two ideas
-(the racing platformer, the RPG). Each model wrote its own design, and built from the SAME
-approved designs qwen built from. qwen's builds are from earlier the same day.
-
-| Model (context) | Design: time, quality | Platformer build | RPG build |
-|---|---|---|---|
-| qwen3.8:27b (65K) | 36–65 s; concrete, numbers and arithmetic, ~5–6.5 min games | passed, attempt 1 (~5 min); full, playable | passed, attempt 2 (~7 min); 12×12 map with fog, rich |
-| gpt-oss:120b (65K) | 11–16 s; detailed, longest | passed, attempt 2 (104 s); **barely visible track, no players drawn** | passed, attempt 4 (209 s); **party stuck at the start** ("can't go" every way) |
-| gemma4:26b-a4b (65K) | 6–7 s; short and vague in places | **failed**: the same syntax error 4 times | passed, attempt 1 (94 s); clean, playable |
-| llama4:latest (16K) | 11–12 s; vague, no numbers, ignores the rules (2–12 players, 45–60 min) | **failed**: context full after attempt 1 | **failed**: context full after attempt 1 |
-
-- **The checks pass games that are broken to a player** (gpt-oss's two). "Not blank" isn't
-  "playable": a check that players actually move or appear would catch these.
-- **The fix loop now stays flat:** gpt-oss's 4 RPG attempts each sent ~19.5K tokens (before
-  the change, attempt 4 would have sent ~45K).
-- **llama4's 16K context can't hold a build** (prompt ~11–15K tokens + the game).
-- Conclusion so far: qwen makes the best games but is slowest; gemma4 is fast and sometimes
-  good but unreliable; gpt-oss is fast with lower quality; llama4 is out for building.
-  **Decided (2026-10-15): qwen3.8:27b stays the only model.**
+**Model comparison, 2026-10-15:** qwen3.8:27b, gpt-oss:120b, gemma4 and llama4 on the same two
+designs. qwen makes the best games but is slowest; gemma4 is fast but unreliable; gpt-oss is
+fast with lower quality; llama4's 16K context can't hold a build. **Decided (2026-10-15):
+qwen3.8:27b stays the only model.** The table:
+[experiments/model-comparisons.md](experiments/model-comparisons.md).
 
 **No more fixed time limit per model call (2026-10-15).** Replies now **stream** (GenAI Studio
 sends the reply, and qwen's thinking, piece by piece: the first piece in ~0.3 s, then every
@@ -1490,31 +1415,10 @@ didn't change, and `/admin` stays as it was.
 
 ## 20. Does `party.kit` help? (experiment, 2026-10-16)
 
-**Question (the user):** games may look too similar and worse when they lean on helpers. The
-two ideas behind Checkpoint Dash and The Long Road were designed fresh with today's rulebook,
-then each design was built twice: **K** (today: `party.kit` documented, the design's starter
-template) and **F** (`helpers: false`: no kit section, no template). One run each. Files in
-`generator/out/kit-exp/`.
-
-| | K-platformer | F-platformer | K-RPG | F-RPG |
-|---|---|---|---|---|
-| Attempts | 1 | 1 | 3 | 1 |
-| Model time | 4.6 min | 3.2 min (+14 min lost to an empty reply from GenAI Studio) | 10.3 min | 3.7 min |
-| Prompt | 8.2K tokens | 5.4K | 9.3K | 5.7K |
-| Code | 14 KB | 21 KB | 31 KB | 34 KB |
-| Kit used | phases, colorOf | – | phases, colorOf, rank | – |
-
-- **The kit is barely used even when offered** (2–3 small helpers), and **F passed first time
-  both times**. K-RPG's two failed tries were its own bugs (a `Set` in saved state; a syntax
-  slip), not the kit's.
-- **The look comes from the design and the rulebook, not the kit.** K and F of the same design
-  look almost the same (the platformer: three lanes, coloured circles with initials, grey
-  blocks, stars). The rulebook's own "How to draw" advice (§18) is concrete enough to make
-  games alike, and both platformers draw a thin band on an otherwise empty light page.
-- **A small cost of no kit:** F-platformer wrote its own place labels and got them wrong
-  ("2st", "3st"); the kit's `ordinal` would have been right.
-- **The new rulebook changed the designs:** the platformer became a forgiving lane race
-  ("Star Sprint"), the RPG a group-vote adventure ("Realm Party").
+**Question (the user):** do games look too similar and worse when they lean on helpers? Two
+designs, each built with the kit and without. **Found:** the kit was barely used even when
+offered, the builds without it passed first time, and the look came from the design and the
+rulebook, not the kit. The test: [experiments/party-kit.md](experiments/party-kit.md).
 
 **Decided (2026-10-16), and done:** `party.kit` and the three starter templates are gone
 (from the frames, the checker, the prompt and the rulebook); builds get the rulebook and the
@@ -1653,46 +1557,11 @@ game past it. **First builds keep 100 KB:** with no old game in the conversation
 game plus the longest thinking we've seen (~24K) is right at the edge, but the games the
 model writes are 12–35 KB, so lowering it would only refuse games it doesn't write.
 
-**The experiment** (`generator/out/edit-exp/`, git-ignored; qwen3.8:27b, one run each, both
-modes in parallel from the same plan). Subjects: Bumper Blobs (18 KB), "Realm Party" (F-rpg,
-34 KB) and "Star Sprint" (F-platformer, 21 KB) from §20. E and F had a bug put in by hand
-(each failed the checks before the change), so the fix loop had to run; G is a first build
-(a Quiplash-style game, §22) whose first attempt happened to fail in edit mode's run.
-
-| Case | Request | Mode | Passed | Attempts | Model time | Out tokens | Lines changed (+/−) |
-|---|---|---|---|---|---|---|---|
-| A | bumper: sounds for a fall and a round win (planned) | edits | ✓ | 1 | 11 s | 921 | +9 / −1 |
-| | | whole | ✓ | 1 | 68 s | 6,229 | +23 / −27 |
-| B | bumper: bigger blobs (small fix) | edits | ✓ | 1 | 6 s | 425 | +1 / −1 |
-| | | whole | ✓ | 1 | 69 s | 6,287 | +1 / −1 |
-| C | RPG: HP, level and gold on every phone (small fix) | edits | ✓ | 1 | 13 s | 968 | +10 / −0 |
-| | | whole | ✓ | 1 | 135 s | 12,058 | +39 / −62 |
-| D | platformer: 4 laps, lap on the phone (planned) | edits | ✓ | 1 | 8 s | 657 | +4 / −4 |
-| | | whole | ✓ | 1 | 91 s | 7,696 | +4 / −4 |
-| E | bumper with a bug: melt after 15 s | edits | ✓ | 2 (fix: edits) | 4 + 10 s | 299 + 822 | +2 / −2 |
-| | | whole | ✓ | 1 | 71 s | 6,417 | +2 / −2 |
-| F | RPG with a bug: boss +25% HP | edits | ✓ | 2 (fix: edits) | 14 + 6 s | 418 + 248 | +3 / −3 |
-| | | whole | ✓ | 1 | 159 s | 11,381 | +6 / −10 |
-| G | first build, Quiplash-style | edits | ✓ | 2 (whole, then a fix as edits) | 244 + 13 s | 14,179 + 757 | – |
-| | | whole | ✓ | 1 | 175 s | 11,186 | – |
-
-**What it shows:**
-- **Everything passed both ways, and no edit ever failed to apply** (10 edit replies, 0
-  failures), so the fallback was never needed live (it's covered by unit tests only).
-- **Edit mode is 5–15× faster and writes ~10× fewer tokens:** 6–14 s per reply instead of
-  1–2.5 minutes. A fix costs seconds instead of minutes (G's fix: 13 s, 757 tokens, where a
-  whole-file fix used to take ~3 minutes and 10–20K tokens).
-- **Whole files change what wasn't asked:** A-W and C-W deleted most comments (they explain
-  the code to people), C-W and F-W swapped CSS-variable colours for fixed ones, F-W added a
-  typo ("sighes"). The edit-mode results changed only the lines the task needed.
-- **The honest cost:** with edits the model only does what it's told. In E and F, the whole-
-  file runs fixed the hand-made bug on the way (they reread everything), while edit mode
-  made the change, failed the check, and fixed the bug in a second, ~10 s attempt. Total
-  time was still 2–3× shorter. C-E's status bar is drawn from the state phones get; C-W also
-  added the stats to the setup screen's state, which C-E didn't (a smaller change, still
-  passing the checks).
-- One run each, mostly small games and small changes: big rewrites (a new phase, a new
-  mode) weren't tried, and that's where edits are most likely to miss a spot.
+**The experiment** (7 cases, both modes): everything passed both ways and no edit failed to
+apply; edit mode was 5–15× faster, wrote ~10× fewer tokens, and changed only what the task
+needed, where whole files deleted comments and swapped colours. The cost: edits do only what
+they're told, so a bug the whole-file rewrite would fix on the way takes a second, short attempt.
+The table: [experiments/edit-mode.md](experiments/edit-mode.md).
 
 **Recommended, and built that way:** edit mode is the default for changes and fixes; whole
 files stay as the fallback and for a new game's first attempt. Worth watching in real use:
@@ -2089,34 +1958,12 @@ games come out at 12–35 KB (5–13K tokens), far below the 100 KB limit.
 - **Send only what an edit needs:** risky, since the model loses sight of the rest.
 - **A model with a bigger window,** if GenAI Studio adds one.
 
-### Experiment: does "At most 100 KB" in the build prompt change the games?
+### Does "At most 100 KB" in the build prompt change the games?
 
-The idea: the line may nudge the model toward terse games, and we don't need it, since the
-check after the build enforces the limit anyway.
-- **The switch:** the `sizeLimit: false` build option leaves both mentions out of the prompt
-  (the rulebook's line and the build instruction's last sentence).
-- **The runner:** `npm run compare-builds` builds one design several times per variant,
-  taking turns.
-- **The test:** a Drawful Animate-style idea, one design, 4 builds with the limit and 4
-  without. Results go in `generator/out/size-limit/summary.md`, plus playing them.
-
-**Results (2026-10-18):**
-
-| | Passed | Avg size | Avg first reply | Avg time |
-|---|---|---|---|---|
-| With the limit | 4 of 4 | 30.7 KB | 51.5K tokens | 17 min |
-| Without | 4 of 4 | 34.6 KB | 36.2K tokens | 19.5 min |
-
-- **Every build passed** on both sides. Without the line, games came out ~13% bigger, and the
-  two biggest (37.6 and 37.8 KB) were both from that side.
-- **First replies were much longer than expected:** 19–57K tokens, against the ~24K of
-  thinking guessed above. Mostly thinking, since the games are only ~10–13K tokens. A 57K
-  reply plus a ~6K prompt is close to the 65K window. That makes "budget the thinking" the
-  first thing to look at.
-- **No secrets leaked:** the design had a Secrets section, and no build's big screen showed
-  the prompt while someone drew.
-- **Four builds a side is too few to call the size difference real.** Playing them decides
-  whether bigger means better.
+Without the line, games came out ~13% bigger, and all passed either way; four builds a side was
+too few to call it. **The line stays.** The test, and its finding that first replies were far
+longer than expected (19–57K tokens, which led to §38–40):
+[experiments/size-limit.md](experiments/size-limit.md).
 
 ## 33. Being found: "boilergames" in search results (built 2026-10-17)
 
@@ -2172,39 +2019,11 @@ every game had to be designed and checked for both.
 
 ## 35. Experiment: does the 5–15 minute rule help? (2026-10-18)
 
-The rulebook says a game lasts "about 5–15 minutes unless the idea asks for something else",
-and the design guide's Length section says "Aim for 5–15 minutes… change the design
-instead of just reporting it." The worry: it's fluff that makes the model pad games with
-extra rounds to hit a number, instead of designing what fits the idea.
-- **The switch:** the `lengthRule: false` job option (design and build steps). It drops the
-  5–15 minutes from both files. The rulebook keeps "each round takes at least about 20 s"
-  and "don't make a game longer with waiting"; the design still works out its length.
-- **Why every build gets its own design:** the rule mostly shapes the *design* (how many
-  rounds), so one shared design would hide its effect. `compare-builds --fresh-design`
-  designs first, per build, with that side's options.
-- **The test:** the same Drawful Animate-style idea as §32, 4 builds with the rule and 4
-  without. The size line stays in on both sides, so only one thing changes.
-- **What to look at:** the `minutes` each game claims, its rounds, and playing them.
-  Results go in `generator/out/length-rule/summary.md`.
-
-**Results (2026-10-18):**
-
-| | Passed | Avg size | Minutes the games claim |
-|---|---|---|---|
-| With the rule | 3 of 4 | 25.9 KB | 5–12, 3–9, 6–9, 7–11 |
-| Without | 2 of 4 | 32.1 KB | 6–9, 7–10, 4–15, 5–12 |
-
-- **The length didn't change.** Without the rule, every design still worked out its rounds
-  and landed at about 4–15 minutes. The model already knows how long a party game runs.
-- **The failures weren't about length:** a syntax error, and names used before they were
-  defined. With a fresh design per build, the spread between builds is wide, so 2 vs 3
-  passes is noise.
-- **Without the rule, games came out ~25% bigger** (32 vs 26 KB), like §32's no-limit side.
-  Four builds a side is too few to call it real.
-- **So the rule is fluff:** it costs prompt space and changes nothing measurable.
-- **Decided (2026-10-18): removed.** GAME_SPEC.md's Length line now only says a round takes at
-  least about 20 s and not to pad a game with waiting; DESIGN.md still asks for the length
-  arithmetic but no target. The `lengthRule` job option went with it.
+The rulebook said a game lasts "about 5–15 minutes"; the worry was that it made the model pad
+games. Without it, the designs still landed at about 4–15 minutes. **Decided (2026-10-18):
+removed.** GAME_SPEC.md now only says a round takes at least about 20 s and not to pad a game
+with waiting; DESIGN.md still asks for the length arithmetic. The test:
+[experiments/length-rule.md](experiments/length-rule.md).
 
 ## 36. Claim Jumpers rework, Stowaways refresh, and the timer bar (2026-10-18)
 
@@ -2249,24 +2068,11 @@ fix without changes. Stowaways also keeps its timer out of the part it rebuilds.
 
 ## 38. Reasoning effort: medium (2026-10-18)
 
-- **Every request now sends `reasoning_effort: "medium"`** (per model, in `models.js`).
-  GenAI Studio's vLLM takes `low`, `medium` or `xhigh` for qwen3.8:27b; `xhigh` is the
-  default. In Qwen's chat template the levels are just a sentence added to the system prompt:
-  xhigh asks it to "think carefully … validate key assumptions, consider plausible
-  alternatives", low to "keep your thinking brief", and medium adds nothing.
-- **Measured once each on a logic puzzle:** low thought ~3× less (19 s vs ~40–60 s); medium
-  and xhigh were within run-to-run noise. All got it right. `none` is a trap: no separate
-  thinking, so it reasons in the visible answer (slowest run, most tokens).
-- **`chat_template_kwargs` reach the template** (`enable_thinking: false` turned thinking
-  off), but our requests have no tools, images or saved thinking, so the template fixes in
-  froggeric/Qwen-Fixed-Chat-Templates mostly don't apply. Purdue picks the template.
-- **`keepThinking`** (a job option, off on the site) saves the model's thinking per attempt;
-  `compare-builds` writes it to `attempt-<n>-thinking.txt`, to see what builds think about.
-- **What it showed:** a Ballpark build thought for 46,540 tokens (36% of it drafts of code, 78
-  "Actually"s) and used 64,590 of the 65,536-token context; a Comet Crew build ran out twice.
-  So **running out of room** is now its own error (`OutOfRoomError`: `finish_reason` "length",
-  or thinking and no reply), not "empty reply (often the rate limit)". It isn't retried inside
-  `chat`; a build counts it as a used attempt (`outOfRoom: true`, with its tokens and thinking).
+- **Every request sends `reasoning_effort: "medium"`** (per step, in `models.js`). GenAI
+  Studio takes `low`, `medium` or `xhigh` for qwen3.8:27b (`xhigh` is its default).
+- **Running out of room** is its own error (`OutOfRoomError`): a build counts it as a used
+  attempt, with its tokens. `keepThinking` (off on the site) saves each attempt's thinking.
+- What was measured: [experiments/build-thinking.md](experiments/build-thinking.md).
 
 ## 39. Designs as JSON, one field per heading (2026-10-18)
 
@@ -2285,31 +2091,16 @@ fix without changes. Stowaways also keeps its timer out of the part it rebuilds.
 
 ## 40. Thinking at build time: medium with a short plan (2026-10-18)
 
-- **The problem:** a first build at medium thought for 25–58K tokens (Ballpark 46.5K; about a
-  third of it drafts of code, plus "Actually" ×78 and "Let me write" ×61) and ran out of room
-  in the 65K context 3 times on Comet Crew.
-- **Tried on Comet Crew** (`compare-builds`, 2–3 builds a side, two at a time with `--parallel`):
-  | First build | Builds | Passed | Out of room | First-attempt thinking |
-  |---|---|---|---|---|
-  | medium (plain) | 2 | 1 | 2 (in one build) | 24.7K, then 58.6K ×2 |
-  | medium + short plan | 5 | 4 | 0 | 2.2–11.6K |
-  | low | 3 | 3 | 0 | 6.0–22.5K |
+- **The problem:** a first build at medium thought for 25–58K tokens and ran out of room in the
+  65K context.
 - **Chosen: medium for every step, and a new game's build asks for a short plan first**
-  (`BRIEF_THINKING` in prompt.js, `briefThinking` on by default): *plan the big screen's state,
-  what each phone is sent, every timer, leaving and reloads; work out only the tricky parts;
-  where the design is unclear, follow the reading closest to its words.* Effort is set per
-  step in models.js (`design`, `build`, `fix`), so a step can change on its own later.
-- **Low wasn't better:** its thinking varied more (up to 22.5K) and its games had as many bugs.
-- **What the checks missed:** low-3 and medium-brief-2 both "passed on the first try" but never
-  leave their first screen: they set the intro's timer and nothing ever starts a wave. Nothing
-  runs, so nothing crashes. A playtest check that the game moves on is next (§41).
-- **`party.sound`:** models wrote `party.sound` (or a bare `sound`) in 3 of 11 builds, because
-  everything else a game does is `party.something`. It's now `party.sound` in the SDK, the
-  rulebook and /kit; `party.ui.sound` is the same function, for older games.
-- **Tools for this** (local, off on the site): `keepThinking` saves each attempt's thinking,
-  reply and any tool calls, and reports attempts as they end (a stopped `compare-builds` keeps
-  them); a job may set `reasoningEffort` for all its steps; every attempt records
-  `finishReason`. One build's file was cut off mid-line (brief-2); none since, all `stop`.
+  (`BRIEF_THINKING` in prompt.js, `briefThinking` on by default). Effort is set per step in
+  models.js (`design`, `build`, `fix`). Low wasn't better.
+- **What the checks missed:** two builds "passed on the first try" but never leave their first
+  screen. A playtest check that the game moves on is next (§41).
+- **`party.sound`:** models wrote it in 3 of 11 builds, so it's now in the SDK (`party.ui.sound`
+  is the same function, for older games).
+- The numbers: [experiments/build-thinking.md](experiments/build-thinking.md).
 
 ## 41. The playtest checks that the game moves on (2026-10-18)
 
@@ -2330,6 +2121,11 @@ fix without changes. Stowaways also keeps its timer out of the part it rebuilds.
   false alarm, it becomes a problem, so the model is asked to fix it.
 - **Still missed:** games that move on but are wrong ("Wave 0", "Ada → undefined", labels on top
   of each other). Reading the code and the screenshots still matters.
+- **Checked again 2026-10-19, not yet a problem:** of 250 build attempts since, 80 got the
+  warning, nearly all on attempts that failed anyway (a game that crashes doesn't move either).
+  5 passing games got it: replayed, the 3 pond games still do, and they're false alarms (one
+  3-minute round, longer than the 2-minute jump); the other 2 don't any more. So before it can
+  fail a build, the jump has to go past the game's whole length (its game-info `minutes`).
 
 ## 42. The home page leads with making a game (2026-10-18)
 
@@ -2357,51 +2153,13 @@ fix without changes. Stowaways also keeps its timer out of the part it rebuilds.
 
 ## 43. Brief medium: where to look for improvements (open, 2026-10-18)
 
-With the new DESIGN.md, plain medium still thinks far too long on bigger games (heist ran out
-of room at 57,873 tokens; pond took 19 min), so the short-plan sentence stays. What to test:
-1. **Does the game have what the design says?** A checklist per design (phases, twists, skills,
-   numbers, characters, the big moment, sounds) ticked off in the code and screenshots, brief
-   against plain on the same design.
-2. **The sentence, part by part.** Its plan list is all mechanics (state, phones, timers,
-   leaving, reloads): the art and the big moment aren't in it. "Follow the reading closest to
-   its words" may push the bare minimum. Try adding "the look and the big moment" to the plan,
-   and "build everything the design describes, including the art".
-3. **First files with typos.** Most brief first files have a syntax error or an undefined name
-   (a blank screen). Fixes are cheap (15–60 s) when they work.
-4. **Fix rounds that fall apart.** When a brief first file is badly broken (pond: unbalanced
-   brackets), the fixes can spiral: a 26K-token "edit" that rewrites the game, edits whose
-   SEARCH text isn't in the file, then a new whole file that crashes. The sentence also stays
-   in the prompt during fixes. Ideas: drop it from fix requests; after one failed edit round on
-   a file that doesn't parse, ask for the whole file at once.
-5. **Repeat runs:** builds vary a lot; 3 per variant before deciding.
-6. **Play them:** a short scorecard (ran as designed, real choices, art matched, the big moment
-   landed, how long it took).
-
-**Results so far.** Test 1 (bake-off and heist, brief vs plain on the same design): every
-mechanic made it into both; both lost the same costly art (the bake-off's alien judge became
-an 👽 emoji in both). Test 2 (2 builds × 3 sentences × 2 designs): 3 of 4 passed for each, none
-ran out of room. Adding "the look" to the plan barely helped; **"Draw the characters and the big
-moment the way the design describes them, with shapes; don't replace them with emoji or plain
-circles"** got both bake-offs a drawn judge (arms, fork, monocle) instead of an emoji, at no cost.
-The heist's art was drawn by every variant. That sentence is now part of BRIEF_THINKING.
-
-**Fix rounds (test 1 of the list, 32 builds: 4 designs × 4 variants × 2).** Leaving the
-sentence out of fix requests ("nobrief") passed 8 of 8 and fixed all 5 broken first files in one
-round each, with no edits that didn't fit (median fix reply 1.6K tokens, worst build 525 s).
-Today's way passed 6 of 8 (16 fix rounds for 6 broken files, 5 that didn't fit, worst 1,106 s).
-Asking for a whole file after a syntax error helped a little alone and hurt with nobrief (fixes
-rewrote the game). **Fixes now leave the sentence out** (`fixBrief: true` keeps it, to compare).
-Also: `players is not defined` crashed many builds: the rulebook's skeleton unpacked `players`
-in `party.ready` but never passed it on. The skeleton (and /kit's) no longer does, and the SDK
-list says to write `party.players` in your own functions.
-
-**The sentence, part by part (24 builds).** Without "work out only the tricky parts", thinking
-was no longer (median 3.4K against 5.2K) and the games no less complete, though first files
-passed least often (1 of 8); "plan briefly" is what keeps it short. Without "follow the reading
-closest to its words", the heist games had ~25% more code, some of it real design detail (cameras
-scaling with players), some dead (a whole drawing function written twice, one never called),
-plus a solo-mode bug; the bake-off's extra size was spacing. Same pass rates (7 of 8 each). The
-full sentence stays. Reading the code mattered: keyword checklists missed things both ways.
+With the new DESIGN.md, plain medium still thinks far too long on bigger games, so the short-plan
+sentence stays. Tested: does the game have what the design says, the sentence part by part, and
+the fix rounds. **Results:** "Draw the characters and the big moment the way the design describes
+them, with shapes; don't replace them with emoji or plain circles" is now part of BRIEF_THINKING;
+fix requests leave the sentence out; every other part stays. Also found: the rulebook's skeleton
+caused `players is not defined` (fixed). The tests and their numbers:
+[experiments/brief-medium.md](experiments/brief-medium.md).
 
 ## 44. Games to approve (2026-10-18)
 
@@ -2451,18 +2209,10 @@ build on the site now ends with one review round.
 - **Its claims are checked** (verify()): each answer restates its item first, and an answer about
   a different item doesn't count (a long review once drifted, putting each answer under the next
   item's id: 44 of 95); a claim must cite lines that exist and mention the item.
-- **Calibration** on the §43 games (11 games, 95- and 149-item checklists): it found everything
-  found by reading the code by hand, plus bugs no check caught: an exit that can't be reached
-  (clamped to x ≤ 960, the win needs x > 960), a vault wing won without the diamond, a big screen
-  drawn once and never again, a tie-break that crashes. Two reviews of the same game agree on 83–95%
-  of items; scores move by up to ~6%, so small score gaps between builds are noise. The serious
-  bugs mostly came back the second time, but not always: one review missed the vault bug the
-  other found (and said the opposite).
-- **The review-and-fix test** (server/scripts/review-fix.js): the critical bugs of each game went
-  back as a small change request. 12 critical bugs on 9 games: 10 real (all fixed correctly), 2
-  false alarms (harmless, equivalent code). Every fix passed the checks, changing 2–13 lines; no
-  design score dropped. But 2 games still couldn't be won after it: a bug the review hadn't
-  listed. One round makes games clearly better, not bug-free.
+- **Calibration and the review-and-fix test** on the §43 games: it found everything found by
+  reading the code by hand, plus bugs no check caught; 10 of 12 critical bugs it sent back were
+  real, and all 10 were fixed. One round makes games clearly better, not bug-free: a review can
+  miss a serious bug another review finds. The numbers: [experiments/code-review.md](experiments/code-review.md).
 - **On the site:** a build that passes gets one round: review, then its crashes and dead ends
   sent back as a small fix (3 attempts). A fix that fails the checks is dropped, keeping the game
   that passed; a review that fails (one more try first) never fails the build. The creator's page
