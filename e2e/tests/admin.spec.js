@@ -118,7 +118,7 @@ test('design → new draft → edit → build → read it → playtest with phon
 
   // Playtest v1: in the admin's own catalogue (as "-v1"), and nobody else's.
   await detail(page).getByRole('button', { name: 'Playtest v1' }).click();
-  await expect(detail(page).getByText('Playtest (only you)')).toBeVisible();
+  await expect(detail(page).getByText('Playtest (only its maker)')).toBeVisible();
   const otherHost = await people.host();
   await otherHost.page.goto('/games');
   await expect(otherHost.page.locator('.game-card').first()).toBeVisible();

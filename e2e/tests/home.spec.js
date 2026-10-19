@@ -41,8 +41,9 @@ test('the games row shows the three most-voted games', async ({ people }) => {
   const { page } = voters[0];
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Most-voted games' })).toBeVisible();
-  await expect(page.locator('.game-card')).toHaveCount(3);
-  await expect(page.locator('.game-card').first()).toContainText('Claim Jumpers');
+  const row = page.getByRole('region', { name: 'Most-voted games' });
+  await expect(row.locator('.game-card')).toHaveCount(3);
+  await expect(row.locator('.game-card').first()).toContainText('Claim Jumpers');
   for (const { page: p } of voters) {
     await p.goto('/games/claim-jumpers');
     await p.getByRole('button', { name: /I like it/ }).click(); // take it back

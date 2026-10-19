@@ -212,7 +212,13 @@ function YourGames({ games }) {
                   <span className="create-game-name">{game.name ?? game.prompt}</span>
                   <MiniTrack at={where.at} state={where.state} />
                   <span className={`create-game-status status-${where.state}`}>
-                    {game.progress?.queuePosition > 0 ? 'Waiting in line' : STATUS_WORDS[game.status] ?? game.status}
+                    {game.progress?.queuePosition > 0
+                      ? 'Waiting in line'
+                      : game.waitingForApproval
+                        ? 'Waiting for approval'
+                        : game.reviewNote && game.status === 'playtest'
+                          ? 'Sent back: see the note'
+                          : (STATUS_WORDS[game.status] ?? game.status)}
                   </span>
                   <span className="muted small create-game-when">started {timeAgo(game.createdAt)}</span>
                 </a>

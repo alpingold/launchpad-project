@@ -89,7 +89,7 @@ test('/create: without a key it asks for one; with a key, one game at a time, an
   await expect(page.getByRole('heading', { name: 'Your game is ready' })).toBeVisible(GENERATED);
   await expect(track).toHaveAccessibleName('Step 4 of 4: Play');
   await expect(page.getByRole('heading', { name: 'Robot Majority', level: 1 })).toBeVisible();
-  await expect(page.getByText(/The site admin decides which games everyone can play/)).toBeVisible();
+  await expect(page.getByText(/the site admin plays it and decides whether everyone gets it/)).toBeVisible();
   await expect(page.getByRole('button', { name: /Publish/ })).toHaveCount(0);
   // The code is there, folded away.
   await page.getByText('For the curious').click();

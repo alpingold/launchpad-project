@@ -1341,6 +1341,13 @@ a.wordmark-mark:hover .wordmark-name {
   color: var(--on-accent);
 }
 
+/* §44: its maker asked for it to be published. */
+.status-waiting {
+  background: var(--gold);
+  color: var(--gold-ink);
+  margin-left: 0.35rem;
+}
+
 .status-failed,
 .status-rejected {
   color: var(--danger);
@@ -2578,4 +2585,45 @@ body.in-game .demo-badge-room {
 
 .game-reports .report-list {
   gap: 0;
+}
+
+/* §44: the admin page's "To approve" tab, and the maker's side of it on /create/<id>. */
+.approve-list {
+  list-style: none;
+  padding: 0;
+  margin: 1.5rem 0 0;
+  display: grid;
+  gap: 1rem;
+}
+
+.approve-head h2 {
+  margin: 0 0 0.25rem;
+}
+
+.approve-idea q {
+  color: var(--text);
+}
+
+.approve-details {
+  align-self: center;
+}
+
+.approve-note {
+  margin-top: 1rem;
+}
+
+.create-waiting,
+.create-review-note {
+  margin: 1rem 0;
+}
+
+.create-waiting p,
+.create-review-note p {
+  margin: 0 0 0.5rem;
+}
+
+.create-review-note-text {
+  color: var(--text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }

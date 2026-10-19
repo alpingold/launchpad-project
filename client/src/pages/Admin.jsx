@@ -16,6 +16,7 @@ import {
 import { usePageTitle } from '../usePageTitle.js';
 import Markdown from '../components/Markdown.jsx';
 import AdminReports from './AdminReports.jsx';
+import AdminApprove from './AdminApprove.jsx';
 
 // The admin page (plan §11 A6, versions §12e K6, designs §13i F5): make games with AI. The AI
 // writes a design first; you read it, ask for a new draft or edit it, and click "Build it".
@@ -36,7 +37,7 @@ const STATUS_TEXT = {
   generating: 'Building',
   failed: 'Failed',
   review: 'Ready for review',
-  playtest: 'Playtest (only you)',
+  playtest: 'Playtest (only its maker)',
   published: 'Published',
 };
 
@@ -77,16 +78,17 @@ export default function Admin() {
       </main>
     );
   }
-  const tab = new URLSearchParams(window.location.search).get('tab') === 'reports' ? 'reports' : 'games';
+  const asked = new URLSearchParams(window.location.search).get('tab');
+  const tab = ['reports', 'approve'].includes(asked) ? asked : 'games';
   return (
     <>
       <AdminTabs tab={tab} />
-      {tab === 'reports' ? <AdminReports /> : <GameMaker />}
+      {tab === 'reports' ? <AdminReports /> : tab === 'approve' ? <AdminApprove /> : <GameMaker />}
     </>
   );
 }
 
-/** The admin page's two parts, as plain links (decision D12). */
+/** The admin page's parts, as plain links (decision D12). */
 function AdminTabs({ tab }) {
   const link = (value, href, label) => (
     <a href={href} aria-current={tab === value ? 'page' : undefined}>
@@ -96,6 +98,7 @@ function AdminTabs({ tab }) {
   return (
     <nav className="admin-tabs" aria-label="Admin">
       {link('games', '/admin', 'AI games')}
+      {link('approve', '/admin?tab=approve', 'To approve')}
       {link('reports', '/admin?tab=reports', 'Reports')}
     </nav>
   );
@@ -111,7 +114,8 @@ function GameMaker({ heading = 'AI games', intro }) {
   const [info, setInfo] = useState(null); // what the server allows (models, idea length, switched on?)
   const [games, setGames] = useState(null); // summaries, newest first
   const [loadError, setLoadError] = useState(null);
-  const [selectedId, setSelectedId] = useState(null);
+  // /admin?game=<id> (from "To approve") opens that game.
+  const [selectedId, setSelectedId] = useState(() => new URLSearchParams(window.location.search).get('game'));
 
   const refresh = useCallback(async () => {
     const res = await listGenerations();
@@ -179,7 +183,9 @@ function GameMaker({ heading = 'AI games', intro }) {
               >
                 <span className="gen-title">{game.name ?? shorten(game.prompt)}</span>
                 <StatusChip status={game.status} />
+                {game.waitingForApproval && <span className="status-chip status-waiting">Waiting for approval</span>}
                 <span className="muted small gen-meta">
+                  {game.ownerName && `by ${game.ownerName} · `}
                   {liveText(game) ?? `v${game.latestVersion}`} · {formatTime(game.createdAt)}
                   {game.progress && ` · ${progressText(game.progress)}`}
                 </span>

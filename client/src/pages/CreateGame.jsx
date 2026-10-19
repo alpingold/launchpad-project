@@ -422,10 +422,44 @@ function ReadyToPlay({ summary, game, version: v, info, busy, run }) {
           </ul>
         </div>
       )}
+      {!info.isAdmin && !isPublished && summary.reviewNote && !summary.waitingForApproval && (
+        <div className="banner create-review-note" role="status">
+          <p>
+            <strong>Not published yet.</strong> The site admin's note:
+          </p>
+          <p className="create-review-note-text">{summary.reviewNote}</p>
+          <p className="small">Ask for changes below, then submit it again.</p>
+        </div>
+      )}
+      {!info.isAdmin && isPlaytest && summary.waitingForApproval && (
+        <div className="banner create-waiting" role="status">
+          <p>
+            <strong>Waiting for approval.</strong> The site admin will play it, then publish it for everyone or send it back
+            with a note.
+          </p>
+          <button type="button" className="link-button" disabled={busy} onClick={() => run(() => actOnGeneration(summary.id, 'withdraw'))}>
+            Take back the request
+          </button>
+        </div>
+      )}
       <div className="gen-actions">
         <button type="button" className="primary-button" disabled={busy} onClick={play}>
           Play it now
         </button>
+        {!info.isAdmin && !isPublished && !(isPlaytest && summary.waitingForApproval) && (
+          <button
+            type="button"
+            className="secondary-button"
+            disabled={busy}
+            onClick={async () => {
+              // The request is for the version you're playtesting: make this one it first.
+              if (!isPlaytest && !(await run(() => playtestVersion(summary.id, v.version)))) return;
+              await run(() => actOnGeneration(summary.id, 'submit'), 'Submit it for publishing? The site admin will play it and decide.');
+            }}
+          >
+            Submit for publishing
+          </button>
+        )}
         {info.isAdmin && !isPublished && (
           <button
             type="button"
@@ -443,7 +477,7 @@ function ReadyToPlay({ summary, game, version: v, info, busy, run }) {
       <p className="muted small">
         {isPublished
           ? 'Everyone can play this version.'
-          : 'Only you can start it for now. Open it on a big screen (a laptop or TV) and your friends join on their phones. The site admin decides which games everyone can play.'}
+          : "Only you can start it for now. Open it on a big screen (a laptop or TV) and your friends join on their phones. When you're happy with it, submit it: the site admin plays it and decides whether everyone gets it."}
       </p>
       <ChangeForm game={game} summary={summary} info={info} busy={busy} run={run} />
     </>
