@@ -71,7 +71,7 @@ import { describeProblem } from '../../server/src/games/frameGame.js';
  * @property {boolean} [edits]            build: false turns edit mode off (on by default, plan §23)
  * @property {'low' | 'medium' | 'xhigh'} [reasoningEffort]  for every step, instead of the model's own (models.js; plan §40's experiment)
  * @property {boolean} [briefThinking]    build: asks for a short plan before the file (on by default, plan §40)
- * @property {'look' | 'art'} [briefVariant]  build: a variant of that sentence (plan §43's experiment)
+ * @property {'noart' | 'look' | 'art'} [briefVariant]  build: a variant of that sentence (plan §43's experiments)
  * @property {boolean} [keepThinking]     each attempt keeps the model's thinking and whole reply (plan §38's look; off on the site)
  */
 
@@ -142,7 +142,7 @@ export async function runJob(job, deps = {}) {
   if (job.keepThinking !== undefined && typeof job.keepThinking !== 'boolean') return fail('keepThinking must be true or false');
   if (job.reasoningEffort !== undefined && !REASONING_EFFORTS.includes(job.reasoningEffort)) return fail(`reasoningEffort must be one of ${REASONING_EFFORTS.join(', ')}`);
   if (job.briefThinking !== undefined && typeof job.briefThinking !== 'boolean') return fail('briefThinking must be true or false');
-  if (job.briefVariant !== undefined && !['look', 'art'].includes(job.briefVariant)) return fail('briefVariant must be "look" or "art"');
+  if (job.briefVariant !== undefined && !['noart', 'look', 'art'].includes(job.briefVariant)) return fail('briefVariant must be "noart", "look" or "art"');
 
   if (job.step === 'design') return design(job, model, deps);
   if (job.step === 'build') {

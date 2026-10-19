@@ -234,26 +234,29 @@ const BUILD_SIZE = ` At most ${MAX_GAME_BYTES / 1024} KB.`;
  * out). Without it a build at medium thought for 25–58K tokens, a third of it drafts of code,
  * and ran out of room 3 times; with it, 2–12K, and never did.
  */
-export const BRIEF_THINKING = `Before writing, plan briefly: the big screen's state, what each phone is sent, every timer, and what happens when a player leaves or a screen reloads. Work out only the tricky parts in detail; don't draft the whole file in your thinking. Where the design is unclear, follow the reading closest to its words. Once the plan is set, write the file in your reply.`;
+const BRIEF_PLAN = `Before writing, plan briefly: the big screen's state, what each phone is sent, every timer, and what happens when a player leaves or a screen reloads. Work out only the tricky parts in detail; don't draft the whole file in your thinking. Where the design is unclear, follow the reading closest to its words. Once the plan is set, write the file in your reply.`;
+/** Plan §43's test 2: without it, builds kept the mechanics but swapped the design's characters for emoji. */
+const DRAW_THE_ART = `Draw the characters and the big moment the way the design describes them, with shapes; don't replace them with emoji or plain circles.`;
+export const BRIEF_THINKING = `${BRIEF_PLAN} ${DRAW_THE_ART}`;
 
 /**
- * Plan §43's experiment (job.briefVariant): games keep the design's mechanics but lose its
- * art (an emoji judge, circles for hooded thieves). 'look' adds the look to the plan;
- * 'art' asks for the design's characters and big moment as drawn shapes.
+ * Plan §43's experiments (job.briefVariant): 'noart' is the sentence before test 2; 'look' that
+ * one with the look added to the plan; 'art' is today's (the default).
  */
 export const BRIEF_VARIANTS = {
-  look: BRIEF_THINKING.replace(
+  noart: BRIEF_PLAN,
+  look: BRIEF_PLAN.replace(
     'what happens when a player leaves or a screen reloads.',
     'what happens when a player leaves or a screen reloads, and the look: each character and the big moment, as the design describes them.',
   ),
-  art: `${BRIEF_THINKING} Draw the characters and the big moment the way the design describes them, with shapes; don't replace them with emoji or plain circles.`,
+  art: BRIEF_THINKING,
 };
 
 /**
  * Building a new game from its approved design.
  * @param {string} idea
  * @param {string} design
- * @param {{ sizeLimit?: boolean, briefThinking?: boolean, briefVariant?: 'look' | 'art' }} [opts]
+ * @param {{ sizeLimit?: boolean, briefThinking?: boolean, briefVariant?: 'noart' | 'look' | 'art' }} [opts]
  *   sizeLimit: see buildSystemPrompt; briefThinking: BRIEF_THINKING (briefVariant: one of BRIEF_VARIANTS instead)
  * @returns {import('./llm.js').Message[]}
  */

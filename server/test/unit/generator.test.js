@@ -251,9 +251,10 @@ test('briefThinking (plan §40): the short-plan sentence comes just before the a
   const user = (opts) => buildMessages('Run and jump', DESIGN, opts)[1].content;
   assert.doesNotMatch(user(), /plan briefly/);
   assert.match(user({ briefThinking: true }), /plan briefly:[^\n]*\n\nReply with the complete game file/);
-  // Plan §43's variants: the look in the plan, or the art asked for outright.
+  // Plan §43: the art is asked for by default; the experiments' variants stay for comparing.
+  assert.match(user({ briefThinking: true }), /write the file in your reply\. Draw the characters and the big moment[^\n]*\n\nReply with/);
+  assert.doesNotMatch(user({ briefThinking: true, briefVariant: 'noart' }), /Draw the characters/);
   assert.match(user({ briefThinking: true, briefVariant: 'look' }), /reloads, and the look: each character and the big moment/);
-  assert.match(user({ briefThinking: true, briefVariant: 'art' }), /write the file in your reply\. Draw the characters and the big moment[^\n]*\n\nReply with/);
 });
 
 test('no target length for a whole game (plan §35), but a round is at least about 20 s and the design works out its length', () => {
