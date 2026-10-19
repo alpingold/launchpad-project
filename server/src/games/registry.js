@@ -55,6 +55,11 @@ export class GameRegistry {
     return this.entries.delete(id);
   }
 
+  /** Is there a game with this id, whoever may see it? */
+  has(id) {
+    return this.entries.has(id);
+  }
+
   /**
    * A game, if this user may start it.
    * @param {string} id

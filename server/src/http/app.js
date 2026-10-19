@@ -9,6 +9,7 @@ import { createAdminRouter } from './adminRoutes.js';
 import { createAccountRouter } from './accountRoutes.js';
 import { createGamesRouter } from './gamesRoutes.js';
 import { createReportsRouter } from './reportsRoutes.js';
+import { sendPage } from './pages.js';
 import { createSeoRouter } from './seoRoutes.js';
 import { kitGuide } from '../games/kitGuide.js';
 
@@ -107,6 +108,8 @@ export function createApp({ games = new GameRegistry(), db = openDatabase(':memo
 
   // The built website (M8), when there is one: its files, and index.html for every other page
   // address (/games, /create/g-…): the React app reads the address and shows the right page.
+  // The server fills in each page's title and description, and an unknown address is a 404
+  // (server/src/http/pages.js).
   // Vite gives the files in assets/ names that change with their contents, so browsers may
   // keep them forever; index.html itself is always checked again, so a deploy shows up at once.
   if (cfg.CLIENT_DIST_PATH && existsSync(path.join(cfg.CLIENT_DIST_PATH, 'index.html'))) {
@@ -114,10 +117,7 @@ export function createApp({ games = new GameRegistry(), db = openDatabase(':memo
     // A built file that's gone (an old tab after a deploy) is a plain 404, not the page's HTML.
     app.use('/assets', (_req, res) => res.status(404).end());
     app.use(express.static(cfg.CLIENT_DIST_PATH, { index: false }));
-    app.get('/{*page}', (_req, res) => {
-      res.set('Cache-Control', 'no-cache');
-      res.sendFile(path.join(cfg.CLIENT_DIST_PATH, 'index.html'));
-    });
+    app.get('/{*page}', sendPage({ db, games, indexPath: path.join(cfg.CLIENT_DIST_PATH, 'index.html') }));
   }
 
   // Last-resort error handler. Express calls this when a route throws or

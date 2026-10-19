@@ -13,9 +13,18 @@ let server;
 let baseUrl;
 let dist;
 
+// The parts of client/index.html the server fills in for each page.
+const INDEX_HTML = `<!doctype html><html><head>
+<title>BoilerGames · Party games</title>
+<meta name="description" content="The site." />
+<meta property="og:title" content="BoilerGames" />
+<meta property="og:description" content="The site." />
+<meta property="og:url" content="https://boilergames.party/" />
+</head><body><div id="root"></div></body></html>`;
+
 before(async () => {
   dist = mkdtempSync(path.join(tmpdir(), 'boilergames-dist-'));
-  writeFileSync(path.join(dist, 'index.html'), '<!doctype html><div id="root"></div>');
+  writeFileSync(path.join(dist, 'index.html'), INDEX_HTML);
   mkdirSync(path.join(dist, 'assets'));
   writeFileSync(path.join(dist, 'assets', 'index-abc123.js'), 'console.log(1)');
   writeFileSync(path.join(dist, 'favicon.svg'), '<svg/>');
@@ -30,11 +39,35 @@ after(async () => {
 });
 
 test('a page address gets index.html, checked again on every visit', async () => {
-  for (const page of ['/', '/games', '/create/g-abcd1234', '/u/someone']) {
+  for (const page of ['/', '/games', '/create/g-abcd1234', '/join/']) {
     const res = await fetch(`${baseUrl}${page}`);
     assert.equal(res.status, 200, page);
     assert.match(await res.text(), /id="root"/);
     assert.equal(res.headers.get('cache-control'), 'no-cache');
+  }
+});
+
+test('each page has its own title, description and canonical address in the HTML (plan §33)', async () => {
+  const games = await (await fetch(`${baseUrl}/games/`)).text();
+  assert.match(games, /<title>Games · BoilerGames<\/title>/);
+  assert.match(games, /<meta property="og:title" content="Games · BoilerGames"/);
+  assert.match(games, /<meta name="description" content="Every party game on BoilerGames/);
+  assert.match(games, new RegExp(`<link rel="canonical" href="${baseUrl}/games" />`));
+  assert.match(games, new RegExp(`<meta property="og:url" content="${baseUrl}/games"`));
+
+  // The home page keeps index.html's own title.
+  assert.match(await (await fetch(`${baseUrl}/`)).text(), /<title>BoilerGames · Party games<\/title>/);
+});
+
+test('an address that is no page is a 404 that search engines skip, still showing the site', async () => {
+  for (const page of ['/nope', '/games/no-such-game', '/u/nobody-here', '/games/a/b']) {
+    const res = await fetch(`${baseUrl}${page}`);
+    assert.equal(res.status, 404, page);
+    const html = await res.text();
+    assert.match(html, /id="root"/, page);
+    assert.match(html, /<meta name="robots" content="noindex" \/>/, page);
+    assert.match(html, /<title>Page not found · BoilerGames<\/title>/, page);
+    assert.doesNotMatch(html, /rel="canonical"/, page);
   }
 });
 

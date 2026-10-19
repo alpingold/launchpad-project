@@ -13,8 +13,9 @@ export function usePageTitle(page) {
 }
 
 /**
- * Tells search engines not to list this page (plan §33): for "not found" pages, which the
- * server answers with 200 like every page (only the browser knows there's nothing there).
+ * Tells search engines not to list this page (plan §33): for "not found" screens. The server
+ * already answers a missing page, game or account with 404; this covers the rest (a game
+ * that disappears while you're on its page).
  */
 export function useNoIndex() {
   useEffect(() => {
