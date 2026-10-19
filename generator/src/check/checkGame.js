@@ -24,8 +24,8 @@ export async function checkGame(source, opts = {}) {
   const report = frameGameReport(source);
   if (!report.game || opts.browser === false) return report; // no valid game info: nothing to play
 
-  const limits = gameLimits(source);
-  const result = await playtest(source, { ...opts, limits });
+  const { minutes, ...limits } = gameLimits(source);
+  const result = await playtest(source, { ...opts, limits, minutes });
   const { players, seconds } = result.summary;
   const screenshots = {};
   for (const [which, jpeg] of Object.entries(result.screenshots)) {
@@ -44,5 +44,5 @@ export async function checkGame(source, opts = {}) {
 
 function gameLimits(source) {
   const info = JSON.parse(/<script\b[^>]*id=["']game-info["'][^>]*>([\s\S]*?)<\/script>/i.exec(source)[1]);
-  return { minPlayers: info.minPlayers, maxPlayers: info.maxPlayers };
+  return { minPlayers: info.minPlayers, maxPlayers: info.maxPlayers, minutes: info.minutes };
 }

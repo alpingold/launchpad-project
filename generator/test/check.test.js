@@ -49,9 +49,13 @@ test('an error in the game points at its line', opts, async () => {
 
 test('a blank big screen is caught', opts, async () => {
   const report = await check('blank');
+  // It never moves on either, so it's stuck too (plan §41).
   assert.deepEqual(
     report.problems.map((p) => [p.rule, p.screen]),
-    [['blank', 'big screen']],
+    [
+      ['blank', 'big screen'],
+      ['stuck', 'big screen'],
+    ],
   );
 });
 
@@ -60,18 +64,32 @@ test('a big screen stuck in a loop is caught, and the check still finishes', opt
   assert.ok(rules(report.problems).includes('hang'), JSON.stringify(report.problems));
 });
 
-test('a game that never leaves its first screen gets a "stuck" warning once every timer has run out (plan §41)', opts, async () => {
+test('a game that never leaves its first screen is "stuck" once every timer has run out (plan §41)', opts, async () => {
   const stuck = await check('stuck');
-  assert.deepEqual(rules(stuck.warnings).filter((r) => r === 'stuck'), ['stuck'], JSON.stringify(stuck.warnings));
-  assert.match(stuck.warnings.find((w) => w.rule === 'stuck').message, /Nothing changed after every timer ran out/);
-  assert.equal(stuck.ok, true, 'a warning for now, not a problem');
+  assert.deepEqual(rules(stuck.problems), ['stuck'], JSON.stringify(stuck.problems));
+  assert.match(stuck.problems[0].message, /Nothing changed after every timer ran out \(the clock was moved 2 minutes ahead/);
 
-  // The same game with its timer working moves on when the clock jumps: no warning. Also when
-  // it waits with a setTimeout: every timer due by then runs.
-  for (const name of ['timed', 'scheduled']) {
+  // Its timer working, it moves on when the clock jumps: also when it waits with a setTimeout
+  // (every timer due by then runs), and with one round longer than 2 minutes: the jump goes
+  // past the game's own length (its game-info minutes).
+  for (const name of ['timed', 'scheduled', 'long-round']) {
     const fine = await check(name);
-    assert.deepEqual(rules(fine.warnings).filter((r) => r === 'stuck'), [], `${name}: ${JSON.stringify(fine.warnings)}`);
+    assert.deepEqual(fine.problems, [], `${name}: ${JSON.stringify(fine.problems)}`);
   }
+});
+
+test('a stuck game that threw when its time was up gets the error too: usually the reason (plan §47)', opts, async () => {
+  const report = await check('stuck-throws');
+  assert.deepEqual(rules(report.problems).sort(), ['error', 'stuck'], JSON.stringify(report.problems));
+  assert.match(report.problems.find((p) => p.rule === 'error').message, /firstRound/);
+});
+
+test('a big screen that draws once while the phones go on is "frozen" (plan §47); one that just shows the same thing a long while is not', opts, async () => {
+  const frozen = await check('frozen');
+  assert.deepEqual(rules(frozen.problems), ['frozen'], JSON.stringify(frozen.problems));
+  assert.match(frozen.problems[0].message, /never changed while the game went on/);
+  // The stuck game doesn't change either, but neither do its phones: that's "stuck", not "frozen".
+  assert.ok(!rules((await check('stuck')).problems).includes('frozen'));
 });
 
 test('a player\'s name put into the page as HTML is caught, with its line; an escaped one is fine (plan §46)', opts, async () => {

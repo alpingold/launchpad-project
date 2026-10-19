@@ -19,8 +19,11 @@
 //  - a big screen that stops ticking (an endless loop), a blank screen, phones that never
 //    hear from the big screen, messages the server would refuse, bad results in party.end
 //  - a game that never moves on (plan §41): at the end, with the bots stopped, every clock the
-//    game can read jumps 2 minutes ahead (and timers due by then run), so every deadline is
-//    past; if no phone's state, the save or the end changes after that, nothing ever moves it
+//    game can read jumps past the game's whole length (its game-info minutes; at least 2
+//    minutes), and timers due by then run, so every deadline is past; if no phone's state, the
+//    save or the end changes after that, nothing ever moves it
+//  - a frozen big screen (plan §47): the game goes on (the phones' states or its save change,
+//    and the jump moves it on too) but the big screen never shows anything new after it last loaded
 // While it plays: bots tap buttons, drag and hold (joysticks, drawing pads), type in text
 // boxes and press keys. One phone reloads and the big screen reloads (with its last
 // party.save), as happens at real parties.
@@ -47,8 +50,9 @@ const RATE_BURST = config.RATE_LIMIT_BURST;
 const HANG_MS = 5000; // the big screen ticks every second; 5 s of silence means it's stuck
 const LOAD_TIMEOUT_MS = 8000;
 const FIRST_WORD_MS = 6000; // phones should hear from the big screen by then
-const CLOCK_JUMP_MS = 2 * 60 * 1000; // the jump at the end: past any one phase's timer
+const MIN_JUMP_MINUTES = 2; // the jump at the end: past the game's whole length, at least this
 const MOVE_ON_MS = 5000; // how long the game gets to react to it
+const LOOK_EVERY_MS = 1000; // how often the big screen's look is sampled (the frozen check)
 
 /** The page around each game iframe: what GameFrame.jsx does, minus React and the socket. */
 const HARNESS_HTML = `<!doctype html>
@@ -167,7 +171,7 @@ const INIT_SCRIPT = `(() => {
 
 /**
  * @typedef {Object} PlaytestFinding
- * @property {string} rule     csp | error | network | navigation | hang | blank | silent | stuck | html | refused | results | load
+ * @property {string} rule     csp | error | network | navigation | hang | blank | silent | stuck | frozen | html | refused | results | load
  * @property {string} message
  * @property {string} [screen] where it happened: 'big screen', 'phone 2', or several ('big screen, phone 1')
  * @property {number} [line]   in the game file
@@ -182,6 +186,7 @@ const INIT_SCRIPT = `(() => {
  * @param {number} [opts.seconds]   how long to play (default 20)
  * @param {number} [opts.seed]      for the bots' choices
  * @param {{ minPlayers: number, maxPlayers: number }} [opts.limits]
+ * @param {[number, number]} [opts.minutes]  the game's own length (its game info), for the clock jump
  * @param {boolean} [opts.headed]   show the browser windows (for watching locally)
  * @param {(text: string) => void} [opts.onStep]
  * @param {() => Promise<import('playwright-core').Browser>} [opts.launch]  tests may pass their own
@@ -193,6 +198,9 @@ export async function playtest(source, opts = {}) {
   const playerCount = Math.min(limits.maxPlayers, Math.max(limits.minPlayers, opts.players ?? 3));
   const onStep = opts.onStep ?? (() => {});
   const random = mulberry32(opts.seed ?? 1);
+  // Past the end of the longest game the game says it plays (plan §41: a 3-minute round outlasted
+  // a fixed 2-minute jump), so every deadline in it is past.
+  const jumpMinutes = Math.max(MIN_JUMP_MINUTES, (opts.minutes?.[1] ?? 0) + 1);
 
   const findings = new Findings();
   const parts = {
@@ -223,6 +231,9 @@ export async function playtest(source, opts = {}) {
   let botsStopped = false;
   let stopWatchdog = () => {};
   let hung = false;
+  /** The frozen check (plan §47): the big screen's looks, and how far the game was, since it last loaded. */
+  const sinceLoad = { looks: new Set(), states: new Set(), samples: 0 };
+  let lookedAt = 0;
 
   const relay = new FrameRelay({
     game: { id: 'game', name: 'game', description: '', minPlayers: 1, maxPlayers: 12, source }, // only the source is used here
@@ -456,12 +467,14 @@ export async function playtest(source, opts = {}) {
         checkedBlank = true;
         await checkBlank();
       }
+      if (Date.now() - lookedAt >= LOOK_EVERY_MS) await lookAtHost();
     }
     if (summary.ended) await takeShots(); // the end screen (unless taken already)
     else if (!hung) await takeShots();
     botsStopped = true;
     await Promise.race([Promise.allSettled(bots), sleep(2000)]);
     if (!summary.ended && !hung) await checkMovesOn();
+    if (!hung) await checkFrozen();
     stopping = true;
     if (!summary.ended && !hung) onStep(`playtest: still running after ${seconds} s (fine for long games)`);
   } finally {
@@ -482,25 +495,63 @@ export async function playtest(source, opts = {}) {
 
   /**
    * Plan §41: the bots have stopped, so only time can move the game now. Warp every screen's
-   * clocks past every deadline (INIT_SCRIPT) and see whether anything changes: a phone's
-   * state, the save, or the end. A WARNING for now, until it has been tried on many games.
+   * clocks past the game's whole length (INIT_SCRIPT) and see whether anything changes: a
+   * phone's state, the save, or the end.
    */
   async function checkMovesOn() {
-    const seen = () => JSON.stringify([[...relay.lastStates], relay.snapshot ?? null]);
     await sleep(500); // what the bots' last taps caused
-    const before = seen();
-    onStep(`playtest: moving the clock ${CLOCK_JUMP_MS / 60000} minutes ahead (every timer runs out)`);
-    findings.onlyStuck = true;
+    const before = gameState();
+    onStep(`playtest: moving the clock ${jumpMinutes} minutes ahead (every timer runs out)`);
+    findings.afterJump = true;
     for (const s of screens.values()) {
-      await gameFrame(s)?.evaluate((ms) => window.__warp?.(ms), CLOCK_JUMP_MS).catch(() => {});
+      await gameFrame(s)?.evaluate((ms) => window.__warp?.(ms), jumpMinutes * 60_000).catch(() => {});
     }
     // The game may freeze for a while catching up (that's not held against it either).
-    const moved = await until(() => summary.ended || seen() !== before, MOVE_ON_MS);
+    const moved = await until(() => summary.ended || gameState() !== before, MOVE_ON_MS);
     if (moved) return;
-    findings.warn({
+    // What it threw while the clock jumped is usually why it's stuck (a saved function gone
+    // after a reload, say): those count now, with their lines.
+    findings.keepHidden();
+    findings.add({
       rule: 'stuck',
       screen: 'big screen',
-      message: `Nothing changed after every timer ran out (the clock was moved ${CLOCK_JUMP_MS / 60000} minutes ahead): no phone got a new state and nothing was saved, so the game stays on the screen it's on. Check that each phase moves to the next when its time is up (compare party.now() with its deadline), and that the first one starts.`,
+      message: `Nothing changed after every timer ran out (the clock was moved ${jumpMinutes} minutes ahead, past the game's whole length): no phone got a new state and nothing was saved, so the game stays on the screen it's on. Check that each phase moves to the next when its time is up (compare party.now() with its deadline), and that the first one starts.`,
+    });
+  }
+
+  /** How far the game is: the phones' states and its save (the stuck and frozen checks compare them). */
+  function gameState() {
+    return JSON.stringify([[...relay.lastStates], relay.snapshot ?? null]);
+  }
+
+  /** The frozen check (plan §47): samples how the big screen looks, and how far the game is then. */
+  async function lookAtHost() {
+    lookedAt = Date.now();
+    const host = screens.get('host');
+    const frame = gameFrame(host);
+    if (!frame || !host.ready || hung) return;
+    const look = await withTimeout(frame.evaluate(screenLook), 2000).catch(() => null);
+    if (look === null) return;
+    sinceLoad.looks.add(look);
+    sinceLoad.states.add(gameState());
+    sinceLoad.samples += 1;
+  }
+
+  /**
+   * Plan §47: one game drew its big screen once and never again, while the game went through
+   * every phase; nothing crashed, so every other check passed it. After the clock jump (which
+   * moves any working game on), look once more: if since the big screen last loaded the game
+   * went on (the phones' states or its save changed) but the look never did, the room is
+   * watching a frozen TV.
+   */
+  async function checkFrozen() {
+    await sleep(1000); // a frame or two to draw what the jump changed
+    await lookAtHost();
+    if (sinceLoad.samples < 3 || sinceLoad.looks.size > 1 || sinceLoad.states.size < 2) return;
+    findings.add({
+      rule: 'frozen',
+      screen: 'big screen',
+      message: "The big screen never changed while the game went on: the game's state changed (also after every timer ran out), but the big screen showed the same thing the whole time. Draw the big screen again whenever the game's state changes (or on every animation frame), not only when it starts.",
     });
   }
 
@@ -527,6 +578,10 @@ export async function playtest(source, opts = {}) {
     if (!(await until(() => host.ready, LOAD_TIMEOUT_MS))) return;
     lastAlive = Date.now();
     summary.reloads.push('big screen');
+    // The frozen check starts over: a game that draws once draws the restored state once.
+    sinceLoad.looks.clear();
+    sinceLoad.states.clear();
+    sinceLoad.samples = 0;
   }
 
   async function checkBlank() {
@@ -628,24 +683,57 @@ function drawsSomething() {
   return false;
 }
 
+/**
+ * Runs inside a game frame: a short fingerprint of what's on screen (the page, and a sample of
+ * each canvas's pixels). Two equal fingerprints: nothing visible changed (CSS animations aside).
+ */
+function screenLook() {
+  let hash = 0;
+  const mix = (n) => (hash = (Math.imul(hash, 31) + n) | 0);
+  const html = document.body.innerHTML;
+  for (let i = 0; i < html.length; i++) mix(html.charCodeAt(i));
+  for (const canvas of document.querySelectorAll('canvas')) {
+    if (canvas.width === 0 || canvas.height === 0) continue;
+    try {
+      const ctx = canvas.getContext('2d');
+      if (!ctx) continue;
+      const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      for (let i = 0; i < data.length; i += 4 * 53) mix(data[i] + (data[i + 1] << 8) + (data[i + 2] << 16));
+    } catch {
+      mix(Math.random() * 1e9); // can't read it: count it as changing, never as frozen
+    }
+  }
+  return `${html.length}:${hash}`;
+}
+
 /** Repeated findings are merged, with a count. */
 class Findings {
   constructor() {
     this.problems = [];
     this.warnings = [];
     /**
-     * After the clock jump (plan §41) only its own finding counts (a game may catch up on 2
-     * minutes clumsily), and a name put in as HTML (§46): the jump is often what reaches the
-     * screens that show names (a reveal, the final scores), and that's no clumsiness.
+     * After the clock jump (plan §41) only the checks made for it count (a game may catch up on
+     * minutes clumsily): stuck and frozen (§47), and a name put in as HTML (§46): the jump is
+     * often what reaches the screens that show names (a reveal, the final scores).
      */
-    this.onlyStuck = false;
+    this.afterJump = false;
+    /** Errors after the jump: not held against a game that moves on, but the likely cause if it doesn't. */
+    this.hidden = [];
   }
   add(f) {
-    if (this.onlyStuck && f.rule !== 'html') return;
+    if (this.afterJump && !AFTER_JUMP_RULES.includes(f.rule)) {
+      if (f.rule === 'error') this.hidden.push(f);
+      return;
+    }
     this.#push(this.problems, f);
   }
+  /** The game is stuck: the errors it threw after the jump count after all. */
+  keepHidden() {
+    for (const f of this.hidden) this.#push(this.problems, f);
+    this.hidden = [];
+  }
   warn(f) {
-    if (this.onlyStuck && f.rule !== 'stuck') return;
+    if (this.afterJump && !AFTER_JUMP_RULES.includes(f.rule)) return;
     this.#push(this.warnings, f);
   }
   /** The same finding on several screens becomes one, naming them all. */
@@ -736,6 +824,7 @@ function mulberry32(seed) {
   };
 }
 
+const AFTER_JUMP_RULES = ['stuck', 'frozen', 'html'];
 const BOT_NAMES = ['Ada', UNSAFE_NAME, 'Cy', 'Dee', 'Eli', 'Fay', 'Gus', 'Hal', 'Ivy', 'Jo', 'Kai', 'Lu'];
 const WORDS = ['banana', 'robot', 'purple', 'yes', 'pizza party', 'zzz'];
 const KEYS = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Space', 'Enter'];

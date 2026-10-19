@@ -1,0 +1,24 @@
+<script type="application/json" id="game-info">{ "name": "Long Round", "description": "A test game with one 3-minute round.", "minPlayers": 1, "maxPlayers": 4, "minutes": [3, 4] }</script>
+<div id="app"></div>
+<script>
+  // Nothing wrong: one round of 3 minutes (longer than a 2-minute clock jump), then the end.
+  // The big screen shows the same "Swim!" all round, which is fine: it changes when it ends.
+  party.ready(({ role, restored }) => {
+    const app = document.getElementById('app');
+    if (role === 'host') {
+      const g = restored ?? { endsAt: party.now() + 180000 };
+      app.textContent = 'Swim!';
+      party.setState('all', { text: 'Swim!' });
+      party.save(g);
+      setInterval(() => {
+        if (party.now() < g.endsAt) return;
+        app.textContent = 'Time!';
+        party.end({ rankings: party.players.map((p) => p.id) });
+      }, 250);
+    } else {
+      const text = party.ui.el('p');
+      app.append(text);
+      party.on('state', (s) => (text.textContent = s.text));
+    }
+  });
+</script>

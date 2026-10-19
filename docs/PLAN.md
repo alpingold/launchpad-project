@@ -1792,11 +1792,7 @@ fix without changes. Stowaways also keeps its timer out of the part it rebuilds.
   false alarm, it becomes a problem, so the model is asked to fix it.
 - **Still missed:** games that move on but are wrong ("Wave 0", "Ada → undefined", labels on top
   of each other). Reading the code and the screenshots still matters.
-- **Checked again 2026-10-19, not yet a problem:** of 250 build attempts since, 80 got the
-  warning, nearly all on attempts that failed anyway (a game that crashes doesn't move either).
-  5 passing games got it: replayed, the 3 pond games still do, and they're false alarms (one
-  3-minute round, longer than the 2-minute jump); the other 2 don't any more. So before it can
-  fail a build, the jump has to go past the game's whole length (its game-info `minutes`).
+- **Now a problem (§48):** the jump goes past the game's whole length, and it fails a build.
 
 ## 42. The home page leads with making a game (2026-10-18)
 
@@ -1892,9 +1888,28 @@ build on the site now ends with one review round.
   the next version (kind 'recheck', migration 12). Adds ~10 minutes to a build.
 - **Change requests may be 4000 characters** (ideas stay 1000): a request can list several fixes.
   Earlier requests in a change's prompt are still cut to 1000 each.
-- **Still open:** the playtest should catch a big screen that never changes (a deterministic
-  check beats the reviewer there); a "spoils" bug like the vault one isn't fixed automatically,
-  only shown.
+- **Still open:** a "spoils" bug like the vault one isn't fixed automatically, only shown. (The
+  frozen big screen the reviewer found is now a playtest check: §48.)
+
+## 48. The playtest fails stuck and frozen games (2026-10-19)
+
+- **Stuck (§41), now a problem:** the clock jump goes past the game's whole length (its game-info
+  `minutes`, plus one; at least 2 minutes). With a fixed 2 minutes, the pond games' single
+  3-minute round looked stuck: a false alarm every time.
+- **Errors behind it:** errors after the jump still don't count against a game that moves on, but
+  if it's stuck they're reported with it: usually they're why (the fix round gets the line).
+- **Frozen (new, from §47):** while it plays, the playtest samples the big screen's look (its page
+  and its canvases' pixels, hashed) and how far the game is (the phones' states and its save),
+  starting over when the big screen reloads. If the game went on, the jump included, but the
+  look never changed, the big screen is frozen: a problem. The first version waited for the
+  phones' states only and missed the very game it was for (it barely updates its phones).
+- **Tried on every passing game we have** (106: the 7 official and 99 from experiments). Official
+  games: clean. Frozen: only the known frozen bake-off (its review-fixed version passes). Stuck: 7,
+  all real: the 2 Comet Crews that never start (§40), 2 old games that now crash anyway, a drawing
+  game that never starts again after a big-screen reload in its intro, a fake-artist game that
+  never ends after a reload on its final screen, and (on some runs) a bake-off that keeps a
+  function in its save, so scoring crashes after a reload. Reloads at the wrong moment are where
+  these games break; the bots' timing decides whether a run hits one.
 
 ## Verification (how to confirm the plan worked once built)
 

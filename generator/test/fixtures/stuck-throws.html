@@ -1,0 +1,23 @@
+<script type="application/json" id="game-info">{ "name": "Stuck Throws", "description": "A test game whose round never starts: its timer throws.", "minPlayers": 1, "maxPlayers": 4 }</script>
+<div id="app"></div>
+<script>
+  // The mistake: when the intro's time is up, starting the round throws (as a function kept
+  // in the save does after a reload: it comes back as {}), so the game never moves on.
+  party.ready(({ role }) => {
+    const app = document.getElementById('app');
+    if (role === 'host') {
+      const g = { phase: 'intro', endsAt: party.now() + 60000, rules: {} };
+      app.textContent = 'Get ready!';
+      party.setState('all', { text: 'Get ready!' });
+      party.save(g);
+      setInterval(() => {
+        if (party.now() < g.endsAt) return;
+        g.rules.firstRound(); // there's no such function: this throws
+      }, 250);
+    } else {
+      const text = party.ui.el('p');
+      app.append(text);
+      party.on('state', (s) => (text.textContent = s.text));
+    }
+  });
+</script>

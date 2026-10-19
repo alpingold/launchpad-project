@@ -1,0 +1,27 @@
+<script type="application/json" id="game-info">{ "name": "Frozen", "description": "A test game whose big screen draws once.", "minPlayers": 1, "maxPlayers": 4 }</script>
+<div id="app"></div>
+<script>
+  // The mistake (plan §47): the big screen draws when it starts and never again, while the
+  // phones go through every phase.
+  party.ready(({ role }) => {
+    const app = document.getElementById('app');
+    if (role === 'host') {
+      let g = { phase: 'intro', round: 0, endsAt: party.now() + 2000 };
+      app.textContent = 'Get ready!';
+      const tell = () => {
+        party.setState('all', { text: g.phase === 'intro' ? 'Get ready!' : 'Round ' + g.round });
+        party.save(g);
+      };
+      tell();
+      setInterval(() => {
+        if (party.now() < g.endsAt) return;
+        g = { phase: 'round', round: g.round + 1, endsAt: party.now() + 2000 };
+        tell();
+      }, 250);
+    } else {
+      const text = party.ui.el('p');
+      app.append(text);
+      party.on('state', (s) => (text.textContent = s.text));
+    }
+  });
+</script>
