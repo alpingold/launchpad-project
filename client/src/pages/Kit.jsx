@@ -14,7 +14,7 @@ const SKELETON = `<script type="application/json" id="game-info">
 <style> /* the game's own look */ </style>
 <div id="app"></div>
 <script>
-  party.ready(({ role, me, players, restored }) =>
+  party.ready(({ role, me, restored }) =>
     role === 'host' ? bigScreen(restored) : phone(me));
 </script>`;
 

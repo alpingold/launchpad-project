@@ -39,8 +39,8 @@ network, so there's nothing to fetch.)
 <div id="app"></div>
 <script>
   'use strict';
-  party.ready(({ role, me, players, restored }) => (role === 'host' ? bigScreen(restored) : phone(me)));
-  function bigScreen(restored) { /* ... */ }
+  party.ready(({ role, me, restored }) => (role === 'host' ? bigScreen(restored) : phone(me)));
+  function bigScreen(restored) { /* ... party.players ... */ }
   function phone(me) { /* ... */ }
 </script>
 ```
@@ -113,7 +113,8 @@ party.ready(({ role, me, players, restored }) => { ... })
 //   restored: on the big screen after a reload, the last party.save snapshot; else undefined
 party.now()          // server time in ms: use it for every timer and deadline
 party.asset(id)      // URL of an approved picture (see the art library), or null
-party.players / party.me / party.role   // the same, any time after ready
+party.players / party.me / party.role   // the same, any time after ready. In your own functions
+//   write party.players: the `players` above exists only inside the party.ready callback.
 party.ui             // ready-made pieces you can see (below)
 party.on(name, fn)   // listen; the names are below
 party.sound(name)    // a short sound made in code: 'tap', 'blip', 'tick', 'pop', 'coin', 'go', 'buzz', 'win', 'lose'
