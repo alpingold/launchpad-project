@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Updates the live site to the newest commit on GitHub (main), with as little downtime as we can:
 #
-#   1. builds the new version off to the side (~/boilergames-next) while the site keeps running
+#   1. builds the new version off to the side (~/boilergames-next) while the site keeps running,
+#      and runs its tests: a version that fails them stops here
 #   2. tries it on a copy of the database, on another port: a broken build never goes live
 #   3. waits until nobody is playing or making a game (a restart ends every open room, plan §9)
 #   4. switches over and restarts: ~2 s, and Caddy holds visitors' requests meanwhile
@@ -99,6 +100,11 @@ main() {
   npm --prefix "$NEXT/server" ci --omit=dev --no-audit --no-fund --loglevel=error
   npm --prefix "$NEXT/client" ci --no-audit --no-fund --loglevel=error
   npm --prefix "$NEXT/client" run build --silent >/dev/null
+  # The server's tests (a few seconds): a version that fails them never goes live.
+  npm --prefix "$NEXT" test --silent >"$NEXT/test.log" 2>&1 || {
+    grep -E '^(not ok|✖)' "$NEXT/test.log" | head -n 20 >&2
+    die "the new version fails its tests (the whole output: $NEXT/test.log). The site was not changed."
+  }
   docker build --quiet -f "$NEXT/generator/Dockerfile" -t "$IMAGE:next" "$NEXT" >/dev/null
 
   # --- 2. Try it on a copy of the database ---------------------------------------------------

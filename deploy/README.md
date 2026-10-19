@@ -182,7 +182,8 @@ What it does, and why:
 
 1. **Builds the new version off to the side**, in `~/boilergames-next` (a second checkout of
    the same repo): server packages, the website, and the generator image (as
-   `boilergames-generator:next`). The live site keeps running untouched the whole time.
+   `boilergames-generator:next`). Then it runs the server's tests (`npm test`, a few seconds): if
+   one fails, it stops and prints which. The live site keeps running untouched the whole time.
 2. **Tries it** on port 3001 with a *copy* of the database: it must start, read the database
    (so database changes run on the copy first) and serve the site. If not, it stops there and
    the site was never changed. The copy is deleted when the script ends.

@@ -1,0 +1,35 @@
+# Runs the tests on every push and pull request (GitHub Actions): the server's (and the
+# generator's job logic, which they cover) and the game checker's, which play games in a
+# headless Chromium. The browser tests in e2e/ stay manual: they need the whole site running.
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  server:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm --prefix server ci --no-audit --no-fund
+      - run: npm --prefix client ci --no-audit --no-fund
+      - run: npm --prefix client run build
+      - run: npm test
+
+  checker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm --prefix generator ci --no-audit --no-fund
+      # The same Playwright as generator/package.json, for its Chromium (and the libraries it needs).
+      - run: npx --yes playwright@1.64.0 install --with-deps chromium
+      - run: npm run test:check
