@@ -2377,6 +2377,14 @@ of room at 57,873 tokens; pond took 19 min), so the short-plan sentence stays. W
 6. **Play them:** a short scorecard (ran as designed, real choices, art matched, the big moment
    landed, how long it took).
 
+**Results so far.** Test 1 (bake-off and heist, brief vs plain on the same design): every
+mechanic made it into both; both lost the same costly art (the bake-off's alien judge became
+an 👽 emoji in both). Test 2 (2 builds × 3 sentences × 2 designs): 3 of 4 passed for each, none
+ran out of room. Adding "the look" to the plan barely helped; **"Draw the characters and the big
+moment the way the design describes them, with shapes; don't replace them with emoji or plain
+circles"** got both bake-offs a drawn judge (arms, fork, monocle) instead of an emoji, at no cost.
+The heist's art was drawn by every variant. That sentence is now part of BRIEF_THINKING.
+
 ## 44. Games to approve (2026-10-18)
 
 - A creator's page has **Submit for publishing** once a version is ready: it becomes the playtest
