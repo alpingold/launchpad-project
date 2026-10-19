@@ -14,6 +14,7 @@
 
 import { chat } from './llm.js';
 import { reasoningEffortFor } from './models.js';
+import { MAX_REQUEST_LENGTH } from './prompt.js';
 
 export const AREAS = ['rules', 'big screen', 'phones', 'art', 'sound', 'ending', 'edge cases'];
 export const STATUSES = ['implemented', 'partial', 'missing', 'wrong'];
@@ -216,7 +217,7 @@ export function score(items, area) {
  * The change request that asks the builder to fix a review's critical bugs: as many as fit in
  * a change request (`max` characters), most important first. `left` is how many didn't fit.
  */
-export function fixRequest(bugs, max = 1000) {
+export function fixRequest(bugs, max = MAX_REQUEST_LENGTH) {
   const head = 'A review of the code found these bugs. Fix each one, and change nothing else:';
   const lines = [];
   for (const b of bugs) {

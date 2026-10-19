@@ -20,7 +20,7 @@ import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { runGeneratorInSandbox } from '../src/generation/sandbox.js';
 import { verify, score, fixRequest, CRITICAL } from '../../generator/src/review.js';
-import { MAX_IDEA_LENGTH } from '../../generator/src/prompt.js';
+import { MAX_REQUEST_LENGTH } from '../../generator/src/prompt.js';
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
@@ -92,7 +92,7 @@ async function reviewAndFix({ folder, build, checklist, design, idea }) {
 
   log(`${label}: fixing`);
   // Crashes first: they matter most if not every bug fits in one request.
-  const { request, left } = fixRequest([...critical].sort((a, b) => CRITICAL.indexOf(a.severity) - CRITICAL.indexOf(b.severity)), MAX_IDEA_LENGTH);
+  const { request, left } = fixRequest([...critical].sort((a, b) => CRITICAL.indexOf(a.severity) - CRITICAL.indexOf(b.severity)), MAX_REQUEST_LENGTH);
   if (left) log(`${label}: ${left} critical bug(s) didn't fit in the request`);
   const fix = await runGeneratorInSandbox({ step: 'build', idea, design, change: { request, source, design, plan: null } }, { onStep: () => {} });
   const { source: fixed, ...rest } = fix;

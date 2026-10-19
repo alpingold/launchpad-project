@@ -42,7 +42,7 @@ test('oversized JSON body is rejected', async () => {
   const res = await fetch(`${baseUrl}/api/health`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ junk: 'x'.repeat(20_000) }),
+    body: JSON.stringify({ junk: 'x'.repeat(30_000) }),
   });
   assert.equal(res.status, 413);
   assert.deepEqual(await res.json(), { error: 'BAD_REQUEST' });

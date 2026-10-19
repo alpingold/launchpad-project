@@ -14,7 +14,8 @@ export const config = {
 
   // Largest JSON body Express will accept on /api routes. Small on purpose:
   // our requests are tiny (login forms), and a cap stops huge uploads early.
-  HTTP_JSON_LIMIT: '10kb',
+  // The biggest is a change request: 4000 characters, up to 4 bytes each in UTF-8.
+  HTTP_JSON_LIMIT: '20kb',
 
   // --- WebSocket transport ---
 

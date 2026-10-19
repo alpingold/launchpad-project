@@ -512,7 +512,7 @@ function ChangeForm({ game, summary, info, busy, run }) {
           value={text}
           onChange={(e) => setText(e.target.value)}
           rows={3}
-          maxLength={info.maxIdeaLength}
+          maxLength={info.maxRequestLength}
           placeholder="e.g. Rounds are too long: make them 20 seconds. Show the scores after each round."
           disabled={!info.enabled || busy}
         />

@@ -46,6 +46,8 @@ import { MAX_DESIGN_LENGTH } from '../../../generator/src/extract.js';
 
 export const MIN_IDEA_LENGTH = 10;
 export const MAX_IDEA_LENGTH = 1000;
+/** A change request may list several fixes (generator/src/prompt.js says why 4000). */
+export const MAX_REQUEST_LENGTH = 4000;
 /** Feedback on a design ("make it 2 rounds") may be shorter than an idea. */
 export const MIN_FEEDBACK_LENGTH = 3;
 /** A design the admin edits by hand. */
@@ -126,6 +128,7 @@ export class GenerationService {
       defaultModel: DEFAULT_MODEL,
       minIdeaLength: MIN_IDEA_LENGTH,
       maxIdeaLength: MAX_IDEA_LENGTH,
+      maxRequestLength: MAX_REQUEST_LENGTH,
       minFeedbackLength: MIN_FEEDBACK_LENGTH,
       maxDesignLength: MAX_DESIGN_LENGTH,
     };
@@ -179,7 +182,7 @@ export class GenerationService {
    */
   requestChanges({ id, request, basedOn, model = DEFAULT_MODEL, skipDesign = false }) {
     const game = this.get(id);
-    const trimmed = checkText(request, 'INVALID_REQUEST', 'Describe the change');
+    const trimmed = checkText(request, 'INVALID_REQUEST', 'Describe the change', MAX_REQUEST_LENGTH);
     checkModel(model);
     const open = game.versions.find((v) => BUSY_STATUSES.includes(v.status) || v.status === 'design_ready');
     if (open) {
@@ -498,10 +501,10 @@ function findVersion(game, number) {
 }
 
 /** An idea or change request: trimmed, and of a sensible length. */
-function checkText(text, code, what) {
+function checkText(text, code, what, max = MAX_IDEA_LENGTH) {
   const trimmed = typeof text === 'string' ? text.trim() : '';
-  if (trimmed.length < MIN_IDEA_LENGTH || trimmed.length > MAX_IDEA_LENGTH) {
-    throw new GenerationError(400, code, `${what} in ${MIN_IDEA_LENGTH}–${MAX_IDEA_LENGTH} characters.`);
+  if (trimmed.length < MIN_IDEA_LENGTH || trimmed.length > max) {
+    throw new GenerationError(400, code, `${what} in ${MIN_IDEA_LENGTH}–${max} characters.`);
   }
   return trimmed;
 }

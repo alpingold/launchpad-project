@@ -367,6 +367,9 @@ test('asking for changes: refused while a version is being made, for bad request
   const ask = (request, basedOn) => () => service.requestChanges({ id, request, basedOn });
   assert.equal(codeOf(ask('short')), 'INVALID_REQUEST');
   assert.equal(codeOf(ask({ evil: true })), 'INVALID_REQUEST');
+  // Longer than an idea may be (a change can list several fixes), up to 4000 characters.
+  assert.equal(codeOf(ask('x'.repeat(4001))), 'INVALID_REQUEST');
+  assert.equal(service.info().maxRequestLength, 4000);
   assert.equal(codeOf(ask('A perfectly fine request', 7)), 'NO_BASE_VERSION');
   assert.equal(codeOf(() => service.requestChanges({ id: 'g-nothere', request: 'A perfectly fine request' })), 'NOT_FOUND');
 

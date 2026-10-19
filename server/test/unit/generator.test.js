@@ -562,6 +562,6 @@ test('the reviewer: bugs come with a severity, and the critical ones become a ch
   assert.match(request, /Fix each one, and change nothing else/);
   assert.match(request, /- roundScores2 is not defined \(around line 164\)/);
   // Only what fits in a change request goes in.
-  const many = fixRequest(Array.from({ length: 20 }, () => ({ ...crash, what: 'x'.repeat(100) })));
+  const many = fixRequest(Array.from({ length: 20 }, () => ({ ...crash, what: 'x'.repeat(100) })), 1000);
   assert.ok(many.request.length <= 1000 && many.included > 0 && many.left > 0 && many.included + many.left === 20);
 });

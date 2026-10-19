@@ -48,6 +48,7 @@ import {
   DESIGN_HEADINGS,
   PLAN_HEADINGS,
   MAX_IDEA_LENGTH,
+  MAX_REQUEST_LENGTH,
   MAX_SOURCE_LENGTH,
   MAX_WHOLE_FILE_LENGTH,
   MAX_GAME_BYTES,
@@ -129,7 +130,7 @@ export async function runJob(job, deps = {}) {
   if (!isText(job.idea, 10)) return fail(`the game idea must be 10–${MAX_IDEA_LENGTH} characters`);
   const { change, redraft } = job;
   if (change !== undefined) {
-    if (!isText(change?.request, 10)) return fail(`the change request must be 10–${MAX_IDEA_LENGTH} characters`);
+    if (!isText(change?.request, 10, MAX_REQUEST_LENGTH)) return fail(`the change request must be 10–${MAX_REQUEST_LENGTH} characters`);
     if (typeof change.source !== 'string' || change.source.length === 0) return fail('a change needs the current game file');
     // Without edit mode, the old game and the new one must both fit (prompt.js explains the numbers).
     const limit = job.edits === false ? MAX_WHOLE_FILE_LENGTH : MAX_SOURCE_LENGTH;
@@ -197,7 +198,7 @@ const thinkingOf = (job, reply) => ({
 /** What qwen3.8:27b on GenAI Studio takes (plan §38). */
 const REASONING_EFFORTS = ['low', 'medium', 'xhigh'];
 
-const isText = (value, min) => typeof value === 'string' && value.trim().length >= min && value.length <= MAX_IDEA_LENGTH;
+const isText = (value, min, max = MAX_IDEA_LENGTH) => typeof value === 'string' && value.trim().length >= min && value.length <= max;
 
 /**
  * Step 1: a design (or a change plan). One model call, plus one retry if headings are missing.
