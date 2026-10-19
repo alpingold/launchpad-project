@@ -2355,6 +2355,28 @@ fix without changes. Stowaways also keeps its timer out of the part it rebuilds.
   its parts below the top get a rule and a bigger heading (`.page-section`); an empty list is a
   dashed invitation (`.empty-invite`); /create's idea box is gold like the home page's.
 
+## 43. Brief medium: where to look for improvements (open, 2026-10-18)
+
+With the new DESIGN.md, plain medium still thinks far too long on bigger games (heist ran out
+of room at 57,873 tokens; pond took 19 min), so the short-plan sentence stays. What to test:
+1. **Does the game have what the design says?** A checklist per design (phases, twists, skills,
+   numbers, characters, the big moment, sounds) ticked off in the code and screenshots, brief
+   against plain on the same design.
+2. **The sentence, part by part.** Its plan list is all mechanics (state, phones, timers,
+   leaving, reloads): the art and the big moment aren't in it. "Follow the reading closest to
+   its words" may push the bare minimum. Try adding "the look and the big moment" to the plan,
+   and "build everything the design describes, including the art".
+3. **First files with typos.** Most brief first files have a syntax error or an undefined name
+   (a blank screen). Fixes are cheap (15–60 s) when they work.
+4. **Fix rounds that fall apart.** When a brief first file is badly broken (pond: unbalanced
+   brackets), the fixes can spiral: a 26K-token "edit" that rewrites the game, edits whose
+   SEARCH text isn't in the file, then a new whole file that crashes. The sentence also stays
+   in the prompt during fixes. Ideas: drop it from fix requests; after one failed edit round on
+   a file that doesn't parse, ask for the whole file at once.
+5. **Repeat runs:** builds vary a lot; 3 per variant before deciding.
+6. **Play them:** a short scorecard (ran as designed, real choices, art matched, the big moment
+   landed, how long it took).
+
 ## Verification (how to confirm the plan worked once built)
 
 - `npm test` (root) → runs `node --test server/test`, all unit and integration tests green.
