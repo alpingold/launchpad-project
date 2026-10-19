@@ -1,6 +1,8 @@
-// THE REVIEWER (plan §47): scores how much of its design a built game actually does, to compare
-// build variants on more than "did it pass the checks". Not used on the site: experiments run it
-// (server/scripts/review-builds.js). Two steps, each one model call:
+// THE REVIEWER (plan §47): reads a built game's code against its design. On the site, every
+// game that passes gets one review (run.js: withReview): its crashes and dead ends are fixed
+// right away, and everything it found goes to the game's creator. Experiments use it to score
+// build variants on more than "did it pass the checks" (server/scripts/review-builds.js).
+// Two steps, each one model call:
 //
 //   checklist  the design → numbered, checkable items (a rule with its numbers, a screen part, a
 //              drawn character, a sound…). Made once per design, so every build of it is scored
@@ -105,7 +107,7 @@ For EVERY checklist item, in order: its id, then "about": the item's own words, 
 Cite the line numbers that show it (for missing: []). Be strict: a comment, a constant that is never used, a function that is never called, or a variable named after the feature is not an implementation. Something drawn as an emoji or a plain shape when the item describes a character with features is partial.
 
 Then list:
-- bugs: things in the code that would break or spoil play that the item list doesn't cover (an undefined name, a phase that can never be reached, a button that does nothing), with lines and a severity:
+- bugs: things in the code that would break or spoil play that the item list doesn't cover (an undefined name, a phase that can never be reached, a button that does nothing), with lines and a severity. Write "what" for the game's owner first, then the cause: what goes wrong for the players, in plain words, then why in the code. Severity:
   - crash: an error is thrown during normal play (an undefined name, a method called on the wrong kind of value)
   - stuck: play can't go on or can't be won (a goal that can't be reached, a phase that never ends, a control that never works)
   - spoils: it plays, but wrongly (a wrong score or winner, a screen that doesn't update)
@@ -123,11 +125,18 @@ export function numberLines(source) {
     .join('\n');
 }
 
-/** @returns {import('./llm.js').Message[]} */
-export function checklistMessages(design) {
+/**
+ * @param {string} design
+ * @param {string[]} [changes]  changes asked for since the design, oldest first: they win where they differ
+ * @returns {import('./llm.js').Message[]}
+ */
+export function checklistMessages(design, changes = []) {
+  const since = changes.length
+    ? `\n\nChanges made to the game since, oldest first. Where one differs from the design, the change is what the game must do now:\n\n<changes>\n${changes.map((c) => `- ${String(c).trim()}`).join('\n')}\n</changes>`
+    : '';
   return [
     { role: 'system', content: CHECKLIST_SYSTEM },
-    { role: 'user', content: `The design:\n\n<design>\n${String(design).trim()}\n</design>\n\nReply with the checklist as JSON.` },
+    { role: 'user', content: `The design:\n\n<design>\n${String(design).trim()}\n</design>${since}\n\nReply with the checklist as JSON.` },
   ];
 }
 
@@ -157,7 +166,7 @@ const parse = (text) => {
  */
 export async function makeChecklist(job, model, { chatFn = chat, onStep = () => {} } = {}) {
   onStep(`checklist: asking ${model}`);
-  const reply = await chatFn(checklistMessages(job.design), { model, reasoningEffort: job.reasoningEffort ?? reasoningEffortFor(model, 'design'), responseFormat: CHECKLIST_FORMAT });
+  const reply = await chatFn(checklistMessages(job.design, job.changes), { model, reasoningEffort: job.reasoningEffort ?? reasoningEffortFor(model, 'design'), responseFormat: CHECKLIST_FORMAT });
   const items = parse(reply.content)?.items;
   if (!Array.isArray(items) || items.length === 0) return { ok: false, model, error: 'the model wrote no checklist' };
   return { ok: true, model, checklist: items, usage: reply.usage, seconds: reply.seconds };
@@ -226,4 +235,49 @@ export function fixRequest(bugs, max = MAX_REQUEST_LENGTH) {
     lines.push(line);
   }
   return { request: [head, ...lines].join('\n'), included: lines.length, left: bugs.length - lines.length };
+}
+
+/**
+ * A finished game's review, for the site (plan §47): the checklist, then the review, checked
+ * by verify(). A call that fails (say, the model thought and then wrote nothing) gets one more
+ * try. Never throws.
+ * @param {{ idea: string, design?: string | null, changes?: string[], source: string }} game
+ *   design: the game's design (none for games made before designs: the idea stands in)
+ * @returns {Promise<{ ok: true, items: object[], bugs: object[] } | { ok: false, error: string }>}
+ */
+export async function reviewFinished({ idea, design, changes = [], source }, model, { chatFn = chat, onStep = () => {} } = {}) {
+  const twice = async (call) => {
+    let res;
+    for (let i = 0; i < 2; i++) {
+      res = await call().catch((err) => ({ ok: false, error: err.message }));
+      if (res.ok) return res;
+    }
+    return res;
+  };
+  const made = await twice(() => makeChecklist({ design: design ?? idea, changes }, model, { chatFn, onStep }));
+  if (!made.ok) return { ok: false, error: `no checklist: ${made.error}` };
+  const reviewed = await twice(() => reviewGame({ checklist: made.checklist, source }, model, { chatFn, onStep }));
+  if (!reviewed.ok) return { ok: false, error: `no review: ${reviewed.error}` };
+  const bugs = Array.isArray(reviewed.review.bugs) ? reviewed.review.bugs : [];
+  return { ok: true, items: verify(made.checklist, reviewed.review.items, source), bugs };
+}
+
+/**
+ * What a game's creator is told (stored with the version): every bug, with whether it was fixed,
+ * and the design's items the game doesn't do (missing, or done differently).
+ * @typedef {{ score: { points: number, of: number }, bugs: { severity: string, what: string, fixed: boolean }[],
+ *   missing: { area: string, text: string, status: 'missing' | 'wrong', note: string }[],
+ *   fix: { ok: boolean, changelog?: string | null, error?: string } | null }} CreatorReview
+ * @returns {CreatorReview}
+ */
+export function forCreator({ items, bugs }, fixed = []) {
+  const { points, of } = score(items);
+  return {
+    score: { points, of },
+    bugs: bugs.map((b) => ({ severity: SEVERITIES.includes(b.severity) ? b.severity : 'minor', what: String(b.what), fixed: fixed.includes(b) })),
+    missing: items
+      .filter((i) => i.verified && (i.status === 'missing' || i.status === 'wrong'))
+      .map((i) => ({ area: i.area, text: i.text, status: i.status, note: String(i.note ?? '') })),
+    fix: null,
+  };
 }

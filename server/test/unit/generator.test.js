@@ -14,7 +14,7 @@ import {
   PLAN_HEADINGS,
 } from '../../../generator/src/prompt.js';
 import { runJob, formatReport } from '../../../generator/src/run.js';
-import { numberLines, reviewMessages, verify, score, fixRequest, CHECKLIST_FORMAT, REVIEW_FORMAT } from '../../../generator/src/review.js';
+import { numberLines, reviewMessages, checklistMessages, verify, score, fixRequest, CHECKLIST_FORMAT, REVIEW_FORMAT } from '../../../generator/src/review.js';
 
 // The generator (plan §13i, F5): pulling designs and game files out of replies, the
 // prompts for both steps, calling the model, and the design and build jobs, run here with
@@ -487,7 +487,9 @@ test('bad jobs are refused before any model call', async () => {
     [{ step: 'design', idea: 'short' }, /idea must be/],
     [{ step: 'design', idea: 'A long enough idea', model: 'gpt-9' }, /unknown model/],
     [{ step: 'build', idea: 'A long enough idea' }, /needs the approved design/],
-    [{ step: 'dance', idea: 'A long enough idea' }, /must be "design", "build", "checklist" or "review"/],
+    [{ step: 'dance', idea: 'A long enough idea' }, /must be "design", "build", "recheck", "checklist" or "review"/],
+    [{ step: 'build', idea: 'A long enough idea', design: DESIGN, review: 'yes' }, /review must be true or false/],
+    [{ step: 'recheck', idea: 'A long enough idea' }, /a review needs the game/],
     [{ step: 'design', idea: 'A long enough idea', change: { request: 'Make it better please', source: '' } }, /current game file/],
     [{ step: 'design', idea: 'A long enough idea', change: { request: 'Make it better please', source: 'x'.repeat(110_000) } }, /too big for the AI to change \(107 KB; at most 100 KB fits/],
     [{ step: 'build', idea: 'A long enough idea', edits: false, change: { request: 'Make it better please', source: 'x'.repeat(70_000) } }, /\(68 KB; at most 60 KB fits/],
@@ -564,4 +566,74 @@ test('the reviewer: bugs come with a severity, and the critical ones become a ch
   // Only what fits in a change request goes in.
   const many = fixRequest(Array.from({ length: 20 }, () => ({ ...crash, what: 'x'.repeat(100) })), 1000);
   assert.ok(many.request.length <= 1000 && many.included > 0 && many.left > 0 && many.included + many.left === 20);
+});
+
+/**
+ * A fake model for the review round: a checklist, then reviews (in turn), and code for the
+ * build and the fix (in turn). `asked` lists what each call was.
+ */
+function reviewingModel({ reviews, files }) {
+  const asked = [];
+  const chatFn = async (messages, opts) => {
+    const kind = opts.responseFormat?.json_schema.name ?? 'code';
+    asked.push(kind);
+    if (kind === 'checklist') return { content: JSON.stringify({ items: [{ id: 'R1', area: 'rules', text: 'The game is ready to tap' }] }), usage: null, seconds: 1 };
+    if (kind === 'review') return { content: JSON.stringify(reviews.shift()), usage: null, seconds: 1 };
+    return { content: files.shift(), usage: null, seconds: 1 };
+  };
+  return { chatFn, asked };
+}
+const reviewOf = (bugs) => ({ items: [{ id: 'R1', about: 'ready to tap', status: 'implemented', lines: [1], note: 'party.ready' }], bugs, deadCode: [] });
+const CRASH = { lines: [1], what: 'scores is not defined when the round ends', severity: 'crash' };
+const LOOK = { lines: [2], what: 'the timer bar never turns red', severity: 'spoils' };
+
+test('the review round (plan §47): a passing game is reviewed; its crashes are fixed as a small change, and the creator gets every finding', async () => {
+  const fixedGame = GAME.replace('party.ready(', '/* fixed */ party.ready(');
+  const model = reviewingModel({ reviews: [reviewOf([CRASH, LOOK])], files: [fenced('html', GAME), `CHANGES:\n- Scores are set before the round ends\n\n${fenced('html', fixedGame)}`] });
+  const result = await runJob({ step: 'build', idea: 'A racing platformer for friends', design: DESIGN, review: true }, { chatFn: model.chatFn, check: passing });
+  assert.equal(result.ok, true);
+  assert.deepEqual(model.asked, ['code', 'checklist', 'review', 'code']);
+  assert.match(result.source, /\/\* fixed \*\//);
+  assert.deepEqual(result.attempts.map((a) => [a.attempt, a.reviewFix ?? false]), [[1, false], [2, true]]);
+  assert.deepEqual(result.review.bugs, [
+    { severity: 'crash', what: CRASH.what, fixed: true },
+    { severity: 'spoils', what: LOOK.what, fixed: false },
+  ]);
+  assert.deepEqual(result.review.fix, { ok: true, changelog: '- Scores are set before the round ends' });
+  assert.deepEqual(result.review.score, { points: 1, of: 1 });
+});
+
+test('the review round: nothing critical, nothing changed; a fix that fails keeps the game; a review that fails never fails the build', async () => {
+  // Only "worth a look": no fix.
+  let model = reviewingModel({ reviews: [reviewOf([LOOK])], files: [fenced('html', GAME)] });
+  let result = await runJob({ step: 'build', idea: 'A racing platformer for friends', design: DESIGN, review: true }, { chatFn: model.chatFn, check: passing });
+  assert.deepEqual([model.asked, result.review.fix, result.source], [['code', 'checklist', 'review'], null, GAME.trim() + '\n']);
+
+  // The fix never passes: the game that passed stays.
+  const broken = GAME.replace('party.ready(', 'fetch("/x"); party.ready(');
+  const check = async (source) => (source.includes('fetch') ? { ok: false, problems: ['`fetch` is blocked.'], warnings: [] } : passing());
+  model = reviewingModel({ reviews: [reviewOf([CRASH])], files: [fenced('html', GAME), ...Array(3).fill(fenced('html', broken))] });
+  result = await runJob({ step: 'build', idea: 'A racing platformer for friends', design: DESIGN, review: true, edits: false }, { chatFn: model.chatFn, check });
+  assert.equal(result.ok, true);
+  assert.equal(result.source, GAME.trim() + '\n');
+  assert.equal(result.review.fix.ok, false);
+  assert.equal(result.review.bugs[0].fixed, false);
+
+  // The review can't be read, twice: the game passed, so the job did too.
+  model = reviewingModel({ reviews: ['not json', 'not json'], files: [fenced('html', GAME)] });
+  result = await runJob({ step: 'build', idea: 'A racing platformer for friends', design: DESIGN, review: true }, { chatFn: model.chatFn, check: passing });
+  assert.equal(result.ok, true);
+  assert.match(result.review.error, /no review/);
+  assert.deepEqual(model.asked, ['code', 'checklist', 'review', 'review']);
+});
+
+test('recheck ("Review again"): a finished game, read against its design and the changes since', async () => {
+  const model = reviewingModel({ reviews: [reviewOf([LOOK])], files: [] });
+  const job = { step: 'recheck', idea: 'A racing platformer for friends', change: { request: 'Review the code again', source: GAME, design: DESIGN, earlierRequests: ['Make running faster'] } };
+  const result = await runJob(job, { chatFn: model.chatFn, check: passing });
+  assert.deepEqual([result.ok, result.source, result.report, result.review.bugs.length], [true, GAME, null, 1]);
+  assert.deepEqual(model.asked, ['checklist', 'review']);
+  // The checklist knows about the changes since the design: they win where they differ.
+  assert.match(checklistMessages(DESIGN, ['Make running faster'])[1].content, /<changes>\n- Make running faster\n<\/changes>/);
+  assert.doesNotMatch(checklistMessages(DESIGN)[1].content, /<changes>/);
 });

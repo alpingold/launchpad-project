@@ -16,6 +16,12 @@
 //       → the changed game file (plan null: a small fix with no plan).
 //   Builds use EDIT MODE (plan §23): once there's a file, the model sends changes to it
 //   (edits.js), not the whole file again. "edits": false turns it off.
+//   With "review": true, a passing build gets one REVIEW ROUND (plan §47): the reviewer reads
+//   the code against the design, its crashes and dead ends are fixed as a small change, and
+//   what it found comes back as "review", for the game's creator.
+//   { "step": "recheck", "idea": "...", "change": { "request", "source", "design"?, "earlierRequests"? } }
+//       → another review round on a finished game ("Review again"): the fixed file, or the
+//         same one (report null) if there was nothing to fix.
 //
 // The job is the first line of stdin. With "browserGate": "<token>", the server shares one
 // browser between jobs: before each playtest the job asks for it on stderr and waits for the
@@ -24,14 +30,14 @@
 // Progress lines go to stderr: "STEP ..." adds a step; "STEP~ ..." replaces the last one
 // (how far a reply has streamed in, every ~15 s). The result is one JSON line on stdout:
 //   design: { ok, model, design, attempts, error? }
-//   build:  { ok, model, source, report, changelog, attempts, error? }
+//   build:  { ok, model, source, report, changelog, attempts, review?, error? }
 //           Each build attempt keeps its code and check report (without screenshots, which
 //           only the final report has), so a version's history can be read and studied later,
 //           and its mode: "whole" (the model wrote the file) or "edits" (plan §23).
 
 import { pathToFileURL } from 'node:url';
 import { chat } from './llm.js';
-import { makeChecklist, reviewGame } from './review.js';
+import { makeChecklist, reviewGame, reviewFinished, forCreator, fixRequest, CRITICAL } from './review.js';
 import { extractGameFile, extractHeadings, extractChangelog, missingHeadings } from './extract.js';
 import { applyReply, hasEdits, withoutEdits } from './edits.js';
 import {
@@ -61,7 +67,7 @@ import { describeProblem } from '../../server/src/games/frameGame.js';
 /**
  * One job: one step (see the top of this file). Comes from the server, so it's checked.
  * @typedef {Object} GeneratorJob
- * @property {'design' | 'build'} step
+ * @property {'design' | 'build' | 'recheck' | 'checklist' | 'review'} step
  * @property {string} idea
  * @property {string} [model]
  * @property {string} [design]            build: the approved design (a new game)
@@ -78,6 +84,7 @@ import { describeProblem } from '../../server/src/games/frameGame.js';
  * @property {boolean} [wholeOnParseError] build: after a file that doesn't parse, ask for a whole file, not edits (plan §43 test 1)
  * @property {'noart' | 'look' | 'art' | 'notricky' | 'nounclear'} [briefVariant]  build: a variant of that sentence (plan §43's experiments)
  * @property {boolean} [keepThinking]     each attempt keeps the model's thinking and whole reply (plan §38's look; off on the site)
+ * @property {boolean} [review]           build: a passing game gets a review round (plan §47; the site turns it on)
  */
 
 /**
@@ -100,6 +107,7 @@ import { describeProblem } from '../../server/src/games/frameGame.js';
  * @property {string | null} [source]     build step: the last game file (passing or not)
  * @property {import('../../server/src/games/frameGame.js').CheckReport | null} [report]
  * @property {string | null} [changelog]  build step for a change: the model's list of changes
+ * @property {import('./review.js').CreatorReview | { error: string }} [review]  build with "review", and recheck
  * @property {string} [error]             why it stopped, if not ok
  */
 
@@ -151,6 +159,7 @@ export async function runJob(job, deps = {}) {
     if (job[flag] !== undefined && typeof job[flag] !== 'boolean') return fail(`${flag} must be true or false`);
   }
   if (job.briefVariant !== undefined && !Object.hasOwn(BRIEF_VARIANTS, job.briefVariant)) return fail(`briefVariant must be one of ${Object.keys(BRIEF_VARIANTS).join(', ')}`);
+  if (job.review !== undefined && typeof job.review !== 'boolean') return fail('review must be true or false');
 
   if (job.step === 'design') return design(job, model, deps);
   // The reviewer (plan §47, experiments only): a design's checklist, then a game's review.
@@ -164,9 +173,14 @@ export async function runJob(job, deps = {}) {
   }
   if (job.step === 'build') {
     if (change === undefined && typeof job.design !== 'string') return fail('building needs the approved design');
-    return build(job, model, deps);
+    const built = await build(job, model, deps);
+    return job.review === true && built.ok ? withReview(job, built, model, deps) : built;
   }
-  return fail('the step must be "design", "build", "checklist" or "review"');
+  if (job.step === 'recheck') {
+    if (change === undefined) return fail('a review needs the game (change.source)');
+    return withReview(job, { ok: true, model, source: change.source, report: null, changelog: null, attempts: [] }, model, deps);
+  }
+  return fail('the step must be "design", "build", "recheck", "checklist" or "review"');
 }
 
 /**
@@ -378,6 +392,54 @@ async function build(job, model, { chatFn = chat, check = checkGame, onStep = ()
   }
   const outOfRoom = result.attempts.at(-1)?.outOfRoom ? ' (the last one ran out of room while thinking)' : '';
   return { ...result, error: `no passing game after ${maxAttempts} attempts${outOfRoom}` };
+}
+
+/** Attempts a review's fix gets (plan §47's test: every fix passed in 1 or 2). */
+const FIX_ATTEMPTS = 3;
+
+/**
+ * The review round (plan §47), after a game passed: the reviewer reads the code against the
+ * design (and the changes since). Its CRITICAL bugs (a crash, or play that can't go on) go back
+ * to the model as a small change, the way a creator's request would, and must pass the same
+ * checks; a fix that doesn't keeps the game as it was. Everything the review found comes back
+ * as `review`. A review that fails never fails the job: the game itself passed.
+ * @param {GeneratorJob} job
+ * @param {GeneratorResult} built  the passing game (for a recheck: the finished game, report null)
+ */
+async function withReview(job, built, model, deps) {
+  const { onStep = () => {} } = deps;
+  const { change } = job;
+  const design = change ? (change.design ?? null) : job.design;
+  // The source already has every change asked for, this one too (a recheck's are all earlier).
+  const changes = change ? [...(change.earlierRequests ?? []), ...(job.step === 'build' ? [change.request] : [])] : [];
+  onStep('review: reading the code against the design');
+  const reviewed = await reviewFinished({ idea: job.idea, design, changes, source: built.source }, model, { chatFn: deps.chatFn, onStep });
+  if (!reviewed.ok) {
+    onStep(`review: ${reviewed.error}`);
+    return { ...built, review: { error: reviewed.error } };
+  }
+  // Crashes first: if they don't all fit in one request, those matter most.
+  const critical = reviewed.bugs.filter((b) => CRITICAL.includes(b.severity)).sort((a, b) => CRITICAL.indexOf(a.severity) - CRITICAL.indexOf(b.severity));
+  if (critical.length === 0) {
+    onStep(`review: ${reviewed.bugs.length} thing(s) worth a look, no crashes or dead ends`);
+    return { ...built, review: forCreator(reviewed) };
+  }
+
+  const { request, included } = fixRequest(critical, MAX_REQUEST_LENGTH);
+  onStep(`review: ${critical.length} crash(es) or dead end(s): fixing ${included === critical.length ? 'them' : `${included} of them`}`);
+  const fixJob = { ...job, step: 'build', review: false, maxAttempts: FIX_ATTEMPTS, change: { request, source: built.source, design, earlierRequests: changes, plan: null } };
+  const fixed = await build(fixJob, model, deps);
+  // The fix's attempts follow the build's, marked as the review's.
+  const attempts = [...built.attempts, ...fixed.attempts.map((a) => ({ ...a, attempt: built.attempts.length + a.attempt, reviewFix: true }))];
+  if (!fixed.ok) {
+    onStep("review: the fix didn't pass the checks, so the game stays as it was");
+    return { ...built, attempts, review: { ...forCreator(reviewed), fix: { ok: false, error: fixed.error ?? 'unknown error' } } };
+  }
+  onStep('review: fixed, and the fixed game passed the checks');
+  const review = { ...forCreator(reviewed, critical.slice(0, included)), fix: { ok: true, changelog: fixed.changelog ?? null } };
+  // A recheck's only change is the fix, so its list of changes is the version's.
+  const changelog = job.step === 'recheck' ? (fixed.changelog ?? null) : built.changelog;
+  return { ...built, source: fixed.source, report: fixed.report, changelog, attempts, review };
 }
 
 /** A report without the playtest's screenshots (only the final report keeps them: they're large). */
