@@ -2385,6 +2385,16 @@ moment the way the design describes them, with shapes; don't replace them with e
 circles"** got both bake-offs a drawn judge (arms, fork, monocle) instead of an emoji, at no cost.
 The heist's art was drawn by every variant. That sentence is now part of BRIEF_THINKING.
 
+**Fix rounds (test 1 of the list, 32 builds: 4 designs × 4 variants × 2).** Leaving the
+sentence out of fix requests ("nobrief") passed 8 of 8 and fixed all 5 broken first files in one
+round each, with no edits that didn't fit (median fix reply 1.6K tokens, worst build 525 s).
+Today's way passed 6 of 8 (16 fix rounds for 6 broken files, 5 that didn't fit, worst 1,106 s).
+Asking for a whole file after a syntax error helped a little alone and hurt with nobrief (fixes
+rewrote the game). **Fixes now leave the sentence out** (`fixBrief: true` keeps it, to compare).
+Also: `players is not defined` crashed many builds: the rulebook's skeleton unpacked `players`
+in `party.ready` but never passed it on. The skeleton (and /kit's) no longer does, and the SDK
+list says to write `party.players` in your own functions.
+
 ## 44. Games to approve (2026-10-18)
 
 - A creator's page has **Submit for publishing** once a version is ready: it becomes the playtest
