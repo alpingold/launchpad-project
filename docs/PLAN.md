@@ -1658,6 +1658,12 @@ exists and trusting it's the real one. So the work is setup, not content:
 - **Soft 404s:** every address answers 200, and only the browser knows a page is missing.
   The not-found screens (no page, no such game, no such account) now add
   `<meta name="robots" content="noindex">`.
+- **Each page in the HTML, and real 404s (2026-10-19):** the server fills in index.html for
+  the address it's sending (`server/src/http/pages.js`): the page's title, description,
+  Open Graph title and address, and a canonical link. A game page gets the game's name and
+  description, a profile the username and bio. An address that isn't a page (no such page,
+  game or account) gets status 404 and noindex, so it's no longer a soft 404. The page
+  addresses there mirror `client/src/App.jsx`.
 - **The owner's part:** Google Search Console (a Domain property, verified through
   Cloudflare's DNS), submit the sitemap and request indexing; Bing Webmaster Tools (imports
   from Search Console). And links from real places: LaunchPad's page, LinkedIn, r/Purdue,
