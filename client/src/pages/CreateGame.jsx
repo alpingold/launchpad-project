@@ -12,9 +12,11 @@ import {
   saveDesign,
   buildVersion,
   discardVersion,
+  reviewAgain,
 } from '../net/admin.js';
 import { usePageTitle } from '../usePageTitle.js';
 import Markdown from '../components/Markdown.jsx';
+import CodeReview from '../components/CodeReview.jsx';
 import {
   POLL_MS,
   VERSION_STATUS_TEXT,
@@ -335,7 +337,7 @@ function BackLink() {
 
 /** The AI is on it: what it's doing now, how long it's been, and that you can leave. */
 function Working({ progress, version, isChange }) {
-  const what = version.status === 'generating' ? 'Building your game' : isChange ? 'Writing the plan' : 'Writing the design';
+  const what = version.kind === 'recheck' ? 'Reviewing the code' : version.status === 'generating' ? 'Building your game' : isChange ? 'Writing the plan' : 'Writing the design';
   if (progress?.queuePosition > 0) {
     return (
       <>
@@ -357,7 +359,9 @@ function Working({ progress, version, isChange }) {
       </p>
       <p className="muted">
         {version.status === 'generating'
-          ? 'The AI writes the game, then plays it in a hidden browser with pretend phones. If the checks find a problem, it fixes it and tries again. This usually takes a few minutes.'
+          ? version.kind === 'recheck'
+            ? 'An AI reads the code against the design, looking for bugs. If it finds a crash or a dead end, it fixes it, and the fixed game goes through the checks again. This usually takes about ten minutes.'
+            : 'The AI writes the game, then plays it in a hidden browser with pretend phones. If the checks find a problem, it fixes it and tries again. Then another AI reads the code, looking for bugs the checks can miss, and fixes any crash or dead end it finds. This usually takes 15–25 minutes.'
           : 'This usually takes a minute or two.'}{' '}
         You can close this page and come back: it keeps going.
       </p>
@@ -421,6 +425,16 @@ function ReadyToPlay({ summary, game, version: v, info, busy, run }) {
             ))}
           </ul>
         </div>
+      )}
+      {v.codeReview && (
+        <CodeReview
+          review={v.codeReview}
+          busy={busy}
+          canAct={info.enabled && !game.versions.some((x) => ['designing', 'design_ready', 'generating'].includes(x.status))}
+          maxRequestLength={info.maxRequestLength}
+          onFix={(text) => run(() => requestChanges(summary.id, text, v.version, true), 'Ask the AI to fix these? It makes a new version with the fix.')}
+          onReviewAgain={() => run(() => reviewAgain(summary.id, v.version), 'Review the code again? It takes about ten minutes, and makes a new version if it fixes anything.')}
+        />
       )}
       {!info.isAdmin && !isPublished && summary.reviewNote && !summary.waitingForApproval && (
         <div className="banner create-review-note" role="status">

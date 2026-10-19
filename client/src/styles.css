@@ -2189,6 +2189,55 @@ code {
   margin-top: 0.25rem;
 }
 
+/* §47: the AI's code review of a version. */
+.code-review {
+  margin: 1.25rem 0;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--surface);
+}
+
+.code-review h3 {
+  margin-top: 0;
+}
+
+.code-review ul {
+  margin: 0.25rem 0 0.75rem;
+  padding-left: 1.2rem;
+}
+
+.code-review li {
+  margin-bottom: 0.35rem;
+  overflow-wrap: anywhere;
+}
+
+.code-review-missing summary {
+  cursor: pointer;
+  margin-bottom: 0.5rem;
+}
+
+.severity-chip {
+  display: inline-block;
+  padding: 0 0.5rem;
+  border-radius: 999px;
+  background: var(--chip);
+  font-size: 0.8rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.severity-crash,
+.severity-stuck {
+  background: var(--danger-tint);
+  color: var(--danger);
+}
+
+.severity-spoils {
+  background: var(--banner-bg);
+  color: var(--banner-text);
+}
+
 .create-change {
   margin-top: 2rem;
   padding-top: 1.25rem;

@@ -62,6 +62,9 @@ export const buildVersion = (id, version) => request(versionPath(id, version, 'b
 /** Throws away the newest version while it has no passing code. → { game } */
 export const discardVersion = (id, version) => request(versionPath(id, version, 'discard'), { method: 'POST', body: {} });
 
+/** "Review again" (plan §47): one more code review round on this version, as the next version. → { game } (202: queued) */
+export const reviewAgain = (id, version) => request(versionPath(id, version, 'review-again'), { method: 'POST', body: {} });
+
 /** Only you can start this version (next to the published one, if any). → { game } */
 export const playtestVersion = (id, version) =>
   request(`${BASE}/${encodeURIComponent(id)}/versions/${version}/playtest`, { method: 'POST', body: {} });

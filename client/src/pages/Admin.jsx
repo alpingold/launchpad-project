@@ -12,9 +12,11 @@ import {
   saveDesign,
   buildVersion,
   discardVersion,
+  reviewAgain,
 } from '../net/admin.js';
 import { usePageTitle } from '../usePageTitle.js';
 import Markdown from '../components/Markdown.jsx';
+import CodeReview from '../components/CodeReview.jsx';
 import AdminReports from './AdminReports.jsx';
 import AdminApprove from './AdminApprove.jsx';
 
@@ -454,6 +456,9 @@ function GameDetail({ summary, info, onChanged, onDeleted }) {
           onSaveDesign={(design) => run(() => saveDesign(summary.id, v.version, design))}
           onBuild={() => run(() => buildVersion(summary.id, v.version))}
           onDiscard={() => run(() => discardVersion(summary.id, v.version), `Throw away v${v.version}? Its ${v.basedOn === null ? 'design' : 'plan'} and request are deleted.`)}
+          canChange={info.enabled && !summary.progress && !game?.versions.some((x) => ['designing', 'design_ready', 'generating'].includes(x.status))}
+          onFixFindings={(text) => run(() => requestChanges(summary.id, text, v.version, true), `Ask the AI to fix these in a new version, from v${v.version}?`)}
+          onReviewAgain={() => run(() => reviewAgain(summary.id, v.version), `Review v${v.version}'s code again? It makes a new version.`)}
         />
       ))}
     </section>
@@ -518,7 +523,7 @@ function ChangeForm({ game, enabled, onAsk, info }) {
 }
 
 /** One version: what was asked, its design or plan, what the AI says it changed, its checks, changed lines and code. */
-function Version({ version: v, open, live, busy, info, canDiscard, onPlaytest, onRedesign, onSaveDesign, onBuild, onDiscard }) {
+function Version({ version: v, open, live, busy, info, canDiscard, canChange, onPlaytest, onRedesign, onSaveDesign, onBuild, onDiscard, onFixFindings, onReviewAgain }) {
   const isPlan = v.basedOn !== null;
   const statusText = (isPlan ? PLAN_STATUS_TEXT : VERSION_STATUS_TEXT)[v.status];
   // The design is open to work on while it waits for you, or after a failed build.
@@ -550,6 +555,16 @@ function Version({ version: v, open, live, busy, info, canDiscard, onPlaytest, o
               ))}
             </ul>
           </div>
+        )}
+        {v.codeReview && v.status === 'ready' && (
+          <CodeReview
+            review={v.codeReview}
+            busy={busy}
+            canAct={canChange}
+            maxRequestLength={info.maxRequestLength}
+            onFix={onFixFindings}
+            onReviewAgain={onReviewAgain}
+          />
         )}
         {v.status === 'failed' && v.error && (
           <p className="error">
