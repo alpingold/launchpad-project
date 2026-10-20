@@ -1,5 +1,5 @@
 /**
- * Why a game can't go public (plan §49): words its name or description can't have, shown in
+ * Why a game can't go public (plan §49): words its name, description or About text can't have, shown in
  * place and highlighted, so its creator sees exactly what to change. The server found them
  * (server/src/games/wordFilter.js) and sends `blocked` with the BLOCKED_WORDS error.
  *
@@ -25,7 +25,7 @@ export default function BlockedWords({ blocked, fix }) {
   );
 }
 
-const FIELD_NAMES = { name: 'Name', description: 'Description' };
+const FIELD_NAMES = { name: 'Name', description: 'Description', about: 'About this game' };
 
 /** The text, with each blocked word in a <mark>. */
 function highlighted(text, words) {

@@ -2650,6 +2650,7 @@ body.in-game .demo-badge-room {
 .blocked-words dd {
   margin: 0;
   overflow-wrap: anywhere;
+  white-space: pre-wrap; /* the About text keeps its lines */
 }
 
 .blocked-words mark {

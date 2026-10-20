@@ -27,8 +27,11 @@ test('harmless words that contain or look like a blocked one are fine', () => {
 });
 
 test('blockedFields lists only the fields with blocked words; the message names them', () => {
-  const blocked = blockedFields({ name: 'Shit Show', description: 'A fine game', about: null });
-  assert.deepEqual(blocked, [{ field: 'name', text: 'Shit Show', words: [{ word: 'Shit', start: 0, end: 4 }] }]);
-  assert.match(blockedMessage(blocked), /the name: "Shit"/);
+  const blocked = blockedFields({ name: 'Shit Show', description: 'A fine game', about: 'Rules for wankers' });
+  assert.deepEqual(blocked, [
+    { field: 'name', text: 'Shit Show', words: [{ word: 'Shit', start: 0, end: 4 }] },
+    { field: 'about', text: 'Rules for wankers', words: [{ word: 'wankers', start: 10, end: 17 }] },
+  ]);
+  assert.match(blockedMessage(blocked), /the name: "Shit"; About this game: "wankers"/);
   assert.deepEqual(blockedFields({ name: undefined, description: '' }), []);
 });

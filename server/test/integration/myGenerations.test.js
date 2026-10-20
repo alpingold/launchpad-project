@@ -79,7 +79,7 @@ test('with a key: your job runs with YOUR key; one at a time; only you see your 
   assert.deepEqual(all.games.map((g) => g.id), [game.id]);
 });
 
-test('publishing your own game (plan §49): no admin, but no blocked words in its name or description', async () => {
+test('publishing your own game (plan §49): no admin, but no blocked words in its name, description or About text', async () => {
   const sam = await signUp(baseUrl, 'sam');
   await saveKey(sam);
   const { game } = await (await post('/api/generations', { idea: IDEA }, sam)).json();
@@ -116,6 +116,8 @@ test('publishing your own game (plan §49): no admin, but no blocked words in it
   const badPage = await page({ name: 'Majority Shitshow' });
   assert.equal(badPage.status, 400);
   assert.deepEqual((await badPage.json()).blocked, [{ field: 'name', text: 'Majority Shitshow', words: [{ word: 'Shitshow', start: 9, end: 17 }] }]);
+  const badAbout = await page({ name: 'Majority Rules', about: 'Made for my\nfriends, the bastards.' });
+  assert.deepEqual((await badAbout.json()).blocked, [{ field: 'about', text: 'Made for my\nfriends, the bastards.', words: [{ word: 'bastards', start: 25, end: 33 }] }]);
   assert.equal((await page({ name: 'Majority Rules', description: 'Vote, everyone' })).status, 200);
 
   // Now it publishes: everyone gets it, with no admin involved. Sam can take it down again.

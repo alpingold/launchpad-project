@@ -157,9 +157,9 @@ function checkPage(input, shots) {
     page.mainShot = input.mainShot;
   }
   if (problems.length > 0) throw new CatalogError(400, 'INVALID_PAGE', `${problems.join('; ')}.`);
-  // Games go public without an admin looking (plan §49): the name and description everyone
-  // sees on the cards mustn't have blocked words.
-  const blocked = blockedFields({ name: page.name, description: page.description });
+  // Games go public without an admin looking (plan §49): what everyone reads about a game
+  // mustn't have blocked words.
+  const blocked = blockedFields({ name: page.name, description: page.description, about: page.about });
   if (blocked.length > 0) throw new CatalogError(400, 'BLOCKED_WORDS', blockedMessage(blocked), { blocked });
   return page;
 }

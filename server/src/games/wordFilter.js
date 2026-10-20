@@ -1,4 +1,4 @@
-// Words a public game's name and description can't have (plan §49). Games go public without an
+// Words a public game's name, description and "About" text can't have (plan §49). Games go public without an
 // admin looking first, so the catalogue's cards, which anyone sees, get this simple check: a
 // list of swear words and slurs, matched as whole words. The creator is told which words to
 // change; nothing is changed for them.
@@ -77,7 +77,7 @@ export function blockedFields(fields) {
 /** The error message for blocked fields: which words, in which field. */
 export function blockedMessage(blocked) {
   const parts = blocked.map((f) => `${FIELD_NAMES[f.field] ?? f.field}: ${[...new Set(f.words.map((w) => `"${w.word}"`))].join(', ')}`);
-  return `Some words can't be in a public game's name or description. Change them first (${parts.join('; ')}).`;
+  return `Some words can't be in a public game. Change them first (${parts.join('; ')}).`;
 }
 
-const FIELD_NAMES = { name: 'the name', description: 'the description' };
+const FIELD_NAMES = { name: 'the name', description: 'the description', about: 'About this game' };

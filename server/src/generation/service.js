@@ -428,14 +428,15 @@ export class GenerationService {
   /**
    * Publishes the version being playtested: every host gets it, replacing the published one.
    * Its creator decides (plan §49): no admin looks first, so the name and description that
-   * everyone will see (the game page's, else the game file's) mustn't have blocked words.
+   * everyone will see (the game page's, else the game file's) and its "About" text mustn't
+   * have blocked words.
    */
   async publish(id) {
     const game = this.get(id);
     const version = findVersion(game, game.playtestVersion);
     if (!version) throw new GenerationError(409, 'WRONG_STATUS', 'Playtest a version before publishing it.');
     const page = getGamePage(this.db, id);
-    const blocked = blockedFields({ name: page?.name ?? version.name, description: page?.description ?? version.description });
+    const blocked = blockedFields({ name: page?.name ?? version.name, description: page?.description ?? version.description, about: page?.about });
     if (blocked.length > 0) throw new GenerationError(422, 'BLOCKED_WORDS', blockedMessage(blocked), { blocked });
 
     // Swaps in for the published version only once it has loaded: a failure changes nothing.
