@@ -70,17 +70,10 @@ export const playtestVersion = (id, version) =>
   request(`${BASE}/${encodeURIComponent(id)}/versions/${version}/playtest`, { method: 'POST', body: {} });
 
 /**
- * action: 'publish' (the playtest version goes to everyone) | 'stop-playtest' | 'unpublish'
- *   | 'submit' / 'withdraw' (its creator asks to publish the playtest version, or takes it back: plan §44) → { game }
- * Publishing and unpublishing exist only under the admin routes (the per-account routes leave
- * them out), so those two always go there, even from /create. The server still checks it's an admin.
+ * action: 'publish' (the playtest version goes to everyone) | 'stop-playtest' | 'unpublish' → { game }
+ * Publishing may be refused for words its name or description can't have (plan §49):
+ * { ok: false, error: 'BLOCKED_WORDS', message, blocked: [{ field, text, words: [{ word, start, end }] }] }.
  */
-export const actOnGeneration = (id, action) => {
-  const base = action === 'publish' || action === 'unpublish' ? ADMIN_BASE : BASE;
-  return request(`${base}/${encodeURIComponent(id)}/${action}`, { method: 'POST', body: {} });
-};
-
-/** Admins: not published (yet), with a note for its creator (plan §44). → { game } */
-export const sendBack = (id, note) => request(`${ADMIN_BASE}/${encodeURIComponent(id)}/send-back`, { method: 'POST', body: { note } });
+export const actOnGeneration = (id, action) => request(`${BASE}/${encodeURIComponent(id)}/${action}`, { method: 'POST', body: {} });
 
 export const deleteGeneration = (id) => request(`${BASE}/${encodeURIComponent(id)}`, { method: 'DELETE' });

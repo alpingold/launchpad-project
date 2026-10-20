@@ -3,6 +3,7 @@ import { usePageTitle, NoIndex } from '../usePageTitle.js';
 import { useCurrentUser } from '../net/auth.js';
 import AiBadge from '../components/AiBadge.jsx';
 import GameReports from '../components/GameReports.jsx';
+import BlockedWords from '../components/generation/BlockedWords.jsx';
 import { Creator, playersText, minutesText } from '../components/GameCard.jsx';
 
 // One game's page (plan §16): its screenshots, description, who made it, votes, Host this
@@ -190,6 +191,7 @@ function PageEditor({ game, onSaved }) {
   }));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  const [blocked, setBlocked] = useState(null); // words the name or description can't have (plan §49)
   const [notice, setNotice] = useState(null);
   const set = (change) => setForm((f) => ({ ...f, ...change }));
 
@@ -197,6 +199,7 @@ function PageEditor({ game, onSaved }) {
     event.preventDefault();
     setBusy(true);
     setError(null);
+    setBlocked(null);
     setNotice(null);
     const minutes = form.minLow === '' && form.minHigh === '' ? null : [Number(form.minLow), Number(form.minHigh || form.minLow)];
     const res = await call(`/api/games/${encodeURIComponent(game.id)}/page`, {
@@ -204,6 +207,7 @@ function PageEditor({ game, onSaved }) {
       body: { name: form.name, description: form.description, about: form.about, tags: form.tags, minutes, mainShot: form.mainShot },
     });
     setBusy(false);
+    if (res.blocked) return setBlocked(res.blocked);
     if (!res.ok) return setError(res.message ?? 'Something went wrong.');
     onSaved(res.game);
     setNotice('Saved. Everyone sees the new page now.');
@@ -284,6 +288,7 @@ function PageEditor({ game, onSaved }) {
             {error}
           </p>
         )}
+        {blocked && <BlockedWords blocked={blocked} />}
         {notice && <p role="status">{notice}</p>}
         <button type="submit" className="primary-button" disabled={busy}>
           Save

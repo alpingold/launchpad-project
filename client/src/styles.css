@@ -1351,13 +1351,6 @@ a.wordmark-mark:hover .wordmark-name {
   color: var(--on-accent);
 }
 
-/* §44: its maker asked for it to be published. */
-.status-waiting {
-  background: var(--gold);
-  color: var(--gold-ink);
-  margin-left: 0.35rem;
-}
-
 .status-failed {
   color: var(--danger);
 }
@@ -2631,43 +2624,39 @@ body.in-game .demo-badge-room {
   gap: 0;
 }
 
-/* §44: the admin page's "To approve" tab, and the maker's side of it on /create/<id>. */
-.approve-list {
-  list-style: none;
-  padding: 0;
-  margin: 1.5rem 0 0;
-  display: grid;
-  gap: 1rem;
-}
-
-.approve-head h2 {
-  margin: 0 0 0.25rem;
-}
-
-.approve-idea q {
-  color: var(--text);
-}
-
-.approve-details {
-  align-self: center;
-}
-
-.approve-note {
-  margin-top: 1rem;
-}
-
-.create-waiting,
-.create-review-note {
+/* §49: words a public game's name or description can't have, highlighted where they are. */
+.blocked-words {
+  border: 2px solid var(--danger);
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem;
   margin: 1rem 0;
 }
 
-.create-waiting p,
-.create-review-note p {
+.blocked-words p {
   margin: 0 0 0.5rem;
 }
 
-.create-review-note-text {
-  color: var(--text);
-  white-space: pre-wrap;
+.blocked-words dl {
+  margin: 0 0 0.5rem;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.blocked-words dt {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.blocked-words dd {
+  margin: 0;
   overflow-wrap: anywhere;
+}
+
+.blocked-words mark {
+  background: var(--danger-tint);
+  color: var(--danger);
+  font-weight: 700;
+  border-radius: 0.2rem;
+  padding: 0 0.15rem;
+  text-decoration: underline wavy var(--danger);
 }

@@ -17,6 +17,7 @@ import {
 import { usePageTitle } from '../usePageTitle.js';
 import Markdown from '../components/Markdown.jsx';
 import CodeReview from '../components/generation/CodeReview.jsx';
+import BlockedWords from '../components/generation/BlockedWords.jsx';
 import { timeAgo } from '../components/timeAgo.js';
 import ChangeForm from '../components/generation/ChangeForm.jsx';
 import { DesignEditor } from '../components/generation/DesignEditor.jsx';
@@ -113,6 +114,7 @@ export default function CreateGame({ id }) {
   const [game, setGame] = useState(null); // the full game: versions with designs, reports, code
   const [missing, setMissing] = useState(false);
   const [error, setError] = useState(null);
+  const [blocked, setBlocked] = useState(null); // words that kept it from going public (plan §49)
   const [busy, setBusy] = useState(false);
   usePageTitle(summary?.name ?? 'Make a game');
 
@@ -161,10 +163,12 @@ export default function CreateGame({ id }) {
     if (confirmText && !window.confirm(confirmText)) return false;
     setBusy(true);
     setError(null);
+    setBlocked(null);
     const res = await send();
     setBusy(false);
     if (!res.ok) {
-      setError(res.message ?? 'Something went wrong.');
+      if (res.blocked) setBlocked(res.blocked);
+      else setError(res.message ?? 'Something went wrong.');
       return false;
     }
     if (res.game?.versions) setGame(res.game);
@@ -230,6 +234,17 @@ export default function CreateGame({ id }) {
         <p className="error" role="alert">
           {error}
         </p>
+      )}
+      {blocked && (
+        <BlockedWords
+          blocked={blocked}
+          fix={
+            <>
+              Change them on <a href={`/games/${encodeURIComponent(`${summary.id}-v${summary.playtestVersion}`)}`}>the game's page</a> (Edit
+              this page), or ask the AI for the change below.
+            </>
+          }
+        />
       )}
 
       <section className="create-panel" aria-live="polite">
@@ -421,62 +436,39 @@ function ReadyToPlay({ summary, game, version: v, info, busy, run }) {
           onReviewAgain={() => run(() => reviewAgain(summary.id, v.version), 'Review the code again? It takes about ten minutes, and makes a new version if it fixes anything.')}
         />
       )}
-      {!info.isAdmin && !isPublished && summary.reviewNote && !summary.waitingForApproval && (
-        <div className="banner create-review-note" role="status">
-          <p>
-            <strong>Not published yet.</strong> The site admin's note:
-          </p>
-          <p className="create-review-note-text">{summary.reviewNote}</p>
-          <p className="small">Ask for changes below, then submit it again.</p>
-        </div>
-      )}
-      {!info.isAdmin && isPlaytest && summary.waitingForApproval && (
-        <div className="banner create-waiting" role="status">
-          <p>
-            <strong>Waiting for approval.</strong> The site admin will play it, then publish it for everyone or send it back
-            with a note.
-          </p>
-          <button type="button" className="link-button" disabled={busy} onClick={() => run(() => actOnGeneration(summary.id, 'withdraw'))}>
-            Take back the request
-          </button>
-        </div>
-      )}
       <div className="gen-actions">
         <button type="button" className="primary-button" disabled={busy} onClick={play}>
           Play it now
         </button>
-        {!info.isAdmin && !isPublished && !(isPlaytest && summary.waitingForApproval) && (
+        {!isPublished && (
           <button
             type="button"
             className="secondary-button"
             disabled={busy}
             onClick={async () => {
-              // The request is for the version you're playtesting: make this one it first.
+              // What gets published is the version being playtested: make this one it first.
               if (!isPlaytest && !(await run(() => playtestVersion(summary.id, v.version)))) return;
-              await run(() => actOnGeneration(summary.id, 'submit'), 'Submit it for publishing? The site admin will play it and decide.');
-            }}
-          >
-            Submit for publishing
-          </button>
-        )}
-        {info.isAdmin && !isPublished && (
-          <button
-            type="button"
-            className="secondary-button"
-            disabled={busy}
-            onClick={async () => {
-              if (!isPlaytest && !(await run(() => playtestVersion(summary.id, v.version)))) return;
-              await run(() => actOnGeneration(summary.id, 'publish'), 'Publish it? Every host will be able to start it.');
+              await run(() => actOnGeneration(summary.id, 'publish'), 'Publish it? Every host will be able to start it, and it shows in the games list.');
             }}
           >
             Publish for everyone
+          </button>
+        )}
+        {isPublished && (
+          <button
+            type="button"
+            className="link-button"
+            disabled={busy}
+            onClick={() => run(() => actOnGeneration(summary.id, 'unpublish'), 'Unpublish it? Other hosts will no longer see this game.')}
+          >
+            Unpublish
           </button>
         )}
       </div>
       <p className="muted small">
         {isPublished
           ? 'Everyone can play this version.'
-          : "Only you can start it for now. Open it on a big screen (a laptop or TV) and your friends join on their phones. When you're happy with it, submit it: the site admin plays it and decides whether everyone gets it."}
+          : "Only you can start it for now. Open it on a big screen (a laptop or TV) and your friends join on their phones. When you're happy with it, publish it: every host can start it then. Its name and description can't have swear words."}
       </p>
       <ChangeForm
         game={game}
