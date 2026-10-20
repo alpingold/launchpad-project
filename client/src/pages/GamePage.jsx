@@ -79,6 +79,7 @@ export default function GamePage({ id }) {
       </h1>
       <p className="muted game-page-by">
         <Creator game={game} />
+        <RemixedFrom remixOf={game.remixOf} />
       </p>
       <Shots game={game} />
       <p className="game-page-description">{game.description}</p>
@@ -98,6 +99,7 @@ export default function GamePage({ id }) {
           Host this game
         </a>
         <Votes game={game} loggedIn={Boolean(user)} onVoted={setGame} />
+        <Remix game={game} loggedIn={Boolean(user)} />
       </div>
       {game.about && (
         <section className="page-section" aria-labelledby="about-heading">
@@ -130,6 +132,59 @@ function Shots({ game }) {
         </div>
       )}
     </div>
+  );
+}
+
+/** A remix's credit line (plan §45): the original, linked while it's public. */
+function RemixedFrom({ remixOf }) {
+  if (!remixOf) return null;
+  return (
+    <>
+      {' · remixed from '}
+      {remixOf.id ? <a href={`/games/${encodeURIComponent(remixOf.id)}`}>{remixOf.name}</a> : remixOf.name}
+      {remixOf.id && <> {remixOf.creator ? <>by <a href={`/u/${encodeURIComponent(remixOf.creator.username)}`}>{remixOf.creator.username}</a></> : 'by BoilerGames'}</>}
+    </>
+  );
+}
+
+/**
+ * "Remix" (plan §45): your own copy of this game, to change with the AI; it opens on /create.
+ * Logged out: a link to log in first. Not shown on your own game, a playtest, or when its
+ * creator turned remixing off.
+ */
+function Remix({ game, loggedIn }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const isPublic = game.source === 'official' || game.status === 'published';
+  if (!loggedIn) {
+    if (!isPublic || !game.allowRemix) return null;
+    return (
+      <a className="secondary-button" href={`/login?next=${encodeURIComponent(window.location.pathname)}`}>
+        Log in to remix
+      </a>
+    );
+  }
+  if (!game.canRemix) return null;
+  async function remix() {
+    if (!window.confirm(`Make your own copy of ${game.name}? You can play it right away and ask the AI to change it.`)) return;
+    setBusy(true);
+    setError(null);
+    const res = await call(`/api/games/${encodeURIComponent(game.id)}/remix`, { method: 'POST', body: {} });
+    if (res.ok) return window.location.assign(`/create/${encodeURIComponent(res.id)}`);
+    setBusy(false);
+    setError(res.message ?? 'Something went wrong.');
+  }
+  return (
+    <>
+      <button type="button" className="secondary-button" disabled={busy} onClick={remix}>
+        Remix
+      </button>
+      {error && (
+        <span className="error" role="alert">
+          {error}
+        </span>
+      )}
+    </>
   );
 }
 
@@ -188,6 +243,7 @@ function PageEditor({ game, onSaved }) {
     minLow: game.minutes?.[0] ?? '',
     minHigh: game.minutes?.[1] ?? '',
     mainShot: game.shots[0] ?? null,
+    allowRemix: game.allowRemix,
   }));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -204,7 +260,7 @@ function PageEditor({ game, onSaved }) {
     const minutes = form.minLow === '' && form.minHigh === '' ? null : [Number(form.minLow), Number(form.minHigh || form.minLow)];
     const res = await call(`/api/games/${encodeURIComponent(game.id)}/page`, {
       method: 'PUT',
-      body: { name: form.name, description: form.description, about: form.about, tags: form.tags, minutes, mainShot: form.mainShot },
+      body: { name: form.name, description: form.description, about: form.about, tags: form.tags, minutes, mainShot: form.mainShot, allowRemix: form.allowRemix },
     });
     setBusy(false);
     if (res.blocked) return setBlocked(res.blocked);
@@ -283,6 +339,16 @@ function PageEditor({ game, onSaved }) {
             ))}
           </fieldset>
         )}
+        <div>
+          <label className="radio-option">
+            <input type="checkbox" checked={form.allowRemix} onChange={(e) => set({ allowRemix: e.target.checked })} />
+            Let others remix this game
+          </label>
+          <p className="muted small">
+            A remix is someone's own copy to change with the AI, and it credits this game. Turning this off stops new remixes,
+            not ones already made.
+          </p>
+        </div>
         {error && (
           <p className="error" role="alert">
             {error}

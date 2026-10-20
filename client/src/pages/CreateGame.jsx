@@ -222,10 +222,16 @@ export default function CreateGame({ id }) {
       <BackLink />
       <header className="create-hero">
         <h1 className="create-title">{name}</h1>
-        <p className="create-idea">
-          {isChange ? 'Your change: ' : 'Your idea: '}
-          <q>{isChange ? latest.request : summary.prompt}</q>
-        </p>
+        {!isChange && summary.remixOf ? (
+          <p className="create-idea">
+            Your remix of <a href={`/games/${encodeURIComponent(summary.remixOf.id)}`}>{summary.remixOf.name}</a>
+          </p>
+        ) : (
+          <p className="create-idea">
+            {isChange ? 'Your change: ' : 'Your idea: '}
+            <q>{isChange ? latest.request : summary.prompt}</q>
+          </p>
+        )}
       </header>
 
       <Track labels={isChange ? STEPS_CHANGE : STEPS_NEW} at={where.at} state={where.state} initial={initialOf(name === 'Your new game' ? summary.prompt : name)} />
@@ -408,7 +414,10 @@ function ReadyToPlay({ summary, game, version: v, info, busy, run }) {
 
   return (
     <>
-      <h2>{v.basedOn === null ? 'Your game is ready' : `Version ${v.version} is ready`}</h2>
+      <h2>{v.basedOn !== null ? `Version ${v.version} is ready` : summary.remixOf ? 'Your remix is ready' : 'Your game is ready'}</h2>
+      {v.basedOn === null && summary.remixOf && (
+        <p>It's a copy of {summary.remixOf.name}, all yours: play it as it is, or ask the AI for changes below.</p>
+      )}
       {v.description && <p>{v.description}</p>}
       {shots && (
         <div className="create-shots">
@@ -498,7 +507,13 @@ function History({ game, summary }) {
     <details className="create-curious">
       <summary>For the curious: every version, the checks and the code</summary>
       <p className="muted small">
-        Game id <code>{summary.id}</code>, made with <code>{summary.model}</code>. A game is one web page that runs in a
+        Game id <code>{summary.id}</code>
+        {summary.model && (
+          <>
+            , made with <code>{summary.model}</code>
+          </>
+        )}
+        . A game is one web page that runs in a
         locked-down frame on the big screen and the phones; the AI follows the <a href="/kit">docs</a>.
       </p>
       {[...game.versions].reverse().map((v) => {
