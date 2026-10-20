@@ -1654,7 +1654,9 @@ exists and trusting it's the real one. So the work is setup, not content:
   - a title that says what the site is;
   - Open Graph tags with a 1200×630 card (`og-image.png`);
   - the site name as structured data (JSON-LD), so results can say "BoilerGames";
-  - a favicon (the gold token with a B).
+  - a favicon (the gold token with a B). Also as `favicon.ico` (16, 32 and 48 px) and a
+    192 px PNG (2026-10-19): Google's result icon wants a multiple of 48 px and often asks for
+    /favicon.ico first, and it reads a PNG more surely than an SVG with text in it.
 - **Soft 404s:** every address answers 200, and only the browser knows a page is missing.
   The not-found screens (no page, no such game, no such account) now add
   `<meta name="robots" content="noindex">`.
