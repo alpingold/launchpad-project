@@ -1880,8 +1880,83 @@ admin (§49). What follows is what was built and removed.
 - **Where:** `server/src/games/remix.js` (POST /api/games/:id/remix), migration 14
   (`generated_games.remix_of*`, `game_pages.allow_remix`), the game page's Remix button and credit
   line, and /create/<id>'s "Your remix of X".
-- **Open:** the AI's changes to the bigger official games (up to 62 KB) haven't been tried on the
-  real model yet.
+- **Tried on the real model (2026-10-20):** each official game, remixed, got one change request
+  the way the site runs it (plan, then build with the code review). Small changes (a timer, a
+  round count, 5 questions, 10 prompts): all 7 passed on the first attempt in 7–14 minutes, each
+  a 2–10 line edit, the "- Remixed" name kept, no crashes or dead ends in the review. A second
+  run with changes to how each game plays (power-ups, a new test type, a new voting system,
+  scoring, a new station…) is the evidence for the plan below.
+
+### 45b. Remix, design first (planned 2026-10-20, not built)
+
+**Why:** a remix is treated as a change: a short plan of the difference, then edits. That's right
+for a tweak, but a remix with a big change is a different game, and nothing ever describes it as
+one. Its plan only lists differences, so it can miss parts of the game the change should reach
+(scoring that ignores a new mechanic), and every later change plan and code review is checked
+against the original's design, which no longer describes the game. A from-scratch build (the
+first build loop) would describe it, but throws away the original's code: the official games are
+hand-made, 18–62 KB, and the model's own builds are smaller and rougher.
+
+**The idea:** the first build's design step, with the change loop's build. The remix gets its own
+complete design; the code is then edited toward it, not rewritten.
+
+**How it works for the creator:**
+1. **Remix** makes the copy as now (version 1, ready to play at once).
+2. On /create/<id>, a remix's first change is **"Make it your own"**: what should be different.
+   It can be skipped: playing the copy as it is needs nothing more.
+3. The AI writes the remix's **whole design**, in the new-game format (DESIGN.md's headings): the
+   original's design with the changes worked through every part they touch (rules, phones, big
+   screen, scoring, timers, edge cases). The track shows Idea → Design → Build → Play, as for a
+   new game.
+4. The creator reads it, asks for a new draft or edits it, then **Build it**: the same design
+   editor as a new game.
+5. The build **edits the copy's code toward the new design** (edits, with the whole file as the
+   fallback, as for changes), then the usual checks, bot playtest and code review, with the
+   review's checklist made from the **new** design.
+6. From then on, that design is **the remix's design**: later changes are ordinary change requests
+   (a plan, then a build) checked against it.
+
+**What changes in the code:**
+- **Versions:** a new `kind`, `'remix'`, for the version made by "Make it your own" (migration: the
+  `kind` CHECK allows it). It starts at "designing" like a new game's version 1.
+- **The game's design:** today `jobFor` uses version 1's design as "the game's design". It becomes
+  the newest ready version that has a whole design: version 1, or a `'remix'` version.
+- **Generator, the design step:** `remixDesignMessages({ design, request, redraft })`: the system
+  prompt is the new-game one (rulebook, art library, DESIGN.md); the user part gives the
+  original's design and what the creator wants different, and asks for one complete design of the
+  new game, keeping everything the request doesn't change. The original's code is left out at
+  first (it's a design, and the code is up to 16K tokens); add it if designs promise things the
+  code can't easily become.
+- **Generator, the build:** `remixBuildMessages({ oldDesign, newDesign, source })`: the build system
+  prompt; the user part gives both designs and the code, and asks to change the code so it plays
+  as the new design, keeping what the two designs share exactly as it is. Reply with edits,
+  falling back to the whole file after failed edits, as `changeBuildMessages` does. The fix
+  rounds and the code review are the existing ones, with the new design.
+- **Server:** `requestRemixDesign(id, request)` in the service (only on a remix, only once its copy
+  is the newest version, one job at a time, needs a key); the route
+  `POST /api/generations/:id/remix-design { request }`. Redraft, edit, build and discard reuse the
+  design routes.
+- **Pages:** /create/<id> for a remix shows the "Make it your own" box where the change form would
+  be, until a remix design exists; then the normal change form.
+
+**The experiment first (before building it into the site):** the same 7 changes to how the games
+play, through both loops, scored the same way:
+- **Arms:** (a) the change loop, as built now; (b) design first: the remix design, then the build
+  toward it.
+- **Measured:** passed the checks, attempts, minutes, tokens; the code review's score against the
+  **new** design (a checklist made from arm (b)'s design, used for both arms, so the scores
+  compare); and a read of every diff for the "bolted on" signs: the new feature works but the game
+  around it doesn't know (scores, round end, reloads, the big screen).
+- **Decides:** build 45b if (b) scores higher on most games without failing more; if it fails more
+  (bigger edits miss more), try (b)'s design with the change loop's plan-sized build before giving
+  up on it.
+- Written up in `docs/experiments/remix-design.md`, linked from here.
+
+**Open:**
+- whether "Make it your own" should be offered on the Remix button itself (the idea before the
+  copy), or only on /create
+- whether a remix of an AI-made game should also get it, or only official games (whose code is the
+  most worth keeping)
 
 ## 46. The playtest catches player names put in as HTML (2026-10-19)
 
