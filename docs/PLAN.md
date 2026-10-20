@@ -1884,8 +1884,15 @@ admin (§49). What follows is what was built and removed.
   the way the site runs it (plan, then build with the code review). Small changes (a timer, a
   round count, 5 questions, 10 prompts): all 7 passed on the first attempt in 7–14 minutes, each
   a 2–10 line edit, the "- Remixed" name kept, no crashes or dead ends in the review. A second
-  run with changes to how each game plays (power-ups, a new test type, a new voting system,
-  scoring, a new station…) is the evidence for the plan below.
+  run with changes to how each game plays: all 7 passed too, but harder (7–48 minutes; 1–5
+  attempts, mostly edits that didn't fit the file, then the whole file). Bumper Blobs (power-ups),
+  Stowaways (a "Rate it" test; the review caught and fixed a crash the bots never reached),
+  Claim Jumpers (a claim freeze), Ballpark (double down) and Comet Crew (a fifth station) came out
+  well woven in. Doodle Drift already had the asked-for scoring, and its plan said so. Punchline
+  (a new voting system) is the case for the plan below: 5 attempts and 48 minutes; the whole-file
+  rewrite lost polish (the vote chips dropping onto answers, the speech-bubble answers); and its
+  review, checked against the original's design, flagged things the change rightly removed (the
+  head-to-head pairs) as missing. Whole-file rewrites also drop the code's comments.
 
 ### 45b. Remix, design first (planned 2026-10-20, not built)
 
