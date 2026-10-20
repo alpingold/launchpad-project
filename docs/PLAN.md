@@ -1866,6 +1866,9 @@ admin (§49). What follows is what was built and removed.
   `generator/spec/designs/` for an official one), so change plans know what the game is; the
   check report with its screenshots (an official game: the static check and its catalogue
   pictures). Not copied: the original's page edits, votes, reports and code review.
+- **Its name:** "<name> - Remixed", written into the copy's game file (so it stays through the
+  AI's later changes), cut at a word to fit 40 characters; a remix of a remix doesn't say it
+  twice. Its creator can rename it like any game.
 - **Decided:**
   - **Official games can be remixed** too (they're all under the 100 KB a game can be changed at).
   - **A remix credits the original:** "remixed from X by Y" on its page, linked while the original
@@ -1877,9 +1880,8 @@ admin (§49). What follows is what was built and removed.
 - **Where:** `server/src/games/remix.js` (POST /api/games/:id/remix), migration 14
   (`generated_games.remix_of*`, `game_pages.allow_remix`), the game page's Remix button and credit
   line, and /create/<id>'s "Your remix of X".
-- **Open:** a remix published unchanged has the original's name, so the games list can show two
-  games called the same. The AI's changes to the bigger official games (up to 62 KB) haven't been
-  tried on the real model yet.
+- **Open:** the AI's changes to the bigger official games (up to 62 KB) haven't been tried on the
+  real model yet.
 
 ## 46. The playtest catches player names put in as HTML (2026-10-19)
 
