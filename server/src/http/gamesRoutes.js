@@ -33,7 +33,7 @@ export function createGamesRouter({ db, games }) {
     try {
       fn(req, res);
     } catch (err) {
-      if (err instanceof CatalogError) return res.status(err.status).json({ error: err.code, message: err.message });
+      if (err instanceof CatalogError) return res.status(err.status).json({ ...err.details, error: err.code, message: err.message });
       next(err);
     }
   };

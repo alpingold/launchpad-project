@@ -24,11 +24,9 @@ import { isAdminUser, usernamesById } from '../db/users.js';
  *   POST   /api/admin/generations/:id/versions/:v/review-again      → 202 { game }   another code review round
  *                                                    (plan §47): the next version, with what it fixed
  *   POST   /api/admin/generations/:id/versions/:v/playtest → { game }   only you can start that version
- *   POST   /api/admin/generations/:id/publish        → { game }   the playtest version goes to everyone
- *   Asking to publish (plan §44):
- *   POST   /api/admin/generations/:id/submit         → { game }   its creator asks for the playtest version
- *   POST   /api/admin/generations/:id/withdraw       → { game }   ...and takes it back
- *   POST   /api/admin/generations/:id/send-back { note } → { game }   not published (yet), with a note (admins)
+ *   POST   /api/admin/generations/:id/publish        → { game }   the playtest version goes to everyone, if its
+ *                                                    name and description have no blocked words (plan §49):
+ *                                                    else 422 { error: 'BLOCKED_WORDS', message, blocked }
  *   POST   /api/admin/generations/:id/stop-playtest  → { game }
  *   POST   /api/admin/generations/:id/unpublish      → { game }   no version for other hosts any more
  *   DELETE /api/admin/generations/:id                → 204        the game and all its versions
@@ -37,8 +35,8 @@ import { isAdminUser, usernamesById } from '../db/users.js';
  *
  * The same routes, for EVERY account and only on their own games (plan §15), are mounted
  * under /api/generations with `mine: true`: anyone logged in, starting work needs their
- * own GenAI Studio key (the service checks), and publish/unpublish are left out (admins
- * decide what everyone gets). Someone else's game is a 404 there, as if it didn't exist.
+ * own GenAI Studio key (the service checks). Creators publish and unpublish their own games
+ * (plan §49: no admin approval). Someone else's game is a 404 there, as if it didn't exist.
  *
  * @param {{ db: import('better-sqlite3').Database, generation: import('../generation/service.js').GenerationService, mine?: boolean }} deps
  */
@@ -63,7 +61,7 @@ export function createAdminRouter({ db, generation, mine = false }) {
       try {
         owner = generation.get(id).ownerUserId;
       } catch (err) {
-        if (err instanceof GenerationError) return res.status(err.status).json({ error: err.code, message: err.message });
+        if (err instanceof GenerationError) return res.status(err.status).json({ ...err.details, error: err.code, message: err.message });
         return next(err);
       }
       if (owner !== req.user.id) return res.status(404).json({ error: 'NOT_FOUND', message: 'There is no such game.' });
@@ -85,11 +83,6 @@ export function createAdminRouter({ db, generation, mine = false }) {
       error: latest.status === 'failed' ? latest.error : null,
       ownerUserId: game.ownerUserId,
       ownerName: names.get(game.ownerUserId) ?? null,
-      // Asking to publish (plan §44): waiting while the request is for the version being playtested.
-      waitingForApproval: game.submittedVersion !== null && game.submittedVersion === game.playtestVersion,
-      submittedAt: game.submittedAt,
-      reviewNote: game.reviewNote,
-      reviewedAt: game.reviewedAt,
       publishedVersion: game.publishedVersion,
       playtestVersion: game.playtestVersion,
       latestVersion: latest.version,
@@ -144,7 +137,7 @@ export function createAdminRouter({ db, generation, mine = false }) {
     try {
       await fn(req, res);
     } catch (err) {
-      if (err instanceof GenerationError) return res.status(err.status).json({ error: err.code, message: err.message });
+      if (err instanceof GenerationError) return res.status(err.status).json({ ...err.details, error: err.code, message: err.message });
       next(err);
     }
   };
@@ -231,37 +224,12 @@ export function createAdminRouter({ db, generation, mine = false }) {
     }),
   );
 
-  if (!mine) {
-    router.post(
-      '/generations/:id/publish',
-      handle(async (req, res) => {
-        res.json({ game: detail(await generation.publish(req.params.id)) });
-      }),
-    );
-  }
-
   router.post(
-    '/generations/:id/submit',
-    handle((req, res) => {
-      res.json({ game: detail(generation.submit(req.params.id)) });
+    '/generations/:id/publish',
+    handle(async (req, res) => {
+      res.json({ game: detail(await generation.publish(req.params.id)) });
     }),
   );
-
-  router.post(
-    '/generations/:id/withdraw',
-    handle((req, res) => {
-      res.json({ game: detail(generation.withdraw(req.params.id)) });
-    }),
-  );
-
-  if (!mine) {
-    router.post(
-      '/generations/:id/send-back',
-      handle((req, res) => {
-        res.json({ game: detail(generation.sendBack(req.params.id, req.body?.note)) });
-      }),
-    );
-  }
 
   router.post(
     '/generations/:id/stop-playtest',
@@ -270,14 +238,12 @@ export function createAdminRouter({ db, generation, mine = false }) {
     }),
   );
 
-  if (!mine) {
-    router.post(
-      '/generations/:id/unpublish',
-      handle((req, res) => {
-        res.json({ game: detail(generation.takeDown(req.params.id, 'published')) });
-      }),
-    );
-  }
+  router.post(
+    '/generations/:id/unpublish',
+    handle((req, res) => {
+      res.json({ game: detail(generation.takeDown(req.params.id, 'published')) });
+    }),
+  );
 
   router.delete(
     '/generations/:id',

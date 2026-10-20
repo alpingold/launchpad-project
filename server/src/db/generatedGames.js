@@ -62,10 +62,6 @@ export const BUSY_STATUSES = Object.freeze(['designing', 'generating']);
  * @property {string} prompt                 the idea it was first made from
  * @property {number | null} publishedVersion
  * @property {number | null} playtestVersion
- * @property {number | null} submittedVersion  the playtest version its creator asked to publish (plan §44)
- * @property {number | null} submittedAt
- * @property {string | null} reviewNote      why an admin sent it back
- * @property {number | null} reviewedAt
  * @property {GameVersion[]} versions        oldest first
  * @property {number} createdAt
  * @property {number} updatedAt
@@ -116,10 +112,6 @@ function gameFromRow(db, row) {
     prompt: row.prompt,
     publishedVersion: row.published_version,
     playtestVersion: row.playtest_version,
-    submittedVersion: row.submitted_version,
-    submittedAt: row.submitted_at,
-    reviewNote: row.review_note,
-    reviewedAt: row.reviewed_at,
     versions: db.prepare('SELECT * FROM game_versions WHERE game_id = ? ORDER BY version').all(row.id).map(versionFromRow),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -370,34 +362,6 @@ export function setLiveVersions(db, gameId, live) {
     gameId,
   );
   return true;
-}
-
-/**
- * Asking for publishing (plan §44): what the creator asked and what an admin answered. Leave a
- * field out to keep it; null clears it.
- * @param {{ submittedVersion?: number | null, submittedAt?: number | null, reviewNote?: string | null, reviewedAt?: number | null, now?: number }} fields
- */
-export function setSubmission(db, gameId, fields) {
-  const { now = Date.now() } = fields;
-  const game = db.prepare('SELECT * FROM generated_games WHERE id = ?').get(gameId);
-  if (!game) return false;
-  const keep = (value, old) => (value === undefined ? old : value);
-  db.prepare('UPDATE generated_games SET submitted_version = ?, submitted_at = ?, review_note = ?, reviewed_at = ?, updated_at = ? WHERE id = ?').run(
-    keep(fields.submittedVersion, game.submitted_version),
-    keep(fields.submittedAt, game.submitted_at),
-    keep(fields.reviewNote, game.review_note),
-    keep(fields.reviewedAt, game.reviewed_at),
-    now,
-    gameId,
-  );
-  return true;
-}
-
-/** Is this game waiting for an admin: its creator asked to publish the version they're playtesting? */
-export function isSubmitted(db, gameId) {
-  return Boolean(
-    db.prepare('SELECT 1 FROM generated_games WHERE id = ? AND submitted_version IS NOT NULL AND submitted_version = playtest_version').get(gameId),
-  );
 }
 
 /** @returns {GeneratedGame | null} */

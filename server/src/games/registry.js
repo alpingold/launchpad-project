@@ -25,12 +25,6 @@ export class GameRegistry {
   constructor() {
     /** @type {Map<string, { game: import('./frameGame.js').FrameGame, meta: GameMeta }>} */
     this.entries = new Map();
-    /**
-     * May this user see someone else's playtest game (by its base id)? The server sets this:
-     * an admin, while its creator has asked to publish it (plan §44), so they can try it first.
-     * @type {(baseId: string, userId: number) => boolean}
-     */
-    this.canReview = () => false;
   }
 
   /**
@@ -110,10 +104,10 @@ export class GameRegistry {
       }));
   }
 
-  /** Official and published games are for everyone; a playtest game for its owner (and reviewers). */
+  /** Official and published games are for everyone; a playtest game for its owner. */
   isVisible(meta, userId) {
     if (meta.source === 'official' || meta.status === 'published') return true;
     if (meta.status !== 'playtest' || userId === null) return false;
-    return userId === meta.ownerUserId || this.canReview(meta.baseId, userId);
+    return userId === meta.ownerUserId;
   }
 }

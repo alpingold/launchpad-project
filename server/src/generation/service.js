@@ -14,10 +14,11 @@
 //   memory. A game has at most one version in progress at a time.
 // - Finishing: a passing version is saved as "ready" for review. A failed one keeps its
 //   reason, and its last attempt if there was one.
-// - Going live: the admin playtests a ready version (only they can start it), then
-//   publishes it (everyone can). The published version keeps running for everyone while a
-//   newer one is playtested. Changes apply to the running server's game list immediately.
-//   Code runs on this server only once the admin has chosen to playtest it.
+// - Going live: its creator playtests a ready version (only they can start it), then
+//   publishes it (everyone can), with no admin in between (plan §49): only the name and
+//   description are checked for blocked words. The published version keeps running for
+//   everyone while a newer one is playtested. Changes apply to the running server's game list
+//   immediately. Code runs on this server only once its creator has chosen to playtest it.
 // - Restarts: versions that were generating when the server stopped are marked failed.
 
 import {
@@ -26,8 +27,6 @@ import {
   saveVersionSource,
   markVersionFailed,
   setLiveVersions,
-  setSubmission,
-  isSubmitted,
   getGeneratedGame,
   listGeneratedGames,
   listBusyVersions,
@@ -44,6 +43,8 @@ import { liveGameId, registerVersion } from '../games/generated.js';
 import { runGeneratorInSandbox } from './sandbox.js';
 import { BrowserSlot } from './browserSlot.js';
 import { isAdminUser } from '../db/users.js';
+import { getGamePage } from '../db/gamePages.js';
+import { blockedFields, blockedMessage } from '../games/wordFilter.js';
 import { MODELS, DEFAULT_MODEL, isAllowedModel } from '../../../generator/src/models.js';
 import { MAX_DESIGN_LENGTH } from '../../../generator/src/extract.js';
 // What people may type: the same numbers the generator checks (generator/src/prompt.js says why).
@@ -61,15 +62,14 @@ export const MAX_WAITING = 4;
 const MAX_STEPS = 50;
 
 /** A refusal with an HTTP status and a code the admin page can show. */
-/** An admin's note when sending a game back (plan §44). */
-export const MIN_NOTE_LENGTH = 3;
-export const MAX_NOTE_LENGTH = 500;
 
 export class GenerationError extends Error {
-  constructor(status, code, message) {
+  /** @param {Record<string, unknown>} [details]  more for the page, sent with the error (e.g. { blocked }) */
+  constructor(status, code, message, details = {}) {
     super(message);
     this.status = status;
     this.code = code;
+    this.details = details;
   }
 }
 
@@ -421,55 +421,27 @@ export class GenerationService {
     this.unload(game, 'playtest');
     await this.load(game, version, 'playtest');
     setLiveVersions(this.db, id, { playtestVersion: version.version });
-    // A request to publish was for the version being playtested then: a different one needs asking again.
-    if (game.submittedVersion !== null && game.submittedVersion !== version.version) setSubmission(this.db, id, { submittedVersion: null, submittedAt: null });
     this.log(`[generate] ${id}: playtesting v${version.version}`);
     return this.get(id);
   }
 
   /**
-   * Its creator asks for the version they're playtesting to be published (plan §44): it shows
-   * in the admins' "To approve" list, and admins may host it too, to try it.
+   * Publishes the version being playtested: every host gets it, replacing the published one.
+   * Its creator decides (plan §49): no admin looks first, so the name and description that
+   * everyone will see (the game page's, else the game file's) mustn't have blocked words.
    */
-  submit(id, { now = Date.now() } = {}) {
-    const game = this.get(id);
-    if (game.playtestVersion === null) throw new GenerationError(409, 'WRONG_STATUS', 'Playtest a version first: that is the one you ask to publish.');
-    setSubmission(this.db, id, { submittedVersion: game.playtestVersion, submittedAt: now, reviewNote: null, reviewedAt: null, now });
-    this.log(`[generate] ${id}: v${game.playtestVersion} submitted for publishing`);
-    return this.get(id);
-  }
-
-  /** Its creator takes the request back. */
-  withdraw(id) {
-    this.get(id);
-    setSubmission(this.db, id, { submittedVersion: null, submittedAt: null });
-    return this.get(id);
-  }
-
-  /** An admin doesn't publish it (yet): the request ends, with a note for its creator. */
-  sendBack(id, note, { now = Date.now() } = {}) {
-    this.get(id);
-    if (!isSubmitted(this.db, id)) throw new GenerationError(409, 'WRONG_STATUS', "This game isn't waiting for approval.");
-    const text = typeof note === 'string' ? note.trim() : '';
-    if (text.length < MIN_NOTE_LENGTH || text.length > MAX_NOTE_LENGTH) {
-      throw new GenerationError(400, 'INVALID_NOTE', `Say why in ${MIN_NOTE_LENGTH}–${MAX_NOTE_LENGTH} characters.`);
-    }
-    setSubmission(this.db, id, { submittedVersion: null, submittedAt: null, reviewNote: text, reviewedAt: now, now });
-    this.log(`[generate] ${id}: sent back`);
-    return this.get(id);
-  }
-
-  /** Publishes the version being playtested: every host gets it, replacing the published one. */
   async publish(id) {
     const game = this.get(id);
     const version = findVersion(game, game.playtestVersion);
     if (!version) throw new GenerationError(409, 'WRONG_STATUS', 'Playtest a version before publishing it.');
+    const page = getGamePage(this.db, id);
+    const blocked = blockedFields({ name: page?.name ?? version.name, description: page?.description ?? version.description });
+    if (blocked.length > 0) throw new GenerationError(422, 'BLOCKED_WORDS', blockedMessage(blocked), { blocked });
 
     // Swaps in for the published version only once it has loaded: a failure changes nothing.
     await this.load(game, version, 'published', { replace: true });
     this.unload(game, 'playtest');
     setLiveVersions(this.db, id, { publishedVersion: version.version, playtestVersion: null });
-    setSubmission(this.db, id, { submittedVersion: null, submittedAt: null, reviewNote: null, reviewedAt: Date.now() }); // answered
     this.log(`[generate] ${id}: published v${version.version}`);
     return this.get(id);
   }
@@ -479,7 +451,6 @@ export class GenerationService {
     const game = this.get(id);
     this.unload(game, as);
     setLiveVersions(this.db, id, as === 'published' ? { publishedVersion: null } : { playtestVersion: null });
-    if (as === 'playtest') setSubmission(this.db, id, { submittedVersion: null, submittedAt: null }); // nothing left to publish
     this.log(`[generate] ${id}: ${as} version taken down`);
     return this.get(id);
   }

@@ -13,8 +13,6 @@ import { createUserKeys } from './generation/userKeys.js';
 import { randomBytes } from 'node:crypto';
 import { deleteExpiredSessions } from './db/sessions.js';
 import { currentUser } from './auth/currentUser.js';
-import { isAdminUser } from './db/users.js';
-import { isSubmitted } from './db/generatedGames.js';
 
 /**
  * Builds the whole server (HTTP + WebSocket + rooms) without starting to listen.
@@ -51,8 +49,6 @@ export function createGameServer(overrides = {}, { games = createDefaultRegistry
     browserSlot: new BrowserSlot({ size: cfg.GENERATION_BROWSER_CHECKS, maxHoldMs: cfg.GENERATION_BROWSER_MAX_HOLD_MS }),
   });
   generation.recoverInterrupted(); // anything "generating" was cut off by the last restart
-  // Admins may host a game its creator asked to publish, to try it first (plan §44).
-  games.canReview = (baseId, userId) => isAdminUser(db, userId) && isSubmitted(db, baseId);
 
   // For /api/status (deploy/update.sh). Like `send` below, it only runs once `rooms` and
   // `transport` exist.

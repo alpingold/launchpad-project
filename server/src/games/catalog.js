@@ -1,4 +1,5 @@
 import { allGamePages, getGamePage, saveGamePage, voteCounts, votesBy, setVote } from '../db/gamePages.js';
+import { blockedFields, blockedMessage } from './wordFilter.js';
 import { usernamesById } from '../db/users.js';
 import { tagProblems, minutesProblems } from './frameGame.js';
 import { GAME_TAGS, MAX_GAME_TAGS } from './tags.js';
@@ -11,10 +12,12 @@ export const MAX_ABOUT_LENGTH = 1500;
 
 /** A refusal with an HTTP status and a code the page can show. */
 export class CatalogError extends Error {
-  constructor(status, code, message) {
+  /** @param {Record<string, unknown>} [details]  more for the page, sent with the error (e.g. { blocked }) */
+  constructor(status, code, message, details = {}) {
     super(message);
     this.status = status;
     this.code = code;
+    this.details = details;
   }
 }
 
@@ -154,6 +157,10 @@ function checkPage(input, shots) {
     page.mainShot = input.mainShot;
   }
   if (problems.length > 0) throw new CatalogError(400, 'INVALID_PAGE', `${problems.join('; ')}.`);
+  // Games go public without an admin looking (plan §49): the name and description everyone
+  // sees on the cards mustn't have blocked words.
+  const blocked = blockedFields({ name: page.name, description: page.description });
+  if (blocked.length > 0) throw new CatalogError(400, 'BLOCKED_WORDS', blockedMessage(blocked), { blocked });
   return page;
 }
 

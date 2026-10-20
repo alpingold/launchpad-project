@@ -7,7 +7,7 @@ import { signUp, postJson } from '../helpers/accounts.js';
 import { renamedSource } from '../helpers/frameGames.js';
 
 // Every account making games with its own GenAI Studio key (plan §15): /api/generations,
-// only your own games, one job at a time, no publishing. A fake generator and a fake key
+// only your own games, one job at a time, publishing them yourself (plan §49). A fake generator and a fake key
 // check stand in for OpenShell and GenAI Studio.
 
 const IDEA = 'Everyone votes; the most popular answer wins';
@@ -41,7 +41,7 @@ test('logged out: 401; logged in without a key: you can look, but starting needs
   assert.deepEqual([refused.status, (await refused.json()).error], [403, 'NO_KEY']);
 });
 
-test('with a key: your job runs with YOUR key; one at a time; only you see your games; no publishing', async () => {
+test('with a key: your job runs with YOUR key; one at a time; only you see your games', async () => {
   const sam = await signUp(baseUrl, 'sam');
   assert.equal((await saveKey(sam)).status, 200);
   assert.equal((await (await get('/api/generations', sam)).json()).info.canGenerate, true);
@@ -64,13 +64,13 @@ test('with a key: your job runs with YOUR key; one at a time; only you see your 
   const own = await get(`/api/generations/${game.id}`, sam);
   assert.equal((await own.json()).game.id, game.id);
 
-  // The design arrives; sam builds it; it passes; sam playtests it, but can't publish it.
+  // The design arrives; sam builds it with the same key.
   jobs[0].finish({ ok: true, design: '# Majority Rules\n## Rules\nVote.\n' });
   await server.generation.current;
   assert.equal((await post(`/api/generations/${game.id}/versions/1/build`, {}, sam)).status, 202);
   assert.equal(jobs[1].apiKey, KEY);
   assert.equal(jobs[1].job.step, 'build');
-  assert.equal((await post(`/api/generations/${game.id}/publish`, {}, sam)).status, 404, 'admins decide what everyone gets');
+  assert.equal((await post(`/api/generations/${game.id}/publish`, {}, kim)).status, 404, "kim can't publish sam's game");
 
   // An admin sees sam's game on the admin page and could publish it.
   const boss = await signUp(baseUrl, 'boss');
@@ -79,64 +79,52 @@ test('with a key: your job runs with YOUR key; one at a time; only you see your 
   assert.deepEqual(all.games.map((g) => g.id), [game.id]);
 });
 
-test('asking to publish (plan §44): submit, the admin can host it to try it, withdraw, send back with a note, publish', async () => {
+test('publishing your own game (plan §49): no admin, but no blocked words in its name or description', async () => {
   const sam = await signUp(baseUrl, 'sam');
   await saveKey(sam);
   const { game } = await (await post('/api/generations', { idea: IDEA }, sam)).json();
   jobs[0].finish({ ok: true, design: '# Majority Rules\n## Rules\nVote.\n' });
   await server.generation.current;
   await post(`/api/generations/${game.id}/versions/1/build`, {}, sam);
-  jobs[1].finish({ ok: true, source: renamedSource('Majority Rules'), report: { ok: true, problems: [], game: { name: 'Majority Rules', description: 'Vote' } } });
+  const name = 'Holy Shit Majority';
+  jobs[1].finish({ ok: true, source: renamedSource(name), report: { ok: true, problems: [], game: { name, description: 'Vote, you bastards' } } });
   await server.generation.current;
 
-  const boss = await signUp(baseUrl, 'boss');
-  setAdmin(server.db, 'boss', true);
   const kim = await signUp(baseUrl, 'kim');
-  const summaryFor = async (cookie) => (await (await get('/api/admin/generations', cookie)).json()).games.find((g) => g.id === game.id);
-  const pickable = async (cookie) => (await (await get('/api/games', cookie)).json()).games.map((g) => g.id).includes(`${game.id}-v1`);
+  const everyoneSees = async () => (await (await get('/api/games', kim)).json()).games.map((g) => g.id).includes(game.id);
   const errorOf = async (res) => [res.status, (await res.json()).error];
 
-  // Nothing to ask for until it's being playtested.
-  assert.deepEqual(await errorOf(await post(`/api/generations/${game.id}/submit`, {}, sam)), [409, 'WRONG_STATUS']);
+  // Only the version being playtested can be published.
+  assert.deepEqual(await errorOf(await post(`/api/generations/${game.id}/publish`, {}, sam)), [409, 'WRONG_STATUS']);
   await post(`/api/generations/${game.id}/versions/1/playtest`, {}, sam);
-  assert.equal(await pickable(boss), false, "an admin can't host someone's playtest before they ask");
 
-  // Sam asks: the admin sees who and since when, and can host it to try it; kim still can't.
-  const asked = await (await post(`/api/generations/${game.id}/submit`, {}, sam)).json();
-  assert.equal(asked.game.waitingForApproval, true);
-  let mine = await summaryFor(boss);
-  assert.deepEqual([mine.waitingForApproval, mine.ownerName, typeof mine.submittedAt], [true, 'sam', 'number']);
-  assert.equal(await pickable(boss), true);
-  assert.equal(await pickable(kim), false);
+  // Its name and description have blocked words: refused, with each word and where it is.
+  const refused = await post(`/api/generations/${game.id}/publish`, {}, sam);
+  assert.equal(refused.status, 422);
+  const body = await refused.json();
+  assert.equal(body.error, 'BLOCKED_WORDS');
+  assert.match(body.message, /the name: "Shit"; the description: "bastards"/);
+  assert.deepEqual(body.blocked, [
+    { field: 'name', text: name, words: [{ word: 'Shit', start: 5, end: 9 }] },
+    { field: 'description', text: 'Vote, you bastards', words: [{ word: 'bastards', start: 10, end: 18 }] },
+  ]);
+  assert.equal(await everyoneSees(), false);
 
-  // Sam takes it back; asks again.
-  await post(`/api/generations/${game.id}/withdraw`, {}, sam);
-  assert.equal((await summaryFor(boss)).waitingForApproval, false);
-  assert.equal(await pickable(boss), false);
-  await post(`/api/generations/${game.id}/submit`, {}, sam);
+  // Sam renames it on its page: a page with a blocked word isn't saved either.
+  const page = (fields) =>
+    fetch(`${baseUrl}/api/games/${game.id}-v1/page`, { method: 'PUT', headers: { Cookie: sam, 'Content-Type': 'application/json' }, body: JSON.stringify(fields) });
+  const badPage = await page({ name: 'Majority Shitshow' });
+  assert.equal(badPage.status, 400);
+  assert.deepEqual((await badPage.json()).blocked, [{ field: 'name', text: 'Majority Shitshow', words: [{ word: 'Shitshow', start: 9, end: 17 }] }]);
+  assert.equal((await page({ name: 'Majority Rules', description: 'Vote, everyone' })).status, 200);
 
-  // Only admins send back, and only with a note; sam sees the note, and it's no longer waiting.
-  assert.equal((await post(`/api/generations/${game.id}/send-back`, { note: 'no' }, sam)).status, 404);
-  assert.deepEqual(await errorOf(await post(`/api/admin/generations/${game.id}/send-back`, { note: 'x' }, boss)), [400, 'INVALID_NOTE']);
-  const back = await post(`/api/admin/generations/${game.id}/send-back`, { note: 'The round timer never ends with 2 players.' }, boss);
-  assert.equal(back.status, 200);
-  const own = (await (await get(`/api/generations/${game.id}`, sam)).json()).game;
-  assert.deepEqual([own.waitingForApproval, own.reviewNote], [false, 'The round timer never ends with 2 players.']);
-  assert.deepEqual(await errorOf(await post(`/api/admin/generations/${game.id}/send-back`, { note: 'again?' }, boss)), [409, 'WRONG_STATUS']);
-
-  // Asking again clears the note; publishing answers it.
-  const again = (await (await post(`/api/generations/${game.id}/submit`, {}, sam)).json()).game;
-  assert.deepEqual([again.waitingForApproval, again.reviewNote], [true, null]);
-  await post(`/api/admin/generations/${game.id}/publish`, {}, boss);
-  mine = await summaryFor(boss);
-  assert.deepEqual([mine.status, mine.waitingForApproval], ['published', false]);
-
-  // Ending a playtest ends the request with it.
-  server.generation.takeDown(game.id, 'published');
-  await post(`/api/generations/${game.id}/versions/1/playtest`, {}, sam);
-  await post(`/api/generations/${game.id}/submit`, {}, sam);
-  await post(`/api/generations/${game.id}/stop-playtest`, {}, sam);
-  assert.equal((await summaryFor(boss)).waitingForApproval, false);
+  // Now it publishes: everyone gets it, with no admin involved. Sam can take it down again.
+  const published = await post(`/api/generations/${game.id}/publish`, {}, sam);
+  assert.equal(published.status, 200);
+  assert.equal((await published.json()).game.status, 'published');
+  assert.equal(await everyoneSees(), true);
+  assert.equal((await post(`/api/generations/${game.id}/unpublish`, {}, sam)).status, 200);
+  assert.equal(await everyoneSees(), false);
 });
 
 test('an admin without a key can still generate (with the server key)', async () => {

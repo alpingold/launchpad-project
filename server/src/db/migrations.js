@@ -283,6 +283,16 @@ export const MIGRATIONS = [
       ALTER TABLE game_versions ADD COLUMN kind TEXT CHECK (kind IS NULL OR kind = 'recheck');
     `,
   },
+  {
+    version: 13,
+    description: 'no more asking an admin to publish: creators publish their own games (plan §49)',
+    sql: `
+      ALTER TABLE generated_games DROP COLUMN submitted_version;
+      ALTER TABLE generated_games DROP COLUMN submitted_at;
+      ALTER TABLE generated_games DROP COLUMN review_note;
+      ALTER TABLE generated_games DROP COLUMN reviewed_at;
+    `,
+  },
 ];
 
 /** The version a fully up-to-date database has. */
