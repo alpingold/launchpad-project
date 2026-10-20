@@ -44,4 +44,14 @@ station), run on qwen3.8:27b in the site's sandboxes, both ways:
 - **Games over 60 KB** (only Stowaways) fall back to edits and struggled the same way as (a): 3
   edit attempts that didn't fit, one out of room, then passed on the 4th.
 
+**Stowaways without the 60 KB limit (same design).** The whole file fit: about 4–5K tokens of
+thinking, then ~20K of file, far from the 65K context. With the brief-thinking sentence (now
+part of the remix build, as of a first build): 1 attempt, 4.2K thinking, 19 minutes, 165.5/183
+against the new design's checklist, no crashes or dead ends. Without it: 1 attempt, 5.0K, 26
+minutes. **The limit is gone for remixes.** Stowaways' trouble was edits, not size.
+
+**The reviewer on big files:** on the 62 KB Stowaways it often "wrote no review" (its own review
+round and all 4 scoring reviews of two builds), and on other 40–60 KB games it ran out of room 3
+times. On the site that means a big game's review is skipped, silently. Worth its own look.
+
 The script and every game, design and review: `remix-test/` in the session's scratchpad (not kept).
