@@ -2,6 +2,8 @@
 
 A Jackbox-style party game platform: a host shows a room code on a big screen, players join from their phones.
 
+**Live at [boilergames.party](https://boilergames.party).**
+
 The full design, decisions, and milestone plan are in [`docs/PLAN.md`](docs/PLAN.md).
 
 ## Run it (development)
