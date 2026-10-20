@@ -17,6 +17,7 @@ test('remix an official game, publish it with a credit line, then turn remixing 
   await expect(page).toHaveURL(/\/create\/g-[a-z0-9]{8}$/);
   const remixId = new URL(page.url()).pathname.split('/').at(-1);
   await expect(page.getByRole('heading', { name: 'Your remix is ready' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Bumper Blobs - Remixed', level: 1 })).toBeVisible();
   await expect(page.locator('.create-idea')).toHaveText('Your remix of Bumper Blobs');
   await expect(page.locator('.create-idea a')).toHaveAttribute('href', '/games/bumper-blobs');
 

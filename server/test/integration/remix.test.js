@@ -4,6 +4,7 @@ import { createGameServer } from '../../src/server.js';
 import { createDefaultRegistry, officialGameSource } from '../../src/games/index.js';
 import { signUp, postJson } from '../helpers/accounts.js';
 import { renamedSource } from '../helpers/frameGames.js';
+import { remixedName } from '../../src/games/remix.js';
 
 // Remixing (plan §45): your own copy of a public game (official ones too), ready to play and to
 // change, with a credit line; its creator can turn new remixes off.
@@ -58,12 +59,15 @@ test("a remix is your own copy, ready to play without a key, and credits the ori
   const remixId = (await made.json()).id;
   assert.match(remixId, /^g-[a-z0-9]{8}$/);
 
-  // Kim's: version 1 is the original's code and design, ready; nothing was generated.
+  // Kim's: version 1 is the original's code and design, ready, called "… - Remixed" (in its
+  // game file too); nothing was generated.
   const { game } = await get(`/api/generations/${remixId}`, kim);
   assert.deepEqual(game.remixOf, { id, version: 1, name: 'Majority Rules' });
   assert.equal(game.versions.length, 1);
   const [v1] = game.versions;
-  assert.deepEqual([v1.status, v1.source, v1.design, v1.request], ['ready', SOURCE, '# Majority Rules\n## Rules\nVote.\n', 'Remix of Majority Rules']);
+  assert.deepEqual([v1.status, v1.design, v1.request], ['ready', '# Majority Rules\n## Rules\nVote.\n', 'Remix of Majority Rules']);
+  assert.equal(v1.name, 'Majority Rules - Remixed');
+  assert.equal(v1.source, renamedSource('Majority Rules - Remixed'), 'only the name changed');
   assert.equal(jobs.length, 2, 'only sam\'s two jobs');
   assert.equal((await get(`/api/generations/${remixId}`, sam)).error, 'NOT_FOUND', "sam doesn't see kim's remix");
 
@@ -73,9 +77,10 @@ test("a remix is your own copy, ready to play without a key, and credits the ori
   const credit = (await catalogue()).find((g) => g.id === remixId).remixOf;
   assert.deepEqual(credit, { id, name: 'Majority Rules', creator: { username: 'sam' } });
 
-  // A remix of a remix works the same way.
+  // A remix of a remix works the same way, and doesn't say "Remixed" twice.
   const lee = await signUp(baseUrl, 'lee');
-  assert.equal((await post(`/api/games/${remixId}/remix`, {}, lee)).status, 201);
+  const again = (await (await post(`/api/games/${remixId}/remix`, {}, lee)).json()).id;
+  assert.equal((await get(`/api/generations/${again}`, lee)).game.versions[0].name, 'Majority Rules - Remixed');
 });
 
 test('turning remixing off stops new remixes only; a gone original keeps its name in the credit', async () => {
@@ -108,9 +113,9 @@ test('official games can be remixed: their file, their design, their pictures', 
   const remixId = (await made.json()).id;
   const { game } = await get(`/api/generations/${remixId}`, kim);
   const [v1] = game.versions;
-  assert.equal(v1.source, officialGameSource('bumper-blobs'));
+  assert.equal(v1.source, officialGameSource('bumper-blobs').replace('"name": "Bumper Blobs"', '"name": "Bumper Blobs - Remixed"'));
   assert.match(v1.design, /^# Bumper Blobs/);
-  assert.equal(v1.name, 'Bumper Blobs');
+  assert.equal(v1.name, 'Bumper Blobs - Remixed');
   assert.match(game.prompt, /^Bumper Blobs: /);
 
   // Playtesting it shows the official pictures, and credits BoilerGames (no creator).
@@ -125,4 +130,12 @@ test("a game that isn't public can't be remixed (someone else's playtest doesn't
   await post(`/api/generations/${id}/unpublish`, {}, sam);
   const kim = await signUp(baseUrl, 'kim');
   assert.deepEqual(await errorOf(await post(`/api/games/${id}/remix`, {}, kim)), [404, 'NOT_FOUND']);
+});
+
+test('a remix\'s name fits in 40 characters', () => {
+  assert.equal(remixedName('Stowaways'), 'Stowaways - Remixed');
+  assert.equal(remixedName('Stowaways - Remixed'), 'Stowaways - Remixed');
+  const long = remixedName('An Extremely Long Party Game Name Here');
+  assert.equal(long, 'An Extremely Long Party Game - Remixed');
+  assert.ok(long.length <= 40);
 });

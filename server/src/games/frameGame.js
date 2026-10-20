@@ -35,7 +35,7 @@ import { GAME_TAGS, MAX_GAME_TAGS, MAX_GAME_MINUTES } from './tags.js';
 
 const GAME_ID_RE = /^[a-z0-9-]{1,40}$/;
 // The game-info block: a <script> with id="game-info" and type="application/json", in either order.
-const GAME_INFO_RE = /<script\b(?=[^>]*\bid=["']game-info["'])(?=[^>]*\btype=["']application\/json["'])[^>]*>([\s\S]*?)<\/script>/i;
+export const GAME_INFO_RE = /<script\b(?=[^>]*\bid=["']game-info["'])(?=[^>]*\btype=["']application\/json["'])[^>]*>([\s\S]*?)<\/script>/i;
 const INFO_FIELDS = ['name', 'description', 'minPlayers', 'maxPlayers', 'tags', 'minutes'];
 
 /**

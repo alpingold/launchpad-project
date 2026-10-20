@@ -1,13 +1,18 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { catalogGame, CatalogError } from './catalog.js';
-import { frameGameReport } from './frameGame.js';
+import { frameGameReport, GAME_INFO_RE } from './frameGame.js';
 import { officialGameSource, readOfficialShots } from './index.js';
 import { createRemix, getGeneratedGame } from '../db/generatedGames.js';
 
 // Remixing (plan §45): your own copy of a public game, to change with the AI the way you change
 // your own games. The copy is version 1 of a new game, ready to play at once (its code already
 // passed the checks as the original); nothing is generated until you ask for a change. Official
-// games can be remixed too. A remix remembers what it was copied from, for its credit line.
+// games can be remixed too. A remix remembers what it was copied from, for its credit line, and
+// is called "<name> - Remixed" (in its game file, so the name stays through later changes).
+
+const REMIXED = ' - Remixed';
+/** A game's name is at most 40 characters (frameGame.js). */
+const MAX_NAME = 40;
 
 /**
  * Makes a remix of the game `id` for this viewer.
@@ -27,8 +32,34 @@ export function remixGame(db, registry, viewer, id) {
     throw new CatalogError(403, 'REMIX_OFF', "This game's creator doesn't allow remixes.");
   }
   const copy = game.source === 'official' ? officialCopy(game) : generatedCopy(db, game);
-  const remix = createRemix(db, { ownerUserId: viewer.userId, remixOf: { id: game.id, version: copy.version, name: game.name }, ...copy });
+  const name = remixedName(copy.name);
+  const remix = createRemix(db, {
+    ownerUserId: viewer.userId,
+    remixOf: { id: game.id, version: copy.version, name: game.name },
+    ...copy,
+    name,
+    source: renamed(copy.source, name),
+  });
   return remix.id;
+}
+
+/** "Stowaways" → "Stowaways - Remixed", shortened at a word to fit; a remix of a remix doesn't say it twice. */
+export function remixedName(name) {
+  if (name.endsWith(REMIXED)) return name;
+  const room = MAX_NAME - REMIXED.length;
+  let base = name;
+  if (base.length > room) {
+    base = base.slice(0, room);
+    // Cut in the middle of a word: drop that word (unless it's the only one).
+    if (name[room] !== ' ') base = base.replace(/\s+\S*$/, '') || base;
+  }
+  return `${base.trimEnd()}${REMIXED}`;
+}
+
+/** The game file with this name in its game info (only there: the rest of the file is untouched). */
+function renamed(source, name) {
+  const withName = (info) => info.replace(/"name"\s*:\s*"(?:[^"\\]|\\.)*"/, () => `"name": ${JSON.stringify(name)}`);
+  return source.replace(GAME_INFO_RE, (block, info) => block.replace(info, () => withName(info)));
 }
 
 /** An official game: its file, its design (the one it was made from), and its pictures. */
