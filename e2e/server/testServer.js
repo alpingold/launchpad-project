@@ -7,8 +7,9 @@
 //   1. A FAKE generator instead of the OpenShell sandbox + GenAI Studio. The tests don't
 //      need Docker, an API key or the network, and a game takes ~2 s instead of minutes.
 //      It writes a renamed Probe ("Robot Majority"); a change request renames it to
-//      "Robot Majority 2". It still sends progress steps, and checks the game file the
-//      same way the real one will.
+//      "Robot Majority 2". An idea with "rude" in it names it "Robot Bullshit" (for the word
+//      filter, plan §49). It still sends progress steps, and checks the game file the same
+//      way the real one will.
 //   2. An admin account (accounts.js) in the throwaway in-memory database.
 //   3. A 5 s hang watchdog instead of 15 s.
 import { readFileSync } from 'node:fs';
@@ -81,12 +82,13 @@ async function fakeGenerator(job, { onStep }) {
   onStep('attempt 1/4: testing the game');
   // A change request (K6) renames the game, so the tests can see which version is which.
   const broken = (job.change?.request ?? job.idea).includes('broken');
-  const source = broken
+  let source = broken
     ? BROKEN_SOURCE
     : job.change
       ? job.change.source.replace(/"name": "[^"]*"/, '"name": "Robot Majority 2"')
       : GOOD_SOURCE;
   const changelog = job.change ? '- Renamed it to Robot Majority 2' : null;
+  if (!job.change && job.idea.includes('rude')) source = source.replace('"name": "Robot Majority"', '"name": "Robot Bullshit"');
   const report = withFakePlaytest(frameGameReport(source));
   const attempt = (n, code, checks) => ({ attempt: n, ok: checks.ok, problems: checks.problems.length, seconds: 30, usage: { prompt_tokens: 12000, completion_tokens: 9000 }, source: code, report: checks });
   if (!report.ok) {

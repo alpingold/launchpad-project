@@ -52,7 +52,7 @@ test('save a key (a wrong one is refused), see only its end; the guide shows the
   await expect(page.getByLabel('API key', { exact: true })).toBeVisible();
 });
 
-test('/create: without a key it asks for one; with a key, one game at a time, and no publishing', async ({ people }) => {
+test('/create: without a key it asks for one; with a key, one game at a time, and its maker can publish it', async ({ people }) => {
   const { page, context } = await people.host();
   await page.goto('/create');
   await expect(page.getByRole('heading', { name: 'Make a game', level: 1 })).toBeVisible();
@@ -82,15 +82,15 @@ test('/create: without a key it asks for one; with a key, one game at a time, an
   await page.locator(`a[href="/create/${gameId}"]`).click();
   await expect(page).toHaveURL(gamePage);
 
-  // Read the design, build it, then play: only the owner can start it, and only an admin can publish.
+  // Read the design, build it, then play: only the owner can start it, until they publish it (plan §49).
   await expect(page.getByRole('button', { name: 'Build it' })).toBeVisible(GENERATED);
   await expect(track).toHaveAccessibleName('Step 2 of 4: Design');
   await page.getByRole('button', { name: 'Build it' }).click();
   await expect(page.getByRole('heading', { name: 'Your game is ready' })).toBeVisible(GENERATED);
   await expect(track).toHaveAccessibleName('Step 4 of 4: Play');
   await expect(page.getByRole('heading', { name: 'Robot Majority', level: 1 })).toBeVisible();
-  await expect(page.getByText(/the site admin plays it and decides whether everyone gets it/)).toBeVisible();
-  await expect(page.getByRole('button', { name: /Publish/ })).toHaveCount(0);
+  await expect(page.getByText(/publish it: every host can start it then/)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Publish for everyone' })).toBeVisible();
   // The code is there, folded away.
   await page.getByText('For the curious').click();
   await page.getByText(/^The code \(\d+ lines\)$/).click();
