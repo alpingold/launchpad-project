@@ -1856,16 +1856,30 @@ admin (§49). What follows is what was built and removed.
   playtested, or the playtest stops. Stored in generated_games (migration 11).
 - The AI games list shows who made each game; "Playtest (only you)" is now "(only its maker)".
 
-## 45. Later: Remix (planned, not built)
+## 45. Remix (built 2026-10-20)
 
-- **What:** a "Remix" button on a game's page makes your own copy of it (a fork) that you change
-  with the AI, the way you change your own games now (a change request, a plan, a build).
-- **On by default:** every game can be remixed unless its creator turns remixing off, game by
-  game (a switch on their game's page).
-- **To decide when it's built:** whether official games can be remixed; whether a remix shows
-  where it came from ("remixed from X by Y"); what happens to remixes when the original's
-  creator turns remixing off later; and whether a remix's name and description get the word
-  filter like any published game (§49).
+- **What:** "Remix" on a public game's page makes your own copy of it: a new game whose version 1
+  is the original's code (its published version), ready to play at once on /create/<id>. You
+  change it with the AI the way you change your own games (a change request, a plan, a build).
+  Making the copy runs no AI, so it needs no GenAI Studio key; changing it does.
+- **What's copied:** the code; the game's design (version 1's for an AI-made game; the design in
+  `generator/spec/designs/` for an official one), so change plans know what the game is; the
+  check report with its screenshots (an official game: the static check and its catalogue
+  pictures). Not copied: the original's page edits, votes, reports and code review.
+- **Decided:**
+  - **Official games can be remixed** too (they're all under the 100 KB a game can be changed at).
+  - **A remix credits the original:** "remixed from X by Y" on its page, linked while the original
+    is public; once it isn't, only the name it had then (`remix_of_name`).
+  - **On by default; its creator can turn it off** ("Let others remix this game" when editing the
+    page). Turning it off stops new remixes only: remixes already made stay, published ones too.
+  - Not your own game (change it instead), and only public games (official or published). A remix
+    of a remix works the same way. A remix publishes like any game, with the word filter (§49).
+- **Where:** `server/src/games/remix.js` (POST /api/games/:id/remix), migration 14
+  (`generated_games.remix_of*`, `game_pages.allow_remix`), the game page's Remix button and credit
+  line, and /create/<id>'s "Your remix of X".
+- **Open:** a remix published unchanged has the original's name, so the games list can show two
+  games called the same. The AI's changes to the bigger official games (up to 62 KB) haven't been
+  tried on the real model yet.
 
 ## 46. The playtest catches player names put in as HTML (2026-10-19)
 
