@@ -481,12 +481,13 @@ test('remix build job: the whole file from the start (no edits to miss), from bo
   assert.match(user, /<design>\n# New design/);
   assert.match(user, /```html\n<script type="application\/json" id="game-info">/);
   assert.match(user, /The complete new game file in ONE/);
+  assert.match(user, /Before writing, plan briefly/, 'the brief-thinking sentence, as a new game\'s build');
 
-  // A game too big to write whole (both copies must fit the context) is changed with edits.
+  // Whatever its size: a game over the change loop's 60 KB whole-file limit is written whole too.
   const big = `${GAME}\n<!-- ${'x'.repeat(61 * 1024)} -->\n`;
   const bigModel = fakeModel([fenced('html', GAME)]);
   await runJob({ ...job, remix: { source: big, design: DESIGN } }, { chatFn: bigModel.chatFn, check: passing });
-  assert.match(bigModel.calls[0][1].content, /Reply with EDITS/);
+  assert.match(bigModel.calls[0][1].content, /The complete new game file in ONE/);
 });
 
 test('bad jobs are refused before any model call', async () => {

@@ -290,11 +290,11 @@ async function build(job, model, { chatFn = chat, check = checkGame, onStep = ()
   const maxAttempts = job.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
   const { change } = job;
   // A remix (plan §45b) writes the whole file from the start, like a first build, from the
-  // original's code; only a game too big to write whole uses edits. A fix inside the review
-  // round is a change (job.change), so it takes the change path.
+  // original's code, whatever its size (no MAX_WHOLE_FILE_LENGTH: tried on Stowaways, 62 KB).
+  // A fix inside the review round is a change (job.change), so it takes the change path.
   const remix = change ? null : (job.remix ?? null);
   const remixJob = remix && { idea: job.idea, oldDesign: remix.design ?? null, design: job.design, source: remix.source };
-  let edits = remix ? remix.source.length > MAX_WHOLE_FILE_LENGTH : job.edits !== false;
+  let edits = remix ? false : job.edits !== false;
   const plan = change?.plan ?? null;
   // The conversation is the prompt plus, after a failed attempt, ONLY that attempt and its
   // problems: earlier attempts are dropped. Each one can be a whole game (~10K tokens), and
@@ -302,7 +302,7 @@ async function build(job, model, { chatFn = chat, check = checkGame, onStep = ()
   const prompt = change
     ? changeBuildMessages({ idea: job.idea, ...change }, plan, { edits })
     : remix
-      ? remixBuildMessages(remixJob, { edits })
+      ? remixBuildMessages(remixJob, { edits, briefThinking: job.briefThinking ?? true })
       : buildMessages(job.idea, job.design, { briefThinking: job.briefThinking ?? true });
   // A fix shows the model its last file as its own reply. For a change, that file replaces
   // the old one in the prompt (withCode: false), so the game is in the conversation once.

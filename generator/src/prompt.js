@@ -335,12 +335,13 @@ export function changeBuildMessages(change, plan, { edits = true, withCode = tru
  * Like a first build it writes the whole file (no edits that may not fit), but from the
  * original's code, so what the two designs share stays as it was.
  * @param {{ idea: string, oldDesign?: string | null, design: string, source: string }} remix
- * @param {{ edits?: boolean, withCode?: boolean }} [opts]
- *   edits: reply with edits (only for a game too big to write whole, MAX_WHOLE_FILE_LENGTH)
+ * @param {{ edits?: boolean, withCode?: boolean, briefThinking?: boolean }} [opts]
+ *   edits: reply with edits (after whole files that missed, or edits that didn't fit)
  *   withCode false: leave the code out (a fix: it follows as the model's own last reply)
+ *   briefThinking: add BRIEF_THINKING before the answer, as a new game's build does (plan §40)
  * @returns {import('./llm.js').Message[]}
  */
-export function remixBuildMessages(remix, { edits = false, withCode = true } = {}) {
+export function remixBuildMessages(remix, { edits = false, withCode = true, briefThinking = false } = {}) {
   const parts = [
     `This game is being remixed: its code is to become the game in a new design. The game was first made from this idea:\n\n${data('game-idea', remix.idea)}`,
     remix.oldDesign ? `Its original design:\n\n<original-design>\n${String(remix.oldDesign).trim()}\n</original-design>` : null,
@@ -348,6 +349,7 @@ export function remixBuildMessages(remix, { edits = false, withCode = true } = {
     withCode ? `The original game's code:\n\n\`\`\`html\n${String(remix.source).slice(0, MAX_SOURCE_LENGTH)}\n\`\`\`` : null,
     `Make the code play exactly as the new design says. Start from the original code: keep everything the two designs share as it is (its look, art, animations, sounds, reload handling), and change, add or remove only what the new design changes. Keep the game info's "name" as it is.${BUILD_SIZE}`,
   ];
+  if (briefThinking) parts.push(BRIEF_THINKING);
   const changes = "1. A line `CHANGES:`, then one short `- ` line per change you made, in plain words for the remix's owner (at most 6 lines).";
   parts.push(edits ? `Reply in this order:\n${changes}\n2. Your edits to the code.\n\n${EDIT_FORMAT}` : `Reply in this order:\n${changes}\n2. The complete new game file in ONE \`\`\`html code block.`);
   return [
