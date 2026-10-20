@@ -1894,7 +1894,7 @@ admin (§49). What follows is what was built and removed.
   review, checked against the original's design, flagged things the change rightly removed (the
   head-to-head pairs) as missing. Whole-file rewrites also drop the code's comments.
 
-### 45b. Remix, design first (planned 2026-10-20, not built)
+### 45b. Remix, design first (2026-10-20: generator built; experiment says build the rest)
 
 **Why:** a remix is treated as a change: a short plan of the difference, then edits. That's right
 for a tweak, but a remix with a big change is a different game, and nothing ever describes it as
@@ -1958,6 +1958,10 @@ play, through both loops, scored the same way:
   (bigger edits miss more), try (b)'s design with the change loop's plan-sized build before giving
   up on it.
 - Written up in `docs/experiments/remix-design.md`, linked from here.
+- **Result** ([remix-design.md](experiments/remix-design.md)): both loops passed on all 7; design
+  first needed fewer attempts on the biggest reworks (Punchline 5 → 2, Claim Jumpers 3 → 1) and
+  scored higher on all 3 games both could be scored on. The cost: whole-file rewrites drop the
+  code's comments. **Build the rest** (server, pages), with the build asked to keep comments.
 
 **Open:**
 - whether "Make it your own" should be offered on the Remix button itself (the idea before the

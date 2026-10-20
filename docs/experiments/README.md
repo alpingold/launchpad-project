@@ -16,6 +16,7 @@ here. Section numbers (§) are the plan's. Oldest first:
 | [build-thinking.md](build-thinking.md) | How much should a build think, and how? | §38, §40 |
 | [brief-medium.md](brief-medium.md) | The short-plan sentence, part by part | §43 |
 | [code-review.md](code-review.md) | Does the AI reviewer find real bugs, and fix them? | §47 |
+| [remix-design.md](remix-design.md) | A remix's big change: change loop, or its own design first? | §45b |
 
 The games and logs themselves are in `generator/out/<name>/` on the machine that ran them (not
 in git). Tools: `npm run compare-builds`, `review-builds`, `review-fix` (server/scripts).
