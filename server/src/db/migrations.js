@@ -293,6 +293,22 @@ export const MIGRATIONS = [
       ALTER TABLE generated_games DROP COLUMN reviewed_at;
     `,
   },
+  {
+    version: 14,
+    description: 'remixes: a game copied from another to change (plan §45)',
+    sql: `
+      -- remix_of: the game it was copied from (an official game's id or "g-..."; no foreign key:
+      -- the original may be deleted later, and its remixes stay). remix_of_version: which of
+      -- its versions (NULL for an official game). remix_of_name: its name then, for the credit
+      -- line once the original isn't public any more.
+      ALTER TABLE generated_games ADD COLUMN remix_of TEXT;
+      ALTER TABLE generated_games ADD COLUMN remix_of_version INTEGER;
+      ALTER TABLE generated_games ADD COLUMN remix_of_name TEXT;
+      -- allow_remix: its creator lets others remix it (the default). Turning it off stops new
+      -- remixes only.
+      ALTER TABLE game_pages ADD COLUMN allow_remix INTEGER NOT NULL DEFAULT 1 CHECK (allow_remix IN (0, 1));
+    `,
+  },
 ];
 
 /** The version a fully up-to-date database has. */

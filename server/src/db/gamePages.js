@@ -6,7 +6,7 @@
  * What the creator changed; null fields mean "what the game file says".
  * @typedef {{ name: string | null, description: string | null, about: string | null,
  *   tags: string[] | null, minutes: [number, number] | null, mainShot: 'host' | 'phone' | null,
- *   updatedAt: number }} GamePage
+ *   allowRemix: boolean, updatedAt: number }} GamePage  allowRemix: others may remix it (plan §45)
  */
 
 /** @returns {GamePage | null} */
@@ -28,6 +28,7 @@ function pageFromRow(row) {
     tags: row.tags_json ? JSON.parse(row.tags_json) : null,
     minutes: row.minutes_json ? JSON.parse(row.minutes_json) : null,
     mainShot: row.main_shot,
+    allowRemix: row.allow_remix === 1,
     updatedAt: row.updated_at,
   };
 }
@@ -37,11 +38,11 @@ function pageFromRow(row) {
  */
 export function saveGamePage(db, gameId, page, userId, now = Date.now()) {
   db.prepare(
-    `INSERT INTO game_pages (game_id, name, description, about, tags_json, minutes_json, main_shot, updated_by, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO game_pages (game_id, name, description, about, tags_json, minutes_json, main_shot, allow_remix, updated_by, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (game_id) DO UPDATE SET name = excluded.name, description = excluded.description, about = excluded.about,
        tags_json = excluded.tags_json, minutes_json = excluded.minutes_json, main_shot = excluded.main_shot,
-       updated_by = excluded.updated_by, updated_at = excluded.updated_at`,
+       allow_remix = excluded.allow_remix, updated_by = excluded.updated_by, updated_at = excluded.updated_at`,
   ).run(
     gameId,
     page.name,
@@ -50,6 +51,7 @@ export function saveGamePage(db, gameId, page, userId, now = Date.now()) {
     page.tags ? JSON.stringify(page.tags) : null,
     page.minutes ? JSON.stringify(page.minutes) : null,
     page.mainShot,
+    page.allowRemix === false ? 0 : 1,
     userId,
     now,
   );

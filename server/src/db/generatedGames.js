@@ -62,6 +62,7 @@ export const BUSY_STATUSES = Object.freeze(['designing', 'generating']);
  * @property {string} prompt                 the idea it was first made from
  * @property {number | null} publishedVersion
  * @property {number | null} playtestVersion
+ * @property {{ id: string, version: number | null, name: string } | null} remixOf  the game it was copied from (plan §45)
  * @property {GameVersion[]} versions        oldest first
  * @property {number} createdAt
  * @property {number} updatedAt
@@ -112,6 +113,7 @@ function gameFromRow(db, row) {
     prompt: row.prompt,
     publishedVersion: row.published_version,
     playtestVersion: row.playtest_version,
+    remixOf: row.remix_of === null ? null : { id: row.remix_of, version: row.remix_of_version, name: row.remix_of_name },
     versions: db.prepare('SELECT * FROM game_versions WHERE game_id = ? ORDER BY version').all(row.id).map(versionFromRow),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -139,6 +141,31 @@ export function createGeneratedGame(db, { ownerUserId, prompt, model = null, sta
       `INSERT INTO game_versions (game_id, version, request, model, status, created_at, updated_at)
        VALUES (?, 1, ?, ?, ?, ?, ?)`,
     ).run(id, prompt, model, startStatus(status), now, now);
+  })();
+  return getGeneratedGame(db, id);
+}
+
+/**
+ * A remix (plan §45): a new game whose version 1 is a copy of another game's code, ready to
+ * play and to change. Nothing is generated: the code already passed the checks as the
+ * original, and the fingerprint is taken again for the copy.
+ * @param {{ ownerUserId: number, prompt: string, remixOf: { id: string, version: number | null, name: string },
+ *   design: string | null, source: string, report: unknown, name: string, description: string,
+ *   model?: string | null, now?: number }} copy
+ * @returns {GeneratedGame}
+ */
+export function createRemix(db, copy) {
+  const { ownerUserId, prompt, remixOf, design, source, report, name, description, model = null, now = Date.now() } = copy;
+  const id = newGeneratedGameId();
+  db.transaction(() => {
+    db.prepare(
+      `INSERT INTO generated_games (id, owner_user_id, prompt, remix_of, remix_of_version, remix_of_name, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(id, ownerUserId, prompt, remixOf.id, remixOf.version, remixOf.name, now, now);
+    db.prepare(
+      `INSERT INTO game_versions (game_id, version, request, model, status, design, name, description, source, source_sha256, report_json, created_at, updated_at)
+       VALUES (?, 1, ?, ?, 'ready', ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(id, `Remix of ${remixOf.name}`, model, design, name, description, source, sha256(source), JSON.stringify(report ?? null), now, now);
   })();
   return getGeneratedGame(db, id);
 }
@@ -420,6 +447,12 @@ export function gameStatus(game) {
   if (game.publishedVersion !== null) return 'published';
   if (game.playtestVersion !== null) return 'playtest';
   return game.versions.at(-1)?.status === 'failed' ? 'failed' : 'review';
+}
+
+/** Every remix's original (plan §45), by the remix's id. @returns {Map<string, { id: string, name: string }>} */
+export function remixOrigins(db) {
+  const rows = db.prepare('SELECT id, remix_of, remix_of_name FROM generated_games WHERE remix_of IS NOT NULL').all();
+  return new Map(rows.map((r) => [r.id, { id: r.remix_of, name: r.remix_of_name }]));
 }
 
 /** The version that names the game: the published one, else the playtest one, else the newest ready one. */
