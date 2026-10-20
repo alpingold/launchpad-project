@@ -83,6 +83,7 @@ export function createAdminRouter({ db, generation, mine = false }) {
       error: latest.status === 'failed' ? latest.error : null,
       ownerUserId: game.ownerUserId,
       ownerName: names.get(game.ownerUserId) ?? null,
+      remixOf: game.remixOf, // { id, version, name } of the game it was copied from (plan §45), or null
       publishedVersion: game.publishedVersion,
       playtestVersion: game.playtestVersion,
       latestVersion: latest.version,

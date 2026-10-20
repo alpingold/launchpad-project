@@ -10,10 +10,14 @@ import { frameGameOrThrow } from './frameGame.js';
  */
 export const OFFICIAL_GAMES = ['bumper-blobs', 'stowaways', 'punchline', 'doodle-drift', 'ballpark', 'claim-jumpers', 'comet-crew'];
 
+/** An official game's file, as text (e.g. to remix it, plan §45). */
+export function officialGameSource(id) {
+  return readFileSync(new URL(`./${id}/game.html`, import.meta.url), 'utf8');
+}
+
 /** Reads an official game's file. Throws if it's missing or its info is invalid. */
 export function readOfficialGame(id) {
-  const source = readFileSync(new URL(`./${id}/game.html`, import.meta.url), 'utf8');
-  return frameGameOrThrow(source, id);
+  return frameGameOrThrow(officialGameSource(id), id);
 }
 
 /** An official game's catalogue pictures (those it has). @returns {{ host?: Buffer, phone?: Buffer }} */

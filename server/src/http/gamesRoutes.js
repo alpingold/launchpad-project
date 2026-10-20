@@ -3,6 +3,7 @@ import { currentUser } from '../auth/currentUser.js';
 import { requireJsonPosts } from './requireJson.js';
 import { catalogList, catalogGame, editGamePage, voteOnGame, CatalogError } from '../games/catalog.js';
 import { getProfile } from '../db/users.js';
+import { remixGame } from '../games/remix.js';
 
 /**
  * The game catalogue and profiles (plan §14, §16), mounted under /api. Anyone can look; a
@@ -12,8 +13,10 @@ import { getProfile } from '../db/users.js';
  *   GET /api/games/:id                     → { game }   with its "About" text (and, for its editors, the file's own values)
  *   GET /api/games/:id/thumb               → JPEG, its main screenshot
  *   GET /api/games/:id/shot/host|phone     → JPEG
- *   PUT /api/games/:id/page   { name, description, about, tags, minutes, mainShot } → { game }   creator or admin
+ *   PUT /api/games/:id/page   { name, description, about, tags, minutes, mainShot, allowRemix } → { game }   creator or admin
  *   PUT /api/games/:id/vote   { value: 1 | -1 | 0 }                                  → { game }   logged in, not your own
+ *   POST /api/games/:id/remix                                                       → 201 { id }   your own copy to change
+ *                                                     (plan §45): logged in, a public game, not your own, remixing allowed
  *   GET /api/users/:username               → { profile: { username, bio, joinedAt }, games: [CatalogGame] }
  *
  * Errors: { error: 'CODE', message }.
@@ -83,6 +86,11 @@ export function createGamesRouter({ db, games }) {
   router.put(
     '/games/:id/vote',
     handle((req, res) => res.json({ game: voteOnGame(db, games, viewerOf(req), req.params.id, req.body?.value) })),
+  );
+
+  router.post(
+    '/games/:id/remix',
+    handle((req, res) => res.status(201).json({ id: remixGame(db, games, viewerOf(req), req.params.id) })),
   );
 
   router.get(

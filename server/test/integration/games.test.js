@@ -56,6 +56,9 @@ test('GET /api/games lists the games for the host picker', async () => {
         myVote: 0,
         canEdit: false,
         canVote: false,
+        allowRemix: true,
+        canRemix: false, // logged out
+        remixOf: null,
       },
     ],
   });

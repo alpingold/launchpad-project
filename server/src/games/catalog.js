@@ -1,6 +1,7 @@
 import { allGamePages, getGamePage, saveGamePage, voteCounts, votesBy, setVote } from '../db/gamePages.js';
 import { blockedFields, blockedMessage } from './wordFilter.js';
 import { usernamesById } from '../db/users.js';
+import { remixOrigins } from '../db/generatedGames.js';
 import { tagProblems, minutesProblems } from './frameGame.js';
 import { GAME_TAGS, MAX_GAME_TAGS } from './tags.js';
 
@@ -46,6 +47,10 @@ export class CatalogError extends Error {
  * @property {1 | -1 | 0} myVote
  * @property {boolean} canEdit         this viewer may change its page: its creator, or an admin
  * @property {boolean} canVote         logged in, and not its creator
+ * @property {boolean} allowRemix      its creator lets others remix it (plan §45)
+ * @property {boolean} canRemix        this viewer may remix it: logged in, not its creator, a public game, allowed
+ * @property {{ id: string | null, name: string, creator: { username: string } | null } | null} remixOf
+ *   the game it was remixed from; id null once that one isn't public any more (then only its name then)
  */
 
 /**
@@ -60,10 +65,13 @@ export function catalogList(db, registry, viewer) {
   const votes = voteCounts(db);
   const mine = viewer.userId === null ? new Map() : votesBy(db, viewer.userId);
   const names = usernamesById(db);
-  return registry.list({ userId: viewer.userId }).map((g) => {
+  const origins = remixOrigins(db);
+  const games = registry.list({ userId: viewer.userId }).map((g) => {
     const page = pages.get(g.baseId) ?? null;
     const isCreator = g.ownerUserId !== null && g.ownerUserId === viewer.userId;
     const main = page?.mainShot && g.shots.includes(page.mainShot) ? page.mainShot : null;
+    const allowRemix = page?.allowRemix ?? true;
+    const isPublic = g.source === 'official' || g.status === 'published';
     return {
       id: g.id,
       pageId: g.baseId,
@@ -82,8 +90,20 @@ export function catalogList(db, registry, viewer) {
       myVote: mine.get(g.baseId) ?? 0,
       canEdit: isCreator || viewer.isAdmin === true,
       canVote: viewer.userId !== null && !isCreator,
+      allowRemix,
+      canRemix: viewer.userId !== null && !isCreator && isPublic && allowRemix,
+      remixOf: origins.get(g.baseId) ?? null,
     };
   });
+  // A remix's credit line (plan §45): the original's name and creator now, linked, while it's
+  // public; else the name it had when it was remixed.
+  for (const game of games) {
+    if (game.remixOf === null) continue;
+    const { id, name } = game.remixOf;
+    const original = games.find((o) => o.id === id && (o.source === 'official' || o.status === 'published'));
+    game.remixOf = original ? { id: original.id, name: original.name, creator: original.creator } : { id: null, name, creator: null };
+  }
+  return games;
 }
 
 /**
@@ -109,7 +129,7 @@ export function catalogGame(db, registry, viewer, id) {
 /**
  * Changes a game's page: its creator or an admin. Every field is sent each time; an empty
  * name, description or tag list (or null) means "what the game file says".
- * @param {unknown} input  untrusted: { name, description, about, tags, minutes, mainShot }
+ * @param {unknown} input  untrusted: { name, description, about, tags, minutes, mainShot, allowRemix }
  */
 export function editGamePage(db, registry, viewer, id, input) {
   const game = catalogGame(db, registry, viewer, id);
@@ -141,6 +161,8 @@ function checkPage(input, shots) {
     tags: null,
     minutes: null,
     mainShot: null,
+    // Others may remix it (plan §45) unless this says false.
+    allowRemix: input.allowRemix !== false,
   };
   if (Array.isArray(input.tags) && input.tags.length > 0) {
     problems.push(...tagProblems(input.tags));
