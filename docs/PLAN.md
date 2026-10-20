@@ -1842,7 +1842,10 @@ fix requests leave the sentence out; every other part stays. Also found: the rul
 caused `players is not defined` (fixed). The tests and their numbers:
 [experiments/brief-medium.md](experiments/brief-medium.md).
 
-## 44. Games to approve (2026-10-18)
+## 44. Games to approve (2026-10-18; replaced by §49)
+
+**Replaced (2026-10-20):** creators now publish their own games, with a word filter instead of an
+admin (§49). What follows is what was built and removed.
 
 - A creator's page has **Submit for publishing** once a version is ready: it becomes the playtest
   version and waits for an admin ("Waiting for approval", with "Take back the request").
@@ -1861,7 +1864,8 @@ caused `players is not defined` (fixed). The tests and their numbers:
   game (a switch on their game's page).
 - **To decide when it's built:** whether official games can be remixed; whether a remix shows
   where it came from ("remixed from X by Y"); what happens to remixes when the original's
-  creator turns remixing off later; and how a remix goes through approval (§44).
+  creator turns remixing off later; and whether a remix's name and description get the word
+  filter like any published game (§49).
 
 ## 46. The playtest catches player names put in as HTML (2026-10-19)
 
@@ -1927,6 +1931,28 @@ build on the site now ends with one review round.
 - **So the rulebook says it** (GAME_SPEC.md, "Reloads"): every phase resumes after a reload, the
   intro, countdowns and the final screen included (which still calls `party.end`); the phase is
   saved by name, and a callback is never saved (a function is dropped from the JSON).
+
+## 49. Creators publish their own games; a word filter instead of approval (2026-10-20)
+
+- **Why:** an admin approving every game (§44) only really checked that its name and
+  description, which everyone sees on the cards, had no swear words. A filter does that at once,
+  and nobody waits for an admin.
+- **Publishing:** a game's creator publishes the version they're playtesting ("Publish for
+  everyone" on /create/<id>), and can unpublish it. Admins still can too, for any game. The
+  "To approve" tab, "Submit for publishing", sending back with a note and the admin hosting a
+  submitted game are gone; migration 13 drops their columns.
+- **The filter** (`server/src/games/wordFilter.js`): a list of swear words and slurs, matched as
+  whole words in any capitals, with common endings (-s, -ed, -ing…), digits and symbols for
+  letters ("sh1t", "a$$"), and stretched letters ("fuuuck"). A few roots that are never inside a
+  harmless word count inside longer ones ("clusterfuck"). Words that are also ordinary English
+  or names are left out (dick, cock, tit, cum, crap), and so is anything only containing a
+  blocked word ("Scunthorpe", "class"). Simple on purpose: it catches the obvious, not every
+  spelling.
+- **Where:** publishing checks the name and description everyone would see (the game page's,
+  else the game file's); saving a game's page checks the name and description being saved. A
+  refusal is `BLOCKED_WORDS` with each field, its text and where each word is, and the page
+  shows the text with those words highlighted, with a link to the game's page to change them.
+  The "About" text isn't checked (only on the game's own page, not the cards).
 
 ## Verification (how to confirm the plan worked once built)
 
