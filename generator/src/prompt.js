@@ -147,6 +147,31 @@ export function designMessages(idea, redraft) {
   ];
 }
 
+/**
+ * A remix's design (plan §45b): the whole design of someone's own version of an existing game,
+ * in the new-game format, with the changes they want worked through every part they touch.
+ * @param {{ idea: string, design?: string | null, request: string }} remix  the original's idea and design
+ * @param {{ draft: string, feedback: string }} [redraft]
+ * @returns {import('./llm.js').Message[]}
+ */
+export function remixDesignMessages(remix, redraft) {
+  const parts = [
+    `Someone is making their own version of an existing game (a remix). The game was first made from this idea:\n\n${data('game-idea', remix.idea)}`,
+    remix.design ? `Its design:\n\n<design>\n${String(remix.design).trim()}\n</design>` : null,
+    `What they want to be different:\n\n${data('remix-request', remix.request, MAX_REQUEST_LENGTH)}`,
+    `Write the complete design of the remixed game: the original's design with these changes worked through every part they touch (the rules, what the big screen and the phones show, scoring, timers, the ending, edge cases). Keep everything the request doesn't change as the original has it, its look and feel too. If part of the request isn't possible with how games work, design the closest thing that is.`,
+  ];
+  if (redraft) {
+    parts.push(`Your last draft:\n\n<last-draft>\n${String(redraft.draft).trim()}\n</last-draft>`);
+    parts.push(`Write a new complete draft that makes these changes and keeps the rest:\n\n${data('feedback', redraft.feedback)}`);
+  }
+  parts.push(DESIGN_ANSWER);
+  return [
+    { role: 'system', content: designSystemPrompt() },
+    { role: 'user', content: parts.filter(Boolean).join('\n\n') },
+  ];
+}
+
 const PLAN_FORMAT = `## Writing a change plan
 
 A change plan is a short plan for changing an existing game, written before any code, so a
@@ -302,6 +327,32 @@ export function changeBuildMessages(change, plan, { edits = true, withCode = tru
   return [
     { role: 'system', content: buildSystemPrompt() },
     { role: 'user', content: `${currentGame(change, { withCode })}\n\n${task}\n\n${answer}` },
+  ];
+}
+
+/**
+ * A remix's build (plan §45b): the original game's code, rewritten for the remix's own design.
+ * Like a first build it writes the whole file (no edits that may not fit), but from the
+ * original's code, so what the two designs share stays as it was.
+ * @param {{ idea: string, oldDesign?: string | null, design: string, source: string }} remix
+ * @param {{ edits?: boolean, withCode?: boolean }} [opts]
+ *   edits: reply with edits (only for a game too big to write whole, MAX_WHOLE_FILE_LENGTH)
+ *   withCode false: leave the code out (a fix: it follows as the model's own last reply)
+ * @returns {import('./llm.js').Message[]}
+ */
+export function remixBuildMessages(remix, { edits = false, withCode = true } = {}) {
+  const parts = [
+    `This game is being remixed: its code is to become the game in a new design. The game was first made from this idea:\n\n${data('game-idea', remix.idea)}`,
+    remix.oldDesign ? `Its original design:\n\n<original-design>\n${String(remix.oldDesign).trim()}\n</original-design>` : null,
+    `The new design, approved by the remix's owner:\n\n<design>\n${String(remix.design).trim()}\n</design>`,
+    withCode ? `The original game's code:\n\n\`\`\`html\n${String(remix.source).slice(0, MAX_SOURCE_LENGTH)}\n\`\`\`` : null,
+    `Make the code play exactly as the new design says. Start from the original code: keep everything the two designs share as it is (its look, art, animations, sounds, reload handling), and change, add or remove only what the new design changes. Keep the game info's "name" as it is.${BUILD_SIZE}`,
+  ];
+  const changes = "1. A line `CHANGES:`, then one short `- ` line per change you made, in plain words for the remix's owner (at most 6 lines).";
+  parts.push(edits ? `Reply in this order:\n${changes}\n2. Your edits to the code.\n\n${EDIT_FORMAT}` : `Reply in this order:\n${changes}\n2. The complete new game file in ONE \`\`\`html code block.`);
+  return [
+    { role: 'system', content: buildSystemPrompt() },
+    { role: 'user', content: parts.filter(Boolean).join('\n\n') },
   ];
 }
 

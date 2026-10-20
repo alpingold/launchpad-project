@@ -455,6 +455,40 @@ test('build job for a change: the changelog is kept', async () => {
   assert.equal(result.changelog, '- Faster running');
 });
 
+test('remix design job (plan §45b): a whole design in the new-game format, from the original design and what to change', async () => {
+  const design = DESIGN.replace('# Bumper Blobs', '# Bumper Blobs');
+  const model = fakeModel([design]);
+  const job = { step: 'design', idea: 'Bump each other off the ice', remix: { request: 'Add power-ups that make bumps twice as strong', source: GAME, design: DESIGN } };
+  const result = await runJob(job, { chatFn: model.chatFn });
+  assert.equal(result.ok, true);
+  const [system, user] = model.calls[0];
+  assert.match(system.content, /Writing a game design/, 'the new-game design format');
+  assert.match(user.content, /<design>\n# Bumper Blobs/);
+  assert.match(user.content, /<remix-request>\nAdd power-ups/);
+  assert.match(user.content, /Write the complete design of the remixed game/);
+  assert.doesNotMatch(user.content, /```html/, "the design step doesn't get the code");
+});
+
+test('remix build job: the whole file from the start (no edits to miss), from both designs and the code; the changelog is kept', async () => {
+  const model = fakeModel([`CHANGES:\n- Power-ups\n\n${fenced('html', GAME)}`]);
+  const job = { step: 'build', idea: 'Bump each other off the ice', design: '# New design\n## Rules\nPower-ups.', remix: { source: GAME, design: DESIGN } };
+  const result = await runJob(job, { chatFn: model.chatFn, check: passing });
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.attempts.map((a) => a.mode), ['whole']);
+  assert.equal(result.changelog, '- Power-ups');
+  const user = model.calls[0][1].content;
+  assert.match(user, /<original-design>\n# Bumper Blobs/);
+  assert.match(user, /<design>\n# New design/);
+  assert.match(user, /```html\n<script type="application\/json" id="game-info">/);
+  assert.match(user, /The complete new game file in ONE/);
+
+  // A game too big to write whole (both copies must fit the context) is changed with edits.
+  const big = `${GAME}\n<!-- ${'x'.repeat(61 * 1024)} -->\n`;
+  const bigModel = fakeModel([fenced('html', GAME)]);
+  await runJob({ ...job, remix: { source: big, design: DESIGN } }, { chatFn: bigModel.chatFn, check: passing });
+  assert.match(bigModel.calls[0][1].content, /Reply with EDITS/);
+});
+
 test('bad jobs are refused before any model call', async () => {
   const model = fakeModel([]);
   const cases = [
@@ -473,6 +507,9 @@ test('bad jobs are refused before any model call', async () => {
     [{ step: 'design', idea: 'A long enough idea', keepThinking: 1 }, /keepThinking must be true or false/],
     [{ step: 'build', idea: 'A long enough idea', design: 'd', briefThinking: 'yes' }, /briefThinking must be true or false/],
     [{ step: 'build', idea: 'A long enough idea', design: 'd', reasoningEffort: 'high' }, /reasoningEffort must be one of low, medium, xhigh/],
+    [{ step: 'design', idea: 'A long enough idea', remix: { request: 'More', source: GAME } }, /what the remix changes must be/],
+    [{ step: 'design', idea: 'A long enough idea', remix: { request: 'Add power-ups', source: '' } }, /the original game file/],
+    [{ step: 'design', idea: 'A long enough idea', remix: { request: 'Add power-ups', source: GAME }, change: { request: 'Add power-ups', source: GAME } }, /a change or a remix, not both/],
   ];
   for (const [job, error] of cases) assert.match((await runJob(job, { chatFn: model.chatFn })).error, error);
   assert.equal(model.calls.length, 0);

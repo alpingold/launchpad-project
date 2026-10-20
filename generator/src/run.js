@@ -18,6 +18,11 @@
 //   With "review": true, a passing build gets one REVIEW ROUND (plan §47): the reviewer reads
 //   the code against the design, its crashes and dead ends are fixed as a small change, and
 //   what it found comes back as "review", for the game's creator.
+//   { "step": "design", "idea": "...", "remix": { "request", "source", "design"? } }
+//       → a remix's whole design (plan §45b): the original's design with the changes worked in.
+//   { "step": "build", "idea": "...", "design": "<the remix's approved design>", "remix": { "source", "design"? } }
+//       → the original's code rewritten for the remix's design: the whole file, like a first
+//         build (edits only for a game too big to write whole), reviewed against the new design.
 //   { "step": "recheck", "idea": "...", "change": { "request", "source", "design"?, "earlierRequests"? } }
 //       → another review round on a finished game ("Review again"): the fixed file, or the
 //         same one (report null) if there was nothing to fix.
@@ -42,8 +47,10 @@ import { applyReply, hasEdits, withoutEdits } from './edits.js';
 import {
   designMessages,
   planMessages,
+  remixDesignMessages,
   buildMessages,
   changeBuildMessages,
+  remixBuildMessages,
   fixMessage,
   editsFailedMessage,
   missingHeadingsMessage,
@@ -141,6 +148,14 @@ export async function runJob(job, deps = {}) {
       return fail(`the game is too big for the AI to change (${Math.round(change.source.length / 1024)} KB; at most ${limit / 1024} KB fits in the model's context)`);
     }
   }
+  const { remix } = job;
+  if (remix !== undefined) {
+    if (change !== undefined) return fail('a job is a change or a remix, not both');
+    if (typeof remix?.source !== 'string' || remix.source.length === 0) return fail('a remix needs the original game file');
+    if (remix.source.length > MAX_SOURCE_LENGTH) return fail(`the game is too big for the AI to remix (${Math.round(remix.source.length / 1024)} KB; at most ${MAX_SOURCE_LENGTH / 1024} KB)`);
+    if (remix.design !== undefined && remix.design !== null && typeof remix.design !== 'string') return fail("the remix's original design must be text");
+    if (job.step === 'design' && !isText(remix.request, MIN_IDEA_LENGTH, MAX_REQUEST_LENGTH)) return fail(`what the remix changes must be ${MIN_IDEA_LENGTH}–${MAX_REQUEST_LENGTH} characters`);
+  }
   if (redraft !== undefined && (typeof redraft?.draft !== 'string' || !isText(redraft.feedback, MIN_FEEDBACK_LENGTH))) {
     return fail('a new draft needs the last draft and what to change');
   }
@@ -214,7 +229,11 @@ async function design(job, model, { chatFn = chat, onStep = () => {}, onAttempt 
   const isPlan = job.change !== undefined;
   const what = isPlan ? 'plan' : 'design';
   const headings = isPlan ? PLAN_HEADINGS : DESIGN_HEADINGS;
-  const messages = isPlan ? planMessages({ idea: job.idea, ...job.change }, job.redraft) : designMessages(job.idea, job.redraft);
+  const messages = isPlan
+    ? planMessages({ idea: job.idea, ...job.change }, job.redraft)
+    : job.remix
+      ? remixDesignMessages({ idea: job.idea, design: job.remix.design, request: job.remix.request }, job.redraft)
+      : designMessages(job.idea, job.redraft);
   const result = { ok: false, model, design: null, attempts: watched(onAttempt) };
 
   for (let attempt = 1; attempt <= DESIGN_ATTEMPTS; attempt++) {
@@ -270,23 +289,37 @@ async function design(job, model, { chatFn = chat, onStep = () => {}, onAttempt 
 async function build(job, model, { chatFn = chat, check = checkGame, onStep = () => {}, browser = NO_GATE, onAttempt }) {
   const maxAttempts = job.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
   const { change } = job;
-  let edits = job.edits !== false;
+  // A remix (plan §45b) writes the whole file from the start, like a first build, from the
+  // original's code; only a game too big to write whole uses edits. A fix inside the review
+  // round is a change (job.change), so it takes the change path.
+  const remix = change ? null : (job.remix ?? null);
+  const remixJob = remix && { idea: job.idea, oldDesign: remix.design ?? null, design: job.design, source: remix.source };
+  let edits = remix ? remix.source.length > MAX_WHOLE_FILE_LENGTH : job.edits !== false;
   const plan = change?.plan ?? null;
   // The conversation is the prompt plus, after a failed attempt, ONLY that attempt and its
   // problems: earlier attempts are dropped. Each one can be a whole game (~10K tokens), and
   // the model's context is 65K (plan §13n): keeping them all would overflow by attempt 4.
-  const prompt = change ? changeBuildMessages({ idea: job.idea, ...change }, plan, { edits }) : buildMessages(job.idea, job.design, { briefThinking: job.briefThinking ?? true });
+  const prompt = change
+    ? changeBuildMessages({ idea: job.idea, ...change }, plan, { edits })
+    : remix
+      ? remixBuildMessages(remixJob, { edits })
+      : buildMessages(job.idea, job.design, { briefThinking: job.briefThinking ?? true });
   // A fix shows the model its last file as its own reply. For a change, that file replaces
   // the old one in the prompt (withCode: false), so the game is in the conversation once.
   // Fix requests leave the short-plan sentence out (plan §43 test 1: with it, fixes spiralled
   // into edits that didn't fit; without it, every broken first file was fixed in one round).
   const newGameFixPrompt = buildMessages(job.idea, job.design, { briefThinking: false });
-  const fixPrompt = (asEdits) => (change ? changeBuildMessages({ idea: job.idea, ...change }, plan, { edits: asEdits, withCode: false }) : newGameFixPrompt);
+  const fixPrompt = (asEdits) =>
+    change
+      ? changeBuildMessages({ idea: job.idea, ...change }, plan, { edits: asEdits, withCode: false })
+      : remix
+        ? remixBuildMessages(remixJob, { edits: asEdits, withCode: false })
+        : newGameFixPrompt;
   const fixMessages = (source, reportText, asEdits) => [...fixPrompt(asEdits), { role: 'assistant', content: `\`\`\`html\n${source}\`\`\`` }, { role: 'user', content: fixMessage(reportText, { edits: asEdits }) }];
 
   let messages = prompt;
   /** The file edits apply to: the old game, then the last file that was checked. */
-  let current = change ? change.source : null;
+  let current = change ? change.source : remix ? remix.source : null;
   /** What the checks found in `current` (null: nothing yet, e.g. a change's old game). */
   let currentProblems = null;
   let failedInARow = 0;
@@ -312,7 +345,7 @@ async function build(job, model, { chatFn = chat, check = checkGame, onStep = ()
       continue;
     }
     // The list of changes comes with the first answer that has one (fixes don't repeat it).
-    if (change) changelog ??= extractChangelog(withoutEdits(reply.content));
+    if (change || remix) changelog ??= extractChangelog(withoutEdits(reply.content));
 
     let source;
     let attemptMode = mode;
@@ -332,7 +365,8 @@ async function build(job, model, { chatFn = chat, check = checkGame, onStep = ()
         if (failedInARow >= 2 && current.length <= MAX_WHOLE_FILE_LENGTH) {
           edits = false;
           onStep('edits failed twice: asking for the whole file instead');
-          messages = currentProblems === null ? changeBuildMessages({ idea: job.idea, ...change }, plan, { edits: false }) : fixMessages(current, currentProblems, false);
+          const whole = remix ? remixBuildMessages(remixJob, { edits: false }) : changeBuildMessages({ idea: job.idea, ...change }, plan, { edits: false });
+          messages = currentProblems === null ? whole : fixMessages(current, currentProblems, false);
         } else {
           messages = [...messages, { role: 'assistant', content: reply.content }, { role: 'user', content: editsFailedMessage(problems) }];
         }
@@ -350,7 +384,7 @@ async function build(job, model, { chatFn = chat, check = checkGame, onStep = ()
       messages = [...messages, { role: 'assistant', content: reply.content }, { role: 'user', content: NO_CODE_MESSAGE }];
       continue;
     }
-    if (change && result.changelog === null) result.changelog = changelog;
+    if ((change || remix) && result.changelog === null) result.changelog = changelog;
 
     onStep(`attempt ${attempt}/${maxAttempts}: checking the game (static check, then ${PLAYTEST_SECONDS} s of play in a browser)`);
     // One browser at a time across jobs (plan §28): wait for the slot, and always give it back.
