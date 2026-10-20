@@ -140,7 +140,7 @@ test('bug reports on a game page: post, votes move the agreed-with ones up, −5
 
   // Logged out: read only.
   await page.goto('/games/stowaways');
-  await expect(page.getByRole('link', { name: 'Log in' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Log in', exact: true }).first()).toBeVisible();
   await expect(page.getByLabel('Report a problem')).toHaveCount(0);
   await expect(report(page, 'Useless report').locator('.report-score')).toHaveCount(0); // folded
   for (const c of [ana, ben, cal]) await c.context.close();
