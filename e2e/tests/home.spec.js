@@ -7,7 +7,9 @@ import { test } from './helpers.js';
 base('home page leads with making a game, then lists the games', async ({ page }) => {
   await page.goto('/');
   await expect(page).toHaveTitle("BoilerGames · Party games for one big screen and everyone's phones");
-  await expect(page.getByRole('heading', { name: 'Describe a party game. The AI builds it.', level: 1 })).toBeVisible();
+  // The site's name is the page's one h1 (search engines read it); the pitch comes next.
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('BoilerGames');
+  await expect(page.getByRole('heading', { name: 'Describe a party game. The AI builds it.', level: 2 })).toBeVisible();
   await expect(page.getByRole('list', { name: 'How a game gets made' }).getByRole('listitem')).toHaveCount(4);
   await expect(page.getByRole('heading', { name: 'How a game night works' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Made by players, with AI' })).toBeVisible();

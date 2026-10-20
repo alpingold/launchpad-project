@@ -123,9 +123,9 @@ function IdeaHero() {
 
   return (
     <section className="home-make" aria-labelledby="home-make-heading">
-      <h1 id="home-make-heading">Describe a party game. The AI builds it.</h1>
+      <h2 id="home-make-heading">Describe a party game. The AI builds it.</h2>
       <p className="home-make-lede">
-        Games for one big screen, played from everyone's phones. Write what happens and how you win; play it once it's
+        BoilerGames: games for one big screen, played from everyone's phones. Write what happens and how you win; play it once it's
         built.
       </p>
       <form className="home-idea" onSubmit={start}>

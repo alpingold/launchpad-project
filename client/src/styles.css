@@ -499,7 +499,7 @@ body.in-game-player .site-header {
   padding: 1rem 0 3rem;
 }
 
-.home-make h1 {
+.home-make h2 {
   font-size: clamp(2.4rem, 6.2vw, 4.4rem);
   font-weight: 800;
   letter-spacing: -0.04em;
@@ -1156,12 +1156,22 @@ body.in-game .demo-badge {
   box-sizing: border-box;
 }
 
+.wordmark-token::before {
+  content: 'B';
+}
+
 a.wordmark-mark:hover .wordmark-name {
   text-decoration: underline 3px var(--gold);
   text-underline-offset: 0.3em;
 }
 
-/* The home page: the name is the first thing at the top. */
+/* The home page: the name is the first thing at the top (and the page's h1). */
+.wordmark-home h1.wordmark-name {
+  margin: 0;
+  font: inherit;
+  letter-spacing: inherit;
+}
+
 .wordmark-home .wordmark-mark {
   font-size: clamp(1.5rem, 4vw, 2rem);
 }
