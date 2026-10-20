@@ -1934,8 +1934,8 @@ build on the site now ends with one review round.
 
 ## 49. Creators publish their own games; a word filter instead of approval (2026-10-20)
 
-- **Why:** an admin approving every game (§44) only really checked that its name and
-  description, which everyone sees on the cards, had no swear words. A filter does that at once,
+- **Why:** an admin approving every game (§44) only really checked that what everyone reads
+  about it (its name, description and About text) had no swear words. A filter does that at once,
   and nobody waits for an admin.
 - **Publishing:** a game's creator publishes the version they're playtesting ("Publish for
   everyone" on /create/<id>), and can unpublish it. Admins still can too, for any game. The
@@ -1949,10 +1949,10 @@ build on the site now ends with one review round.
   blocked word ("Scunthorpe", "class"). Simple on purpose: it catches the obvious, not every
   spelling.
 - **Where:** publishing checks the name and description everyone would see (the game page's,
-  else the game file's); saving a game's page checks the name and description being saved. A
-  refusal is `BLOCKED_WORDS` with each field, its text and where each word is, and the page
-  shows the text with those words highlighted, with a link to the game's page to change them.
-  The "About" text isn't checked (only on the game's own page, not the cards).
+  else the game file's) and the page's "About" text; saving a game's page checks the name,
+  description and About text being saved. A refusal is `BLOCKED_WORDS` with each field, its
+  text and where each word is, and the page shows the text with those words highlighted, with
+  a link to the game's page to change them.
 
 ## Verification (how to confirm the plan worked once built)
 
