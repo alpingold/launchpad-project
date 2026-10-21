@@ -2067,6 +2067,22 @@ version worked.
   text and where each word is, and the page shows the text with those words highlighted, with
   a link to the game's page to change them.
 
+## 50. A score only when the idea asks for one (2026-10-21)
+
+- **Why:** the design format's "Ending and winner" heading made every game have a winner, so
+  games that don't need one got scoring invented: "Hidden Place" (a spy game whose idea has no
+  points) got +1/+2 points, 3 rounds to feed them, and a trophy screen. Games that do score got
+  tie-break chains ("most bonuses, then most correct votes, then alphabetical").
+- **Now:** the heading is "Ending". A score only if the idea mentions points, scoring, a winner
+  or winning; otherwise no points and no winner, ending on its big moment, with
+  `party.end({ rankings: [] })` (the platform already showed no winner for that). With a score:
+  one simple way, and ties share the win. The design request says it too, next to the idea.
+  The rulebook says an empty ranking is allowed; "Find the spy" lost the points I'd added.
+- **Tried:** with the rule only in DESIGN.md, 1 of 2 spy designs still invented points; with it
+  next to the idea too, 4 of 4 had none (ending on the reveal) and both bluff designs kept their
+  score, ties shared. One earlier draft copied the format's own instructions into its sections
+  (it still counted as complete): not seen again, but worth watching.
+
 ## Verification (how to confirm the plan worked once built)
 
 - `npm test` (root) → runs `node --test server/test`, all unit and integration tests green.
