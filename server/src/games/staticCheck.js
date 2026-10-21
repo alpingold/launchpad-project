@@ -121,22 +121,54 @@ function declares(code, name) {
   ).test(code);
 }
 
+/** How many syntax errors to find in one script (plan §52). */
+export const MAX_SYNTAX_ERRORS = 8;
+
 /**
- * Scripts that don't even parse, with the line of the mistake. (In the browser, a syntax
+ * Scripts that don't even parse, with the line of each mistake. (In the browser, a syntax
  * error only says "Unexpected token" with no line; the model couldn't tell where to look.)
  * The code is only compiled here, never run.
+ *
+ * A compiler stops at the first error, but a file often has several (the same slip repeated):
+ * fixing one a round, the fix rounds ran out first (plan §52). So after each error its line is
+ * blanked and the script compiled again, up to MAX_SYNTAX_ERRORS. A blanked line can cause an
+ * error of its own further on (a brace it opened), so the later ones say how they were found.
  */
 function syntaxErrors(scripts, lineStarts, lines) {
   const found = [];
   for (const { start, text } of scripts) {
-    try {
-      new vm.Script(text, { filename: 'game-script' });
-    } catch (err) {
-      if (!(err instanceof SyntaxError)) continue;
+    const scriptLines = text.split('\n');
+    const errors = [];
+    while (errors.length < MAX_SYNTAX_ERRORS) {
+      let err;
+      try {
+        new vm.Script(scriptLines.join('\n'), { filename: 'game-script' });
+        break;
+      } catch (e) {
+        if (!(e instanceof SyntaxError)) break;
+        err = e;
+      }
       const at = /^game-script:(\d+)/.exec(err.stack ?? '');
-      const line = lineAt(lineStarts, start) + (at ? Number(at[1]) - 1 : 0);
-      found.push({ rule: 'syntax', line, message: `This script doesn't parse: ${err.message}. Fix the syntax on this line (or just before it).`, code: lines[line - 1]?.trim().slice(0, 160) ?? '' });
+      const scriptLine = at ? Number(at[1]) : 1;
+      // No progress (the same line again, or one already blank): stop.
+      if (errors.some((e) => e.scriptLine === scriptLine) || !scriptLines[scriptLine - 1]?.trim()) {
+        if (errors.length === 0) errors.push({ scriptLine, message: err.message });
+        break;
+      }
+      // A bracket error right around a blanked line is most likely that blanking's doing (the
+      // line opened something): the rest would be noise, so stop.
+      if (errors.some((e) => scriptLine >= e.scriptLine - 2 && scriptLine <= e.scriptLine + 3) && /missing \) |Unexpected token '?[)}\]]'?|Unexpected end of input/.test(err.message)) break;
+      errors.push({ scriptLine, message: err.message });
+      scriptLines[scriptLine - 1] = '';
     }
+    errors.forEach((e, i) => {
+      const line = lineAt(lineStarts, start) + e.scriptLine - 1;
+      const message =
+        i === 0
+          ? `This script doesn't parse: ${e.message}. Fix the syntax on this line (or just before it).${errors.length > 1 ? ` It has ${errors.length === MAX_SYNTAX_ERRORS ? 'at least ' : ''}${errors.length} syntax errors (listed next): fix every one, and look for the same mistake elsewhere in the file.` : ''}`
+          : `Another syntax error (found by skipping the lines above): ${e.message}. Fix the syntax on this line (or just before it).`;
+      found.push({ rule: 'syntax', line, message, code: lines[line - 1]?.trim().slice(0, 160) ?? '' });
+    });
   }
   return found;
 }

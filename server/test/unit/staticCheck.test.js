@@ -150,3 +150,18 @@ test('a script that does not parse is reported with its line, without running it
   // A broken script never runs here: this would throw if it did.
   assert.deepEqual(rulesOf(staticCheck(game('throw new Error("ran!"); const x = ;')).errors), ['syntax']);
 });
+
+test('several syntax errors are all listed (plan §52): the same slip repeated; not the noise a skipped line leaves', () => {
+  // An unquoted CSS value, three times: the compiler stops at the first, so the fix rounds
+  // used to meet them one a round.
+  const slips = game(["const a = { fontSize: .9em };", 'const ok = 1;', "const b = { fontSize: .8em };", 'const ok2 = 2;', "const c = { width: 2rem };"].join('\n'));
+  const errors = staticCheck(slips).errors.filter((e) => e.rule === 'syntax');
+  assert.equal(errors.length, 3);
+  assert.deepEqual(errors.map((e) => e.code), ['const a = { fontSize: .9em };', 'const b = { fontSize: .8em };', 'const c = { width: 2rem };']);
+  assert.match(errors[0].message, /It has 3 syntax errors \(listed next\): fix every one, and look for the same mistake elsewhere/);
+  assert.match(errors[1].message, /^Another syntax error \(found by skipping the lines above\)/);
+
+  // One missing bracket: skipping its line breaks the brackets after it, which isn't listed.
+  const one = game(['party.ui.el("div", { class: "row", { gap: "8px" } },', '  party.ui.el("span", {}, "a"),', '  party.ui.el("span", {}, "b"),', ');'].join('\n'));
+  assert.equal(staticCheck(one).errors.filter((e) => e.rule === 'syntax').length, 1);
+});
