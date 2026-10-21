@@ -1,0 +1,15 @@
+<script type="application/json" id="game-info">{ "name": "Undefined Canvas", "description": "A test game.", "minPlayers": 1, "maxPlayers": 4 }</script>
+<canvas id="c" width="320" height="120"></canvas>
+<script>
+  // Draws a field that doesn't exist (a misspelled name) on a canvas: "Winner: undefined".
+  party.ready(({ role }) => {
+    const ctx = document.getElementById('c').getContext('2d');
+    const best = { nmae: 'Ana' };
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, 320, 120);
+    ctx.fillStyle = '#000';
+    ctx.font = '20px sans-serif';
+    ctx.fillText('Winner: ' + best.name, 10, 60);
+    if (role === 'host') party.setState('all', { text: 'Wait' });
+  });
+</script>

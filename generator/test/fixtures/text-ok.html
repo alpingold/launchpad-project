@@ -1,0 +1,16 @@
+<script type="application/json" id="game-info">{ "name": "Text OK", "description": "A test game.", "minPlayers": 1, "maxPlayers": 4 }</script>
+<div id="app"></div>
+<script>
+  // Normal text, numbers and an empty field: nothing broken on screen.
+  party.ready(({ role }) => {
+    const app = document.getElementById('app');
+    const scores = { a: 3, b: 0 };
+    if (role === 'host') {
+      app.textContent = `Scores: ${scores.a} and ${scores.b}. Nanette and Undine are winning.`;
+      app.append(' Round ', String(2));
+      party.setState('all', { text: 'Wait' });
+    } else {
+      party.on('state', (s) => (app.textContent = s.text ?? ''));
+    }
+  });
+</script>

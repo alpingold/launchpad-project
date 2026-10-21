@@ -1,0 +1,16 @@
+<script type="application/json" id="game-info">{ "name": "NaN Score", "description": "A test game.", "minPlayers": 1, "maxPlayers": 4 }</script>
+<div id="app"></div>
+<script>
+  // Adds a whole round object to the score (the bug a reviewer found in a bake-off): "Score: NaN".
+  const ROUNDS = [{ name: 'One', mult: 1 }];
+  party.ready(({ role }) => {
+    const app = document.getElementById('app');
+    if (role === 'host') {
+      const score = 5 * ROUNDS[0];
+      app.textContent = 'Score: ' + score;
+      party.setState('all', { text: 'Wait' });
+    } else {
+      party.on('state', (s) => (app.textContent = s.text));
+    }
+  });
+</script>

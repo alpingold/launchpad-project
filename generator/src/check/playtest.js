@@ -109,6 +109,50 @@ const INIT_SCRIPT = `(() => {
     return insert.call(this, where, html);
   };
 
+  // A broken value shown as text (plan §51): a score of "NaN", a name "undefined", an object as
+  // "[object Object]". It doesn't throw, so nothing else catches it. Watch what the game puts on
+  // the page or draws on a canvas, and report the first few, with the game's line.
+  const BROKEN = /\\bNaN\\b|\\bundefined\\b|\\[object Object\\]/;
+  let brokenReports = 0;
+  const textSeen = (how, stripTags = false) => (value) => {
+    if (brokenReports >= 5) return;
+    let text = typeof value === 'string' ? value : value == null ? '' : String(value);
+    if (stripTags) text = text.replace(/<[^>]*>/g, ' ');
+    const m = BROKEN.exec(text);
+    if (!m) return;
+    brokenReports += 1;
+    try {
+      window.__report('text', { how, found: m[0], text: text.slice(Math.max(0, m.index - 30), m.index + 30).replace(/\\s+/g, ' ').trim(), stack: String(new Error().stack) });
+    } catch {}
+  };
+  for (const [proto, prop, strip] of [[Node.prototype, 'textContent'], [HTMLElement.prototype, 'innerText'], [Element.prototype, 'innerHTML', true]]) {
+    const d = Object.getOwnPropertyDescriptor(proto, prop);
+    const seen = textSeen(prop, strip);
+    Object.defineProperty(proto, prop, { ...d, set(value) { seen(value); d.set.call(this, value); } });
+  }
+  const createText = Document.prototype.createTextNode;
+  const seenCreate = textSeen('createTextNode');
+  Document.prototype.createTextNode = function (data) {
+    seenCreate(data);
+    return createText.call(this, data);
+  };
+  for (const method of ['append', 'prepend']) {
+    const real = Element.prototype[method];
+    const seen = textSeen(method);
+    Element.prototype[method] = function (...nodes) {
+      for (const n of nodes) if (typeof n !== 'object' || n === null) seen(n);
+      return real.apply(this, nodes);
+    };
+  }
+  for (const method of ['fillText', 'strokeText']) {
+    const real = CanvasRenderingContext2D.prototype[method];
+    const seen = textSeen(method);
+    CanvasRenderingContext2D.prototype[method] = function (text, ...rest) {
+      seen(text);
+      return real.call(this, text, ...rest);
+    };
+  }
+
   // The time warp (plan §41): __warp(ms) moves every clock the game can read ms ahead
   // (Date.now, so party.now too; performance.now; animation-frame times) and runs at once
   // every setTimeout that would fall due by then. Until it's called, nothing is different.
@@ -171,7 +215,7 @@ const INIT_SCRIPT = `(() => {
 
 /**
  * @typedef {Object} PlaytestFinding
- * @property {string} rule     csp | error | network | navigation | hang | blank | silent | stuck | frozen | html | refused | results | load
+ * @property {string} rule     csp | error | network | navigation | hang | blank | silent | stuck | frozen | html | text | refused | results | load
  * @property {string} message
  * @property {string} [screen] where it happened: 'big screen', 'phone 2', or several ('big screen, phone 1')
  * @property {number} [line]   in the game file
@@ -216,6 +260,14 @@ export async function playtest(source, opts = {}) {
   const gameLine = (docLine) => {
     const line = docLine - linesBeforeGame;
     return line >= 1 && line <= sourceLines.length ? { line, code: sourceLines[line - 1].trim().slice(0, 160) } : {};
+  };
+  /** The first line of a stack that's in the game itself (not party.ui's helpers, which call the page for it). */
+  const gameLineOf = (stack) => {
+    for (const m of String(stack ?? '').matchAll(/about:srcdoc:(\d+):\d+/g)) {
+      const found = gameLine(Number(m[1]));
+      if (found.line) return found;
+    }
+    return {};
   };
   const assets = readAssets();
 
@@ -354,12 +406,22 @@ export async function playtest(source, opts = {}) {
     const screen = [...screens.values()].find((s) => s.page === page);
     if (!screen || typeof data !== 'object' || data === null) return;
     if (kind === 'html') {
-      const at = /about:srcdoc:(\d+):\d+/.exec(String(data.stack ?? ''));
       findings.add({
         rule: 'html',
         screen: screen.label,
         message: `A player's name went into the page as HTML (\`${String(data.how)}\`), so a player could name themselves code. Show anything a player typed with \`textContent\` or \`party.ui.el\`, never in an HTML string.`,
-        ...(at ? gameLine(Number(at[1])) : {}),
+        ...gameLineOf(data.stack),
+      });
+      return;
+    }
+    if (kind === 'text') {
+      const found = String(data.found);
+      const why = BROKEN_WHY[found] ?? 'a value that went wrong';
+      findings.add({
+        rule: 'text',
+        screen: screen.label,
+        message: `The screen shows "${found}" (\`${String(data.how)}\`: "${String(data.text ?? '').slice(0, 80)}"): ${why}.`,
+        ...gameLineOf(data.stack),
       });
       return;
     }
@@ -713,8 +775,9 @@ class Findings {
     this.warnings = [];
     /**
      * After the clock jump (plan §41) only the checks made for it count (a game may catch up on
-     * minutes clumsily): stuck and frozen (§47), and a name put in as HTML (§46): the jump is
-     * often what reaches the screens that show names (a reveal, the final scores).
+     * minutes clumsily): stuck and frozen (§47), and a name put in as HTML (§46) or a broken value
+     * shown as text (§51): the jump is often what reaches the screens that show names and scores
+     * (a reveal, the final scores).
      */
     this.afterJump = false;
     /** Errors after the jump: not held against a game that moves on, but the likely cause if it doesn't. */
@@ -824,7 +887,14 @@ function mulberry32(seed) {
   };
 }
 
-const AFTER_JUMP_RULES = ['stuck', 'frozen', 'html'];
+const AFTER_JUMP_RULES = ['stuck', 'frozen', 'html', 'text'];
+
+/** Why a broken value shows (plan §51), for the fix. */
+const BROKEN_WHY = {
+  NaN: 'a number that went wrong, a calculation with something that isn\'t a number (an object, a missing field, text). Find where that value is worked out',
+  undefined: 'a value that was never set, often a misspelled field or a lookup that found nothing',
+  '[object Object]': 'a whole object put in as text: show one of its fields instead',
+};
 const BOT_NAMES = ['Ada', UNSAFE_NAME, 'Cy', 'Dee', 'Eli', 'Fay', 'Gus', 'Hal', 'Ivy', 'Jo', 'Kai', 'Lu'];
 const WORDS = ['banana', 'robot', 'purple', 'yes', 'pizza party', 'zzz'];
 const KEYS = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Space', 'Enter'];

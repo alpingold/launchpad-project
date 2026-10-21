@@ -102,6 +102,18 @@ test('a player\'s name put into the page as HTML is caught, with its line; an es
   assert.deepEqual(rules(escaped.problems).filter((r) => r === 'html'), [], JSON.stringify(escaped.problems));
 });
 
+test('a broken value shown as text (NaN, undefined, [object Object]) is caught, on the page or a canvas, with its line (plan §51)', opts, async () => {
+  const nan = (await check('nan-score')).problems.find((p) => p.rule === 'text');
+  assert.ok(nan, 'NaN on the page');
+  assert.match(nan.message, /The screen shows "NaN" \(`textContent`: "Score: NaN"\): a number that went wrong/);
+  assert.match(nan.code, /app\.textContent = 'Score: ' \+ score/);
+  const undef = (await check('undefined-canvas')).problems.find((p) => p.rule === 'text');
+  assert.ok(undef, 'undefined on a canvas');
+  assert.match(undef.message, /"undefined" \(`fillText`: "Winner: undefined"\): a value that was never set/);
+  const fine = await check('text-ok');
+  assert.deepEqual(rules(fine.problems).filter((r) => r === 'text'), [], JSON.stringify(fine.problems));
+});
+
 test('results naming someone who isn\'t playing are refused', opts, async () => {
   const report = await check('bad-end');
   assert.ok(rules(report.problems).includes('results'), JSON.stringify(report.problems));
