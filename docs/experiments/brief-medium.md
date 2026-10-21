@@ -49,3 +49,47 @@ closest to its words", the heist games had ~25% more code, some of it real desig
 scaling with players), some dead (a whole drawing function written twice, one never called),
 plus a solo-mode bug; the bake-off's extra size was spacing. Same pass rates (7 of 8 each). The
 full sentence stays. Reading the code mattered: keyword checklists missed things both ways.
+
+## Whole other sentences (2026-10-21)
+
+Nine different planning sentences against today's (`briefText`, the art sentence kept in all),
+each building the heist and the bake-off designs twice (40 builds; `generator/out/sentence-*`).
+"bare": think briefly; "budget": ~2,000 words; "outline": only an outline of the file;
+"walkthrough": one round as the players see it; "phases": the phases and what moves each to the
+next; "risks": the three things most likely to break it; "checklist": every rule as a checklist;
+"decisive": decide quickly, don't revisit; "noplan": no planning, write at once.
+
+**Thinking before the first file** (heist ×2, bake-off ×2): risks 4.7K/4.3K/4.1K/4.3K and phases
+3.9K/4.7K/6.7K/6.8K were short and steady; control 10.4K/6.7K/2.2K/3.4K; the open-ended ones
+swung wildly: decisive 49K/31K/2.0K/1.2K, bare 7.9K/53.6K (out of room)/5.7K/6.6K, checklist up
+to 49K. "Don't overthink" doesn't make it think less.
+
+**Passing** didn't separate them: the bake-off failed 8 of 20 across the variants, the control
+too, almost all on a syntax error ("missing ) after argument list", a name declared twice) that
+3 fix rounds of edits couldn't repair.
+
+**Reading the 32 passing games** for the known failure points (heist: spotting, the lockpick,
+the decoy, a reachable exit, the end screens; bake-off: uniqueness scoring, the multipliers,
+picks served at time-out, phones redrawn) found, by variant, the games with no serious bug:
+
+| Variant | Good games (of 4) | What was wrong |
+|---|---|---|
+| decisive | 4 | (dense code: one heist file has 1 comment) |
+| control | 3 | one bake-off failed; a heist without the thieves' hoods, 5 of 8 sounds |
+| noplan | 3 | one bake-off failed |
+| bare | 2 | out of room; uniqueness scored wrong (an index compared with a player id) |
+| outline | 2 | heist spotting never fills (reset every move); bake-off scores all NaN (× an object) |
+| phases | 2 | heist lockpick needs 3 presses 30 s apart (Wing 2 can't be beaten), no end screens; a failed bake-off |
+| walkthrough | 2 | heist spotting reset every frame (nobody is ever caught); a failed bake-off |
+| risks | 2 | heist spotting reset by any other guard in range; a bake-off failed (names as HTML) |
+| budget | 1 | instant lockpick, a decoy that teleports the guard onto the thief, uniqueness wrong; a failed bake-off |
+| checklist | 1 | spotting drains per guard (too slow with several); both bake-offs failed |
+
+Four builds per variant is too few to rank them: the gaps are within what chance gives. **No
+sentence clearly beats today's**, so it stays. Short, steady thinking (risks, phases) didn't make
+better games. What the reading showed instead:
+- **The same bugs recur:** a timer reset every frame or per guard, so it never fills; an index
+  compared with an id; a number multiplied by an object (NaN). They pass every check.
+- **The checks can't see NaN or "undefined" on screen,** which outline-1 showed on every score:
+  worth a check of its own.
+- **Fix rounds don't repair some syntax errors** in 3 edit attempts: worth its own look.
