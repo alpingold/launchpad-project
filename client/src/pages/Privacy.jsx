@@ -46,7 +46,8 @@ export default function Privacy() {
         <h2 id="key">Your GenAI Studio key</h2>
         <p>
           Making games with AI uses Purdue GenAI Studio, with your own API key. If you save one, it is stored{' '}
-          <strong>encrypted</strong>, and the secret that unlocks it is kept apart from the database. It is used for one
+          <strong>encrypted</strong>; the secret that unlocks it is a separate file on the server, never in the database
+          itself, so a copy of the database alone can't reveal any key. It is used for one
           thing only: asking GenAI Studio to make and change <em>your</em> games. Nobody is ever shown it again; the site
           only shows its last four characters. You can remove it any time on your <a href="/account">account page</a>.
         </p>

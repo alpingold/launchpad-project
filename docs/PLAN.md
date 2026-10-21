@@ -2138,7 +2138,7 @@ version worked.
 
 - **The page** (`/privacy`, in every footer and the sitemap): what the site keeps and why, in plain
   words: usernames and password hashes (no emails), one login cookie (no analytics, tracking or
-  ads), what people add, GenAI Studio keys (encrypted, the secret apart from the database, used
+  ads), what people add, GenAI Studio keys (encrypted, the secret a separate file on the server, used
   only for that person's own jobs, shown back only as the last 4), what's sent to GenAI Studio
   (ideas, designs, code), bug reports (with a short device description), where it's kept (AWS,
   United States; daily copies kept 14 days) and how to remove it. It describes what the
