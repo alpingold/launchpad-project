@@ -2134,6 +2134,25 @@ version worked.
   or a notice when it's down ("making and changing games won't work until it's back; playing
   games works as usual"); nothing until it's known.
 
+## 54. Privacy: a privacy page, and deleting your account (2026-10-21)
+
+- **The page** (`/privacy`, in every footer and the sitemap): what the site keeps and why, in plain
+  words: usernames and password hashes (no emails), one login cookie (no analytics, tracking or
+  ads), what people add, GenAI Studio keys (encrypted, the secret apart from the database, used
+  only for that person's own jobs, shown back only as the last 4), what's sent to GenAI Studio
+  (ideas, designs, code), bug reports (with a short device description), where it's kept (AWS,
+  United States; daily copies kept 14 days) and how to remove it. It describes what the
+  database holds (`server/src/db/SCHEMA.md`): keep them in step.
+- **Deleting your account** (account page; `DELETE /api/account { password }`): the password
+  again (a borrowed laptop can't do it; tries count against the key-save limit), refused while
+  one of your games is being made. Your games leave the running server first, then the account
+  goes with everything tied to it (logins, key, games and versions, votes, game-page reports),
+  plus what's tied to your games only by id (their pages, the votes and reports on them).
+  Site-wide reports stay without the name; remixes others made of your games stay theirs. It
+  logs you out.
+- **API keys and RCAC:** using personal GenAI Studio keys this way is fine (it's the same use as
+  OpenCode, which is allowed).
+
 ## Verification (how to confirm the plan worked once built)
 
 - `npm test` (root) → runs `node --test server/test`, all unit and integration tests green.
