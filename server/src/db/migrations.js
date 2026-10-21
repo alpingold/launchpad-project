@@ -309,6 +309,19 @@ export const MIGRATIONS = [
       ALTER TABLE game_pages ADD COLUMN allow_remix INTEGER NOT NULL DEFAULT 1 CHECK (allow_remix IN (0, 1));
     `,
   },
+  {
+    version: 15,
+    description: 'a remix\'s own design: "Make it your own" versions (plan §45b)',
+    sql: `
+      -- kind 'remix': a version made by "Make it your own": a whole design of the remixed game
+      -- (not a change plan), then the copy's code rewritten for it. A column's CHECK can't be
+      -- changed in place: the column is swapped for a new one.
+      ALTER TABLE game_versions RENAME COLUMN kind TO kind_before_15;
+      ALTER TABLE game_versions ADD COLUMN kind TEXT CHECK (kind IS NULL OR kind IN ('recheck', 'remix'));
+      UPDATE game_versions SET kind = kind_before_15;
+      ALTER TABLE game_versions DROP COLUMN kind_before_15;
+    `,
+  },
 ];
 
 /** The version a fully up-to-date database has. */

@@ -352,7 +352,7 @@ export function remixBuildMessages(remix, { edits = false, withCode = true, brie
     remix.oldDesign ? `Its original design:\n\n<original-design>\n${String(remix.oldDesign).trim()}\n</original-design>` : null,
     `The new design, approved by the remix's owner:\n\n<design>\n${String(remix.design).trim()}\n</design>`,
     withCode ? `The original game's code:\n\n\`\`\`html\n${String(remix.source).slice(0, MAX_SOURCE_LENGTH)}\n\`\`\`` : null,
-    `Make the code play exactly as the new design says. Start from the original code: keep everything the two designs share as it is (its look, art, animations, sounds, reload handling), and change, add or remove only what the new design changes. Keep the game info's "name" as it is.${BUILD_SIZE}`,
+    `Make the code play exactly as the new design says. Start from the original code: keep everything the two designs share as it is (its look, art, animations, sounds, reload handling, and the code's comments), and change, add or remove only what the new design changes. Keep the game info's "name" as it is.${BUILD_SIZE}`,
   ];
   if (briefThinking) parts.push(BRIEF_THINKING);
   const changes = "1. A line `CHANGES:`, then one short `- ` line per change you made, in plain words for the remix's owner (at most 6 lines).";

@@ -37,7 +37,8 @@ export const BUSY_STATUSES = Object.freeze(['designing', 'generating']);
  * @property {string} request            v1: the idea; later: the change request
  * @property {number | null} basedOn     the version that was changed (null for v1)
  * @property {string | null} changelog   the model's "- …" list of what it changed
- * @property {'recheck' | null} kind       'recheck': made by "Review again" (plan §47)
+ * @property {'recheck' | 'remix' | null} kind  'recheck': made by "Review again" (plan §47);
+ *                                         'remix': "Make it your own", a remix's whole design (plan §45b)
  * @property {object | null} codeReview    what the code review found and fixed (generator/src/review.js: CreatorReview),
  *                                         or { error } if it couldn't finish; null: not reviewed
  * @property {string | null} model

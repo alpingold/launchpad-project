@@ -16,6 +16,8 @@ import { isAdminUser, usernamesById } from '../db/users.js';
  *   POST   /api/admin/generations/:id/versions  { request, basedOn?, skipDesign? }
  *                                                    → 202 { game }   asks for changes: a new version (a plan first,
  *                                                                     unless skipDesign: a small fix, straight to code)
+ *   POST   /api/admin/generations/:id/remix-design { request, model? } → 202 { game }   "Make it your own" (plan §45b):
+ *                                                    a remix's own whole design, then its code rewritten for it
  *   Designs (plan §13i, F5), for a version whose design or plan waits for you:
  *   POST   /api/admin/generations/:id/versions/:v/redesign { feedback } → 202 { game }   a new draft
  *   POST   /api/admin/generations/:id/versions/:v/design   { design }   → { game }       your own edit
@@ -176,6 +178,14 @@ export function createAdminRouter({ db, generation, mine = false }) {
       const { request, basedOn, model, skipDesign } = req.body ?? {};
       const game = generation.requestChanges({ id: req.params.id, request, basedOn, model, skipDesign });
       res.status(202).json({ game: detail(game) });
+    }),
+  );
+
+  router.post(
+    '/generations/:id/remix-design',
+    handle((req, res) => {
+      const { request, model } = req.body ?? {};
+      res.status(202).json({ game: detail(generation.requestRemixDesign({ id: req.params.id, request, model })) });
     }),
   );
 

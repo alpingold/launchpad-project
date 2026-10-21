@@ -139,3 +139,42 @@ test('a remix\'s name fits in 40 characters', () => {
   assert.equal(long, 'An Extremely Long Party Game - Remixed');
   assert.ok(long.length <= 40);
 });
+
+test('"Make it your own" (plan §45b): the remix gets its own whole design, then its code is rewritten for it; later changes use that design', async () => {
+  const { sam, id } = await samPublishes();
+  const kim = await signUp(baseUrl, 'kim');
+  await fetch(`${baseUrl}/api/account/genai-key`, { method: 'PUT', headers: { Cookie: kim, 'Content-Type': 'application/json' }, body: JSON.stringify({ key: KEY }) });
+  const remixId = (await (await post(`/api/games/${id}/remix`, {}, kim)).json()).id;
+  const copy = (await get(`/api/generations/${remixId}`, kim)).game.versions[0];
+
+  // Only on a remix: sam's own game isn't one.
+  assert.deepEqual(await errorOf(await post(`/api/generations/${id}/remix-design`, { request: 'Make it a team game' }, sam)), [409, 'NOT_A_REMIX']);
+
+  // The design step: the copy's design and code, and what should be different.
+  const asked = await post(`/api/generations/${remixId}/remix-design`, { request: 'Make it a team game: two teams vote' }, kim);
+  assert.equal(asked.status, 202);
+  let job = jobs.at(-1).job;
+  assert.deepEqual([job.step, job.remix.request, job.remix.design, job.remix.source], ['design', 'Make it a team game: two teams vote', copy.design, copy.source]);
+  assert.equal(job.change, undefined, 'not a change plan');
+  const NEW_DESIGN = '# Majority Teams\n## Rules\nTwo teams vote.\n';
+  jobs.at(-1).finish({ ok: true, design: NEW_DESIGN });
+  await server.generation.current;
+  let game = (await get(`/api/generations/${remixId}`, kim)).game;
+  assert.deepEqual([game.versions[1].kind, game.versions[1].status, game.versions[1].design], ['remix', 'design_ready', NEW_DESIGN]);
+
+  // "Build it": the copy's code rewritten for the new design, reviewed.
+  await post(`/api/generations/${remixId}/versions/2/build`, {}, kim);
+  job = jobs.at(-1).job;
+  assert.deepEqual([job.step, job.design, job.remix.design, job.remix.source, job.review], ['build', NEW_DESIGN, copy.design, copy.source, true]);
+  const teams = renamedSource('Majority Rules - Remixed').replace('</script>', '// teams\n</script>');
+  jobs.at(-1).finish({ ok: true, source: teams, report: { ok: true, problems: [], game: { name: 'Majority Rules - Remixed', description: 'Teams vote' } }, changelog: '- Two teams' });
+  await server.generation.current;
+  game = (await get(`/api/generations/${remixId}`, kim)).game;
+  assert.equal(game.versions[1].status, 'ready');
+
+  // Only once: after that, ordinary changes, planned against the remix's own design.
+  assert.deepEqual(await errorOf(await post(`/api/generations/${remixId}/remix-design`, { request: 'Something else again' }, kim)), [409, 'ALREADY_CHANGED']);
+  await post(`/api/generations/${remixId}/versions`, { request: 'Make the vote 20 seconds' }, kim);
+  job = jobs.at(-1).job;
+  assert.deepEqual([job.step, job.change.design, job.change.earlierRequests, job.change.source], ['design', NEW_DESIGN, [], teams]);
+});

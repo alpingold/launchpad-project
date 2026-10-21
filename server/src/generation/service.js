@@ -188,7 +188,7 @@ export class GenerationService {
     checkModel(model);
     const open = game.versions.find((v) => BUSY_STATUSES.includes(v.status) || v.status === 'design_ready');
     if (open) {
-      const why = open.status === 'design_ready' ? `v${open.version}'s ${open.basedOn === null ? 'design' : 'plan'} is waiting for you: build it or discard it first.` : 'A version of this game is already being made. Wait for it to finish.';
+      const why = open.status === 'design_ready' ? `v${open.version}'s ${hasWholeDesign(open) ? 'design' : 'plan'} is waiting for you: build it or discard it first.` : 'A version of this game is already being made. Wait for it to finish.';
       throw new GenerationError(409, 'BUSY', why);
     }
     this.checkCanQueue(game.ownerUserId);
@@ -200,6 +200,26 @@ export class GenerationService {
       throw new GenerationError(409, 'NO_BASE_VERSION', 'Changes can only be made to a version that passed the tests.');
     }
     addVersion(this.db, id, { request: trimmed, basedOn: base.version, model, kind, status: skipDesign === true ? 'generating' : 'designing' });
+    this.enqueue(id);
+    return this.get(id);
+  }
+
+  /**
+   * "Make it your own" (plan §45b): a remix's first change is its own whole design (written from
+   * the copy's design and what should be different), which the creator approves like a new
+   * game's, then the copy's code is rewritten for it. Only on a remix, before any other change.
+   * @param {{ id: string, request: unknown, model?: unknown }} remix  untrusted input
+   */
+  requestRemixDesign({ id, request, model = DEFAULT_MODEL }) {
+    const game = this.get(id);
+    if (!game.remixOf) throw new GenerationError(409, 'NOT_A_REMIX', 'Only a remix can be made your own this way: ask for a change instead.');
+    if (game.versions.length > 1) throw new GenerationError(409, 'ALREADY_CHANGED', 'This remix already has changes: ask for another change instead.');
+    const trimmed = checkText(request, 'INVALID_REQUEST', 'Say what should be different', MAX_REQUEST_LENGTH);
+    checkModel(model);
+    const base = findVersion(game, 1);
+    if (!base || base.status !== 'ready') throw new GenerationError(409, 'NO_BASE_VERSION', 'The copy has no code to start from.');
+    this.checkCanQueue(game.ownerUserId);
+    addVersion(this.db, id, { request: trimmed, basedOn: base.version, model, kind: 'remix', status: 'designing' });
     this.enqueue(id);
     return this.get(id);
   }
@@ -368,14 +388,20 @@ export class GenerationService {
     const job = { step: designing ? 'design' : version.kind === 'recheck' ? 'recheck' : 'build', idea: game.prompt, model: version.model };
     // Every build is reviewed, and its crashes and dead ends fixed (plan §47).
     if (job.step === 'build') job.review = true;
-    if (version.basedOn !== null) {
-      // The requests that led to the base version, oldest first, so the model knows the history.
+    if (version.kind === 'remix') {
+      // "Make it your own" (plan §45b): the remix's whole design, from the copy's design and what
+      // should be different; then the copy's code rewritten for it (the whole file).
+      const base = findVersion(game, version.basedOn);
+      job.remix = { source: base.source, design: designOf(game, base) };
+      if (designing) job.remix.request = version.request;
+      else job.design = version.design;
+    } else if (version.basedOn !== null) {
+      // The requests since the game's design, oldest first, so the model knows the history.
       const earlierRequests = [];
-      for (let v = findVersion(game, version.basedOn); v && v.basedOn !== null; v = findVersion(game, v.basedOn)) {
+      for (let v = findVersion(game, version.basedOn); v && !hasWholeDesign(v); v = findVersion(game, v.basedOn)) {
         earlierRequests.unshift(v.request);
       }
-      // The game's own design is version 1's (later versions hold change plans).
-      const gameDesign = findVersion(game, 1)?.design ?? null;
+      const gameDesign = designOf(game, findVersion(game, version.basedOn));
       job.change = { request: version.request, source: findVersion(game, version.basedOn).source, design: gameDesign, earlierRequests };
       if (!designing) job.change.plan = version.design; // null for a small fix
     } else if (!designing) {
@@ -484,6 +510,18 @@ export class GenerationService {
     this.unload(game, 'playtest');
     deleteGeneratedGame(this.db, id);
   }
+}
+
+/**
+ * Does this version hold a whole design of the game (version 1's, or a remix's own: plan §45b),
+ * rather than a change plan?
+ */
+export const hasWholeDesign = (version) => version.basedOn === null || version.kind === 'remix';
+
+/** The game's design as of this version: the whole design it, or the version it's based on, came from. */
+function designOf(game, version) {
+  for (let v = version; v; v = findVersion(game, v.basedOn)) if (hasWholeDesign(v)) return v.design ?? null;
+  return null;
 }
 
 /** @returns {import('../db/generatedGames.js').GameVersion | undefined} */
