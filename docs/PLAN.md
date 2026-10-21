@@ -2090,6 +2090,23 @@ version worked.
   score, ties shared. One earlier draft copied the format's own instructions into its sections
   (it still counted as complete): not seen again, but worth watching.
 
+## 51. The playtest fails a broken value shown as text (2026-10-21)
+
+- **Why:** reading the brief-sentence games (§43, [brief-medium.md](experiments/brief-medium.md))
+  found a bake-off whose every score was a number times an object: it threw nothing, so every
+  check passed it.
+- **How** (`generator/src/check/playtest.js`): in each game frame, the playtest watches the text
+  the game puts on the page (`textContent`, `innerText`, `innerHTML` without its tags, new text
+  nodes, `append`/`prepend`) and draws on a canvas (`fillText`, `strokeText`). "NaN",
+  "undefined" or "[object Object]" as a word is a `text` problem, with the game's line (the first
+  line of the stack that's in the game, past `party.ui`'s helpers; the name-as-HTML check uses it
+  now too) and why it usually happens, for the fix round. It counts after the clock jump too:
+  that's often what reaches the final scores.
+- **Tried on 39 games:** the 7 official games clean; of the 32 passing sentence games, it caught
+  the bake-off above ("[object Object] pts" on its canvas) and 3 more on the phones: "Total:
+  undefined" (an empty dish's breakdown has no total), "Appetizer ×undefined" and a score
+  "undefined" (fields the big screen never sends). No false alarms.
+
 ## Verification (how to confirm the plan worked once built)
 
 - `npm test` (root) → runs `node --test server/test`, all unit and integration tests green.
