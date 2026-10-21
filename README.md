@@ -12,7 +12,7 @@ a room code: no app, no account to play.
 </p>
 <p>
   <img src="server/src/games/punchline/host.jpg" alt="Punchline on the big screen: two answers head to head" width="49%">
-  <img src="server/src/games/bumper-blobs/host.jpg" alt="Bumper Blobs on the big screen: blobs on shrinking ice" width="49%">
+  <img src="server/src/games/doodle-drift/host.jpg" alt="Doodle Drift on the big screen: the reviewing phase" width="49%">
 </p>
 
 ## What it does
