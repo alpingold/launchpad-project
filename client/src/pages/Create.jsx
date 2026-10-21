@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useCurrentUser } from '../net/auth.js';
 import { useOwnGamesApi, listGenerations, startGeneration } from '../net/admin.js';
 import { usePageTitle } from '../usePageTitle.js';
+import GenaiStatus from '../components/GenaiStatus.jsx';
 import { MiniTrack, whereIsSummary } from './CreateGame.jsx';
 import { timeAgo } from '../components/timeAgo.js';
 import { EXAMPLE_IDEAS } from '../components/exampleIdeas.js';
@@ -53,6 +54,7 @@ export default function Create() {
           Describe a party game and the AI designs and builds it for you. To do that you need a free account, and then your
           own Purdue GenAI Studio API key (the account page shows how to get one).
         </p>
+        <GenaiStatus />
         <p className="create-actions">
           <a className="primary-button" href={`/login?mode=signup&next=${createNext()}`}>
             Create an account
@@ -85,6 +87,7 @@ function Maker() {
         Describe a party game in a few sentences. The AI writes a design for you to read, then builds the game and tests it.
         You play it on a big screen, and your friends join on their phones.
       </p>
+      <GenaiStatus />
       {loadError && (
         <p className="error" role="alert">
           {loadError}

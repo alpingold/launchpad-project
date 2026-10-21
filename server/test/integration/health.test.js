@@ -70,3 +70,14 @@ test('security headers on every response (M8); no "X-Powered-By"', async () => {
     assert.equal(res.headers.get('strict-transport-security'), null, 'HSTS only in production');
   }
 });
+
+test('GET /api/genai-status says whether GenAI Studio is up (plan §53), and whether this server makes games', async () => {
+  const { createGameServer } = await import('../../src/server.js');
+  const fake = { status: () => ({ up: false, checkedAt: 5, since: 4 }), stop() {} };
+  const server = createGameServer({ GENERATION_ENABLED: true }, { genaiStatus: fake });
+  await new Promise((resolve) => server.httpServer.listen(0, resolve));
+  const res = await fetch(`http://localhost:${server.httpServer.address().port}/api/genai-status`);
+  assert.deepEqual(await res.json(), { enabled: true, up: false, checkedAt: 5, since: 4 });
+  assert.equal(res.headers.get('cache-control'), 'no-store');
+  await server.close();
+});

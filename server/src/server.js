@@ -29,10 +29,12 @@ import { currentUser } from './auth/currentUser.js';
  * @param {import('better-sqlite3').Database} [deps.db]  index.js passes the real database file;
  *   tests leave it out and get a fresh in-memory database
  * @param {typeof import('./generation/sandbox.js').runGeneratorInSandbox} [deps.runGenerator]  tests pass a fake instead of the real OpenShell sandbox
+ * @param {ReturnType<typeof import('./generation/genaiStatus.js').createGenaiStatus>} [deps.genaiStatus]
+ *   whether GenAI Studio is up (plan §53): index.js passes the real one; tests a fake or none
  * @param {Buffer} [deps.keySecret]  opens users' saved GenAI Studio keys (index.js loads the real one; tests get a random one)
  * @param {(key: string) => Promise<'ok' | 'rejected' | 'unreachable'>} [deps.checkKey]  tests pass a fake GenAI Studio key check
  */
-export function createGameServer(overrides = {}, { games = createDefaultRegistry(), db, runGenerator, keySecret = randomBytes(32), checkKey } = {}) {
+export function createGameServer(overrides = {}, { games = createDefaultRegistry(), db, runGenerator, keySecret = randomBytes(32), checkKey, genaiStatus: givenStatus } = {}) {
   const cfg = { ...config, ...overrides };
   const ownsDb = !db;
   db ??= openDatabase(':memory:');
@@ -58,7 +60,9 @@ export function createGameServer(overrides = {}, { games = createDefaultRegistry
     connections: transport.connections.size,
     generating: generation.running.size + generation.queue.length,
   });
-  const httpServer = http.createServer(createApp({ games, db, cfg, generation, userKeys, activity }));
+  // Is GenAI Studio up (plan §53)? index.js starts the real one; without one, nobody knows (null).
+  const genaiStatus = givenStatus ?? null;
+  const httpServer = http.createServer(createApp({ games, db, cfg, generation, userKeys, activity, genaiStatus }));
 
   // RoomManager needs a way to send messages, but the transport (which owns the sockets)
   // is created after it. This function only runs later, once `transport` exists,
@@ -94,6 +98,7 @@ export function createGameServer(overrides = {}, { games = createDefaultRegistry
   /** Stops everything (tests use this between runs; index.js on shutdown). */
   function close() {
     clearInterval(sweeper);
+    genaiStatus?.stop();
     rooms.dispose(); // pending grace timers would otherwise keep the process alive
     transport.close();
     httpServer.closeAllConnections();

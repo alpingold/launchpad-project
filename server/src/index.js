@@ -1,6 +1,7 @@
 // Entry point: starts the server. Wiring lives in server.js; logic lives in the layers.
 import { config } from './config.js';
 import { createGameServer } from './server.js';
+import { createGenaiStatus } from './generation/genaiStatus.js';
 import { openDatabase } from './db/database.js';
 import { createDefaultRegistry } from './games/index.js';
 import { loadGeneratedGames } from './games/generated.js';
@@ -17,7 +18,10 @@ console.log(`[server] games: ${games.list({}).length} public; generated loaded $
 // Opens users' saved GenAI Studio keys (plan §15). Not in the database, on purpose.
 const keySecret = loadKeySecret({ file: config.KEY_SECRET_PATH });
 
-const server = createGameServer({}, { db, games, keySecret });
+// Is GenAI Studio up (plan §53)? Asked once a minute while this server makes games.
+const genaiStatus = createGenaiStatus({ url: config.GENAI_STATUS_URL, intervalMs: config.GENAI_STATUS_INTERVAL_MS, timeoutMs: config.GENAI_STATUS_TIMEOUT_MS });
+if (config.GENERATION_ENABLED) genaiStatus.start();
+const server = createGameServer({}, { db, games, keySecret, genaiStatus });
 
 server.httpServer.listen(config.PORT, config.HOST, () => {
   console.log(`[server] listening on http://localhost:${config.PORT} (WebSocket path ${config.WS_PATH})`);

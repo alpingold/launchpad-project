@@ -2,6 +2,7 @@ import { useGames } from '../net/useGames.js';
 import { usePageTitle } from '../usePageTitle.js';
 import { useCurrentUser } from '../net/auth.js';
 import GameCatalogue from '../components/GameCatalogue.jsx';
+import GenaiStatus from '../components/GenaiStatus.jsx';
 
 // The public game catalogue (plan §14): browse every game, then host one. Hosting needs an
 // account, so logged-out visitors go through the login page and come back to the lobby
@@ -23,6 +24,7 @@ export default function Games() {
         Every game runs on one big screen, with phones as controllers. Not seeing the one you want?{' '}
         <a href="/create">Describe it and the AI makes it</a>.
       </p>
+      <GenaiStatus />
       {games === null && <p className="muted">Loading…</p>}
       {games?.length === 0 && <p className="muted">No games available right now.</p>}
       {games?.length > 0 && (

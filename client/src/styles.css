@@ -2661,3 +2661,26 @@ body.in-game .demo-badge-room {
   padding: 0 0.15rem;
   text-decoration: underline wavy var(--danger);
 }
+
+/* §53: is Purdue GenAI Studio (which makes the games) up? */
+.genai-status {
+  margin: 0.5rem 0 1rem;
+}
+
+.genai-up {
+  color: var(--muted);
+}
+
+.genai-dot {
+  display: inline-block;
+  width: 0.6rem;
+  height: 0.6rem;
+  margin-right: 0.35rem;
+  border-radius: 50%;
+  background: var(--good);
+  vertical-align: 0.05em;
+}
+
+.genai-down .genai-dot {
+  background: var(--danger);
+}

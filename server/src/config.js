@@ -139,6 +139,11 @@ export const config = {
   // on this machine (generator/README.md). Managing already-made games works either way.
   GENERATION_ENABLED: process.env.GENERATION_ENABLED === '1',
 
+  // Is GenAI Studio up (plan §53)? Asked once a minute while generating is on; the pages show it.
+  GENAI_STATUS_URL: process.env.GENAI_STATUS_URL || 'https://genai.rcac.purdue.edu/',
+  GENAI_STATUS_INTERVAL_MS: 60_000,
+  GENAI_STATUS_TIMEOUT_MS: 10_000,
+
   // How many games may be made at the same time; the rest wait in line. A job mostly waits
   // for the AI (~70 MB each, measured 2026-10-17); the heavy part, its browser check, takes
   // turns through the browser slot below, so this can be larger than the number of checks.

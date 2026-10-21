@@ -16,6 +16,7 @@ import {
   remixDesign,
 } from '../net/admin.js';
 import { usePageTitle } from '../usePageTitle.js';
+import GenaiStatus from '../components/GenaiStatus.jsx';
 import Markdown from '../components/Markdown.jsx';
 import CodeReview from '../components/generation/CodeReview.jsx';
 import BlockedWords from '../components/generation/BlockedWords.jsx';
@@ -241,6 +242,8 @@ export default function CreateGame({ id }) {
           </p>
         )}
       </header>
+
+      <GenaiStatus />
 
       <Track labels={isChange ? STEPS_CHANGE : STEPS_NEW} at={where.at} state={where.state} initial={initialOf(name === 'Your new game' ? summary.prompt : name)} />
 
