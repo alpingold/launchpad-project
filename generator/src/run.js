@@ -444,7 +444,7 @@ async function withReview(job, built, model, deps) {
   // Crashes first: if they don't all fit in one request, those matter most.
   const critical = reviewed.bugs.filter((b) => CRITICAL.includes(b.severity)).sort((a, b) => CRITICAL.indexOf(a.severity) - CRITICAL.indexOf(b.severity));
   if (critical.length === 0) {
-    onStep(`review: ${reviewed.bugs.length} thing(s) worth a look, no crashes or dead ends`);
+    onStep('review: no crashes or dead ends');
     return { ...built, review: forCreator(reviewed) };
   }
 

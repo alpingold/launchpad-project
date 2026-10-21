@@ -1,7 +1,8 @@
 // What the AI's code review of a version found (plan §47), for the game's creator: every build
-// is reviewed against its design, crashes and dead ends are fixed right away, and the rest is
-// listed here, with a button that asks the AI to fix it (a small fix: a new version). "Review
-// again" runs one more review round. Shown on the creator's page and the admin page.
+// is reviewed for crashes and dead ends, which are fixed right away; any it couldn't fix are
+// listed here, with a button that asks the AI to fix them (a small fix: a new version). "Review
+// again" runs one more review round. Shown on the creator's page and the admin page. (Reviews
+// from before 2026-10-21 also listed smaller bugs and the design's missing items: still shown.)
 
 /** What each kind of bug is called here. */
 const SEVERITY_TEXT = { crash: 'Crash', stuck: 'Dead end', spoils: 'Plays wrong', minor: 'Minor' };
@@ -46,7 +47,7 @@ export default function CodeReview({ review, busy, canAct, maxRequestLength, onF
         </p>
       ) : (
         <>
-          <p className="muted small">An AI read the code against the design, looking for bugs the automatic checks can miss.</p>
+          <p className="muted small">An AI read the code looking for crashes and dead ends the automatic checks can miss.</p>
           {fixed.length > 0 && (
             <div className="code-review-fixed">
               <p>It found and fixed:</p>
@@ -78,7 +79,7 @@ export default function CodeReview({ review, busy, canAct, maxRequestLength, onF
               <p className="muted small">The reviewer can be wrong: play the game to see.</p>
             </div>
           ) : (
-            fixed.length === 0 && <p>It found no bugs.</p>
+            fixed.length === 0 && <p>It found no crashes or dead ends.</p>
           )}
           {missing.length > 0 && (
             <details className="code-review-missing">

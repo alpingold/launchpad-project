@@ -191,11 +191,14 @@ export const CRITICAL_STOP = `Read the code once, top to bottom. If after that y
  * @param {{ brief?: boolean, stop?: boolean }} [opts]  brief: add CRITICAL_BRIEF; stop: add CRITICAL_STOP
  * @returns {import('./llm.js').Message[]}
  */
-export function criticalMessages(design, source, { brief = false, stop = false } = {}) {
+export function criticalMessages(design, source, { brief = false, stop = false, changes = [] } = {}) {
+  const since = changes.length
+    ? `\n\nChanges made to the game since, oldest first. Where one differs from the design, the change is what the game must do now:\n\n<changes>\n${changes.map((c) => `- ${String(c).trim()}`).join('\n')}\n</changes>`
+    : '';
   const ask = `${brief ? `${CRITICAL_BRIEF}\n\n` : ''}${stop ? `${CRITICAL_STOP}\n\n` : ''}Reply with the bugs as JSON: {"bugs": [{"lines": [numbers], "severity": "crash" or "stuck", "what": "..."}]}.`;
   return [
     { role: 'system', content: CRITICAL_SYSTEM },
-    { role: 'user', content: `The design:\n\n<design>\n${String(design).trim()}\n</design>\n\nThe code:\n\n<code>\n${numberLines(source)}\n</code>\n\n${ask}` },
+    { role: 'user', content: `The design:\n\n<design>\n${String(design).trim()}\n</design>${since}\n\nThe code:\n\n<code>\n${numberLines(source)}\n</code>\n\n${ask}` },
   ];
 }
 
@@ -276,7 +279,7 @@ export async function reviewGame(job, model, { chatFn = chat, onStep = () => {} 
  */
 export async function reviewCritical(job, model, { chatFn = chat, onStep = () => {} } = {}) {
   onStep(`critical review: asking ${model}`);
-  const { reply, failed } = await ask(chatFn, criticalMessages(job.design, job.source, { brief: job.briefThinking === true, stop: job.stopRule === true }), { model, reasoningEffort: job.reasoningEffort ?? reasoningEffortFor(model, 'fix'), responseFormat: job.noFormat ? undefined : CRITICAL_FORMAT }, model);
+  const { reply, failed } = await ask(chatFn, criticalMessages(job.design, job.source, { brief: job.briefThinking === true, stop: job.stopRule === true, changes: job.changes ?? [] }), { model, reasoningEffort: job.reasoningEffort ?? reasoningEffortFor(model, 'fix'), responseFormat: job.noFormat ? undefined : CRITICAL_FORMAT }, model);
   if (failed) return failed;
   const review = parse(reply.content);
   if (!review || !Array.isArray(review.bugs)) return { ok: false, model, error: 'the model wrote no review', ...replyStats(reply) };
@@ -337,46 +340,32 @@ export function fixRequest(bugs, max = MAX_REQUEST_LENGTH) {
 }
 
 /**
- * A finished game's review, for the site (plan §47): the checklist, then the review, checked
- * by verify(). A call that fails (say, the model thought and then wrote nothing) gets one more
- * try. Never throws.
- * @param {{ idea: string, design?: string | null, changes?: string[], source: string }} game
- *   design: the game's design (none for games made before designs: the idea stands in)
- * @returns {Promise<{ ok: true, items: object[], bugs: object[] } | { ok: false, error: string }>}
+ * The review round's review (plan §47, critical-only since 2026-10-21): only the crashes and dead
+ * ends, from the design (and the changes since) and the code, with the stopping rule. Tried twice.
+ * @returns {Promise<{ ok: true, bugs: object[] } | { ok: false, error: string }>}
  */
 export async function reviewFinished({ idea, design, changes = [], source }, model, { chatFn = chat, onStep = () => {} } = {}) {
-  const twice = async (call) => {
-    let res;
-    for (let i = 0; i < 2; i++) {
-      res = await call().catch((err) => ({ ok: false, error: err.message }));
-      if (res.ok) return res;
-    }
-    return res;
-  };
-  const made = await twice(() => makeChecklist({ design: design ?? idea, changes }, model, { chatFn, onStep }));
-  if (!made.ok) return { ok: false, error: `no checklist: ${made.error}` };
-  const reviewed = await twice(() => reviewGame({ checklist: made.checklist, source }, model, { chatFn, onStep }));
-  if (!reviewed.ok) return { ok: false, error: `no review: ${reviewed.error}` };
-  const bugs = Array.isArray(reviewed.review.bugs) ? reviewed.review.bugs : [];
-  return { ok: true, items: verify(made.checklist, reviewed.review.items, source), bugs };
+  let res;
+  for (let i = 0; i < 2; i++) {
+    res = await reviewCritical({ design: design ?? idea, changes, source, stopRule: true }, model, { chatFn, onStep }).catch((err) => ({ ok: false, error: err.message }));
+    if (res.ok) break;
+  }
+  if (!res.ok) return { ok: false, error: `no review: ${res.error}` };
+  const bugs = (Array.isArray(res.review.bugs) ? res.review.bugs : []).filter((b) => CRITICAL.includes(b.severity));
+  return { ok: true, bugs };
 }
 
 /**
- * What a game's creator is told (stored with the version): every bug, with whether it was fixed,
- * and the design's items the game doesn't do (missing, or done differently).
- * @typedef {{ score: { points: number, of: number }, bugs: { severity: string, what: string, fixed: boolean }[],
- *   missing: { area: string, text: string, status: 'missing' | 'wrong', note: string }[],
+ * What a game's creator is told (stored with the version): every crash and dead end found, with
+ * whether it was fixed. (Reviews from before 2026-10-21 also have a score and the design's
+ * missing items; the pages still show those.)
+ * @typedef {{ bugs: { severity: string, what: string, fixed: boolean }[],
  *   fix: { ok: boolean, changelog?: string | null, error?: string } | null }} CreatorReview
  * @returns {CreatorReview}
  */
-export function forCreator({ items, bugs }, fixed = []) {
-  const { points, of } = score(items);
+export function forCreator({ bugs }, fixed = []) {
   return {
-    score: { points, of },
     bugs: bugs.map((b) => ({ severity: SEVERITIES.includes(b.severity) ? b.severity : 'minor', what: String(b.what), fixed: fixed.includes(b) })),
-    missing: items
-      .filter((i) => i.verified && (i.status === 'missing' || i.status === 'wrong'))
-      .map((i) => ({ area: i.area, text: i.text, status: i.status, note: String(i.note ?? '') })),
     fix: null,
   };
 }
