@@ -186,7 +186,7 @@ export const CRITICAL_BRIEF = `Read the code once, top to bottom, following one 
  * @returns {import('./llm.js').Message[]}
  */
 export function criticalMessages(design, source, { brief = false } = {}) {
-  const ask = `${brief ? `${CRITICAL_BRIEF}\n\n` : ''}Reply with the bugs as JSON.`;
+  const ask = `${brief ? `${CRITICAL_BRIEF}\n\n` : ''}Reply with the bugs as JSON: {"bugs": [{"lines": [numbers], "severity": "crash" or "stuck", "what": "..."}]}.`;
   return [
     { role: 'system', content: CRITICAL_SYSTEM },
     { role: 'user', content: `The design:\n\n<design>\n${String(design).trim()}\n</design>\n\nThe code:\n\n<code>\n${numberLines(source)}\n</code>\n\n${ask}` },
@@ -194,7 +194,13 @@ export function criticalMessages(design, source, { brief = false } = {}) {
 }
 
 /** How a reply went, for measuring (plan §47's experiments): its thinking and answer sizes, and why it stopped. */
-const replyStats = (reply) => ({ thinkingChars: reply.thinking?.length ?? 0, replyChars: reply.content?.length ?? 0, finishReason: reply.finishReason ?? null });
+const replyStats = (reply) => ({
+  thinkingChars: reply.thinking?.length ?? 0,
+  replyChars: reply.content?.length ?? 0,
+  finishReason: reply.finishReason ?? null,
+  // When there's no answer: how the thinking ended (an experiment, to see why).
+  ...(!reply.content && reply.thinking ? { thinkingEnd: String(reply.thinking).slice(-1500) } : {}),
+});
 
 /** A model call that may run out of room: then a failed result with what it thought, not a throw. */
 async function ask(chatFn, messages, opts, model) {
@@ -206,21 +212,27 @@ async function ask(chatFn, messages, opts, model) {
   }
 }
 
-/** @returns {import('./llm.js').Message[]} */
-export function reviewMessages(checklist, source) {
+/**
+ * @param {{ shape?: boolean }} [opts]  shape: describe the JSON in words (no response format: an experiment)
+ * @returns {import('./llm.js').Message[]}
+ */
+export function reviewMessages(checklist, source, { shape = false } = {}) {
   const list = checklist.map((it) => `${it.id} [${it.area}] ${it.text}`).join('\n');
   return [
     { role: 'system', content: REVIEW_SYSTEM },
     {
       role: 'user',
-      content: `The checklist:\n\n<checklist>\n${list}\n</checklist>\n\nThe code:\n\n<code>\n${numberLines(source)}\n</code>\n\nReply with the review as JSON, one entry for every checklist id, in order.`,
+      content: `The checklist:\n\n<checklist>\n${list}\n</checklist>\n\nThe code:\n\n<code>\n${numberLines(source)}\n</code>\n\nReply with the review as JSON, one entry for every checklist id, in order.${shape ? ' Its shape: {"items": [{"id", "about", "status", "lines": [numbers], "note"}], "bugs": [{"lines": [numbers], "what", "severity"}], "deadCode": [{"lines": [numbers], "what"}]}.' : ''}`,
     },
   ];
 }
 
 const parse = (text) => {
+  // Without a response format (an experiment) the JSON may come in a ```json fence.
+  const cleaned = String(text).replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+  const fenced = /```(?:json)?\s*([\s\S]*?)```/.exec(cleaned);
   try {
-    return JSON.parse(String(text).replace(/<think>[\s\S]*?<\/think>/g, '').trim());
+    return JSON.parse(fenced ? fenced[1] : cleaned);
   } catch {
     return null;
   }
@@ -245,7 +257,7 @@ export async function makeChecklist(job, model, { chatFn = chat, onStep = () => 
  */
 export async function reviewGame(job, model, { chatFn = chat, onStep = () => {} } = {}) {
   onStep(`review: asking ${model}`);
-  const { reply, failed } = await ask(chatFn, reviewMessages(job.checklist, job.source), { model, reasoningEffort: job.reasoningEffort ?? reasoningEffortFor(model, 'fix'), responseFormat: REVIEW_FORMAT }, model);
+  const { reply, failed } = await ask(chatFn, reviewMessages(job.checklist, job.source, { shape: job.noFormat === true }), { model, reasoningEffort: job.reasoningEffort ?? reasoningEffortFor(model, 'fix'), responseFormat: job.noFormat ? undefined : REVIEW_FORMAT }, model);
   if (failed) return failed;
   const review = parse(reply.content);
   if (!review || !Array.isArray(review.items)) return { ok: false, model, error: 'the model wrote no review', ...replyStats(reply) };
@@ -258,7 +270,7 @@ export async function reviewGame(job, model, { chatFn = chat, onStep = () => {} 
  */
 export async function reviewCritical(job, model, { chatFn = chat, onStep = () => {} } = {}) {
   onStep(`critical review: asking ${model}`);
-  const { reply, failed } = await ask(chatFn, criticalMessages(job.design, job.source, { brief: job.briefThinking === true }), { model, reasoningEffort: job.reasoningEffort ?? reasoningEffortFor(model, 'fix'), responseFormat: CRITICAL_FORMAT }, model);
+  const { reply, failed } = await ask(chatFn, criticalMessages(job.design, job.source, { brief: job.briefThinking === true }), { model, reasoningEffort: job.reasoningEffort ?? reasoningEffortFor(model, 'fix'), responseFormat: job.noFormat ? undefined : CRITICAL_FORMAT }, model);
   if (failed) return failed;
   const review = parse(reply.content);
   if (!review || !Array.isArray(review.bugs)) return { ok: false, model, error: 'the model wrote no review', ...replyStats(reply) };
