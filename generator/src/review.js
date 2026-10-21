@@ -173,14 +173,23 @@ List only these:
 Only list a bug if you can point to the lines that make it happen. For each: its lines, its severity, and "what": what goes wrong for the players, in plain words, then why in the code. Nothing else: not minor bugs, not differences from the design that still play. No bugs is a fine answer.`;
 
 /**
+ * A review's brief-thinking sentence (an experiment, like BRIEF_THINKING for builds): without a
+ * checklist to work through, the critical-only review thought until the context was full on the
+ * biggest games.
+ */
+export const CRITICAL_BRIEF = `Read the code once, top to bottom, following one round of play as the players would. Note a bug only when you can name its lines; don't re-read the whole file or trace every branch to be sure. Then reply.`;
+
+/**
  * The critical-only review (an experiment, plan §47): only crashes and dead ends, from the design
  * and the code, without a checklist.
+ * @param {{ brief?: boolean }} [opts]  brief: add CRITICAL_BRIEF before the answer line
  * @returns {import('./llm.js').Message[]}
  */
-export function criticalMessages(design, source) {
+export function criticalMessages(design, source, { brief = false } = {}) {
+  const ask = `${brief ? `${CRITICAL_BRIEF}\n\n` : ''}Reply with the bugs as JSON.`;
   return [
     { role: 'system', content: CRITICAL_SYSTEM },
-    { role: 'user', content: `The design:\n\n<design>\n${String(design).trim()}\n</design>\n\nThe code:\n\n<code>\n${numberLines(source)}\n</code>\n\nReply with the bugs as JSON.` },
+    { role: 'user', content: `The design:\n\n<design>\n${String(design).trim()}\n</design>\n\nThe code:\n\n<code>\n${numberLines(source)}\n</code>\n\n${ask}` },
   ];
 }
 
@@ -249,7 +258,7 @@ export async function reviewGame(job, model, { chatFn = chat, onStep = () => {} 
  */
 export async function reviewCritical(job, model, { chatFn = chat, onStep = () => {} } = {}) {
   onStep(`critical review: asking ${model}`);
-  const { reply, failed } = await ask(chatFn, criticalMessages(job.design, job.source), { model, reasoningEffort: job.reasoningEffort ?? reasoningEffortFor(model, 'fix'), responseFormat: CRITICAL_FORMAT }, model);
+  const { reply, failed } = await ask(chatFn, criticalMessages(job.design, job.source, { brief: job.briefThinking === true }), { model, reasoningEffort: job.reasoningEffort ?? reasoningEffortFor(model, 'fix'), responseFormat: CRITICAL_FORMAT }, model);
   if (failed) return failed;
   const review = parse(reply.content);
   if (!review || !Array.isArray(review.bugs)) return { ok: false, model, error: 'the model wrote no review', ...replyStats(reply) };
