@@ -89,7 +89,7 @@ none: it's co-op, and every station's job is shown to the whole room.
 8. Waves get harder: rocks every 2.2 s in wave 1 down to every 1.0 s in wave 6; a comet
    every 9 s in wave 2 down to every 4 s in wave 6, two at once in waves 5 and 6.
 
-## Ending and winner
+## Ending
 - A team game: everyone wins or loses together. **Score** = 10 per rock, 20 per comet
   blocked, 25 per star, 100 per wave survived, + the hull left at the end.
 - `party.end`: rankings in seat order, every player gets the team score (so the lobby shows

@@ -30,7 +30,7 @@ none: everything happens on the big screen.
 5. After 20 s the ice starts to melt from the edge, so every round ends.
 6. The last blob on the ice wins the round. 3 rounds.
 
-## Ending and winner
+## Ending
 After 3 rounds, the most round wins wins; ties share a place. Rankings by wins. A 5 s final
 screen, then `party.end`.
 

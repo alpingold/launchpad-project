@@ -85,7 +85,7 @@ Your colour and name at the top. Big buttons at the bottom, one thumb.
 6. **Prompts:** ~150 built in, family-friendly, none repeated in a game.
 7. **Answers:** trimmed, 1–60 characters, control characters removed; shown as text only.
 
-## Ending and winner
+## Ending
 - After The Last Word: rankings by points (ties keep seat order), scores are the points.
 
 ## Length

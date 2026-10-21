@@ -158,7 +158,7 @@ party.end({ rankings: [playerId, ...], scores: { [playerId]: number } })   // th
   from the big screen at most about 110 KB. Keep states small anyway: send each phone what it
   needs, not the whole game.
 - **`party.end`:** `rankings` lists player ids best first (each at most once, only players
-  in this game); `scores` is optional. Show a final screen on the big screen for a few
+  in this game); `scores` is optional. A game with no winner calls `party.end({ rankings: [] })`. Show a final screen on the big screen for a few
   seconds first, then call `party.end` (the platform then goes back to the lobby).
 
 ### Reloads

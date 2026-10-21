@@ -82,7 +82,7 @@ No sounds on phones (a neighbour could hear a secret). Your colour and name at t
    button is spent, a new captain, the clock runs on.
 10. **Last call:** at 0:00, 30 s in which anyone may push once more, even with their button spent.
 
-## Ending and winner
+## Ending
 - Humans win if an ejection removes exactly the aliens. Aliens win if an ejected player is
   human, or if last call ends without an ejection.
 - A team game, no ties: rankings list the winning team, then the losing team (seat order

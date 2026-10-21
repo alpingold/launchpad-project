@@ -33,16 +33,22 @@ then the big screen shows at most that someone has done something ("Ana locked i
 what, and no hint of it either (a colour, an icon, the order of a list). Or `none`.
 
 ## Rules
-Step by step, from the start to the end, with numbers: timers, points, speeds, health.
+Step by step, from the start to the end, with numbers: timers, speeds, health, and points if the game has a score (see Ending).
 - **Choices:** in every phase each player has a choice that matters, with a trade-off (risk
   or safety, now or later, help or hurt someone). Players affect each other, not only the board.
 - **Over the game:** what changes from round to round (a new twist, a harder level, a bigger
-  prize), and how the end builds to a finish. Enough rounds, levels or turns that the lead can
-  change hands. A game that's one loop repeated the same way is too thin.
+  stake), and how the end builds to a finish. With a score: enough rounds, levels or turns that
+  the lead can change hands. A game that's one loop repeated the same way is too thin.
 - **Talking:** if players discuss, accuse or persuade, that talk gets its own timer (30–90 s).
 
-## Ending and winner
-When the game ends, who wins, and how ties are handled. Rankings for `party.end`.
+## Ending
+When and how the game ends, and its last big moment on the big screen.
+- **A score only if the idea asks for one:** it mentions points, scoring, a winner or winning.
+  Otherwise the game has **no points and no winner**, however it's usually played: it ends on
+  its big moment (the spy caught or escaping, the last drawing revealed), and `party.end` gets
+  an empty ranking. Don't add points, rounds or a leaderboard that the idea doesn't have.
+- **With a score:** one way to score, kept simple. Players who tie share the win: no
+  tie-breakers. Rankings for `party.end`, best first.
 
 ## Length
 How long one round (or level, or turn) takes, and how long the whole game takes, worked out

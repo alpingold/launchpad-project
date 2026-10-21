@@ -20,7 +20,7 @@ export const EXAMPLE_IDEAS = [
   },
   {
     label: 'Find the spy',
-    idea: 'Each round everyone but one player sees the same secret place on their phone, like a beach or a hospital; the spy only sees "You are the spy". The big screen asks three questions about the place ("What would you wear there?") and everyone types a short answer, shown with their name. Then everyone votes for the spy. If the spy is caught, everyone else scores; if not, the spy scores. New spy and place each round; most points after 5 rounds wins.',
+    idea: 'Each round everyone but one player sees the same secret place on their phone, like a beach or a hospital; the spy only sees "You are the spy". The big screen asks three questions about the place ("What would you wear there?") and everyone types a short answer, shown with their name. Then everyone votes for the spy, and the big screen reveals whether they caught them. A new spy and place each round, for 5 rounds.',
   },
   {
     label: 'Draw and guess',

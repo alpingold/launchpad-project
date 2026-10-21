@@ -66,7 +66,7 @@ one everyone forgot? The reveal is the moment the room reacts ("you put FOUR on 
    you send prospectors to) and nobody gets that claim, whoever went there.
 6. **7 rounds.** The last is the **Mother Lode**: every claim's gold is doubled (the "?" up to 16).
 
-## Ending and winner
+## Ending
 Most gold wins. Ties: more claims won, then a shared place. `party.end` ranks everyone; scores
 are their gold.
 

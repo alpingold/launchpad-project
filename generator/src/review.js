@@ -92,7 +92,7 @@ Each item is ONE concrete thing the code must do or show, checkable by reading t
 - big screen / phones: a part of a screen, a control, what is shown when
 - art: a drawn character or object and its features, the scene, a look per phase, the big moment and how it moves
 - sound: a sound at a moment
-- ending: when it ends, the winner, each tie-break in order
+- ending: when it ends, and the winner and each tie-break in order, if it has them
 - edge cases: leaving, coming back, nobody acting, 1 player, the most players, a reload
 
 Split sentences that hold several things into several items. Keep the design's numbers. Never add what the design doesn't say.{{COUNT}} Ids are "R1", "R2"… for rules, "S1"… big screen, "P1"… phones, "A1"… art, "N1"… sound, "E1"… ending, "X1"… edge cases.`;

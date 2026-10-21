@@ -70,7 +70,7 @@ export const MAX_WHOLE_FILE_LENGTH = 60 * 1024;
 export const MAX_GAME_BYTES = 100 * 1024;
 
 /** The headings every design has, in order (generator/spec/DESIGN.md). */
-export const DESIGN_HEADINGS = ['Genre and feel', 'Players', 'Big screen', 'Phones', 'Secrets', 'Rules', 'Ending and winner', 'Length', 'Art', 'Edge cases'];
+export const DESIGN_HEADINGS = ['Genre and feel', 'Players', 'Big screen', 'Phones', 'Secrets', 'Rules', 'Ending', 'Length', 'Art', 'Edge cases'];
 /** The headings every change plan has. */
 export const PLAN_HEADINGS = ['What changes', 'What stays the same', 'Risks'];
 
@@ -135,7 +135,9 @@ const DESIGN_ANSWER = `Reply with the design only, as JSON: "title" is the game'
  * @returns {import('./llm.js').Message[]}
  */
 export function designMessages(idea, redraft) {
-  const parts = [`Design a game based on this idea. If part of it isn't possible with how games work, design the closest game that is.\n\n${data('game-idea', idea)}`];
+  const parts = [
+    `Design a game based on this idea. If part of it isn't possible with how games work, design the closest game that is. Give it points and a winner only if the idea mentions them (see "Ending").\n\n${data('game-idea', idea)}`,
+  ];
   if (redraft) {
     parts.push(`Your last draft:\n\n<last-draft>\n${String(redraft.draft).trim()}\n</last-draft>`);
     parts.push(`Write a new complete draft that makes these changes and keeps the rest:\n\n${data('feedback', redraft.feedback)}`);
