@@ -26,6 +26,7 @@ const FIXED_PAGES = {
   '/create': { title: 'Make a game' },
   '/account': { title: 'Your account' },
   '/report': { title: 'Report an issue' },
+  '/privacy': { title: 'Privacy', description: 'What BoilerGames keeps about you (very little), why, and how to delete it.' },
 };
 
 /**

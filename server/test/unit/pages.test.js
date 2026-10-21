@@ -34,7 +34,7 @@ test('a profile is a page only when the account exists; its bio is the descripti
 
 test('the fixed pages are the client\'s; anything else is not a page', () => {
   const deps = setup();
-  for (const p of ['/', '/games', '/kit', '/join', '/host', '/login', '/admin', '/create', '/account', '/report', '/create/g-whatever']) {
+  for (const p of ['/', '/games', '/kit', '/join', '/host', '/login', '/admin', '/create', '/account', '/report', '/privacy', '/create/g-whatever']) {
     assert.ok(pageInfo(p, deps), p);
   }
   for (const p of ['/nope', '/games/a/b', '/games/%E0%A4%A', '/u/', '/index']) assert.equal(pageInfo(p, deps), null, p);

@@ -93,7 +93,7 @@ export function createApp({ games = new GameRegistry(), db = openDatabase(':memo
   app.use('/api', createAuthRouter({ db, cfg }));
 
   // Your own account: your GenAI Studio key (plan §15).
-  app.use('/api/account', createAccountRouter({ db, userKeys }));
+  app.use('/api/account', createAccountRouter({ db, userKeys, generation, cfg }));
 
   // Admin only: generating and approving AI-made games.
   if (generation) app.use('/api/admin', createAdminRouter({ db, generation }));

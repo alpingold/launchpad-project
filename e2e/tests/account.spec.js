@@ -22,7 +22,7 @@ test('logged out: /account sends you to the login page; /create says to make an 
 test('save a key (a wrong one is refused), see only its end; the guide shows the 3 steps', async ({ people }) => {
   const { page } = await people.host();
   await page.goto('/account');
-  await expect(page.getByRole('heading', { name: 'Your account' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Your account', level: 1 })).toBeVisible();
 
   // The guide: three steps, each with its picture.
   const steps = page.locator('.key-guide li');

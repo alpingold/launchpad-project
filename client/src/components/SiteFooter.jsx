@@ -14,7 +14,7 @@ export default function SiteFooter({ path }) {
     <footer className="site-footer">
       <p>
         BoilerGames is still in an early testing phase and I'd love your feedback!{' '}
-        <a href={reportHref()}>Report an issue</a>
+        <a href={reportHref()}>Report an issue</a> · <a href="/privacy">Privacy</a>
       </p>
       <p className="site-footer-disclaimer">
         BoilerGames is an independent student project. It is <strong>not</strong> affiliated with, endorsed by, sponsored

@@ -48,6 +48,7 @@ export default function Account() {
       <BioSection username={user.username} />
       <KeySection />
       <KeyGuide />
+      <DeleteSection />
     </main>
   );
 }
@@ -229,6 +230,69 @@ function KeyGuide() {
           </li>
         ))}
       </ol>
+    </section>
+  );
+}
+
+/**
+ * Deleting your account (plan §54): for good, with everything of yours. Your password again, so a
+ * borrowed laptop can't do it; then you're logged out and back on the home page.
+ */
+function DeleteSection() {
+  const [open, setOpen] = useState(false);
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+
+  async function remove(event) {
+    event.preventDefault();
+    if (!window.confirm('Delete your account and everything in it, for good? This can\'t be undone.')) return;
+    setBusy(true);
+    setError(null);
+    let res;
+    try {
+      res = await fetch('/api/account', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password }) });
+    } catch {
+      res = null;
+    }
+    if (res?.status === 204) return window.location.assign('/');
+    setBusy(false);
+    setError(res ? ((await res.json().catch(() => ({}))).message ?? 'Something went wrong.') : "Couldn't reach the server.");
+  }
+
+  return (
+    <section className="card" aria-labelledby="delete-heading">
+      <h2 id="delete-heading">Delete your account</h2>
+      <p>
+        This deletes your account for good: your games (published ones leave the site), your votes, your saved key and your
+        logins. Bug reports you sent from the report form stay, without your name. Remixes other people made of your games
+        stay theirs.
+      </p>
+      {!open ? (
+        <button type="button" className="secondary-button" onClick={() => setOpen(true)}>
+          Delete my account…
+        </button>
+      ) : (
+        <form className="admin-form" onSubmit={remove}>
+          <label>
+            Your password, to confirm
+            <input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
+          </label>
+          {error && (
+            <p className="error" role="alert">
+              {error}
+            </p>
+          )}
+          <div className="gen-actions">
+            <button type="submit" className="danger-button" disabled={busy || !password}>
+              Delete everything
+            </button>
+            <button type="button" className="link-button" onClick={() => setOpen(false)} disabled={busy}>
+              Keep my account
+            </button>
+          </div>
+        </form>
+      )}
     </section>
   );
 }

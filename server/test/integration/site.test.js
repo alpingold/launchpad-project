@@ -106,6 +106,6 @@ test('search engines (plan §33): a real robots.txt and a sitemap of the public 
   assert.match(sitemap.headers.get('content-type'), /^application\/xml/);
   const xml = await sitemap.text();
   assert.match(xml, /^<\?xml/);
-  for (const page of ['/', '/games', '/kit']) assert.ok(xml.includes(`<loc>${baseUrl}${page}</loc>`), page);
+  for (const page of ['/', '/games', '/kit', '/privacy']) assert.ok(xml.includes(`<loc>${baseUrl}${page}</loc>`), page);
   assert.doesNotMatch(xml, /id="root"/);
 });

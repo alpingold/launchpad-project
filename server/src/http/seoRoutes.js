@@ -25,7 +25,7 @@ export function createSeoRouter({ db, games }) {
   router.get('/sitemap.xml', (req, res) => {
     // What a logged-out visitor (a search engine) can see: playtest games stay out.
     const everyone = { userId: null, isAdmin: false };
-    const paths = ['/', '/games', '/kit', ...catalogList(db, games, everyone).map((g) => `/games/${encodeURIComponent(g.id)}`)];
+    const paths = ['/', '/games', '/kit', '/privacy', ...catalogList(db, games, everyone).map((g) => `/games/${encodeURIComponent(g.id)}`)];
     const urls = paths.map((p) => `  <url><loc>${escapeXml(origin(req) + p)}</loc></url>`);
     const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join('\n')}\n</urlset>\n`;
     res.type('application/xml').set('Cache-Control', 'public, max-age=3600').send(xml);

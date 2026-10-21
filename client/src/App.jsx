@@ -20,6 +20,7 @@ const Kit = lazy(() => import('./pages/Kit.jsx'));
 const Create = lazy(() => import('./pages/Create.jsx'));
 const CreateGame = lazy(() => import('./pages/CreateGame.jsx'));
 const Account = lazy(() => import('./pages/Account.jsx'));
+const Privacy = lazy(() => import('./pages/Privacy.jsx'));
 
 // The site's pages, by URL path. Plain links (<a href>) do a full page load, which is all a
 // handful of pages needs (decision D12: no router library). Adding a page = one line here.
@@ -34,6 +35,7 @@ const PAGES = {
   '/create': Create,
   '/account': Account,
   '/report': Report,
+  '/privacy': Privacy,
 };
 
 /** "/join/" and "/join" are the same page. */
