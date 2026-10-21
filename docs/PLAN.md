@@ -1894,7 +1894,7 @@ admin (§49). What follows is what was built and removed.
   review, checked against the original's design, flagged things the change rightly removed (the
   head-to-head pairs) as missing. Whole-file rewrites also drop the code's comments.
 
-### 45b. Remix, design first (2026-10-20: generator built; experiment says build the rest)
+### 45b. Remix, design first (built 2026-10-21)
 
 **Why:** a remix is treated as a change: a short plan of the difference, then edits. That's right
 for a tweak, but a remix with a big change is a different game, and nothing ever describes it as
@@ -1923,7 +1923,14 @@ complete design; the code is then edited toward it, not rewritten.
 6. From then on, that design is **the remix's design**: later changes are ordinary change requests
    (a plan, then a build) checked against it.
 
-**What changes in the code:**
+**As built (2026-10-21):** as planned below, with these differences: the build always writes the
+whole file, whatever the game's size (Stowaways, 62 KB, fit: ~4K thinking + ~20K of file), and
+gets the brief-thinking sentence like a first build; it's asked to keep the code's comments.
+"Make it your own" is offered only before a remix's first change (after that, ordinary changes,
+planned against the remix's design). Migration 15 adds `kind 'remix'`;
+`POST /api/generations/:id/remix-design`.
+
+**What changes in the code (the plan):**
 - **Versions:** a new `kind`, `'remix'`, for the version made by "Make it your own" (migration: the
   `kind` CHECK allows it). It starts at "designing" like a new game's version 1.
 - **The game's design:** today `jobFor` uses version 1's design as "the game's design". It becomes
