@@ -1989,6 +1989,17 @@ An AI reviewer reads a finished game's code against its design. Built first to m
 variants (§43) on more than "did it pass the checks"; it found bugs the checks can't, so every
 build on the site now ends with one review round.
 
+**Since 2026-10-21 the site's review is critical-only** ([code-review.md](experiments/code-review.md)):
+the design (and the changes since) and the code, asked for crashes and dead ends only, with a
+stopping rule ("if you found nothing you can point to, answer no bugs; finding nothing is a
+normal result"). No checklist, score or missing items: the score was for experiments and wasn't
+consistent, and a game's creator finds missing features when they play it. Why: the full review
+often wrote nothing on big games; critical-only found the most real bugs with no false alarms,
+and the stopping rule fixed its own failure (on a game with nothing to find it searched on and
+the reply ended mid-thought, ~a third of the time): 23 of 24 answered, in ~2.7 minutes. The
+checklist and full review steps stay for the experiment scripts. What's below is how the first
+version worked.
+
 - **How it reads** (generator/src/review.js): the design (plus any changes since) becomes a
   checklist of 30–150 concrete items; then the reviewer marks each item implemented, partial,
   missing or wrong, citing line numbers, and lists bugs with a severity: **crash**, **stuck** (play
