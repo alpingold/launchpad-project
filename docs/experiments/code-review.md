@@ -21,3 +21,28 @@ took ~11 minutes and found 6 bugs; it fixed the dead end (a solo player couldn't
 the phone sent `skill: undefined`, which JSON drops), using the icon the player tapped. The bugs
 now read player-first ("Solo player can never cycle skills…"). It missed the unreachable exit
 again: 3 reviews of 4 missed it, which is why a deterministic check beats the reviewer there.
+
+## The reviewer on big files: no number, or critical bugs only (2026-10-21)
+
+The review often wrote nothing on big games (40–62 KB remixes). Two ideas, against today's
+reviewer, on the 7 official games (18–62 KB; twice each) and the 12 §47 test games (once each):
+**(A)** today: a checklist with "Usually 30–60 items", every item answered, all bugs; **(B)** the
+checklist without the number; **(C)** critical bugs only (crash, stuck), from the design and the
+code, no checklist.
+
+- **Reviews written:** A 25/26, B 23/26, C 21/26. C's 5 failures were all out of room on the
+  big official games (Doodle Drift twice, Stowaways, Punchline, Comet Crew): it writes ~nothing
+  (`{"bugs":[]}`) but, with no checklist to work through, thinks until the context is full.
+- **No number made checklists bigger,** not smaller: Comet Crew 61 → 146 items, Stowaways
+  91 → 143, Punchline 61 → 111 (the bake-off's went down, 149 → ~110). More to answer: more
+  thinking, longer answers, 3 failures.
+- **Bugs, checked by reading the code** (the §47 games, ~19 real crashes and dead ends): C found
+  the most (~14), A ~11 (two by the wrong cause), B ~10. C alone found the exit that can't be
+  reached and both "tie-break crash" and "scoring calls .filter on an object" in other builds;
+  A missed the bake-off's scoring crash in control-1. False alarms: A ~4 (a late joiner in
+  Punchline, a missing "back" handler: the platform resends a phone's last state anyway, a
+  throttled timer), B ~1–2, C none found. No arm reported a crash or dead end in an official
+  game except A once.
+- **So:** critical-only is the better bug finder but needs its thinking held down on big files
+  (the brief-thinking idea, for the reviewer). It also drops the design checklist and its score,
+  which the creator's page shows today.
