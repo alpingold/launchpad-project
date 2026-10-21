@@ -48,6 +48,9 @@ export const startGeneration = (idea, model) => request(BASE, { method: 'POST', 
 export const requestChanges = (id, changeRequest, basedOn, skipDesign = false) =>
   request(`${BASE}/${encodeURIComponent(id)}/versions`, { method: 'POST', body: { request: changeRequest, basedOn, skipDesign } });
 
+/** "Make it your own" (plan §45b): a remix's own whole design, then its code rewritten for it. → 202 { game } */
+export const remixDesign = (id, remixRequest) => request(`${BASE}/${encodeURIComponent(id)}/remix-design`, { method: 'POST', body: { request: remixRequest } });
+
 const versionPath = (id, version, action) => `${BASE}/${encodeURIComponent(id)}/versions/${version}/${action}`;
 
 /** A new draft of a version's design (or plan), with what to change. → { game } (202: queued) */

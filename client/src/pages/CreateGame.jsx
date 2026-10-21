@@ -13,6 +13,7 @@ import {
   buildVersion,
   discardVersion,
   reviewAgain,
+  remixDesign,
 } from '../net/admin.js';
 import { usePageTitle } from '../usePageTitle.js';
 import Markdown from '../components/Markdown.jsx';
@@ -20,9 +21,10 @@ import CodeReview from '../components/generation/CodeReview.jsx';
 import BlockedWords from '../components/generation/BlockedWords.jsx';
 import { timeAgo } from '../components/timeAgo.js';
 import ChangeForm from '../components/generation/ChangeForm.jsx';
+import MakeItYourOwn from '../components/generation/MakeItYourOwn.jsx';
 import { DesignEditor } from '../components/generation/DesignEditor.jsx';
 import { ChangedLines, Attempts, Report, SourceCode } from '../components/generation/VersionDetails.jsx';
-import { POLL_MS, VERSION_STATUS_TEXT, PLAN_STATUS_TEXT } from '../components/generation/text.js';
+import { POLL_MS, VERSION_STATUS_TEXT, PLAN_STATUS_TEXT, hasWholeDesign } from '../components/generation/text.js';
 
 // One game you're making with AI, /create/<id> (plan §19): a board-game track shows the four
 // steps (Idea → Design → Build → Play, or Change → Plan → Build → Play for a change), and
@@ -211,7 +213,8 @@ export default function CreateGame({ id }) {
   }
 
   const latest = game.versions.at(-1);
-  const isChange = latest.basedOn !== null;
+  // A change has a plan; a new game, or a remix made its own (plan §45b), a whole design.
+  const isChange = !hasWholeDesign(latest);
   const where = whereIs(latest);
   const name = summary.name ?? latest.name ?? 'Your new game';
   const running = summary.progress?.queuePosition === 0;
@@ -225,6 +228,11 @@ export default function CreateGame({ id }) {
         {!isChange && summary.remixOf ? (
           <p className="create-idea">
             Your remix of <a href={`/games/${encodeURIComponent(summary.remixOf.id)}`}>{summary.remixOf.name}</a>
+            {latest.kind === 'remix' && (
+              <>
+                : <q>{latest.request}</q>
+              </>
+            )}
           </p>
         ) : (
           <p className="create-idea">
@@ -414,7 +422,7 @@ function ReadyToPlay({ summary, game, version: v, info, busy, run }) {
 
   return (
     <>
-      <h2>{v.basedOn !== null ? `Version ${v.version} is ready` : summary.remixOf ? 'Your remix is ready' : 'Your game is ready'}</h2>
+      <h2>{!hasWholeDesign(v) ? `Version ${v.version} is ready` : summary.remixOf ? 'Your remix is ready' : 'Your game is ready'}</h2>
       {v.basedOn === null && summary.remixOf && (
         <p>It's a copy of {summary.remixOf.name}, all yours: play it as it is, or ask the AI for changes below.</p>
       )}
@@ -479,12 +487,16 @@ function ReadyToPlay({ summary, game, version: v, info, busy, run }) {
           ? 'Everyone can play this version.'
           : "Only you can start it for now. Open it on a big screen (a laptop or TV) and your friends join on their phones. When you're happy with it, publish it: every host can start it then. Its name and description can't have swear words."}
       </p>
-      <ChangeForm
-        game={game}
-        info={info}
-        disabled={!info.enabled || busy}
-        onAsk={(text, basedOn, smallFix) => run(() => requestChanges(summary.id, text, basedOn, smallFix))}
-      />
+      {summary.remixOf && game.versions.length === 1 ? (
+        <MakeItYourOwn name={summary.remixOf.name} info={info} disabled={!info.enabled || busy} onAsk={(text) => run(() => remixDesign(summary.id, text))} />
+      ) : (
+        <ChangeForm
+          game={game}
+          info={info}
+          disabled={!info.enabled || busy}
+          onAsk={(text, basedOn, smallFix) => run(() => requestChanges(summary.id, text, basedOn, smallFix))}
+        />
+      )}
     </>
   );
 }
@@ -517,7 +529,7 @@ function History({ game, summary }) {
         locked-down frame on the big screen and the phones; the AI follows the <a href="/kit">docs</a>.
       </p>
       {[...game.versions].reverse().map((v) => {
-        const statusText = (v.basedOn === null ? VERSION_STATUS_TEXT : PLAN_STATUS_TEXT)[v.status];
+        const statusText = (hasWholeDesign(v) ? VERSION_STATUS_TEXT : PLAN_STATUS_TEXT)[v.status];
         return (
           <article key={v.version} className="create-version" aria-label={`Version ${v.version}`}>
             <h3>
@@ -525,17 +537,17 @@ function History({ game, summary }) {
             </h3>
             <p className="small">
               {v.basedOn === null ? (
-                'Made from your idea'
+                summary.remixOf ? `A copy of ${summary.remixOf.name}` : 'Made from your idea'
               ) : (
                 <>
-                  Changed from version {v.basedOn}: <q>{v.request}</q>
+                  {v.kind === 'remix' ? `Made your own from version ${v.basedOn}` : `Changed from version ${v.basedOn}`}: <q>{v.request}</q>
                 </>
               )}
               , {timeAgo(v.createdAt)}.
             </p>
             {v.design !== null && (
               <details className="gen-source">
-                <summary>{v.basedOn === null ? 'The design' : 'The plan'}</summary>
+                <summary>{hasWholeDesign(v) ? 'The design' : 'The plan'}</summary>
                 <Markdown text={v.design} headingOffset={3} />
               </details>
             )}

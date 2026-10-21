@@ -42,3 +42,29 @@ test('remix an official game, publish it with a credit line, then turn remixing 
   await expect(other.locator('.game-page-by')).toContainText('remixed from Bumper Blobs');
   await expect(other.getByRole('button', { name: 'Remix' })).toHaveCount(0);
 });
+
+test('"Make it your own" (plan §45b): a remix gets its own design to read first, then is rebuilt from it', async ({ people }) => {
+  test.setTimeout(90_000);
+  const { page, context } = await people.host(); // (its confirm dialogs are accepted)
+  expect((await context.request.put('/api/account/genai-key', { data: { key: 'sk-good-0123456789abcdef0123' } })).status()).toBe(200);
+  await page.goto('/games/claim-jumpers');
+  await page.getByRole('button', { name: 'Remix' }).click();
+  await expect(page.getByRole('heading', { name: 'Your remix is ready' })).toBeVisible();
+
+  // Instead of the change form: what should be different.
+  await expect(page.getByRole('heading', { name: 'Make it your own' })).toBeVisible();
+  await page.getByLabel('What should be different').fill('Two teams instead of everyone for themselves');
+  await page.getByRole('button', { name: "Write my remix's design" }).click();
+  await expect(page.locator('.create-idea')).toHaveText('Your remix of Claim Jumpers: Two teams instead of everyone for themselves', { timeout: 20_000 });
+  // A whole design (the new-game track), to read and build.
+  await expect(page.getByRole('button', { name: 'Build it' })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByLabel(/Step 2 of 4: Design/)).toBeVisible();
+  await page.getByRole('button', { name: 'Build it' }).click();
+  await expect(page.getByRole('heading', { name: 'Your remix is ready' })).toBeVisible({ timeout: 20_000 });
+
+  // After that, ordinary changes.
+  await expect(page.getByRole('heading', { name: 'Make it your own' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Want it different?' })).toBeVisible();
+  await page.getByText('For the curious').click();
+  await expect(page.getByText(/Made your own from version 1: Two teams/)).toBeVisible();
+});

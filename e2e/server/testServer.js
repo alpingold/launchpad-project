@@ -7,7 +7,7 @@
 //   1. A FAKE generator instead of the OpenShell sandbox + GenAI Studio. The tests don't
 //      need Docker, an API key or the network, and a game takes ~2 s instead of minutes.
 //      It writes a renamed Probe ("Robot Majority"); a change request renames it to
-//      "Robot Majority 2". An idea with "rude" in it names it "Robot Bullshit" (for the word
+//      "Robot Majority 2"; a remix made its own (plan §45b) keeps the copy, marked. An idea with "rude" in it names it "Robot Bullshit" (for the word
 //      filter, plan §49). It still sends progress steps, and checks the game file the same
 //      way the real one will.
 //   2. An admin account (accounts.js) in the throwaway in-memory database.
@@ -86,7 +86,9 @@ async function fakeGenerator(job, { onStep }) {
     ? BROKEN_SOURCE
     : job.change
       ? job.change.source.replace(/"name": "[^"]*"/, '"name": "Robot Majority 2"')
-      : GOOD_SOURCE;
+      : job.remix
+        ? `${job.remix.source}\n<!-- made its own (plan §45b) -->\n`
+        : GOOD_SOURCE;
   const changelog = job.change ? '- Renamed it to Robot Majority 2' : null;
   if (!job.change && job.idea.includes('rude')) source = source.replace('"name": "Robot Majority"', '"name": "Robot Bullshit"');
   const report = withFakePlaytest(frameGameReport(source));

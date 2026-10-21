@@ -11,6 +11,12 @@ export const VERSION_STATUS_TEXT = {
   failed: 'Failed',
   ready: 'Passed the checks',
 };
+/**
+ * Does this version hold a whole design (a new game's version 1, or a remix's own from "Make it
+ * your own", plan §45b), not a change plan? The pages say "design" or "plan" by this.
+ */
+export const hasWholeDesign = (version) => version.basedOn === null || version.kind === 'remix';
+
 /** A change's design is a plan; the words follow. */
 export const PLAN_STATUS_TEXT = { ...VERSION_STATUS_TEXT, designing: 'Writing the plan', design_ready: 'Plan ready' };
 

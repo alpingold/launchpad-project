@@ -20,7 +20,7 @@ import CodeReview from '../components/generation/CodeReview.jsx';
 import ChangeForm from '../components/generation/ChangeForm.jsx';
 import { DesignEditor } from '../components/generation/DesignEditor.jsx';
 import { ChangedLines, Attempts, Report, SourceCode } from '../components/generation/VersionDetails.jsx';
-import { POLL_MS, VERSION_STATUS_TEXT, PLAN_STATUS_TEXT, formatTime } from '../components/generation/text.js';
+import { POLL_MS, VERSION_STATUS_TEXT, PLAN_STATUS_TEXT, formatTime, hasWholeDesign } from '../components/generation/text.js';
 import AdminReports from './AdminReports.jsx';
 
 // The admin page (plan §11 A6, versions §12e K6, designs §13i F5): make games with AI. The AI
@@ -445,7 +445,7 @@ function GameDetail({ summary, info, onChanged, onDeleted }) {
           onRedesign={(feedback) => run(() => redesignVersion(summary.id, v.version, feedback))}
           onSaveDesign={(design) => run(() => saveDesign(summary.id, v.version, design))}
           onBuild={() => run(() => buildVersion(summary.id, v.version))}
-          onDiscard={() => run(() => discardVersion(summary.id, v.version), `Throw away v${v.version}? Its ${v.basedOn === null ? 'design' : 'plan'} and request are deleted.`)}
+          onDiscard={() => run(() => discardVersion(summary.id, v.version), `Throw away v${v.version}? Its ${hasWholeDesign(v) ? 'design' : 'plan'} and request are deleted.`)}
           canChange={info.enabled && !summary.progress && !game?.versions.some((x) => ['designing', 'design_ready', 'generating'].includes(x.status))}
           onFixFindings={(text) => run(() => requestChanges(summary.id, text, v.version, true), `Ask the AI to fix these in a new version, from v${v.version}?`)}
           onReviewAgain={() => run(() => reviewAgain(summary.id, v.version), `Review v${v.version}'s code again? It makes a new version.`)}
@@ -457,7 +457,7 @@ function GameDetail({ summary, info, onChanged, onDeleted }) {
 
 /** One version: what was asked, its design or plan, what the AI says it changed, its checks, changed lines and code. */
 function Version({ version: v, open, live, busy, info, canDiscard, canChange, onPlaytest, onRedesign, onSaveDesign, onBuild, onDiscard, onFixFindings, onReviewAgain }) {
-  const isPlan = v.basedOn !== null;
+  const isPlan = !hasWholeDesign(v);
   const statusText = (isPlan ? PLAN_STATUS_TEXT : VERSION_STATUS_TEXT)[v.status];
   // The design is open to work on while it waits for you, or after a failed build.
   const designOpen = v.design !== null && (v.status === 'design_ready' || v.status === 'failed');
@@ -474,7 +474,7 @@ function Version({ version: v, open, live, busy, info, canDiscard, canChange, on
             <>From the idea.</>
           ) : (
             <>
-              Changed from v{v.basedOn}: <q>{v.request}</q>
+              {v.kind === 'remix' ? `Remix design from v${v.basedOn}` : `Changed from v${v.basedOn}`}: <q>{v.request}</q>
             </>
           )}
           <span className="muted"> · {formatTime(v.createdAt)}</span>
