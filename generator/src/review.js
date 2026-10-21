@@ -95,7 +95,7 @@ Each item is ONE concrete thing the code must do or show, checkable by reading t
 - ending: when it ends, the winner, each tie-break in order
 - edge cases: leaving, coming back, nobody acting, 1 player, the most players, a reload
 
-Split sentences that hold several things into several items. Keep the design's numbers. Never add what the design doesn't say. Usually 30-60 items. Ids are "R1", "R2"… for rules, "S1"… big screen, "P1"… phones, "A1"… art, "N1"… sound, "E1"… ending, "X1"… edge cases.`;
+Split sentences that hold several things into several items. Keep the design's numbers. Never add what the design doesn't say.{{COUNT}} Ids are "R1", "R2"… for rules, "S1"… big screen, "P1"… phones, "A1"… art, "N1"… sound, "E1"… ending, "X1"… edge cases.`;
 
 const REVIEW_SYSTEM = `You review the code of a party game (one HTML file: the big screen and every phone run it) against a checklist made from its design. Read the code carefully; each line starts with its number.
 
@@ -130,14 +130,71 @@ export function numberLines(source) {
  * @param {string[]} [changes]  changes asked for since the design, oldest first: they win where they differ
  * @returns {import('./llm.js').Message[]}
  */
-export function checklistMessages(design, changes = []) {
+export function checklistMessages(design, changes = [], { count = true } = {}) {
   const since = changes.length
     ? `\n\nChanges made to the game since, oldest first. Where one differs from the design, the change is what the game must do now:\n\n<changes>\n${changes.map((c) => `- ${String(c).trim()}`).join('\n')}\n</changes>`
     : '';
   return [
-    { role: 'system', content: CHECKLIST_SYSTEM },
+    // count false: no "Usually 30-60 items" (an experiment: the checklists ran to 89–183 items).
+    { role: 'system', content: CHECKLIST_SYSTEM.replace('{{COUNT}}', count ? ' Usually 30-60 items.' : '') },
     { role: 'user', content: `The design:\n\n<design>\n${String(design).trim()}\n</design>${since}\n\nReply with the checklist as JSON.` },
   ];
+}
+
+export const CRITICAL_FORMAT = {
+  type: 'json_schema',
+  json_schema: {
+    name: 'critical_bugs',
+    schema: {
+      type: 'object',
+      properties: {
+        bugs: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: { lines, what: { type: 'string' }, severity: { type: 'string', enum: CRITICAL } },
+            required: ['lines', 'what', 'severity'],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ['bugs'],
+      additionalProperties: false,
+    },
+  },
+};
+
+const CRITICAL_SYSTEM = `You look for the bugs that would ruin a party game (one HTML file: the big screen and every phone run it). Read the code carefully; each line starts with its number. The design says what the game should do.
+
+List only these:
+- crash: an error is thrown during normal play (an undefined name, a method called on the wrong kind of value)
+- stuck: play can't go on or can't be won (a goal that can't be reached, a phase that never ends, a control that never works)
+
+Only list a bug if you can point to the lines that make it happen. For each: its lines, its severity, and "what": what goes wrong for the players, in plain words, then why in the code. Nothing else: not minor bugs, not differences from the design that still play. No bugs is a fine answer.`;
+
+/**
+ * The critical-only review (an experiment, plan §47): only crashes and dead ends, from the design
+ * and the code, without a checklist.
+ * @returns {import('./llm.js').Message[]}
+ */
+export function criticalMessages(design, source) {
+  return [
+    { role: 'system', content: CRITICAL_SYSTEM },
+    { role: 'user', content: `The design:\n\n<design>\n${String(design).trim()}\n</design>\n\nThe code:\n\n<code>\n${numberLines(source)}\n</code>\n\nReply with the bugs as JSON.` },
+  ];
+}
+
+/** How a reply went, for measuring (plan §47's experiments): its thinking and answer sizes, and why it stopped. */
+const replyStats = (reply) => ({ thinkingChars: reply.thinking?.length ?? 0, replyChars: reply.content?.length ?? 0, finishReason: reply.finishReason ?? null });
+
+/** A model call that may run out of room: then a failed result with what it thought, not a throw. */
+async function ask(chatFn, messages, opts, model) {
+  try {
+    return { reply: await chatFn(messages, opts) };
+  } catch (err) {
+    if (!err.outOfRoom) throw err;
+    return { failed: { ok: false, model, error: err.message, outOfRoom: true, usage: err.usage, seconds: err.seconds, ...replyStats(err) } };
+  }
 }
 
 /** @returns {import('./llm.js').Message[]} */
@@ -166,10 +223,11 @@ const parse = (text) => {
  */
 export async function makeChecklist(job, model, { chatFn = chat, onStep = () => {} } = {}) {
   onStep(`checklist: asking ${model}`);
-  const reply = await chatFn(checklistMessages(job.design, job.changes), { model, reasoningEffort: job.reasoningEffort ?? reasoningEffortFor(model, 'design'), responseFormat: CHECKLIST_FORMAT });
+  const { reply, failed } = await ask(chatFn, checklistMessages(job.design, job.changes, { count: job.count !== false }), { model, reasoningEffort: job.reasoningEffort ?? reasoningEffortFor(model, 'design'), responseFormat: CHECKLIST_FORMAT }, model);
+  if (failed) return failed;
   const items = parse(reply.content)?.items;
-  if (!Array.isArray(items) || items.length === 0) return { ok: false, model, error: 'the model wrote no checklist' };
-  return { ok: true, model, checklist: items, usage: reply.usage, seconds: reply.seconds };
+  if (!Array.isArray(items) || items.length === 0) return { ok: false, model, error: 'the model wrote no checklist', ...replyStats(reply) };
+  return { ok: true, model, checklist: items, usage: reply.usage, seconds: reply.seconds, ...replyStats(reply) };
 }
 
 /**
@@ -178,10 +236,24 @@ export async function makeChecklist(job, model, { chatFn = chat, onStep = () => 
  */
 export async function reviewGame(job, model, { chatFn = chat, onStep = () => {} } = {}) {
   onStep(`review: asking ${model}`);
-  const reply = await chatFn(reviewMessages(job.checklist, job.source), { model, reasoningEffort: job.reasoningEffort ?? reasoningEffortFor(model, 'fix'), responseFormat: REVIEW_FORMAT });
+  const { reply, failed } = await ask(chatFn, reviewMessages(job.checklist, job.source), { model, reasoningEffort: job.reasoningEffort ?? reasoningEffortFor(model, 'fix'), responseFormat: REVIEW_FORMAT }, model);
+  if (failed) return failed;
   const review = parse(reply.content);
-  if (!review || !Array.isArray(review.items)) return { ok: false, model, error: 'the model wrote no review' };
-  return { ok: true, model, review, usage: reply.usage, seconds: reply.seconds };
+  if (!review || !Array.isArray(review.items)) return { ok: false, model, error: 'the model wrote no review', ...replyStats(reply) };
+  return { ok: true, model, review, usage: reply.usage, seconds: reply.seconds, ...replyStats(reply) };
+}
+
+/**
+ * The "critical" job step (an experiment): job.design and job.source; only crashes and dead ends.
+ * @returns {Promise<{ ok: boolean, model: string, review?: { bugs: object[] }, usage?: object, seconds?: number, error?: string }>}
+ */
+export async function reviewCritical(job, model, { chatFn = chat, onStep = () => {} } = {}) {
+  onStep(`critical review: asking ${model}`);
+  const { reply, failed } = await ask(chatFn, criticalMessages(job.design, job.source), { model, reasoningEffort: job.reasoningEffort ?? reasoningEffortFor(model, 'fix'), responseFormat: CRITICAL_FORMAT }, model);
+  if (failed) return failed;
+  const review = parse(reply.content);
+  if (!review || !Array.isArray(review.bugs)) return { ok: false, model, error: 'the model wrote no review', ...replyStats(reply) };
+  return { ok: true, model, review, usage: reply.usage, seconds: reply.seconds, ...replyStats(reply) };
 }
 
 /** Words worth comparing: lower case, 4+ letters, cut to their first 5 (so "guards" meets "guard"). */

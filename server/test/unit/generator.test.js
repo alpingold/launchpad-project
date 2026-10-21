@@ -497,7 +497,7 @@ test('bad jobs are refused before any model call', async () => {
     [{ step: 'design', idea: 'short' }, /idea must be/],
     [{ step: 'design', idea: 'A long enough idea', model: 'gpt-9' }, /unknown model/],
     [{ step: 'build', idea: 'A long enough idea' }, /needs the approved design/],
-    [{ step: 'dance', idea: 'A long enough idea' }, /must be "design", "build", "recheck", "checklist" or "review"/],
+    [{ step: 'dance', idea: 'A long enough idea' }, /must be "design", "build", "recheck", "checklist", "review" or "critical"/],
     [{ step: 'build', idea: 'A long enough idea', design: DESIGN, review: 'yes' }, /review must be true or false/],
     [{ step: 'recheck', idea: 'A long enough idea' }, /a review needs the game/],
     [{ step: 'design', idea: 'A long enough idea', change: { request: 'Make it better please', source: '' } }, /current game file/],

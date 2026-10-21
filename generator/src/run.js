@@ -41,7 +41,7 @@
 
 import { pathToFileURL } from 'node:url';
 import { chat } from './llm.js';
-import { makeChecklist, reviewGame, reviewFinished, forCreator, fixRequest, CRITICAL } from './review.js';
+import { makeChecklist, reviewGame, reviewCritical, reviewFinished, forCreator, fixRequest, CRITICAL } from './review.js';
 import { extractGameFile, extractHeadings, extractChangelog, missingHeadings } from './extract.js';
 import { applyReply, hasEdits, withoutEdits } from './edits.js';
 import {
@@ -175,6 +175,10 @@ export async function runJob(job, deps = {}) {
     if (!Array.isArray(job.checklist) || typeof job.source !== 'string') return fail('a review needs the checklist and the game file');
     return reviewGame(job, model, deps);
   }
+  if (job.step === 'critical') {
+    if (typeof job.design !== 'string' || typeof job.source !== 'string') return fail('a critical review needs the design and the game file');
+    return reviewCritical(job, model, deps);
+  }
   if (job.step === 'build') {
     if (change === undefined && typeof job.design !== 'string') return fail('building needs the approved design');
     const built = await build(job, model, deps);
@@ -184,7 +188,7 @@ export async function runJob(job, deps = {}) {
     if (change === undefined) return fail('a review needs the game (change.source)');
     return withReview(job, { ok: true, model, source: change.source, report: null, changelog: null, attempts: [] }, model, deps);
   }
-  return fail('the step must be "design", "build", "recheck", "checklist" or "review"');
+  return fail('the step must be "design", "build", "recheck", "checklist", "review" or "critical"');
 }
 
 /**
