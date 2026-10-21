@@ -46,3 +46,24 @@ code, no checklist.
 - **So:** critical-only is the better bug finder but needs its thinking held down on big files
   (the brief-thinking idea, for the reviewer). It also drops the design checklist and its score,
   which the creator's page shows today.
+
+### Why the review ends with no answer, and the stopping rule (2026-10-21)
+
+- **Not the thinking setting:** low effort and a "read the code once" sentence failed as often
+  (official games 7/14 and 6/14).
+- **Not the forced format:** without `response_format` (the JSON asked for in words) critical-only
+  failed as often (10/26); an early 3-of-3 without it was luck. The full review without it wrote
+  JSON that didn't parse 3 times.
+- **Not a limit:** failures ended at 9.8K–21.4K thinking tokens, spread evenly, while successes
+  at the same setting thought up to 25K; at medium 62 of 110 successes thought longer than the
+  median failure. Not "out of room" either (e.g. 32K of 65K used): the reply stops mid-sentence
+  with finish_reason "stop" and no content. Our "ran out of room" label was wrong for these.
+- **Not the load:** one at a time, with nothing else running, 2 of 4 still failed.
+- **It's when there's nothing to find:** critical-only failed mostly on the official games (no
+  real crashes), its thinking going "Issue 78: let me verify…" without deciding it was done.
+  **The stopping rule** ("If after reading the code once you have found no crash or dead end you
+  can point to the lines of, stop and answer {"bugs": []}… finding nothing is a normal result")
+  answered **11/12** on those games (all correctly, no bugs) and **12/12** on the §47 games, in
+  ~2.7 minutes. It found ~11 of the ~19 real bugs (the frozen screen, both kinds of scoring crash,
+  the tie-break crash, the unreachable exit, the solo skill row, losing Wing 3…), missing ~8 that
+  critical-only without the rule found when it answered, with no false alarms.
