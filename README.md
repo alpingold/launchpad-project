@@ -1,12 +1,95 @@
 # BoilerGames
 
-A Jackbox-style party game platform: a host shows a room code on a big screen, players join from their phones.
+**Party games for one big screen and everyone's phones, plus an AI that makes new ones from a
+few sentences.** Put a game on a TV or laptop, and everyone joins from their phone's browser with
+a room code: no app, no account to play.
 
-**Live at [boilergames.party](https://boilergames.party).**
+**Live at [boilergames.party](https://boilergames.party)**
 
-The full design, decisions, and milestone plan are in [`docs/PLAN.md`](docs/PLAN.md).
+<p>
+  <img src="server/src/games/stowaways/host.jpg" alt="Stowaways on the big screen: the captain picks a test" width="49%">
+  <img src="server/src/games/comet-crew/host.jpg" alt="Comet Crew on the big screen: the whole room flies one ship" width="49%">
+</p>
+<p>
+  <img src="server/src/games/punchline/host.jpg" alt="Punchline on the big screen: two answers head to head" width="49%">
+  <img src="server/src/games/bumper-blobs/host.jpg" alt="Bumper Blobs on the big screen: blobs on shrinking ice" width="49%">
+</p>
 
-## Run it (development)
+## What it does
+
+- **Seven games** for 2–12 players: hidden roles (Stowaways), writing and voting (Punchline), drawing
+  telephone (Doodle Drift), estimation bets (Ballpark), blind bids (Claim Jumpers), a co-op spaceship
+  where every phone is a station (Comet Crew), and a real-time brawler (Bumper Blobs).
+- **An AI game maker.** Describe a game in a few sentences and the AI writes a design for you to
+  read and edit, then builds the game, plays it with bot phones to catch bugs, reviews its own
+  code, and fixes what it finds. Ask for changes in plain English; publish it for everyone.
+- **Remix** any public game into your own version to change.
+- Game pages, votes, profiles, bug reports, and a public guide to how games are made (`/kit`).
+
+## Engineering highlights
+
+- **Untrusted code, contained.** Every game, hand-made or AI-made, is one HTML file that runs in
+  a sandboxed iframe with a Content-Security-Policy that blocks all network access. The big screen
+  runs the rules; phones are controllers; the server only relays and checks messages and never
+  runs game code. A browser test tries nine ways out of the frame on both screens.
+- **An AI pipeline that tests its own output.** Design → build → a static check → a playtest in
+  headless Chrome with simulated phones → an AI code review → automatic fixes, each step in its
+  own sandbox. The playtest catches crashes, games that get stuck (it jumps the clock past the
+  game's whole length), a big screen that stops redrawing, players' names injected as HTML, and
+  broken values like "NaN" on screen, each with the line of code at fault.
+- **Measured, not guessed.** Prompt and pipeline changes were decided by experiments: the same
+  design built many ways, results tabulated, and the games read by hand
+  ([docs/experiments/](docs/experiments/README.md)). For example, the code review is
+  critical-only because that version found the most real bugs with no false alarms.
+- **Real-time and resilient.** WebSockets with reconnection, grace periods for dropped phones, and
+  games that resume after the big screen reloads mid-round.
+- **Security basics done properly.** scrypt password hashes, HttpOnly session cookies stored only
+  as hashes, rate limits, users' own GenAI Studio API keys encrypted at rest, and account deletion.
+- **Shipped and operated.** AWS EC2 behind Caddy (HTTPS), systemd, nightly backups, and a
+  zero-downtime update script that builds aside, tries database migrations on a copy, waits until
+  nobody is playing, switches over, and rolls back on failure. Tests run on every push (GitHub
+  Actions) and again before every deploy: about 390 server tests, 100 browser tests and the
+  game checker's own suite.
+
+## Stack
+
+Node.js, Express and WebSockets (`ws`) · React and Vite · SQLite (`better-sqlite3`) · Playwright ·
+Purdue GenAI Studio (an open model, Qwen) · OpenShell sandboxes in Docker · AWS EC2, Caddy, Cloudflare DNS
+
+## How it works
+
+```
+ phone (browser)                     server (Node)                    big screen (browser)
+┌──────────────────┐   WebSocket   ┌────────────────────┐ WebSocket ┌──────────────────────┐
+│ site page        │ ────────────▶ │ rooms, accounts,   │ ────────▶ │ site page            │
+│  └ game iframe   │  postMessage  │ checks and relays  │           │  └ game iframe       │
+│    (controller)  │ ◀──────────── │ game messages      │ ◀──────── │    (the referee)     │
+└──────────────────┘               └────────────────────┘           └──────────────────────┘
+                                             │ one job at a time
+                                             ▼
+                                   ┌────────────────────┐
+                                   │ generator, in an   │ ◀── GenAI Studio
+                                   │ OpenShell sandbox  │
+                                   └────────────────────┘
+```
+
+| Folder | What's in it |
+|---|---|
+| `server/` | The server: rooms (`src/rooms/`), the message relay for games (`src/games/FrameRelay.js`), the HTTP API (`src/http/`), accounts, the database and its migrations (`src/db/`), and the AI job queue (`src/generation/`) |
+| `client/` | The website (React): pages, the game frame and the `party` SDK games use (`src/game/frame/`) |
+| `server/src/games/<id>/game.html` | The official games, one file each |
+| `generator/` | The AI side: prompts, the model calls, the game checker and playtest (`src/check/`), the code reviewer, and the rulebook the AI follows (`spec/`) |
+| `e2e/` | Browser tests (Playwright) against a test server with a fake AI |
+| `deploy/` | The production setup: Caddy, systemd, backups, the update script |
+| `docs/` | [PLAN.md](docs/PLAN.md) (every design decision, as it was made), [experiments/](docs/experiments/README.md), [history/](docs/history/README.md) |
+
+More: [generator/README.md](generator/README.md) (setting up AI generation),
+[deploy/README.md](deploy/README.md) (running it on a server), and the rulebook for game files,
+[generator/spec/GAME_SPEC.md](generator/spec/GAME_SPEC.md) (also at `/kit` on the site).
+
+---
+
+## Development
 
 ```sh
 npm run install:all     # first time only
@@ -20,7 +103,7 @@ On WSL2, phones can't reach WSL by default: add `networkingMode=mirrored` under 
 `C:\Users\<you>\.wslconfig`, run `wsl --shutdown`, and allow port 5173 in Windows Firewall.
 Some networks (e.g. campus Wi-Fi) block device-to-device traffic; a phone hotspot works instead.
 
-## Test
+### Tests
 
 ```sh
 npm test                # server unit + integration tests (Node's built-in test runner)
@@ -28,17 +111,16 @@ npm run test:e2e        # browser tests: real Chromium pages against the real cl
 npm run test:check      # the game checker on broken test games (uses the e2e tests' Chromium)
 ```
 
-To check one frame game file (game info, static check, and 20 s of play in a headless
-browser with simulated phones; it RUNS the game, so use it on files you wrote or chose):
+To check one game file (game info, static check, and a playtest in a headless browser with
+simulated phones; it RUNS the game, so use it on files you wrote or chose):
 
 ```sh
 npm run check-game -- server/src/games/bumper-blobs/game.html --shots /tmp/shots
 ```
 
-The browser tests (`e2e/`) start their own server on :3100 and client on :5174 with 2-second
-grace periods, so they don't touch your dev servers. That server (`e2e/server/testServer.js`)
-is the real one plus a test admin account and a **fake AI generator**, so the admin-page tests
-need no Docker, API key or network. First-time setup:
+The browser tests start their own server on :3100 and client on :5174, so they don't touch your
+dev servers. That server (`e2e/server/testServer.js`) is the real one plus a test admin account
+and a **fake AI generator**, so they need no Docker, API key or network. First-time setup:
 
 ```sh
 npm --prefix e2e install
@@ -48,80 +130,10 @@ npx --prefix e2e playwright install chromium   # downloads a test browser (~150 
 Useful while writing tests: `npm --prefix e2e run test:headed` (watch the browsers),
 `npm --prefix e2e run report` (step-by-step trace of a failed test).
 
-## Game art
+### Writing a game
 
-Games can draw their own art (on a canvas, or with text characters), and can also show
-approved pictures by **asset id** (e.g. `go-sign`) with `party.asset(id)`. The library lives in
-`client/public/game-assets/`:
-
-- `manifest.json` lists every asset: `id`, `file`, `alt` (description for screen readers), `tags`, `credit`.
-- To replace a placeholder with your own drawing or Blender render: export a PNG (transparent
-  background works well), put it in the folder, and change that entry's `file`. Keep the `id`,
-  and games pick it up without code changes.
-- To add new art: add the file and a new manifest entry. `npm test` checks that every entry's
-  file exists. A game's security policy only lets it load pictures from this folder.
-
-## Accounts
-
-Hosting needs an account; players join as guests with just a room code.
-
-- Accounts and login sessions are stored in SQLite at `server/data/boilergames.db` (created on
-  first start, ignored by git). Set `DB_PATH` to use another file. Tests always use an
-  in-memory database, so they never touch this file.
-- Passwords are hashed with scrypt (never stored as typed); the login cookie is HttpOnly and
-  SameSite=Lax, and only a hash of its token is stored.
-- To wipe all accounts while developing: stop the server and delete `server/data/`.
-- There is no email or password reset yet (open question Q8).
-- The database upgrades itself on startup (`server/src/db/migrations.js`). Before changing an
-  existing file it saves a copy next to it, named `boilergames.db.backup-<time>`.
-- **Admin tasks** run on the server machine, not on the website:
-  ```sh
-  npm run admin -- users                 # list accounts
-  npm run admin -- grant <username>      # make an account an admin (can generate games)
-  npm run admin -- games                 # list AI-generated games, their versions, and what's live
-  npm run admin -- import-game <file> --owner <username>   # store a game file (its game info must be valid)
-  npm run admin -- set-live <game id> published|playtest <version|none>
-  ```
-  Game changes take effect when the server restarts. A `playtest` version shows up only in its
-  owner's game picker; the `published` version shows up for every host.
-
-## Games are web pages (frame games)
-
-> **Branch `iframe-games`** (plan §13). On `main`, games are built from the game kit's blocks instead.
-
-Each game is **one HTML file** (`server/src/games/<id>/game.html`). The same page runs on the
-big screen and on every phone, each in a **sandboxed iframe**:
-
-- **The big screen is the referee.** Its copy of the game runs the rules, timers and scores,
-  and draws the big picture.
-- **Phones are controllers.** They draw whatever controls the game needs and send events to the
-  big screen.
-- **The server only passes messages along** (`server/src/games/FrameRelay.js`), checking who
-  sent them, who they're for and how big they are. It never runs game code.
-
-A game talks to BoilerGames only through the `party` SDK
-(`client/src/game/frame/sdk.js`):
-- `party.ready(fn)`, `party.on(…)` and `party.now()` work on every screen.
-- Phones have `party.send(data)`.
-- The big screen has:
-  - `party.sendTo` / `party.sendAll`, sent in batches, so calling them every frame is fine
-  - `party.setState(player, state)`, kept and resent after a phone reloads
-  - `party.save(snapshot)`: after a big-screen reload the game starts again with
-    `party.ready`'s `restored`
-  - `party.end({ rankings, scores })`
-
-Games also get **`party.ui`**, ready-made pieces styled like the rest of the site in both
-themes: `joystick`, `gamepad` (hold buttons like ◀ ▶ Jump), `textInput` (typing on a phone),
-`timer`, `drawPad` / `drawing`, `countdown`, and `sound` (short sounds made in code). There's also `el` (builds elements safely), plus a base style for
-headings, buttons and inputs. Games draw with shapes on a canvas, or with HTML and CSS, in
-their own style. `async`/`await` is fine in a game. (A game-logic library, `party.kit`, and
-starter templates were tried and dropped: the games came out simpler without them, plan §20.)
-
-If a game hangs the big screen (which freezes that whole tab), the server notices that the
-page has gone quiet and stops the game after 15 s. A game that loads another page into its
-frame is removed.
-
-The file starts with its info, which is the only part the server reads:
+A game is one HTML file. It starts with its info (the only part the server reads), then talks to
+the site only through the `party` SDK:
 
 ```html
 <script type="application/json" id="game-info">
@@ -129,49 +141,43 @@ The file starts with its info, which is the only part the server reads:
 </script>
 ```
 
-**The walls:**
-- **The iframe sandbox** (`sandbox="allow-scripts"`) means a game can't read the page, the login
-  cookie or the room tokens, and can't redirect the page.
-- **Its Content-Security-Policy** blocks all network access, outside scripts and `eval`.
-- **A browser test proves it:** `e2e/tests/frames.spec.js` tries nine ways out on both screens.
+- `party.ready(fn)`, `party.on(…)` and `party.now()` work on every screen; phones have
+  `party.send(data)`.
+- The big screen has `party.setState(player, state)` (kept and resent after a phone reloads),
+  `party.sendTo` / `party.sendAll`, `party.save(snapshot)` (restored after a big-screen reload)
+  and `party.end({ rankings, scores })`.
+- `party.ui` has ready-made phone pieces: `joystick`, `gamepad`, `textInput`, `timer`, `drawPad`,
+  `countdown`, `sound`, and `el` (builds elements safely).
 
-**The games:**
-- **Bumper Blobs:** phones are joysticks, and the big screen is an ice arena. (Tower Dash and
-  Dungeon Party, the ASCII-art games, were removed on 2026-10-16: see plan §18.)
+The full rules are in [GAME_SPEC.md](generator/spec/GAME_SPEC.md). Put a game in
+`server/src/games/<id>/game.html` and add its id to `server/src/games/index.js`. Games can also
+show approved pictures by id with `party.asset(id)`, from `client/public/game-assets/`
+(`manifest.json` lists them; a game can load pictures only from there).
 
-## AI-made games
+### Accounts and admin tasks
 
-Admins can generate new games with AI (plan §11); later, any host with their own GenAI
-Studio key may too. The generator runs inside an
-OpenShell sandbox using Purdue GenAI Studio; setup steps and model choices are in
-[`generator/README.md`](generator/README.md). The game server itself doesn't need any of this.
-With that set up, `npm run generate -- "<game idea>"` writes a design, lets you approve it,
-then builds the game in the sandbox and saves it under `generator/out/` for you to read.
-
-Admins do it from the **admin page at `/admin`** (linked from the home page when you're
-logged in as an admin). It uses the server's `/api/admin/generations` API. Generating is off
-unless you start the server with `GENERATION_ENABLED=1`:
+Hosting needs an account; players join as guests with a room code. The database is SQLite at
+`server/data/boilergames.db` (created on first start, ignored by git; `DB_PATH` picks another
+file, and tests use an in-memory one). It upgrades itself on startup
+(`server/src/db/migrations.js`), saving a copy first. Admin tasks run on the server machine:
 
 ```sh
-GENERATION_ENABLED=1 npm run dev:server
+npm run admin -- users                 # list accounts
+npm run admin -- grant <username>      # make an account an admin
+npm run admin -- games                 # list AI-made games, their versions, and what's live
+npm run admin -- import-game <file> --owner <username>
+npm run admin -- set-live <game id> published|playtest <version|none>
 ```
 
-On the admin page you type an idea and the AI writes a short **design** first (genre, what
-the big screen and phones show, the rules, how it ends, edge cases). Read it, ask for a new
-draft ("make it 2 rounds") or edit it yourself, then press **Build it** (plan §13i). Jobs run
-one at a time. A finished game waits for review with its check report, the playtest's
-screenshots, and its code (shown as text; the admin
-page never runs it). **Playtest** makes a version startable by you alone, **Publish** makes it
-available to every host, and **Unpublish** takes it away. All of these apply immediately,
-without a restart. Hosts see an **AI-made** badge on these games.
+### AI-made games
 
-**Asking for changes** (plan §12e) makes a new version of a game: describe what to change
-("rounds are too long; show the scoreboard after each round"), read the AI's short **plan**
-of the change, and build it; the AI rewrites the game from that version's code, checked the
-same way. Tick **Small fix** to skip the plan. Each version shows the request, the AI's list
-of changes and the **changed lines**. You can playtest a new version while everyone else keeps
-playing the published one, then publish it; rolling back means playtesting an older version
-and publishing it.
+Generation runs in OpenShell sandboxes calling Purdue GenAI Studio; setup is in
+[generator/README.md](generator/README.md), and the game server itself runs fine without it.
+Turn it on with `GENERATION_ENABLED=1 npm run dev:server`. Anyone with an account and their own
+GenAI Studio key (saved, encrypted, on the account page) can make games at `/create`; admins also
+have `/admin`. From the command line, `npm run generate -- "<game idea>"` writes a design, lets
+you approve it, builds the game and saves it under `generator/out/`.
 
-The AI follows the guide at **`/kit`**, which shows the same rulebook it reads
-(`generator/spec/`). Games can also be added by hand with `npm run admin -- import-game`.
+## License
+
+[MIT](LICENSE)
