@@ -180,13 +180,19 @@ Only list a bug if you can point to the lines that make it happen. For each: its
 export const CRITICAL_BRIEF = `Read the code once, top to bottom, following one round of play as the players would. Note a bug only when you can name its lines; don't re-read the whole file or trace every branch to be sure. Then reply.`;
 
 /**
+ * When to stop (an experiment): on a game with nothing critical, the review searched item after
+ * item without deciding it was done, and the reply ended mid-thought with no answer.
+ */
+export const CRITICAL_STOP = `Read the code once, top to bottom. If after that you have found no crash or dead end you can point to the lines of, stop there and answer {"bugs": []}. Don't keep searching to be sure; finding nothing is a normal result for a finished game.`;
+
+/**
  * The critical-only review (an experiment, plan §47): only crashes and dead ends, from the design
  * and the code, without a checklist.
- * @param {{ brief?: boolean }} [opts]  brief: add CRITICAL_BRIEF before the answer line
+ * @param {{ brief?: boolean, stop?: boolean }} [opts]  brief: add CRITICAL_BRIEF; stop: add CRITICAL_STOP
  * @returns {import('./llm.js').Message[]}
  */
-export function criticalMessages(design, source, { brief = false } = {}) {
-  const ask = `${brief ? `${CRITICAL_BRIEF}\n\n` : ''}Reply with the bugs as JSON: {"bugs": [{"lines": [numbers], "severity": "crash" or "stuck", "what": "..."}]}.`;
+export function criticalMessages(design, source, { brief = false, stop = false } = {}) {
+  const ask = `${brief ? `${CRITICAL_BRIEF}\n\n` : ''}${stop ? `${CRITICAL_STOP}\n\n` : ''}Reply with the bugs as JSON: {"bugs": [{"lines": [numbers], "severity": "crash" or "stuck", "what": "..."}]}.`;
   return [
     { role: 'system', content: CRITICAL_SYSTEM },
     { role: 'user', content: `The design:\n\n<design>\n${String(design).trim()}\n</design>\n\nThe code:\n\n<code>\n${numberLines(source)}\n</code>\n\n${ask}` },
@@ -270,7 +276,7 @@ export async function reviewGame(job, model, { chatFn = chat, onStep = () => {} 
  */
 export async function reviewCritical(job, model, { chatFn = chat, onStep = () => {} } = {}) {
   onStep(`critical review: asking ${model}`);
-  const { reply, failed } = await ask(chatFn, criticalMessages(job.design, job.source, { brief: job.briefThinking === true }), { model, reasoningEffort: job.reasoningEffort ?? reasoningEffortFor(model, 'fix'), responseFormat: job.noFormat ? undefined : CRITICAL_FORMAT }, model);
+  const { reply, failed } = await ask(chatFn, criticalMessages(job.design, job.source, { brief: job.briefThinking === true, stop: job.stopRule === true }), { model, reasoningEffort: job.reasoningEffort ?? reasoningEffortFor(model, 'fix'), responseFormat: job.noFormat ? undefined : CRITICAL_FORMAT }, model);
   if (failed) return failed;
   const review = parse(reply.content);
   if (!review || !Array.isArray(review.bugs)) return { ok: false, model, error: 'the model wrote no review', ...replyStats(reply) };
