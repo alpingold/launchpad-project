@@ -2107,6 +2107,20 @@ version worked.
   undefined" (an empty dish's breakdown has no total), "Appetizer ×undefined" and a score
   "undefined" (fields the big screen never sends). No false alarms.
 
+## 52. Every syntax error at once (2026-10-21)
+
+- **Why:** 8 of 20 bake-off builds in the sentence experiment (§43) failed on syntax errors the
+  fix rounds couldn't repair. The error's line moved down each round (317 → 334 → 356 → 601): a
+  compiler stops at the first error, the file had several (often one slip repeated: an unquoted
+  CSS value like `fontSize:.9em`), and each round fixed only the one it was told about.
+- **How** (`server/src/games/staticCheck.js`): after a syntax error its line is blanked and the
+  script compiled again, up to 8 errors; the first says how many there are and to look for the
+  same mistake elsewhere. A bracket error within a few lines of a blanked line is most likely the
+  blanking's doing (the line opened something), so the scan stops there.
+- **Tried on the failed builds' first files:** the two with a repeated slip listed 5 and 7 real
+  errors (every unquoted value); the one-bracket mistakes listed 1 (no noise); the official games
+  0. Not yet tried through real fix rounds (GenAI Studio was down).
+
 ## Verification (how to confirm the plan worked once built)
 
 - `npm test` (root) → runs `node --test server/test`, all unit and integration tests green.
