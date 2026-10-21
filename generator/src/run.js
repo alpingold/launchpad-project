@@ -163,6 +163,7 @@ export async function runJob(job, deps = {}) {
   if (job.keepThinking !== undefined && typeof job.keepThinking !== 'boolean') return fail('keepThinking must be true or false');
   if (job.reasoningEffort !== undefined && !REASONING_EFFORTS.includes(job.reasoningEffort)) return fail(`reasoningEffort must be one of ${REASONING_EFFORTS.join(', ')}`);
   if (job.briefThinking !== undefined && typeof job.briefThinking !== 'boolean') return fail('briefThinking must be true or false');
+  if (job.briefText !== undefined && !isText(job.briefText, 5)) return fail(`briefText must be 5–${MAX_IDEA_LENGTH} characters`);
   if (job.review !== undefined && typeof job.review !== 'boolean') return fail('review must be true or false');
 
   if (job.step === 'design') return design(job, model, deps);
@@ -307,7 +308,7 @@ async function build(job, model, { chatFn = chat, check = checkGame, onStep = ()
     ? changeBuildMessages({ idea: job.idea, ...change }, plan, { edits })
     : remix
       ? remixBuildMessages(remixJob, { edits, briefThinking: job.briefThinking ?? true })
-      : buildMessages(job.idea, job.design, { briefThinking: job.briefThinking ?? true });
+      : buildMessages(job.idea, job.design, { briefThinking: job.briefThinking ?? true, briefText: job.briefText });
   // A fix shows the model its last file as its own reply. For a change, that file replaces
   // the old one in the prompt (withCode: false), so the game is in the conversation once.
   // Fix requests leave the short-plan sentence out (plan §43 test 1: with it, fixes spiralled

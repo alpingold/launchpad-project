@@ -455,6 +455,16 @@ test('build job for a change: the changelog is kept', async () => {
   assert.equal(result.changelog, '- Faster running');
 });
 
+test('briefText (an experiment): another planning sentence in place of the brief one, the art sentence kept; fixes leave it out', async () => {
+  const model = fakeModel([fenced('html', GAME.replace('party.ready(', 'fetch("/x"); party.ready(')), fenced('html', GAME)]);
+  const check = async (source) => (source.includes('fetch') ? { ok: false, problems: ['`fetch` is blocked.'], warnings: [] } : passing());
+  await runJob({ step: 'build', idea: 'A racing platformer for friends', design: DESIGN, edits: false, briefText: 'Think briefly, then write the file.' }, { chatFn: model.chatFn, check });
+  const first = model.calls[0][1].content;
+  assert.match(first, /Think briefly, then write the file\. Draw the characters/);
+  assert.doesNotMatch(first, /Before writing, plan briefly/);
+  assert.doesNotMatch(model.calls[1][1].content, /Think briefly/);
+});
+
 test('remix design job (plan §45b): a whole design in the new-game format, from the original design and what to change', async () => {
   const design = DESIGN.replace('# Bumper Blobs', '# Bumper Blobs');
   const model = fakeModel([design]);
@@ -508,6 +518,7 @@ test('bad jobs are refused before any model call', async () => {
     [{ step: 'design', idea: 'A long enough idea', keepThinking: 1 }, /keepThinking must be true or false/],
     [{ step: 'build', idea: 'A long enough idea', design: 'd', briefThinking: 'yes' }, /briefThinking must be true or false/],
     [{ step: 'build', idea: 'A long enough idea', design: 'd', reasoningEffort: 'high' }, /reasoningEffort must be one of low, medium, xhigh/],
+    [{ step: 'build', idea: 'A long enough idea', design: 'd', briefText: 'x' }, /briefText must be/],
     [{ step: 'design', idea: 'A long enough idea', remix: { request: 'More', source: GAME } }, /what the remix changes must be/],
     [{ step: 'design', idea: 'A long enough idea', remix: { request: 'Add power-ups', source: '' } }, /the original game file/],
     [{ step: 'design', idea: 'A long enough idea', remix: { request: 'Add power-ups', source: GAME }, change: { request: 'Add power-ups', source: GAME } }, /a change or a remix, not both/],

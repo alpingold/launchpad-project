@@ -255,15 +255,18 @@ export const BRIEF_THINKING = `${BRIEF_PLAN} ${DRAW_THE_ART}`;
  * Building a new game from its approved design.
  * @param {string} idea
  * @param {string} design
- * @param {{ briefThinking?: boolean }} [opts]  briefThinking: add BRIEF_THINKING
+ * @param {{ briefThinking?: boolean, briefText?: string }} [opts]  briefThinking: add BRIEF_THINKING
+ *   (or, with briefText, that planning sentence and the art sentence: an experiment)
  * @returns {import('./llm.js').Message[]}
  */
 export function buildMessages(idea, design, opts = {}) {
+  // briefText (an experiment): another planning sentence in place of BRIEF_PLAN; the art sentence stays.
+  const brief = opts.briefText ? `${String(opts.briefText).trim()} ${DRAW_THE_ART}` : BRIEF_THINKING;
   return [
     { role: 'system', content: buildSystemPrompt() },
     {
       role: 'user',
-      content: `Build this game. The design was approved by the game's owner.\n\n<design>\n${String(design).trim()}\n</design>\n\nThe idea it came from, for context:\n\n${data('game-idea', idea)}\n\n${opts.briefThinking ? `${BRIEF_THINKING}\n\n` : ''}${BUILD_ANSWER}${BUILD_SIZE}`,
+      content: `Build this game. The design was approved by the game's owner.\n\n<design>\n${String(design).trim()}\n</design>\n\nThe idea it came from, for context:\n\n${data('game-idea', idea)}\n\n${opts.briefThinking ? `${brief}\n\n` : ''}${BUILD_ANSWER}${BUILD_SIZE}`,
     },
   ];
 }
