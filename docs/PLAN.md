@@ -2121,6 +2121,19 @@ version worked.
   errors (every unquoted value); the one-bracket mistakes listed 1 (no noise); the official games
   0. Not yet tried through real fix rounds (GenAI Studio was down).
 
+## 53. Whether GenAI Studio is up, on the game pages (2026-10-21)
+
+- **Why:** GenAI Studio went down for hours (2026-10-21: no answer at all, after 503s and replies
+  cut off mid-file). Every game is made there, so making or changing one can't work then, and
+  nothing said so.
+- **How:** the server asks `https://genai.rcac.purdue.edu/` once a minute while it makes games
+  (`server/src/generation/genaiStatus.js`, started by index.js; tests never ask Purdue): any
+  answer is up; no answer within 10 s, a network error or a 5xx is down, and a change is logged.
+  `GET /api/genai-status` → `{ enabled, up, checkedAt, since }` (public: it's about Purdue, not
+  anyone). The games page, /create and /create/<id> show a quiet "The AI game maker is online",
+  or a notice when it's down ("making and changing games won't work until it's back; playing
+  games works as usual"); nothing until it's known.
+
 ## Verification (how to confirm the plan worked once built)
 
 - `npm test` (root) → runs `node --test server/test`, all unit and integration tests green.
