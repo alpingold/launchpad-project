@@ -2178,7 +2178,20 @@ Reading the brief-sentence games ([brief-medium.md](experiments/brief-medium.md)
 of bug in several builds, each passing every check: per-player data compared by list position
 with a player's id (scores wrong in 3 bake-offs), and a build-up that never fills (spotting or a
 lockpick reset every frame, or by one guard while another sees: 4 heists). GAME_SPEC's "How to
-use it well" now says both in plain words. Not yet tried on the model (GenAI Studio was down).
+use it well" now says both in plain words.
+
+**Tried on the model (2026-10-22):** 3 builds each of the same heist and bake-off designs
+(`generator/out/rules-heist`, `rules-bakeoff`); 2 of 3 passed for each. Read by hand:
+- **List position vs id: gone.** All three bake-offs keep scores and dishes by `p.id`. One
+  has a near relative: it compares each *dish* with the player's id (`dish !== playerId`,
+  always true), so a player's own dish counts as someone else's and no ingredient is ever
+  "unique" (+2 never given; one shared one costs −3 instead of 0).
+- **Build-ups: fixed.** All three heists work out "seen by any guard or camera?" once per
+  thief, then fill or drain the bar.
+- **New, in the build that failed the checks:** its lockpick never opens a door: its "give up"
+  test includes "time's up" and returns before the "open it" line. (The playtest doesn't open
+  doors, so a passing build could have it too: none of the other two do.)
+Both lines stay. The dish bug is one of a kind so far, so no rulebook line for it.
 
 ## 57. Uploading your own game (planned and built 2026-10-22)
 
