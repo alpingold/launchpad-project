@@ -2,7 +2,6 @@ import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { createGameServer } from '../../src/server.js';
 import { GameRegistry } from '../../src/games/registry.js';
-import { gameOrigins } from '../../src/db/generatedGames.js';
 import { MAX_UPLOADS_PER_HOUR } from '../../src/generation/service.js';
 import { signUp, postJson } from '../helpers/accounts.js';
 import { TAP_SOURCE, renamedSource } from '../helpers/frameGames.js';
@@ -49,7 +48,9 @@ test('an upload needs no key: its file is checked with no AI, then it plays and 
 
   assert.equal((await post(`/api/generations/${game.id}/versions/1/playtest`, {}, sam)).status, 200);
   assert.equal((await post(`/api/generations/${game.id}/publish`, {}, sam)).status, 200);
-  assert.deepEqual(gameOrigins(server.db).get(game.id), { ai: false, upload: true });
+  // Labelled as an upload, not AI-made (plan §57).
+  const listed = (await (await get('/api/games', sam)).json()).games.find((g) => g.pageId === game.id);
+  assert.equal(listed.madeBy, 'upload');
 });
 
 test('a new version from a new file; a failing file keeps its report', async () => {

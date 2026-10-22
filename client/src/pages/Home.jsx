@@ -29,7 +29,7 @@ export default function Home() {
   const listed = games?.filter((g) => g.status !== 'playtest') ?? null;
   const top = listed && filterGames(listed, { ...NO_FILTERS, sort: 'top' }).slice(0, HOME_GAMES);
   const anyVotes = listed?.some((g) => g.votes.up + g.votes.down > 0);
-  const madeWithAi = listed && filterGames(listed.filter((g) => g.source === 'generated'), { ...NO_FILTERS, sort: 'newest' }).slice(0, HOME_GAMES);
+  const madeWithAi = listed && filterGames(listed.filter((g) => g.source === 'generated' && g.madeBy !== 'upload'), { ...NO_FILTERS, sort: 'newest' }).slice(0, HOME_GAMES);
 
   return (
     <main className="page home">

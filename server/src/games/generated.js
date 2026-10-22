@@ -28,6 +28,17 @@ export function shotsFromReport(report) {
 }
 
 /**
+ * How a game was made, for its label (plan §57): 'upload' when someone brought the file and the
+ * site's AI never built a version of it; else 'ai' (games from before uploads, and remixes of them, too).
+ * @param {import('../db/generatedGames.js').GeneratedGame} game
+ * @returns {'ai' | 'upload'}
+ */
+export function madeBy(game) {
+  const uploaded = game.versions.some((v) => v.kind === 'upload');
+  return uploaded && !game.versions.some((v) => v.model !== null) ? 'upload' : 'ai';
+}
+
+/**
  * Checks one version's game file and adds it to the registry under its live id.
  * Throws (with a readable message) if the file was changed since it was reviewed, or if
  * its game info is invalid (e.g. a block game from before frame games: plan §13).
@@ -44,7 +55,7 @@ export async function registerVersion(registry, game, version, as, { replace = f
   }
   const id = liveGameId(game.id, as, version.version);
   const frameGame = frameGameOrThrow(version.source, id);
-  const meta = { source: 'generated', status: as, ownerUserId: game.ownerUserId, version: version.version, addedAt: game.createdAt, shots: shotsFromReport(version.report), baseId: game.id };
+  const meta = { source: 'generated', status: as, ownerUserId: game.ownerUserId, version: version.version, addedAt: game.createdAt, shots: shotsFromReport(version.report), baseId: game.id, madeBy: madeBy(game) };
   registry.register(frameGame, meta, { replace });
   return id;
 }

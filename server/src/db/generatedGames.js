@@ -157,7 +157,7 @@ export function createGeneratedGame(db, { ownerUserId, prompt, model = null, sta
  * @returns {GeneratedGame}
  */
 export function createRemix(db, copy) {
-  const { ownerUserId, prompt, remixOf, design, source, report, name, description, model = null, now = Date.now() } = copy;
+  const { ownerUserId, prompt, remixOf, design, source, report, name, description, model = null, kind = null, now = Date.now() } = copy;
   const id = newGeneratedGameId();
   db.transaction(() => {
     db.prepare(
@@ -165,9 +165,9 @@ export function createRemix(db, copy) {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(id, ownerUserId, prompt, remixOf.id, remixOf.version, remixOf.name, now, now);
     db.prepare(
-      `INSERT INTO game_versions (game_id, version, request, model, status, design, name, description, source, source_sha256, report_json, created_at, updated_at)
-       VALUES (?, 1, ?, ?, 'ready', ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(id, `Remix of ${remixOf.name}`, model, design, name, description, source, sha256(source), JSON.stringify(report ?? null), now, now);
+      `INSERT INTO game_versions (game_id, version, request, model, kind, status, design, name, description, source, source_sha256, report_json, created_at, updated_at)
+       VALUES (?, 1, ?, ?, ?, 'ready', ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(id, `Remix of ${remixOf.name}`, model, kind, design, name, description, source, sha256(source), JSON.stringify(report ?? null), now, now);
   })();
   return getGeneratedGame(db, id);
 }
@@ -193,16 +193,6 @@ export function addUpload(db, { ownerUserId, gameId = null, prompt, source, now 
     touch(db, id, now);
     return getGeneratedGame(db, id);
   })();
-}
-
-/**
- * How each AI-made or uploaded game was made (plan §57), for its label: ai, when the site's AI
- * built any version; upload, when someone uploaded one.
- * @returns {Map<string, { ai: boolean, upload: boolean }>}
- */
-export function gameOrigins(db) {
-  const rows = db.prepare("SELECT game_id, MAX(model IS NOT NULL) AS ai, MAX(kind = 'upload') AS upload FROM game_versions GROUP BY game_id").all();
-  return new Map(rows.map((r) => [r.game_id, { ai: r.ai === 1, upload: r.upload === 1 }]));
 }
 
 const startStatus = (status) => {

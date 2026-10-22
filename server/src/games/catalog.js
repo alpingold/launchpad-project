@@ -42,6 +42,7 @@ export class CatalogError extends Error {
  * @property {'official' | 'generated'} source
  * @property {'playtest' | 'published'} [status]
  * @property {number} [version]
+ * @property {'ai' | 'upload'} [madeBy]  an AI-made game, or a file someone uploaded (plan §57)
  * @property {{ username: string } | null} creator   null: an official game (made by BoilerGames)
  * @property {{ up: number, down: number }} votes
  * @property {1 | -1 | 0} myVote
@@ -84,7 +85,7 @@ export function catalogList(db, registry, viewer) {
       addedAt: g.addedAt,
       shots: main ? [main, ...g.shots.filter((s) => s !== main)] : g.shots,
       source: g.source,
-      ...(g.source === 'generated' && { status: g.status, version: g.version }),
+      ...(g.source === 'generated' && { status: g.status, version: g.version, madeBy: g.madeBy }),
       creator: g.ownerUserId === null ? null : { username: names.get(g.ownerUserId) ?? 'someone' },
       votes: votes.get(g.baseId) ?? { up: 0, down: 0 },
       myVote: mine.get(g.baseId) ?? 0,

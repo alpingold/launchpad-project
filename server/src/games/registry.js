@@ -13,6 +13,7 @@ import { validateFrameGame } from './frameGame.js';
  * @property {{ host?: Buffer, phone?: Buffer }} shots   JPEG screenshots for the catalogue (plan §14, §16), if any
  * @property {string} baseId   the game this is a version of (generated: "g-…" for every version;
  *   official: its own id). Its catalogue page and votes belong to this id (plan §16).
+ * @property {'ai' | 'upload' | null} madeBy  generated: AI-made, or a file someone uploaded (plan §57)
  */
 
 /**
@@ -35,13 +36,13 @@ export class GameRegistry {
    * @param {{ replace?: boolean }} [opts]  replace: swap out a game already using this id
    *   (a newly published version); the old one stays if the new one is invalid
    */
-  register(game, { source = 'official', status = null, ownerUserId = null, version = null, addedAt = null, shots = {}, baseId = game?.id } = {}, { replace = false } = {}) {
+  register(game, { source = 'official', status = null, ownerUserId = null, version = null, addedAt = null, shots = {}, baseId = game?.id, madeBy = null } = {}, { replace = false } = {}) {
     const problems = validateFrameGame(game);
     if (problems.length > 0) {
       throw new Error(`Game "${game?.id}" can't be registered:\n - ${problems.join('\n - ')}`);
     }
     if (this.entries.has(game.id) && !replace) throw new Error(`A game with id "${game.id}" is already registered`);
-    this.entries.set(game.id, { game, meta: { source, status, ownerUserId, version, addedAt, shots, baseId } });
+    this.entries.set(game.id, { game, meta: { source, status, ownerUserId, version, addedAt, shots, baseId, madeBy } });
   }
 
   /** Removes a game (e.g. a generated game that was rejected). @returns {boolean} */
@@ -100,7 +101,7 @@ export class GameRegistry {
         source: meta.source,
         baseId: meta.baseId,
         ownerUserId: meta.ownerUserId,
-        ...(meta.source === 'generated' && { status: meta.status, version: meta.version }),
+        ...(meta.source === 'generated' && { status: meta.status, version: meta.version, madeBy: meta.madeBy }),
       }));
   }
 

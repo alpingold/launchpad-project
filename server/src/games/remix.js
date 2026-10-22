@@ -95,5 +95,7 @@ function generatedCopy(db, game) {
     name: version.name,
     description: version.description,
     model: version.model,
+    // A copy of an uploaded file is still one (plan §57), for its label.
+    kind: version.kind === 'upload' ? 'upload' : null,
   };
 }
