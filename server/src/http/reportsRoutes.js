@@ -47,7 +47,7 @@ export function createReportsRouter({ db, games, cfg }) {
 
   router.post('/reports', (req, res) => {
     const { kind, body, page, device, website } = req.body ?? {};
-    if (!['bug', 'idea', 'other'].includes(kind)) return fail(res, 400, 'BAD_KIND', 'Pick what kind of report this is.');
+    if (!['bug', 'idea', 'content', 'other'].includes(kind)) return fail(res, 400, 'BAD_KIND', 'Pick what kind of report this is.');
     const text = typeof body === 'string' ? body.trim() : '';
     if (text.length < 10 || text.length > 2000) return fail(res, 400, 'BAD_BODY', 'Write between 10 and 2000 characters.');
     if (limiter.isBlocked(req.ip)) return fail(res, 429, 'TOO_MANY_REPORTS', 'That was a lot of reports! Try again in a few minutes.');

@@ -36,15 +36,17 @@ test('anyone can send a report; logged in it carries the username; admins read t
   assert.equal((await post('/api/reports', REPORT)).status, 201);
   const name = uniqueUsername('tester');
   const cookie = await signUp(baseUrl, name);
+  assert.equal((await post('/api/reports', { kind: 'content', body: 'This game shows slurs on the big screen.', page: '/games/g-abc12345' })).status, 201); // plan §57
   assert.equal((await post('/api/reports', { kind: 'idea', body: '  More games with drawing please!  ' }, cookie)).status, 201);
 
   const admin = await adminCookie();
   const { reports } = await (await get('/api/admin/reports', admin)).json();
-  assert.equal(reports.length, 2);
+  assert.equal(reports.length, 3);
+  assert.equal(reports[1].kind, 'content');
   assert.equal(reports[0].username, name);
   assert.equal(reports[0].body, 'More games with drawing please!', 'trimmed');
   assert.deepEqual(
-    { ...reports[1], id: undefined, createdAt: undefined },
+    { ...reports[2], id: undefined, createdAt: undefined },
     { ...REPORT, username: null, doneAt: null, id: undefined, createdAt: undefined },
   );
 });

@@ -10,6 +10,7 @@ import { describeDevice } from '../components/device.js';
 const KINDS = [
   ['bug', "Something's broken"],
   ['idea', 'An idea'],
+  ['content', 'A game is offensive or harmful'],
   ['other', 'Something else'],
 ];
 const MIN = 10;
@@ -27,7 +28,8 @@ export default function Report() {
   const user = useCurrentUser();
   const [page] = useState(fromPage);
   const [device] = useState(() => describeDevice());
-  const [kind, setKind] = useState('bug');
+  // "Report this game" on a game's page opens it as a content report (plan §57).
+  const [kind, setKind] = useState(() => (new URLSearchParams(window.location.search).get('kind') === 'content' ? 'content' : 'bug'));
   const [body, setBody] = useState('');
   const [website, setWebsite] = useState(''); // the hidden field only bots fill in
   const [busy, setBusy] = useState(false);

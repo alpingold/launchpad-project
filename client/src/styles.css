@@ -2521,7 +2521,8 @@ body.in-game .demo-badge-room {
   font-weight: 600;
 }
 
-.report-kind.kind-bug {
+.report-kind.kind-bug,
+.report-kind.kind-content {
   background: var(--danger-tint);
 }
 

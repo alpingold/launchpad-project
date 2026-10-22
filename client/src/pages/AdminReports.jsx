@@ -5,7 +5,7 @@ import { formatTime } from '../components/generation/text.js';
 // "Done" marks one dealt with (it stays, faded); "Delete" removes it for good. Below them, the
 // newest reports from game pages (§31b), which are dealt with on those pages.
 
-const KIND_TEXT = { bug: 'Broken', idea: 'Idea', other: 'Other' };
+const KIND_TEXT = { bug: 'Broken', idea: 'Idea', content: 'Offensive game', other: 'Other' };
 
 /** Never throws: a network failure is { ok: false, message }. */
 async function call(path, { method = 'GET', body } = {}) {

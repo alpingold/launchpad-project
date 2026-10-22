@@ -1,6 +1,6 @@
 // Bug reports (plan §31): from the site-wide form (/report), and on each game's page.
 
-/** @typedef {'bug' | 'idea' | 'other'} ReportKind */
+/** @typedef {'bug' | 'idea' | 'content' | 'other'} ReportKind  content: a game that's offensive or harmful (plan §57) */
 
 /**
  * @typedef {{ id: number, kind: ReportKind, page: string | null, body: string, device: string | null,

@@ -109,6 +109,12 @@ export default function GamePage({ id }) {
       )}
       {game.canEdit && <PageEditor game={game} onSaved={setGame} />}
       <GameReports game={game} />
+      {game.source === 'generated' && (
+        <p className="muted small">
+          Something in this game offensive or harmful?{' '}
+          <a href={`/report?from=${encodeURIComponent(window.location.pathname)}&kind=content`}>Report this game</a>.
+        </p>
+      )}
     </main>
   );
 }

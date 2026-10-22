@@ -334,6 +334,17 @@ export const MIGRATIONS = [
       ALTER TABLE game_versions DROP COLUMN kind_before_16;
     `,
   },
+  {
+    version: 17,
+    description: "site reports about a game's content (plan §57)",
+    sql: `
+      -- kind 'content': a game that's offensive or harmful (anyone can upload one now).
+      ALTER TABLE site_reports RENAME COLUMN kind TO kind_before_17;
+      ALTER TABLE site_reports ADD COLUMN kind TEXT NOT NULL DEFAULT 'other' CHECK (kind IN ('bug', 'idea', 'content', 'other'));
+      UPDATE site_reports SET kind = kind_before_17;
+      ALTER TABLE site_reports DROP COLUMN kind_before_17;
+    `,
+  },
 ];
 
 /** The version a fully up-to-date database has. */
