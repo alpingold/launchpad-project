@@ -158,10 +158,12 @@ export default function Join() {
           ) : (
             <p className="muted">Loading the game…</p>
           )}
-          {/* One slim bar under the game (plan §21): who you are, and Leave. */}
+          {/* One slim bar under the game (plan §21): who you are, and Leave. And, since anyone can
+              upload a game (plan §57), that a game asking for a password isn't us. */}
           <div className="phone-bar">
             <span className="muted small">
               {me.name} · room <span className="mono">{me.code}</span>
+              <span className="phone-bar-note">BoilerGames never asks for your password in a game.</span>
             </span>
             <button type="button" className="secondary-button phone-bar-leave" onClick={leave} disabled={!connected}>
               Leave

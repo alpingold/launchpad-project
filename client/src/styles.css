@@ -464,6 +464,13 @@ body.in-game-player .site-header {
   white-space: nowrap;
 }
 
+.phone-bar-note {
+  display: block;
+  font-size: 0.75rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .phone-bar-leave {
   font-size: 0.9rem;
   padding: 0.4rem 0.8rem;
