@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useCurrentUser } from '../net/auth.js';
-import { useOwnGamesApi, listGenerations, startGeneration } from '../net/admin.js';
+import { useOwnGamesApi, listGenerations, startGeneration, uploadGame } from '../net/admin.js';
 import { usePageTitle } from '../usePageTitle.js';
 import GenaiStatus from '../components/GenaiStatus.jsx';
 import { MiniTrack, whereIsSummary } from './CreateGame.jsx';
 import { timeAgo } from '../components/timeAgo.js';
 import { EXAMPLE_IDEAS } from '../components/exampleIdeas.js';
+import UploadForm from '../components/generation/UploadForm.jsx';
 
 // Make your own games with AI (plan §15, guided flow §19), for any account, with your own
 // GenAI Studio key: describe a game here, then each game has its own page, /create/<id>,
@@ -13,6 +14,7 @@ import { EXAMPLE_IDEAS } from '../components/exampleIdeas.js';
 // Logged out: this page says what you need (an account, then a key) instead of redirecting.
 // /create?idea=… (from the home page's idea box, plan §42) starts with that idea filled in, and
 // keeps it through signing up or logging in.
+// Or upload a game file you made yourself, or with an AI of your own (plan §57): no key needed.
 
 /** The idea typed on the home page, if any. */
 const ideaFromAddress = () => new URLSearchParams(window.location.search).get('idea')?.slice(0, 2000) ?? '';
@@ -28,6 +30,7 @@ const STATUS_WORDS = {
   designing: 'The AI is writing the design',
   design: 'The design is ready to read',
   generating: 'The AI is building it',
+  checking: 'Checking your file',
   failed: "Didn't work: see what happened",
   review: 'Ready to play',
   playtest: 'Ready to play',
@@ -52,7 +55,8 @@ export default function Create() {
         <h1 className="create-title">Make a game</h1>
         <p>
           Describe a party game and the AI designs and builds it for you. To do that you need a free account, and then your
-          own Purdue GenAI Studio API key (the account page shows how to get one).
+          own Purdue GenAI Studio API key (the account page shows how to get one). Made a game file yourself, or with
+          another AI? With an account you can upload it too, no key needed.
         </p>
         <GenaiStatus />
         <p className="create-actions">
@@ -94,6 +98,7 @@ function Maker() {
         </p>
       )}
       {info && <IdeaForm info={info} />}
+      {info && <UploadSection info={info} />}
       {games && <YourGames games={games} />}
     </main>
   );
@@ -181,6 +186,26 @@ function IdeaForm({ info }) {
   );
 }
 
+/** Upload a game file of your own (plan §57). */
+function UploadSection({ info }) {
+  async function upload(source) {
+    const res = await uploadGame(source);
+    if (res.ok) window.location.assign(`/create/${encodeURIComponent(res.game.id)}`);
+    return res;
+  }
+  return (
+    <section className="create-upload page-section" aria-labelledby="upload-heading">
+      <h2 id="upload-heading">Or upload a game file</h2>
+      <p>
+        Wrote a game yourself, or made one with ChatGPT, Claude or another AI (copy the prompt on{' '}
+        <a href="/kit#prompt-kit-heading">the kit page</a>)? Upload the file. It's checked the same way as any game, in a
+        hidden browser with pretend phones, before you play it. No AI and no API key are needed.
+      </p>
+      <UploadForm info={info} onUpload={upload} />
+    </section>
+  );
+}
+
 function YourGames({ games }) {
   return (
     <section className="create-games page-section" aria-labelledby="your-games-heading">
@@ -197,7 +222,9 @@ function YourGames({ games }) {
                   <span className="create-game-name">{game.name ?? game.prompt}</span>
                   <MiniTrack at={where.at} state={where.state} />
                   <span className={`create-game-status status-${where.state}`}>
-                    {game.progress?.queuePosition > 0 ? 'Waiting in line' : (STATUS_WORDS[game.status] ?? game.status)}
+                    {game.progress?.queuePosition > 0
+                      ? 'Waiting in line'
+                      : (STATUS_WORDS[game.status === 'generating' && game.kind === 'upload' ? 'checking' : game.status] ?? game.status)}
                   </span>
                   <span className="muted small create-game-when">started {timeAgo(game.createdAt)}</span>
                 </a>

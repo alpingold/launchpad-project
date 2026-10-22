@@ -42,6 +42,14 @@ export const getGeneration = (id) => request(`${BASE}/${encodeURIComponent(id)}`
 export const startGeneration = (idea, model) => request(BASE, { method: 'POST', body: { idea, model } });
 
 /**
+ * Uploads a game file (plan §57): a new game (no id), or the next version of one of yours.
+ * It's checked in the background, with no AI. → { game } (202: queued); 422 { problems } if
+ * its game info can't be read.
+ */
+export const uploadGame = (source, id = null) =>
+  request(id === null ? `${BASE}/upload` : `${BASE}/${encodeURIComponent(id)}/upload`, { method: 'POST', body: { source } });
+
+/**
  * Asks for changes: a new version made from version `basedOn`, starting with a plan (or,
  * with skipDesign, a small fix straight to code). → { game } (202: queued)
  */
