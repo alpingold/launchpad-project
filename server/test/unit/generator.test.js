@@ -488,6 +488,16 @@ test('the prompt kit (plan §57): the rulebook, the art, the design format, the 
   assert.match(text, /# My game idea\n\n\[Describe your game here/);
 });
 
+test('check job (plan §57): an uploaded file, checked with no model; its report and the file come back', async () => {
+  const model = fakeModel([]);
+  const passed = await runJob({ step: 'check', idea: 'An uploaded game', source: GAME }, { chatFn: model.chatFn, check: passing });
+  assert.deepEqual([passed.ok, passed.source, passed.model, passed.attempts.length], [true, GAME, null, 1]);
+  const failing = async () => ({ ok: false, problems: ['`fetch` is blocked.'], warnings: [] });
+  const failed = await runJob({ step: 'check', idea: 'An uploaded game', source: GAME }, { chatFn: model.chatFn, check: failing });
+  assert.deepEqual([failed.ok, failed.report.problems, failed.error], [false, ['`fetch` is blocked.'], "it didn't pass the checks"]);
+  assert.equal(model.calls.length, 0, 'no model');
+});
+
 test('remix design job (plan §45b): a whole design in the new-game format, from the original design and what to change', async () => {
   const design = DESIGN.replace('# Bumper Blobs', '# Bumper Blobs');
   const model = fakeModel([design]);
@@ -530,7 +540,7 @@ test('bad jobs are refused before any model call', async () => {
     [{ step: 'design', idea: 'short' }, /idea must be/],
     [{ step: 'design', idea: 'A long enough idea', model: 'gpt-9' }, /unknown model/],
     [{ step: 'build', idea: 'A long enough idea' }, /needs the approved design/],
-    [{ step: 'dance', idea: 'A long enough idea' }, /must be "design", "build", "recheck", "checklist", "review" or "critical"/],
+    [{ step: 'dance', idea: 'A long enough idea' }, /must be "design", "build", "recheck", "check", "checklist", "review" or "critical"/],
     [{ step: 'build', idea: 'A long enough idea', design: DESIGN, review: 'yes' }, /review must be true or false/],
     [{ step: 'recheck', idea: 'A long enough idea' }, /a review needs the game/],
     [{ step: 'design', idea: 'A long enough idea', change: { request: 'Make it better please', source: '' } }, /current game file/],

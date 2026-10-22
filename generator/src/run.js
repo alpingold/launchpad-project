@@ -178,6 +178,10 @@ export async function runJob(job, deps = {}) {
     if (!Array.isArray(job.checklist) || typeof job.source !== 'string') return fail('a review needs the checklist and the game file');
     return reviewGame(job, model, deps);
   }
+  if (job.step === 'check') {
+    if (typeof job.source !== 'string' || job.source.length === 0) return fail('a check needs the game file');
+    return checkUpload(job, deps);
+  }
   if (job.step === 'critical') {
     if (typeof job.design !== 'string' || typeof job.source !== 'string') return fail('a critical review needs the design and the game file');
     return reviewCritical(job, model, deps);
@@ -191,7 +195,7 @@ export async function runJob(job, deps = {}) {
     if (change === undefined) return fail('a review needs the game (change.source)');
     return withReview(job, { ok: true, model, source: change.source, report: null, changelog: null, attempts: [] }, model, deps);
   }
-  return fail('the step must be "design", "build", "recheck", "checklist", "review" or "critical"');
+  return fail('the step must be "design", "build", "recheck", "check", "checklist", "review" or "critical"');
 }
 
 /**
@@ -479,6 +483,31 @@ function withoutScreenshots(report) {
 
 /** "thinking: 1,200 tokens, writing: 3,400" */
 const progressText = ({ thinking, writing }) => `thinking ${thinking.toLocaleString('en-US')} tokens, writing ${writing.toLocaleString('en-US')}`;
+
+/**
+ * The "check" step (plan §57): an uploaded game file, checked the way a build is (the static
+ * check, then the playtest in a browser), with no model and no key. The server's own size limit
+ * (1 MB) applies, not the 100 KB the AI is held to. Runs here, in the sandbox, because the
+ * playtest runs the game.
+ * @param {GeneratorJob} job  job.source: the uploaded file
+ * @param {{ check?: typeof checkGame, onStep?: OnStep, browser?: typeof NO_GATE, onAttempt?: (attempt: object) => void }} deps
+ * @returns {Promise<GeneratorResult>}
+ */
+async function checkUpload(job, { check = checkGame, onStep = () => {}, browser = NO_GATE, onAttempt }) {
+  onStep(`checking the game (the static check, then ${PLAYTEST_SECONDS} s of play in a browser)`);
+  await browser.acquire();
+  let report;
+  try {
+    report = await check(job.source, { seconds: PLAYTEST_SECONDS, onStep: (text) => onStep(`  ${text}`) });
+  } finally {
+    browser.release();
+  }
+  const attempts = watched(onAttempt);
+  attempts.push({ attempt: 1, mode: 'whole', ok: report.ok, problems: report.problems.length, source: job.source, report: withoutScreenshots(report) });
+  onStep(report.ok ? 'passed the checks' : `${report.problems.length} problem(s)`);
+  const result = { ok: report.ok, model: null, source: job.source, report, changelog: null, attempts };
+  return report.ok ? result : { ...result, error: "it didn't pass the checks" };
+}
 
 /**
  * checkGame, plus the generator's own size limit (the rulebook's 100 KB).
