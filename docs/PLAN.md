@@ -2280,6 +2280,36 @@ automatic; the labels are "Uploaded" and "AI-made"; build the prompt kit first, 
   (a game with a short name and no description). Checks now skip every AI-job rule.
   Measured: Punchline's check took 18 s; a copy with a password box failed with its line.
 
+## 58. Rulebook: neutral examples, and design-only advice in the design format (2026-10-22)
+
+**Why:** §56's build-up rule used a heist's words (a guard's view, a lock being picked), and
+the rulebook goes into every step, the design included, where examples can steer what a
+game is. And some of the rulebook is advice for choosing the game, not for writing it.
+
+- **The build-up rule's examples** are now a charge meter, a zone being held and a held button;
+  the rule says "work out the cause once" without guards.
+- **Moved to DESIGN.md** (only the design step reads it): "What plays well here", the 20-second
+  round (into Length) and "motion over detail" (into Art). The rulebook went from 16.3 to
+  15.5 KB. Kept: phone layout, a readable big screen, colours, canvas sizing, which the code
+  needs. The change-plan step reads the rulebook but not DESIGN.md, so it no longer sees
+  "What plays well here".
+
+**Tested:** a king-of-the-hill idea (a zone that fills your bar while you're alone in it),
+3 builds with fresh designs before the move and 3 after (`generator/out/rules-hill`,
+`rules-hill-moved`).
+
+| | Passed | Attempts | Avg size | Avg time | Whole game |
+|---|---|---|---|---|---|
+| Reworded rule | 3/3 | 2, 2, 2 | 26.4 KB | 304 s | 1–2 min |
+| Also moved | 3/3 | 1, 2, 1 | 23.9 KB | 244 s | 1–2 min |
+
+Read by hand: no heist words anywhere (designs, games, the model's thinking); all six fill the
+bar the right way (who's in the zone worked out once, then fill only when alone); all six
+designs show the length arithmetic, and every game is at least about 35 s; all animate
+(pulses, shakes, glows). The move didn't hurt; the fewer attempts are within noise for 3
+builds. **Kept both.** A thin test: one real-time idea, where "what plays well" and the
+round length weren't hard choices.
+
 ## Verification (how to confirm the plan worked once built)
 
 - `npm test` (root) → runs `node --test server/test`, all unit and integration tests green.
