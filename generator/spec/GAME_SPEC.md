@@ -70,7 +70,7 @@ network, so there's nothing to fetch.)
    `document.cookie`, `alert`, `confirm` and `prompt` don't work in a game. To survive a
    big-screen reload, use `party.save` (below).
 5. **No code from text:** no `eval`, `new Function`, or `setTimeout` with a string. No
-   `document.write`.
+   `document.write`. **No password boxes** (`type="password"`): a game never asks for one.
 6. **Nothing waits forever.** Players leave, phones sleep, people don't press anything.
    Every wait for players has a timer, and a player who left is skipped.
 7. **1 to 12 players** (within your `minPlayers`/`maxPlayers`) must all work: one player

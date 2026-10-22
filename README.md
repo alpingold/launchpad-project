@@ -24,6 +24,8 @@ a room code: no app, no account to play.
   read and edit, then builds the game, plays it with bot phones to catch bugs, reviews its own
   code, and fixes what it finds. Ask for changes in plain English; publish it for everyone.
 - **Remix** any public game into your own version to change.
+- **Upload your own game file**, written by hand or with any AI (`/kit` has a prompt to copy). It
+  goes through the same checks, with no AI or key needed.
 - Game pages, votes, profiles, bug reports, and a public guide to how games are made (`/kit`).
 
 ## Engineering highlights

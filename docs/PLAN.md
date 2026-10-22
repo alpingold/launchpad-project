@@ -2180,7 +2180,7 @@ with a player's id (scores wrong in 3 bake-offs), and a build-up that never fill
 lockpick reset every frame, or by one guard while another sees: 4 heists). GAME_SPEC's "How to
 use it well" now says both in plain words. Not yet tried on the model (GenAI Studio was down).
 
-## 57. Uploading your own game (planned 2026-10-22, not built)
+## 57. Uploading your own game (planned and built 2026-10-22)
 
 **Why:** the only way to get a game onto the site is the built-in AI. People who wrote a game by
 hand, or made one with an AI of their own (ChatGPT, Claude…), can't put it on the site; only an
@@ -2238,6 +2238,34 @@ generator, and the prompt kit's text containing the rulebook.
 **Decided (2026-10-22):** no GenAI Studio key needed to upload (the checks don't use the AI;
 a key is only for the optional AI parts); the AI's code review is an optional button, not
 automatic; the labels are "Uploaded" and "AI-made"; build the prompt kit first, then uploading.
+
+**Built (2026-10-22), and what changed on the way:**
+- **Server:** `POST /api/generations/upload` and `/:id/upload` `{ source }` (and the same under
+  `/api/admin`). Only these two paths take a big body (`HTTP_UPLOAD_JSON_LIMIT`, 3 MB, since
+  JSON escaping grows a 1 MB file); everything else keeps 20 KB. The game info is read at once
+  (422 with its problems if it can't be); the rest of the checks run in the sandbox. Six
+  uploads per person an hour (in memory: a restart forgets them), and the usual one job at a
+  time. Migration 16 adds kind `'upload'`. An upload's idea is its game info ("name:
+  description"), which the AI review reads instead of a design.
+- **The sandbox gets no provider for a check:** someone's own code runs there, so no key
+  (not even the server's) is in reach, and with no provider the policy allows no network at
+  all. The server keeps the file it was sent, never what the sandbox sends back.
+- **The AI on uploads:** "Ask the AI to fix these" works on a *failed* upload (the only
+  version a change may start from that didn't pass), and every AI change refuses a file over
+  100 KB (`TOO_BIG_FOR_AI`). An upload starts the game's history over, like a new design:
+  later changes don't carry the earlier requests or design.
+- **Labels:** `madeBy` on each catalogue game: "Uploaded" when a version was uploaded and the
+  site's AI built none, else "AI-made" (as before, also for older and imported games). A
+  remix of an upload stays "Uploaded". Uploads don't show in the home page's "made with AI".
+- **Password boxes:** the static check refuses `type="password"` in markup or code (the
+  rulebook says so too). "Asking for a password" in words isn't checked: party games about
+  passwords are a real kind of game. Every phone shows "BoilerGames never asks for your
+  password in a game." under the game.
+- **Reports:** migration 17 adds the kind `'content'` ("A game is offensive or harmful") to
+  site reports, opened from "Report this game" on a player-made game's page.
+- **Found in a real sandbox run:** a check job failed on the generator's idea-length rule
+  (a game with a short name and no description). Checks now skip every AI-job rule.
+  Measured: Punchline's check took 18 s; a copy with a password box failed with its line.
 
 ## Verification (how to confirm the plan worked once built)
 

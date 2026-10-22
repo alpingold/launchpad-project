@@ -10,7 +10,7 @@ export default function Privacy() {
   return (
     <main className="page privacy-page">
       <h1>Privacy</h1>
-      <p className="muted">Last changed October 21, 2026.</p>
+      <p className="muted">Last changed October 22, 2026.</p>
       <p>
         BoilerGames is a student project. It keeps as little about you as it can, never sells or shares it, and has no ads,
         no analytics and no tracking cookies. Here is everything it keeps, and why.
@@ -36,8 +36,8 @@ export default function Privacy() {
             and pages can't read it.
           </li>
           <li>
-            <strong>What you add:</strong> your bio, the games you make (their ideas, designs and code), your votes, and bug
-            reports.
+            <strong>What you add:</strong> your bio, the games you make or upload (their ideas, designs and code), your
+            votes, and bug reports.
           </li>
         </ul>
       </section>
@@ -52,8 +52,9 @@ export default function Privacy() {
           only shows its last four characters. You can remove it any time on your <a href="/account">account page</a>.
         </p>
         <p>
-          While making your games, your ideas, the designs and the code are sent to Purdue GenAI Studio. Its own terms
-          cover what it does with them.
+          While making your games with AI, your ideas, the designs and the code are sent to Purdue GenAI Studio. Its own
+          terms cover what it does with them. A game file you upload is checked on BoilerGames' own server, with no AI; it's
+          only sent to GenAI Studio if you ask the AI to review or change it.
         </p>
       </section>
 
