@@ -322,6 +322,18 @@ export const MIGRATIONS = [
       ALTER TABLE game_versions DROP COLUMN kind_before_15;
     `,
   },
+  {
+    version: 16,
+    description: 'uploaded game files (plan §57)',
+    sql: `
+      -- kind 'upload': a game file its owner uploaded (written by hand, or with an AI of their own),
+      -- checked like a build but never written by the site's AI.
+      ALTER TABLE game_versions RENAME COLUMN kind TO kind_before_16;
+      ALTER TABLE game_versions ADD COLUMN kind TEXT CHECK (kind IS NULL OR kind IN ('recheck', 'remix', 'upload'));
+      UPDATE game_versions SET kind = kind_before_16;
+      ALTER TABLE game_versions DROP COLUMN kind_before_16;
+    `,
+  },
 ];
 
 /** The version a fully up-to-date database has. */

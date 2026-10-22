@@ -37,8 +37,9 @@ export const BUSY_STATUSES = Object.freeze(['designing', 'generating']);
  * @property {string} request            v1: the idea; later: the change request
  * @property {number | null} basedOn     the version that was changed (null for v1)
  * @property {string | null} changelog   the model's "- …" list of what it changed
- * @property {'recheck' | 'remix' | null} kind  'recheck': made by "Review again" (plan §47);
- *                                         'remix': "Make it your own", a remix's whole design (plan §45b)
+ * @property {'recheck' | 'remix' | 'upload' | null} kind  'recheck': made by "Review again" (plan §47);
+ *                                         'remix': "Make it your own", a remix's whole design (plan §45b);
+ *                                         'upload': a game file its owner uploaded (plan §57)
  * @property {object | null} codeReview    what the code review found and fixed (generator/src/review.js: CreatorReview),
  *                                         or { error } if it couldn't finish; null: not reviewed
  * @property {string | null} model
@@ -169,6 +170,39 @@ export function createRemix(db, copy) {
     ).run(id, `Remix of ${remixOf.name}`, model, design, name, description, source, sha256(source), JSON.stringify(report ?? null), now, now);
   })();
   return getGeneratedGame(db, id);
+}
+
+/**
+ * An uploaded game file (plan §57), waiting to be checked ("generating", kind 'upload'): as version
+ * 1 of a new game (no gameId), or the next version of one of yours, based on the version before.
+ * Its fingerprint is taken once it passes (saveVersionSource).
+ * @returns {GeneratedGame}
+ */
+export function addUpload(db, { ownerUserId, gameId = null, prompt, source, now = Date.now() }) {
+  return db.transaction(() => {
+    let id = gameId;
+    if (!id) {
+      id = newGeneratedGameId();
+      db.prepare('INSERT INTO generated_games (id, owner_user_id, prompt, created_at, updated_at) VALUES (?, ?, ?, ?, ?)').run(id, ownerUserId, prompt, now, now);
+    }
+    const { next, last } = db.prepare('SELECT COALESCE(MAX(version), 0) + 1 AS next, MAX(version) AS last FROM game_versions WHERE game_id = ?').get(id);
+    db.prepare(
+      `INSERT INTO game_versions (game_id, version, request, based_on, status, kind, source, created_at, updated_at)
+       VALUES (?, ?, ?, ?, 'generating', 'upload', ?, ?, ?)`,
+    ).run(id, next, next === 1 ? prompt : 'Uploaded a new file', last ?? null, source, now, now);
+    touch(db, id, now);
+    return getGeneratedGame(db, id);
+  })();
+}
+
+/**
+ * How each AI-made or uploaded game was made (plan §57), for its label: ai, when the site's AI
+ * built any version; upload, when someone uploaded one.
+ * @returns {Map<string, { ai: boolean, upload: boolean }>}
+ */
+export function gameOrigins(db) {
+  const rows = db.prepare("SELECT game_id, MAX(model IS NOT NULL) AS ai, MAX(kind = 'upload') AS upload FROM game_versions GROUP BY game_id").all();
+  return new Map(rows.map((r) => [r.game_id, { ai: r.ai === 1, upload: r.upload === 1 }]));
 }
 
 const startStatus = (status) => {
