@@ -78,6 +78,26 @@ export function missingHeadings(design, required) {
   return required.filter((h) => !present.has(h.toLowerCase()));
 }
 
+/**
+ * The sections of a design that copy their heading's instruction instead of following it (plan
+ * §55: one draft's Rules section was the format's own "Step by step, from the start to the end…").
+ * A section counts as copied when it contains the start of its instruction.
+ * @param {string} design  Markdown with "## Heading" sections
+ * @param {Record<string, string>} instructions  heading → its instruction (prompt.js designInstructions)
+ * @returns {string[]} the headings of the copied sections
+ */
+export function copiedSections(design, instructions) {
+  const plain = (text) => String(text).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const bodies = {};
+  for (const m of String(design).matchAll(/^##\s+(.+?)\s*$([\s\S]*?)(?=^##\s|(?![\s\S]))/gm)) bodies[m[1].toLowerCase()] = m[2];
+  return Object.entries(instructions)
+    .filter(([heading, instruction]) => {
+      const start = plain(instruction).slice(0, 50);
+      return start.length >= 20 && plain(bodies[heading.toLowerCase()] ?? '').includes(start);
+    })
+    .map(([heading]) => heading);
+}
+
 /** At most this many change lines are kept, each at most this long. */
 const MAX_CHANGE_LINES = 8;
 const MAX_CHANGE_LENGTH = 200;

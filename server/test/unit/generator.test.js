@@ -334,6 +334,17 @@ test('design job: one call, the design comes back; a draft missing headings is a
   assert.equal(result.attempts[0].finishReason, 'stop', 'why it stopped is always kept');
 });
 
+test('design job (plan §55): a design whose sections copy their instructions is asked for again, saying which', async () => {
+  const copied = DESIGN.replace(/## Rules\n[\s\S]*?(?=\n## )/, '## Rules\nStep by step, from the start to the end, with numbers: timers, speeds, health.\n');
+  assert.notEqual(copied, DESIGN);
+  const model = fakeModel([copied, DESIGN]);
+  const result = await runJob({ step: 'design', idea: 'A racing platformer for friends' }, { chatFn: model.chatFn });
+  assert.equal(result.ok, true);
+  assert.equal(model.calls.length, 2);
+  assert.match(model.calls[1].at(-1).content, /these sections repeat the instructions for writing a design instead of describing this game: Rules/);
+  assert.deepEqual(result.attempts.map((a) => a.ok), [false, true]);
+});
+
 test('plan job: a change gets a plan with the plan headings', async () => {
   const plan = '# Change: faster\n## What changes\n- Run 9 tiles/s\n## What stays the same\n- Levels\n## Risks\nNone';
   const model = fakeModel([plan]);

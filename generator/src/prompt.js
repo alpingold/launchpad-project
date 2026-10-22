@@ -395,3 +395,18 @@ export const NO_CODE_MESSAGE =
 export function missingHeadingsMessage(missing) {
   return `That design is missing these headings: ${missing.join(', ')}. Reply with the complete design again, with every heading filled in.`;
 }
+
+/**
+ * Each design heading's instruction (its first line in DESIGN.md), to notice a design that
+ * copies the instructions instead of following them (plan §55).
+ * @returns {Record<string, string>}
+ */
+export function designInstructions() {
+  const out = {};
+  for (const m of read('../spec/DESIGN.md').matchAll(/^## (.+)\n(.+)/gm)) out[m[1].trim()] = m[2].trim();
+  return out;
+}
+
+export function copiedSectionsMessage(copied) {
+  return `In that design, these sections repeat the instructions for writing a design instead of describing this game: ${copied.join(', ')}. Reply with the complete design again, with those sections written for this game.`;
+}

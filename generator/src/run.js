@@ -42,7 +42,7 @@
 import { pathToFileURL } from 'node:url';
 import { chat } from './llm.js';
 import { makeChecklist, reviewGame, reviewCritical, reviewFinished, forCreator, fixRequest, CRITICAL } from './review.js';
-import { extractGameFile, extractHeadings, extractChangelog, missingHeadings } from './extract.js';
+import { extractGameFile, extractHeadings, extractChangelog, missingHeadings, copiedSections } from './extract.js';
 import { applyReply, hasEdits, withoutEdits } from './edits.js';
 import {
   designMessages,
@@ -54,6 +54,8 @@ import {
   fixMessage,
   editsFailedMessage,
   missingHeadingsMessage,
+  copiedSectionsMessage,
+  designInstructions,
   headingsFormat,
   NO_CODE_MESSAGE,
   DESIGN_HEADINGS,
@@ -262,13 +264,16 @@ async function design(job, model, { chatFn = chat, onStep = () => {}, onAttempt 
     messages.push({ role: 'assistant', content: reply.content });
     const text = extractHeadings(reply.content, headings, isPlan ? 'Change: ' : '');
     const missing = text ? missingHeadings(text, headings) : headings;
-    result.attempts.push({ attempt, seconds: reply.seconds, ok: missing.length === 0, problems: missing.length, usage: reply.usage, ...thinkingOf(job, reply) });
+    // A design whose sections copy their instructions (plan §55) is asked for again too.
+    const copied = text && !isPlan && missing.length === 0 ? copiedSections(text, designInstructions()) : [];
+    result.attempts.push({ attempt, seconds: reply.seconds, ok: missing.length + copied.length === 0, problems: missing.length + copied.length, usage: reply.usage, ...thinkingOf(job, reply) });
     if (text) result.design = text;
-    if (missing.length === 0) {
+    if (missing.length + copied.length === 0) {
       onStep(`${what}: ready`);
       return { ...result, ok: true };
     }
-    messages.push({ role: 'user', content: missingHeadingsMessage(missing) });
+    if (copied.length) onStep(`${what}: ${copied.length} section(s) repeat the instructions; asking again`);
+    messages.push({ role: 'user', content: missing.length ? missingHeadingsMessage(missing) : copiedSectionsMessage(copied) });
   }
   // A design with a heading missing is still worth showing: the admin can fix it by hand.
   if (result.design) return { ...result, ok: true, warning: `the ${what} is missing some headings` };
