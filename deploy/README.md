@@ -101,6 +101,25 @@ On first start the server creates `server/data/boilergames.db` and `server/data/
 (the secret that opens saved API keys). **Never commit or share `key-secret`.** Make the
 folder private to you: `chmod 700 ~/boilergames/server/data`.
 
+**The key secret.** The nightly backups don't include it (whoever had the backups could
+otherwise open every saved key), so keep one copy of it **off the server**, in a password
+manager. In your own terminal (not anywhere that logs it), print it once:
+
+```bash
+ssh -i key.pem ubuntu@<static-ip> 'base64 -w0 ~/boilergames/server/data/key-secret; echo'
+```
+
+and save that line in your password manager. To put it back on a new server (before the
+server's first start, or the server makes a new one and every saved key stops working):
+
+```bash
+mkdir -p ~/boilergames/server/data && chmod 700 ~/boilergames/server/data
+echo '<the line from your password manager>' | base64 -d > ~/boilergames/server/data/key-secret
+chmod 600 ~/boilergames/server/data/key-secret
+```
+
+Lost for good, the only harm is that saved keys can't be opened: people save theirs again.
+
 ## 5. Caddy (HTTPS)
 
 ```bash
@@ -164,8 +183,8 @@ crontab -l                        # check it's there
 `docker` and `systemctl --user is-active openshell-gateway` should all be active, and
 `https://boilergames.party/api/health` should answer `{"ok":true}`.
 
-Backups go to `~/backups` (14 days kept), with a copy of `key-secret`. They're on the same
-machine, so also download one now and then:
+Backups go to `~/backups` (14 days kept), without `key-secret` (see "The key secret" above).
+They're on the same machine, so also download one now and then:
 `scp -i key.pem ubuntu@<static-ip>:backups/boilergames-<date>.db .`
 
 ## Updating the site

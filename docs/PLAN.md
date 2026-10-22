@@ -2150,6 +2150,9 @@ version worked.
   plus what's tied to your games only by id (their pages, the votes and reports on them).
   Site-wide reports stay without the name; remixes others made of your games stay theirs. It
   logs you out.
+- **The key secret leaves the backups** (2026-10-21): the nightly backup copied it next to the
+  database copies, so whoever had `~/backups` could open every saved key. Now one copy is kept
+  off the server (a password manager); deploy/README.md says how to save and restore it.
 - **API keys and RCAC:** using personal GenAI Studio keys this way is fine (it's the same use as
   OpenCode, which is allowed).
 
