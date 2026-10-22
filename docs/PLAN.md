@@ -2310,6 +2310,23 @@ designs show the length arithmetic, and every game is at least about 35 s; all a
 builds. **Kept both.** A thin test: one real-time idea, where "what plays well" and the
 round length weren't hard choices.
 
+**Then a slow party game** (a "Most Likely To" voting game: secret votes, a dramatic reveal,
+points for voting with the majority), 3 fresh-design builds with the rulebook from before the
+move (an image built from `f4ae7d3`) and 3 after, side by side (`generator/out/vote-before`,
+`vote-moved`):
+
+| | Passed | Attempts | Avg size | Avg time | Whole game |
+|---|---|---|---|---|---|
+| Before the move | 3/3 | 2, 4, 4 | 34.6 KB | 592 s | 2–7 min |
+| After | 3/3 | 4, 2, 3 | 37.5 KB | 679 s | 3–7 min |
+
+Every design works out its length, with rounds of 25–50 s and no padding by waiting; all stay
+phone-and-big-screen party games; votes go only to their own phone, and what goes to every
+phone (`'all'`) is never a vote; every reveal animates. No difference that 3 builds can show.
+**Found, not from the move:** one "after" build puts players' names into `innerHTML` on the
+reveal and final screens (rule 9, which stays in the rulebook). It passed the checks: the
+playtest's name-injection check didn't reach those screens.
+
 ## Verification (how to confirm the plan worked once built)
 
 - `npm test` (root) → runs `node --test server/test`, all unit and integration tests green.
