@@ -138,6 +138,11 @@ export async function runJob(job, deps = {}) {
   const model = job?.model ?? DEFAULT_MODEL;
   const fail = (error) => ({ ok: false, model, attempts: [], error });
   if (!job || typeof job !== 'object') return fail('the job must be an object');
+  // An uploaded file's check (plan §57): no model, so nothing else in the job matters.
+  if (job.step === 'check') {
+    if (typeof job.source !== 'string' || job.source.length === 0) return { ...fail('a check needs the game file'), model: null };
+    return checkUpload(job, deps);
+  }
   if (!isAllowedModel(model)) return fail(`unknown model ${JSON.stringify(model)}`);
   if (!isText(job.idea, MIN_IDEA_LENGTH)) return fail(`the game idea must be ${MIN_IDEA_LENGTH}–${MAX_IDEA_LENGTH} characters`);
   const { change, redraft } = job;
@@ -177,10 +182,6 @@ export async function runJob(job, deps = {}) {
   if (job.step === 'review') {
     if (!Array.isArray(job.checklist) || typeof job.source !== 'string') return fail('a review needs the checklist and the game file');
     return reviewGame(job, model, deps);
-  }
-  if (job.step === 'check') {
-    if (typeof job.source !== 'string' || job.source.length === 0) return fail('a check needs the game file');
-    return checkUpload(job, deps);
   }
   if (job.step === 'critical') {
     if (typeof job.design !== 'string' || typeof job.source !== 'string') return fail('a critical review needs the design and the game file');

@@ -490,7 +490,8 @@ test('the prompt kit (plan §57): the rulebook, the art, the design format, the 
 
 test('check job (plan §57): an uploaded file, checked with no model; its report and the file come back', async () => {
   const model = fakeModel([]);
-  const passed = await runJob({ step: 'check', idea: 'An uploaded game', source: GAME }, { chatFn: model.chatFn, check: passing });
+  // Whatever its idea says (a short name and no description): it isn't used.
+  const passed = await runJob({ step: 'check', idea: 'Tap: ', source: GAME }, { chatFn: model.chatFn, check: passing });
   assert.deepEqual([passed.ok, passed.source, passed.model, passed.attempts.length], [true, GAME, null, 1]);
   const failing = async () => ({ ok: false, problems: ['`fetch` is blocked.'], warnings: [] });
   const failed = await runJob({ step: 'check', idea: 'An uploaded game', source: GAME }, { chatFn: model.chatFn, check: failing });

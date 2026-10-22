@@ -217,7 +217,8 @@ export class GenerationService {
     }
     this.uploads.set(ownerUserId, [...recent, now]);
     // Its idea, for the code review if one is asked for (there's no design): what the game says it is.
-    const prompt = `${info.game.name}: ${info.game.description}`.slice(0, MAX_IDEA_LENGTH);
+    const said = `${info.game.name}: ${info.game.description}`;
+    const prompt = (said.length >= MIN_IDEA_LENGTH ? said : `${info.game.name}: a party game, uploaded as a file`).slice(0, MAX_IDEA_LENGTH);
     const uploaded = addUpload(this.db, { ownerUserId, gameId: game?.id ?? null, prompt, source, now });
     this.enqueue(uploaded.id);
     return this.get(uploaded.id);
