@@ -2175,6 +2175,63 @@ with a player's id (scores wrong in 3 bake-offs), and a build-up that never fill
 lockpick reset every frame, or by one guard while another sees: 4 heists). GAME_SPEC's "How to
 use it well" now says both in plain words. Not yet tried on the model (GenAI Studio was down).
 
+## 57. Uploading your own game (planned 2026-10-22, not built)
+
+**Why:** the only way to get a game onto the site is the built-in AI. People who wrote a game by
+hand, or made one with an AI of their own (ChatGPT, Claude…), can't put it on the site; only an
+admin can, with `npm run admin -- import-game`. Uploading makes that a normal feature, and a
+prompt you can copy makes "make one with any AI" work.
+
+**Part 1: the prompt kit** (small; nothing else depends on it)
+- On `/kit`, a "Make one with any AI" section: **Copy the prompt** (and download it as a `.txt`).
+  The prompt is built from the same files the built-in AI reads, so it stays in step: a short
+  instruction ("Write one HTML file for BoilerGames… reply with only the file"), the rulebook
+  (GAME_SPEC.md, ~16 KB), the art library's ids, and a line for your idea. The design format
+  (DESIGN.md) as an optional first step ("design it first, then build it").
+- Served at `/api/kit/prompt` (plain text), made from the spec files at startup.
+
+**Part 2: uploading** (one game file, the same model as an AI-made game)
+- **Where:** `/create` gets two ways in: "Describe it" (the AI, as now) and **"Upload a game
+  file"** (choose a `.html` file, or paste it). A game's page in the maker gets **"Upload a new
+  version"**.
+- **What's stored:** a game like an AI-made one (`generated_games`), its version with
+  `kind 'upload'` (migration), no design, `model` null. Everything after works the same:
+  playtest (only you), publish (the word filter), unpublish, remix, page edits, votes, reports.
+- **The checks, before anyone plays it:** the static check, then the playtest in an OpenShell
+  sandbox: a new generator step `check` that runs `checkGame` with **no model and no key**. The
+  playtest runs the game, so it must never run on the server itself. Passing: the version is
+  ready (playable by you, publishable). Failing: the report, with lines, the same as a failed AI
+  build: upload a fixed file, or (with a key, and up to 100 KB) "Ask the AI to fix these".
+- **Limits:** 1 MB a file (the site's limit; the AI can only change ones up to 100 KB, which the
+  page says); one check job at a time per person, sharing the queue and the browser slot with
+  AI jobs; a few uploads per person per hour.
+- **The AI's code review:** optional, a button ("Ask the AI to review it") for people with a key.
+  It reads the code and the game's own description (there's no design).
+
+**Part 3: what a person (not an AI) might do on purpose**
+- The walls are the same and hold: the sandboxed frame (no access to the site, its cookie or
+  tokens) and the CSP (no network: nothing typed can leave). The hang watchdog stops a frozen
+  big screen.
+- **Phishing inside a game:** a game could show a fake "log in again" form, and the host could
+  read the answers off the big screen. The static check refuses password fields
+  (`type="password"`) and asking for a password, and every phone shows a line under the game:
+  "BoilerGames never asks for your password in a game."
+- **Content:** the word filter covers the name, description and About text, not the game
+  itself. Public games already have bug reports and an admin's Unpublish; reports get a
+  "this game is offensive" kind.
+- **Rights:** uploading asks you to confirm you made the game or may share it, since public
+  games can be remixed by default (the creator can turn that off).
+
+**Part 4: credit and labels**
+- The "AI-made" badge becomes about how the game was made: "AI-made" when any version was built
+  by the site's AI; "Uploaded" for a game file someone brought. The creator line is the same.
+
+**Tests:** the upload route (checks run, a failing file keeps its report, size and rate limits,
+password fields refused), the `check` step with a fake checker, the browser flow with the fake
+generator, and the prompt kit's text containing the rulebook.
+
+**Open:** see the questions below (2026-10-22).
+
 ## Verification (how to confirm the plan worked once built)
 
 - `npm test` (root) → runs `node --test server/test`, all unit and integration tests green.
