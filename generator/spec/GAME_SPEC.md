@@ -15,14 +15,6 @@ file runs on the big screen and on every phone, each inside a sandboxed iframe:
 The server only passes messages between them. There are no required rounds, phases or
 screens. A game must start, react to its players, and end with `party.end`.
 
-**What plays well here.** Everyone looks at one big screen and holds a phone. A phone
-reaches the big screen in about 0.05–0.15 s, its buttons can't be felt, and eyes are on the
-TV, not the thumbs. So games work best when the phone is for **choices, secrets, words,
-drawings or simple steering**, and the big screen for **the shared show**: party rounds,
-voting and bluffing, drawing and guessing, trivia, board games, and loose, forgiving real-time
-games (bumping, dodging, collecting). Avoid what needs pixel-precise timing on a touch
-screen (precise platform jumping, rhythm games).
-
 `async`/`await`, Promises, timers and `requestAnimationFrame` are all fine. (There's no
 network, so there's nothing to fetch.)
 
@@ -95,8 +87,6 @@ network, so there's nothing to fetch.)
   controls). Show the player who they are (name and colour) and what to do right now.
 - **Big screen:** readable from across the room: big text, high contrast, few words. Show
   whose turn it is, timers, scores, and what just happened.
-- **Length:** each round, level, race or fight takes at least about 20 seconds. Don't make a
-  game longer with waiting.
 - **Colours:** the game's own scene has its own colours. For page text, panels and buttons
   outside the scene, the colour variables below match the platform. A canvas can read them
   with `getComputedStyle(document.documentElement)`.
@@ -251,8 +241,6 @@ style), so it doesn't look like every other game. Whatever the style:
   easy to tell apart (their own colour, their name where it matters).
 - **Fill the screen:** the big screen is a TV. Use the whole frame for the game, not a strip
   in the middle of an empty page.
-- **Motion over detail:** easing, a pop, a shake or a flash when something happens says more
-  than fine detail nobody can see from the couch.
 - **A canvas that fits its box** (phone or TV, sharp on any screen): size it to its box times
   `devicePixelRatio`, scale the drawing context to match, draw in CSS pixels, and redraw when
   its size changes (`new ResizeObserver(draw).observe(canvas)`) or every frame in a real-time

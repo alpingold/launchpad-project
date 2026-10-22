@@ -256,11 +256,14 @@ test('briefThinking (plan §40): the short-plan sentence comes just before the a
 
 test('no target length for a whole game (plan §35), but a round is at least about 20 s and the design works out its length', () => {
   const all = (messages) => messages.map((m) => m.content).join('\n');
-  for (const prompt of [all(designMessages('Ducks')), all(buildMessages('Run and jump', DESIGN))]) {
-    assert.doesNotMatch(prompt, /5–15/);
-    assert.match(prompt, /at least about 20 seconds/);
-  }
-  assert.match(all(designMessages('Ducks')), /show the arithmetic/);
+  const design = all(designMessages('Ducks'));
+  const build = all(buildMessages('Run and jump', DESIGN));
+  for (const prompt of [design, build]) assert.doesNotMatch(prompt, /5–15/);
+  assert.match(design, /at least about 20 seconds/);
+  assert.match(design, /Show the arithmetic/);
+  // Choosing what kind of game and how long is the design's job (plan §58): not in the build's prompt.
+  assert.match(design, /What plays well here/);
+  assert.doesNotMatch(build, /What plays well here|at least about 20 seconds/);
 });
 
 test('the build prompt: the rulebook and the design; no example game, no kit, no template (plan §13o, §20)', () => {

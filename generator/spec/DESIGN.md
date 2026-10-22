@@ -10,6 +10,14 @@ Keep what the idea asks for: team or competitive, the roles, the places and thin
 how it plays. If something can't work on a big screen and phones, change as little as you can
 and say what you changed under Genre and feel.
 
+**What plays well here.** Everyone looks at one big screen and holds a phone. A phone
+reaches the big screen in about 0.05–0.15 s, its buttons can't be felt, and eyes are on the
+TV, not the thumbs. So games work best when the phone is for **choices, secrets, words,
+drawings or simple steering**, and the big screen for **the shared show**: party rounds,
+voting and bluffing, drawing and guessing, trivia, board games, and loose, forgiving real-time
+games (bumping, dodging, collecting). Avoid what needs pixel-precise timing on a touch
+screen (precise platform jumping, rhythm games).
+
 # <the game's name>
 
 ## Genre and feel
@@ -52,8 +60,8 @@ When and how the game ends, and its last big moment on the big screen.
 
 ## Length
 How long one round (or level, or turn) takes, and how long the whole game takes, worked out
-from the numbers above: show the arithmetic (distance ÷ speed, timers × rounds, countdowns
-and pauses). For example: "a round: 100 tiles ÷ 6 tiles/s ≈ 17 s, ≈ 25 s with jumps;
+from the numbers above: each round, level, race or fight takes at least about 20 seconds.
+Show the arithmetic (distance ÷ speed, timers × rounds, countdowns and pauses). For example: "a round: 100 tiles ÷ 6 tiles/s ≈ 17 s, ≈ 25 s with jumps;
 3 rounds + 5 s countdowns + 6 s final screen ≈ 1.5–2 min." Longer comes from more to do,
 never from waiting.
 
@@ -69,7 +77,8 @@ This game's own look, so it doesn't look like every other game:
 - **Each phase:** how the screen looks different from phase to phase.
 - **The big moment:** one thing the room will remember seeing (doors sliding open, a dish
   lifted from under a cloche), and exactly how it moves.
-- **Motion:** what moves, pops, shakes or glows, and when.
+- **Motion:** what moves, pops, shakes or glows, and when. Motion says more than fine detail
+  nobody can see from the couch.
 - **Sound:** which `party.sound` plays at which moments (a point, a buzzer, the winner).
 It's drawn with shapes on a canvas, HTML and CSS, or pictures from the art library.
 
