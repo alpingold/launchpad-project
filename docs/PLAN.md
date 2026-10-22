@@ -2119,7 +2119,12 @@ version worked.
   blanking's doing (the line opened something), so the scan stops there.
 - **Tried on the failed builds' first files:** the two with a repeated slip listed 5 and 7 real
   errors (every unquoted value); the one-bracket mistakes listed 1 (no noise); the official games
-  0. Not yet tried through real fix rounds (GenAI Studio was down).
+  0. **Through real fix rounds (2026-10-22):** the 5 failed first files, each sent back with the
+  full list: noplan-2's 5 errors were all fixed in one round (it passed); walkthrough-2's 7 and
+  checklist-2's 2 were all fixed too, but those files then had 2–9 other problems the 4 attempts
+  didn't get through; control-1 and phases-1 (one error each) stayed stuck. So the list does
+  what it was for; a first file broken in many ways is a bigger problem of its own. Two fix
+  calls also ended with no reply mid-thought (the reviewer's problem in §47, in a fix round).
 
 ## 53. Whether GenAI Studio is up, on the game pages (2026-10-21)
 
@@ -2230,7 +2235,9 @@ prompt you can copy makes "make one with any AI" work.
 password fields refused), the `check` step with a fake checker, the browser flow with the fake
 generator, and the prompt kit's text containing the rulebook.
 
-**Open:** see the questions below (2026-10-22).
+**Decided (2026-10-22):** no GenAI Studio key needed to upload (the checks don't use the AI;
+a key is only for the optional AI parts); the AI's code review is an optional button, not
+automatic; the labels are "Uploaded" and "AI-made"; build the prompt kit first, then uploading.
 
 ## Verification (how to confirm the plan worked once built)
 
