@@ -154,3 +154,10 @@ test('runCommand: passes the environment it is given', async () => {
   const out = await runCommand(process.execPath, ['-e', 'process.stdout.write(process.env.ONLY_HERE ?? "none")'], { timeoutMs: 5000, env: { ...process.env, ONLY_HERE: 'yes' } });
   assert.equal(out.stdout, 'yes');
 });
+
+test("an upload's check (plan §57) gets no provider, even with a key: no key in reach, and no network", async () => {
+  const { run, calls } = fakeOpenshell({ exec: { code: 0, stdout: `${JSON.stringify(RESULT)}\n`, stderr: '' } });
+  await runGeneratorInSandbox({ step: 'check', idea: 'Tap Test: tap', source: '<p>game</p>' }, { run, apiKey: 'sk-0123456789abcdef0123456789abcdef' });
+  assert.deepEqual(calls.map((c) => c.args.slice(0, 2)), [['sandbox', 'create'], ['sandbox', 'exec'], ['sandbox', 'delete']]);
+  assert.ok(!calls[0].args.includes('--provider'));
+});

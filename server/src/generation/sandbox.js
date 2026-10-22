@@ -74,7 +74,8 @@ export function runCommand(bin, args, { input, timeoutMs, onStderrLine = () => {
  * @param {{ onStep?: import('../../../generator/src/run.js').OnStep, onAttempt?: (attempt: object) => void, cfg?: typeof config, run?: typeof runCommand, apiKey?: string, browserSlot?: import('./browserSlot.js').BrowserSlot }} [deps]
  *   onStep: the generator's progress; `replace` updates the last step (a streaming reply)
  *   onAttempt: each attempt as it ends (keepThinking jobs only: compare-builds keeps them if stopped)
- *   apiKey: the job owner's own GenAI Studio key (plan §15); without it, the server's provider
+ *   apiKey: the job owner's own GenAI Studio key (plan §15); without it, the server's provider.
+ *     An uploaded file's check (step 'check', plan §57) gets neither: no AI, so no key and no network
  *   browserSlot: shared between jobs, so only so many browser checks run at once (plan §28);
  *     without it the job checks whenever it likes
  * @returns {Promise<import('../../../generator/src/run.js').GeneratorResult>}
@@ -82,7 +83,10 @@ export function runCommand(bin, args, { input, timeoutMs, onStderrLine = () => {
 export async function runGeneratorInSandbox(job, { onStep = () => {}, onAttempt = () => {}, cfg = config, run = runCommand, apiKey, browserSlot } = {}) {
   const hex = randomBytes(4).toString('hex');
   const name = `bg-gen-${hex}`; // OpenShell allows at most 19 characters
-  const keyProvider = apiKey ? `bg-key-${hex}` : null;
+  // An upload's check runs someone's own code and needs no AI: no provider, so no key in reach
+  // and (the policy has no rules of its own) no network at all.
+  const noAi = job.step === 'check';
+  const keyProvider = apiKey && !noAi ? `bg-key-${hex}` : null;
   const bin = cfg.OPENSHELL_BIN;
   const limitSeconds = Math.ceil(cfg.GENERATION_TIMEOUT_MS / 1000);
   // No error message may ever contain the key, even if a command printed it back.
@@ -107,7 +111,7 @@ export async function runGeneratorInSandbox(job, { onStep = () => {}, onAttempt 
         '--detach',
         '--no-keep', // safety net: if we never get to `delete`, it goes away when `sleep` ends
         '--from', cfg.GENERATOR_IMAGE,
-        '--provider', keyProvider ?? cfg.GENERATOR_PROVIDER,
+        ...(noAi ? [] : ['--provider', keyProvider ?? cfg.GENERATOR_PROVIDER]),
         '--policy', cfg.GENERATOR_POLICY_PATH,
         '--', 'sleep', String(limitSeconds + 120),
       ],
