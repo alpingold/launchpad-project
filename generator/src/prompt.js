@@ -410,3 +410,21 @@ export function designInstructions() {
 export function copiedSectionsMessage(copied) {
   return `In that design, these sections repeat the instructions for writing a design instead of describing this game: ${copied.join(', ')}. Reply with the complete design again, with those sections written for this game.`;
 }
+
+/**
+ * The prompt kit (plan §57): one prompt to paste into any AI chat (ChatGPT, Claude, Gemini…) to
+ * get a game that works on BoilerGames, then upload it. Made from the same files the site's own
+ * AI reads (the rulebook, the design format, the art library, the writing tips), so it stays in
+ * step with them.
+ * @returns {string}
+ */
+export function externalPrompt() {
+  return [
+    `I want you to make a party game for BoilerGames (https://boilergames.party), a site where one big screen (a TV or laptop) shows the game and everyone plays from their phone's browser. A game is ONE HTML file, written by the rules below. Read them all first: a file that breaks them won't be accepted.`,
+    `We'll work in two steps:\n1. **The design.** Write a short design of my game in the format under "How to write a design", and ask me if it's right. Change it until I say it's good.\n2. **The game file.** Then write the complete game file from the design. ${BRIEF_THINKING} Reply with the file only, in ONE \`\`\`html code block, starting with the game-info block. At most ${MAX_GAME_BYTES / 1024} KB.`,
+    `# How BoilerGames games work\n\n${rulebook().replace(/^# .*\n/, '')}`,
+    `# Pictures you may use\n\nMost games draw their own art. These pictures are also available, by id, with \`party.asset(id)\`:\n\n${describeAssets()}`,
+    `# How to write a design\n\n${read('../spec/DESIGN.md').replace(/^# .*\n/, '')}`,
+    `# My game idea\n\n[Describe your game here: what the players do, what the big screen and the phones show, and how it ends.]`,
+  ].join('\n\n');
+}

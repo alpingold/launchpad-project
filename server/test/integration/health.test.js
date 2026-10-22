@@ -81,3 +81,19 @@ test('GET /api/genai-status says whether GenAI Studio is up (plan §53), and whe
   assert.equal(res.headers.get('cache-control'), 'no-store');
   await server.close();
 });
+
+test('GET /api/kit/prompt is the prompt kit as plain text, or a file to save (plan §57)', async () => {
+  const { createGameServer } = await import('../../src/server.js');
+  const server = createGameServer({});
+  await new Promise((resolve) => server.httpServer.listen(0, resolve));
+  const base = `http://localhost:${server.httpServer.address().port}`;
+  try {
+    const res = await fetch(`${base}/api/kit/prompt`);
+    assert.match(res.headers.get('content-type'), /^text\/plain/);
+    assert.match(await res.text(), /^I want you to make a party game for BoilerGames/);
+    const file = await fetch(`${base}/api/kit/prompt?download=1`);
+    assert.match(file.headers.get('content-disposition'), /^attachment; filename="?boilergames-prompt\.txt"?$/);
+  } finally {
+    await server.close();
+  }
+});

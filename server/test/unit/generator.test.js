@@ -14,6 +14,7 @@ import {
   PLAN_HEADINGS,
 } from '../../../generator/src/prompt.js';
 import { runJob, formatReport } from '../../../generator/src/run.js';
+import { externalPrompt, BRIEF_THINKING } from '../../../generator/src/prompt.js';
 import { numberLines, reviewMessages, checklistMessages, criticalMessages, verify, score, fixRequest, CHECKLIST_FORMAT, REVIEW_FORMAT } from '../../../generator/src/review.js';
 
 // The generator (plan §13i, F5): pulling designs and game files out of replies, the
@@ -474,6 +475,17 @@ test('briefText (an experiment): another planning sentence in place of the brief
   assert.match(first, /Think briefly, then write the file\. Draw the characters/);
   assert.doesNotMatch(first, /Before writing, plan briefly/);
   assert.doesNotMatch(model.calls[1][1].content, /Think briefly/);
+});
+
+test('the prompt kit (plan §57): the rulebook, the art, the design format, the writing tips and a place for the idea', () => {
+  const text = externalPrompt();
+  const rulebook = readFileSync(new URL('../../../generator/spec/GAME_SPEC.md', import.meta.url), 'utf8');
+  assert.ok(text.includes(rulebook.split('\n').find((l) => l.startsWith('## '))), 'the rulebook');
+  assert.match(text, /`go-sign`/, 'the art library');
+  for (const heading of DESIGN_HEADINGS) assert.ok(text.includes(`## ${heading}`), heading);
+  assert.ok(text.includes(BRIEF_THINKING));
+  assert.match(text, /in ONE ```html code block, starting with the game-info block/);
+  assert.match(text, /# My game idea\n\n\[Describe your game here/);
 });
 
 test('remix design job (plan §45b): a whole design in the new-game format, from the original design and what to change', async () => {

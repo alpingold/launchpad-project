@@ -45,6 +45,55 @@ const SDK = [
   ],
 ];
 
+/**
+ * The prompt kit (plan §57): one prompt for any AI chat (ChatGPT, Claude, Gemini…) that makes a
+ * game this site accepts. The prompt itself comes from the server (/api/kit/prompt), made from the
+ * same rulebook the site's own AI reads.
+ */
+function PromptKit() {
+  const [copied, setCopied] = useState(null); // null, 'yes' or 'no'
+
+  async function copy() {
+    try {
+      const res = await fetch('/api/kit/prompt');
+      if (!res.ok) throw new Error(String(res.status));
+      await navigator.clipboard.writeText(await res.text());
+      setCopied('yes');
+    } catch {
+      setCopied('no');
+    }
+  }
+
+  return (
+    <section className="card kit-section" aria-labelledby="prompt-kit-heading">
+      <h2 id="prompt-kit-heading">Making one with any AI</h2>
+      <p>
+        Use ChatGPT, Claude, Gemini or another AI you like: copy this prompt into a new chat, write your idea where it
+        says so at the end, and send it. The AI writes a short design for you to check, then the game file. Then upload
+        that file on <a href="/create">Make a game</a>: it's checked the same way as any game before you play it.
+      </p>
+      <p className="gen-actions">
+        <button type="button" className="primary-button" onClick={copy}>
+          Copy the prompt
+        </button>
+        <a className="secondary-button" href="/api/kit/prompt?download=1" download>
+          Download it
+        </a>
+      </p>
+      {copied === 'yes' && <p role="status">Copied. Paste it into a new chat, and add your idea at the end.</p>}
+      {copied === 'no' && (
+        <p className="error" role="alert">
+          Couldn't copy it here: use Download instead.
+        </p>
+      )}
+      <p className="muted small">
+        It's the same rulebook the site's own AI follows (the full guides below), plus how to write a design and the
+        pictures a game may use. Games you write by hand work too.
+      </p>
+    </section>
+  );
+}
+
 export default function Kit() {
   usePageTitle('Game kit');
   const [guide, setGuide] = useState(null);
@@ -124,13 +173,15 @@ export default function Kit() {
       </section>
 
       <section className="card kit-section" aria-label="Making one with AI">
-        <h2>Making one with AI</h2>
+        <h2>Making one with the site's AI</h2>
         <p>
           <a href="/create">Start from an idea</a>: the AI writes a short design for you to read and change, then the
           code. Every game is checked (its code is read for anything not allowed, then it's played in a browser by
           bot phones) before you can playtest it, and you choose when to publish.
         </p>
       </section>
+
+      <PromptKit />
 
       <section className="kit-section page-section" aria-label="The full guides">
         <h2>The full guides</h2>

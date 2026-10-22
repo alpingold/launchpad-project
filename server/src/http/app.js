@@ -12,6 +12,7 @@ import { createReportsRouter } from './reportsRoutes.js';
 import { sendPage } from './pages.js';
 import { createSeoRouter } from './seoRoutes.js';
 import { kitGuide } from '../games/kitGuide.js';
+import { externalPrompt } from '../../../generator/src/prompt.js';
 
 /**
  * Builds the Express app (HTTP routes only).
@@ -87,6 +88,14 @@ export function createApp({ games = new GameRegistry(), db = openDatabase(':memo
   // The game kit guide (/kit): how frame games work, the same text the AI reads.
   app.get('/api/kit', (_req, res) => {
     res.json(kitGuide());
+  });
+
+  // The prompt kit (plan §57): one prompt for any AI chat, made from the same files as the site's
+  // own AI. ?download=1: as a file.
+  const prompt = externalPrompt();
+  app.get('/api/kit/prompt', (req, res) => {
+    if (req.query.download) res.attachment('boilergames-prompt.txt');
+    res.type('text/plain; charset=utf-8').set('Cache-Control', 'public, max-age=300').send(prompt);
   });
 
   // Sign up, log in, log out, who am I.
