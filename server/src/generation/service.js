@@ -19,6 +19,8 @@
 //   description are checked for blocked words. The published version keeps running for
 //   everyone while a newer one is playtested. Changes apply to the running server's game list
 //   immediately. Code runs on this server only once its creator has chosen to playtest it.
+// - Uploads (plan §57): a game file its owner wrote (or made with an AI of their own) is a
+//   version too, checked in a sandbox the same way, with no AI and so no key needed.
 // - Restarts: versions that were generating when the server stopped are marked failed.
 
 import {
@@ -37,8 +39,11 @@ import {
   startBuild,
   deleteVersion,
   saveBuildAttempts,
+  addUpload,
   BUSY_STATUSES,
 } from '../db/generatedGames.js';
+import { readFrameGame } from '../games/frameGame.js';
+import { config } from '../config.js';
 import { liveGameId, registerVersion } from '../games/generated.js';
 import { runGeneratorInSandbox } from './sandbox.js';
 import { BrowserSlot } from './browserSlot.js';
@@ -58,6 +63,10 @@ export { MAX_DESIGN_LENGTH };
 export const RECHECK_REQUEST = 'Review the code again, and fix any crashes or dead ends it finds.';
 /** At most this many jobs waiting in line (besides those running), so nobody can queue up hours of work. */
 export const MAX_WAITING = 4;
+/** Uploads per person per hour (plan §57): each one is a playtest in a sandbox. */
+export const MAX_UPLOADS_PER_HOUR = 6;
+/** The biggest file the AI may change (plan §57): bigger uploads can only be replaced by hand. */
+export const MAX_AI_SOURCE_BYTES = 100 * 1024;
 /** Progress lines kept per job (the admin page shows them while it runs). */
 const MAX_STEPS = 50;
 
@@ -107,6 +116,8 @@ export class GenerationService {
     this.steps = new Map();
     /** @type {Promise<unknown>} settles when the jobs running now finish (tests wait on it) */
     this.current = Promise.resolve();
+    /** @type {Map<number, number[]>} when each person uploaded in the last hour */
+    this.uploads = new Map();
   }
 
   /** On startup: anything the sandbox was working on was cut off by a restart. */
@@ -133,6 +144,8 @@ export class GenerationService {
       maxRequestLength: MAX_REQUEST_LENGTH,
       minFeedbackLength: MIN_FEEDBACK_LENGTH,
       maxDesignLength: MAX_DESIGN_LENGTH,
+      maxUploadBytes: config.FRAME_GAME_MAX_BYTES,
+      maxAiSourceBytes: MAX_AI_SOURCE_BYTES,
     };
   }
 
@@ -140,12 +153,13 @@ export class GenerationService {
    * Refuses new work if generating is off, the queue is full, this person has no key to
    * use, or they already have a job waiting or running (one each, plan §15).
    * @param {number} ownerUserId  whose job it would be
+   * @param {{ needsKey?: boolean }} [opts]  false: a job with no AI in it (an upload's check)
    */
-  checkCanQueue(ownerUserId) {
+  checkCanQueue(ownerUserId, { needsKey = true } = {}) {
     if (!this.enabled) {
       throw new GenerationError(503, 'GENERATION_DISABLED', this.disabledReason);
     }
-    if (!this.hasKey(ownerUserId)) {
+    if (needsKey && !this.hasKey(ownerUserId)) {
       throw new GenerationError(403, 'NO_KEY', 'Save your GenAI Studio API key on your account page first.');
     }
     const busy = [...this.running.keys(), ...this.queue].some((id) => getGeneratedGame(this.db, id)?.ownerUserId === ownerUserId);
@@ -174,6 +188,39 @@ export class GenerationService {
     const game = createGeneratedGame(this.db, { ownerUserId, prompt: trimmed, model });
     this.enqueue(game.id);
     return this.get(game.id);
+  }
+
+  /**
+   * Uploads a game file (plan §57): a new game (no id), or the next version of one of yours.
+   * Its game info is read here; the static check and the playtest run in a sandbox, like a
+   * build's, with no AI. Returns right away.
+   * @param {{ ownerUserId: number, id?: string, source: unknown }} upload  source is untrusted input
+   */
+  upload({ ownerUserId, id, source }) {
+    if (typeof source !== 'string' || source.trim() === '') throw new GenerationError(400, 'INVALID_FILE', 'Choose a game file (one .html file).');
+    const info = readFrameGame(source, 'game');
+    if (!info.ok) {
+      throw new GenerationError(422, 'INVALID_FILE', "This file isn't a game the site can load: fix these first.", { problems: info.problems });
+    }
+    let game = null;
+    if (id !== undefined) {
+      game = this.get(id);
+      if (game.ownerUserId !== ownerUserId) throw new GenerationError(404, 'NOT_FOUND', 'There is no such game.');
+      const open = game.versions.find((v) => BUSY_STATUSES.includes(v.status) || v.status === 'design_ready');
+      if (open) throw new GenerationError(409, 'BUSY', open.status === 'design_ready' ? `v${open.version}'s design is waiting for you: build it or discard it first.` : 'A version of this game is already being made. Wait for it to finish.');
+    }
+    this.checkCanQueue(ownerUserId, { needsKey: false });
+    const now = Date.now();
+    const recent = (this.uploads.get(ownerUserId) ?? []).filter((t) => now - t < 60 * 60 * 1000);
+    if (recent.length >= MAX_UPLOADS_PER_HOUR) {
+      throw new GenerationError(429, 'TOO_MANY_UPLOADS', `That's ${MAX_UPLOADS_PER_HOUR} uploads this hour. Try again later.`);
+    }
+    this.uploads.set(ownerUserId, [...recent, now]);
+    // Its idea, for the code review if one is asked for (there's no design): what the game says it is.
+    const prompt = `${info.game.name}: ${info.game.description}`.slice(0, MAX_IDEA_LENGTH);
+    const uploaded = addUpload(this.db, { ownerUserId, gameId: game?.id ?? null, prompt, source, now });
+    this.enqueue(uploaded.id);
+    return this.get(uploaded.id);
   }
 
   /**
@@ -340,19 +387,22 @@ export class GenerationService {
     // The owner's own key (plan §15); none: an admin's job uses the server's key. Never logged.
     const apiKey = this.userKeys?.keyFor(game.ownerUserId) ?? null;
 
-    const what = designing ? (job.redraft ? 'new draft' : 'design') : job.step === 'recheck' ? 'code review' : 'build';
-    this.log(`[generate] ${id} v${version.version}: ${what} started with ${version.model}${apiKey ? " (the owner's key)" : ''}`);
+    const what = designing ? (job.redraft ? 'new draft' : 'design') : { recheck: 'code review', check: 'upload check' }[job.step] ?? 'build';
+    this.log(`[generate] ${id} v${version.version}: ${what} started${job.model ? ` with ${job.model}` : ''}${apiKey ? " (the owner's key)" : ''}`);
     let result;
-    if (!apiKey && !isAdminUser(this.db, game.ownerUserId)) {
+    if (job.step !== 'check' && !apiKey && !isAdminUser(this.db, game.ownerUserId)) {
       result = { ok: false, error: "Your GenAI Studio key couldn't be used. Save it again on your account page, then try again." };
     } else {
       try {
-        result = await this.runGenerator(job, { onStep, browserSlot: this.browserSlot, ...(apiKey && { apiKey }) });
+        // An upload's check has no AI in it: no key goes in its sandbox.
+        result = await this.runGenerator(job, { onStep, browserSlot: this.browserSlot, ...(apiKey && job.step !== 'check' && { apiKey }) });
       } catch (err) {
         result = { ok: false, error: err.message };
       }
     }
     if (!getGeneratedGame(this.db, id)) return; // deleted while it was running
+    // An upload keeps exactly the file uploaded, whatever the sandbox sends back.
+    if (job.step === 'check') result = { ...result, source: version.source };
 
     if (designing) {
       if (result.ok && typeof result.design === 'string') {
@@ -384,6 +434,8 @@ export class GenerationService {
 
   /** The sandbox job for a version's next step (generator/src/run.js describes them). */
   jobFor(game, version) {
+    // An upload (plan §57): its file is only checked.
+    if (version.kind === 'upload') return { step: 'check', idea: game.prompt, source: version.source };
     const designing = version.status === 'designing';
     const job = { step: designing ? 'design' : version.kind === 'recheck' ? 'recheck' : 'build', idea: game.prompt, model: version.model };
     // Every build is reviewed, and its crashes and dead ends fixed (plan §47).
@@ -398,7 +450,7 @@ export class GenerationService {
     } else if (version.basedOn !== null) {
       // The requests since the game's design, oldest first, so the model knows the history.
       const earlierRequests = [];
-      for (let v = findVersion(game, version.basedOn); v && !hasWholeDesign(v); v = findVersion(game, v.basedOn)) {
+      for (let v = findVersion(game, version.basedOn); v && !startsOver(v); v = findVersion(game, v.basedOn)) {
         earlierRequests.unshift(v.request);
       }
       const gameDesign = designOf(game, findVersion(game, version.basedOn));
@@ -520,9 +572,12 @@ export const hasWholeDesign = (version) => version.basedOn === null || version.k
 
 /** The game's design as of this version: the whole design it, or the version it's based on, came from. */
 function designOf(game, version) {
-  for (let v = version; v; v = findVersion(game, v.basedOn)) if (hasWholeDesign(v)) return v.design ?? null;
+  for (let v = version; v; v = findVersion(game, v.basedOn)) if (startsOver(v)) return v.design ?? null;
   return null;
 }
+
+/** Does the game's history start over at this version: a whole design, or an uploaded file (which has none)? */
+const startsOver = (version) => hasWholeDesign(version) || version.kind === 'upload';
 
 /** @returns {import('../db/generatedGames.js').GameVersion | undefined} */
 function findVersion(game, number) {

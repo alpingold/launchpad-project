@@ -1,0 +1,105 @@
+import { test, beforeEach, afterEach } from 'node:test';
+import assert from 'node:assert/strict';
+import { createGameServer } from '../../src/server.js';
+import { GameRegistry } from '../../src/games/registry.js';
+import { gameOrigins } from '../../src/db/generatedGames.js';
+import { MAX_UPLOADS_PER_HOUR } from '../../src/generation/service.js';
+import { signUp, postJson } from '../helpers/accounts.js';
+import { TAP_SOURCE, renamedSource } from '../helpers/frameGames.js';
+
+// Uploading your own game file (plan §57): no GenAI Studio key, the file checked in the
+// sandbox (a fake generator here) with no AI, then playtested and published like any other.
+
+let server;
+let baseUrl;
+let jobs; // what the fake generator was asked: [{ job, apiKey, finish }]
+
+beforeEach(async () => {
+  jobs = [];
+  const runGenerator = (job, { apiKey }) => new Promise((finish) => jobs.push({ job, apiKey, finish }));
+  server = createGameServer({ GENERATION_ENABLED: true }, { games: new GameRegistry(), runGenerator, checkKey: async () => 'ok' });
+  server.generation.log = () => {};
+  await new Promise((resolve) => server.httpServer.listen(0, resolve));
+  baseUrl = `http://localhost:${server.httpServer.address().port}`;
+});
+afterEach(() => server.close());
+
+const get = (path, cookie) => fetch(`${baseUrl}${path}`, { headers: { Cookie: cookie } });
+const post = (path, body, cookie) => postJson(baseUrl, path, body, { Cookie: cookie });
+const passed = (source) => ({ ok: true, source, report: { ok: true, problems: [], game: { name: 'Tap Test', description: 'Tap!' } }, attempts: [] });
+
+test('an upload needs no key: its file is checked with no AI, then it plays and publishes like any game', async () => {
+  const sam = await signUp(baseUrl, 'sam');
+  const res = await post('/api/generations/upload', { source: TAP_SOURCE }, sam);
+  assert.equal(res.status, 202);
+  const { game } = await res.json();
+  assert.equal(jobs.length, 1);
+  assert.deepEqual(Object.keys(jobs[0].job).sort(), ['idea', 'source', 'step']);
+  assert.equal(jobs[0].job.step, 'check');
+  assert.equal(jobs[0].job.source, TAP_SOURCE);
+  assert.equal(jobs[0].apiKey, undefined, 'no key goes in the sandbox');
+
+  // The sandbox's answer can't swap the file: what's kept is what was uploaded.
+  jobs[0].finish(passed(`${TAP_SOURCE}<!-- changed -->`));
+  await server.generation.current;
+  const { game: ready } = await (await get(`/api/generations/${game.id}`, sam)).json();
+  const v1 = ready.versions[0];
+  assert.deepEqual([v1.status, v1.kind, v1.model, v1.source], ['ready', 'upload', null, TAP_SOURCE]);
+  assert.ok(ready.prompt.startsWith('Tap Test: '), 'its idea is what the game says it is');
+
+  assert.equal((await post(`/api/generations/${game.id}/versions/1/playtest`, {}, sam)).status, 200);
+  assert.equal((await post(`/api/generations/${game.id}/publish`, {}, sam)).status, 200);
+  assert.deepEqual(gameOrigins(server.db).get(game.id), { ai: false, upload: true });
+});
+
+test('a new version from a new file; a failing file keeps its report', async () => {
+  const sam = await signUp(baseUrl, 'sam');
+  const { game } = await (await post('/api/generations/upload', { source: TAP_SOURCE }, sam)).json();
+  jobs[0].finish(passed(TAP_SOURCE));
+  await server.generation.current;
+
+  const next = renamedSource('Tap Test 2');
+  const res = await post(`/api/generations/${game.id}/upload`, { source: next }, sam);
+  assert.equal(res.status, 202);
+  assert.equal(jobs[1].job.step, 'check');
+  const report = { ok: false, problems: [{ line: 3, message: 'TypeError: x is undefined' }] };
+  jobs[1].finish({ ok: false, error: "it didn't pass the checks", source: next, report, attempts: [] });
+  await server.generation.current;
+  const v2 = (await (await get(`/api/generations/${game.id}`, sam)).json()).game.versions[1];
+  assert.deepEqual([v2.status, v2.kind, v2.basedOn, v2.request, v2.source], ['failed', 'upload', 1, 'Uploaded a new file', next]);
+  assert.deepEqual(v2.report, report);
+
+  // Someone else can't upload a version of sam's game.
+  const kim = await signUp(baseUrl, 'kim');
+  assert.equal((await post(`/api/generations/${game.id}/upload`, { source: next }, kim)).status, 404);
+});
+
+test('refused: not a game file, too big, one at a time, and a few an hour', async () => {
+  const sam = await signUp(baseUrl, 'sam');
+  const notGame = await post('/api/generations/upload', { source: '<p>hello</p>' }, sam);
+  assert.equal(notGame.status, 422);
+  const body = await notGame.json();
+  assert.equal(body.error, 'INVALID_FILE');
+  assert.ok(body.problems.length > 0);
+  assert.equal((await post('/api/generations/upload', {}, sam)).status, 400);
+
+  // Over the site's 1 MB limit: the upload route takes the body, the game check refuses it.
+  const big = await post('/api/generations/upload', { source: `${TAP_SOURCE}<!--${'x'.repeat(1024 * 1024)}-->` }, sam);
+  assert.equal(big.status, 422);
+  // Other routes keep the small limit.
+  assert.equal((await post('/api/generations', { idea: 'x'.repeat(50 * 1024) }, sam)).status, 413);
+
+  assert.equal((await post('/api/generations/upload', { source: TAP_SOURCE }, sam)).status, 202);
+  const second = await post('/api/generations/upload', { source: TAP_SOURCE }, sam);
+  assert.deepEqual([second.status, (await second.json()).error], [409, 'ALREADY_RUNNING']);
+  jobs[0].finish(passed(TAP_SOURCE));
+  await server.generation.current;
+
+  for (let i = 1; i < MAX_UPLOADS_PER_HOUR; i++) {
+    assert.equal((await post('/api/generations/upload', { source: TAP_SOURCE }, sam)).status, 202);
+    jobs[i].finish(passed(TAP_SOURCE));
+    await server.generation.current;
+  }
+  const tooMany = await post('/api/generations/upload', { source: TAP_SOURCE }, sam);
+  assert.deepEqual([tooMany.status, (await tooMany.json()).error], [429, 'TOO_MANY_UPLOADS']);
+});

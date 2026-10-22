@@ -13,6 +13,10 @@ import { isAdminUser, usernamesById } from '../db/users.js';
  *   GET    /api/admin/generations                    → { info, games: [summary] }   (newest first)
  *   POST   /api/admin/generations  { idea, model? }  → 202 { game }   a new game: its design is written first
  *   GET    /api/admin/generations/:id                → { game }   every version: design, drafts, code, report, changes
+ *   POST   /api/admin/generations/upload  { source } → 202 { game }   a game file of your own (plan §57): checked
+ *                                                    in a sandbox with no AI (no key needed); 422 { problems }
+ *                                                    if its game info can't be read
+ *   POST   /api/admin/generations/:id/upload { source } → 202 { game }   the next version, from a new file
  *   POST   /api/admin/generations/:id/versions  { request, basedOn?, skipDesign? }
  *                                                    → 202 { game }   asks for changes: a new version (a plan first,
  *                                                                     unless skipDesign: a small fix, straight to code)
@@ -162,6 +166,22 @@ export function createAdminRouter({ db, generation, mine = false }) {
       const { idea, model } = req.body ?? {};
       const game = generation.start({ ownerUserId: req.user.id, idea, model });
       res.status(202).json({ game: summary(game) });
+    }),
+  );
+
+  router.post(
+    '/generations/upload',
+    handle((req, res) => {
+      const game = generation.upload({ ownerUserId: req.user.id, source: req.body?.source });
+      res.status(202).json({ game: summary(game) });
+    }),
+  );
+
+  router.post(
+    '/generations/:id/upload',
+    handle((req, res) => {
+      const game = generation.upload({ ownerUserId: req.user.id, id: req.params.id, source: req.body?.source });
+      res.status(202).json({ game: detail(game) });
     }),
   );
 

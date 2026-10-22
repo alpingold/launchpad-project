@@ -16,6 +16,9 @@ export const config = {
   // our requests are tiny (login forms), and a cap stops huge uploads early.
   // The biggest is a change request: 4000 characters, up to 4 bytes each in UTF-8.
   HTTP_JSON_LIMIT: '20kb',
+  // Except an uploaded game file (plan §57): up to FRAME_GAME_MAX_BYTES, which JSON escaping
+  // (quotes, newlines) can make bigger. Only the upload routes accept this much.
+  HTTP_UPLOAD_JSON_LIMIT: '3mb',
 
   // --- WebSocket transport ---
 

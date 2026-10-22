@@ -14,6 +14,9 @@ import { createSeoRouter } from './seoRoutes.js';
 import { kitGuide } from '../games/kitGuide.js';
 import { externalPrompt } from '../../../generator/src/prompt.js';
 
+/** The routes that take a whole game file (plan §57): a new game, or a new version of one. */
+const UPLOAD_PATH = /^\/api\/(admin\/)?generations\/(upload|[^/]+\/upload)$/;
+
 /**
  * Builds the Express app (HTTP routes only).
  *
@@ -58,8 +61,10 @@ export function createApp({ games = new GameRegistry(), db = openDatabase(':memo
     next();
   });
 
-  // Parse JSON request bodies, rejecting anything over the size limit.
-  app.use(express.json({ limit: config.HTTP_JSON_LIMIT }));
+  // Parse JSON request bodies, rejecting anything over the size limit (bigger for an uploaded game file).
+  const json = express.json({ limit: config.HTTP_JSON_LIMIT });
+  const uploadJson = express.json({ limit: config.HTTP_UPLOAD_JSON_LIMIT });
+  app.use((req, res, next) => (UPLOAD_PATH.test(req.path) ? uploadJson : json)(req, res, next));
 
   // Health check: the client (and later the VPS) can call this to see if the server is up.
   app.get('/api/health', (_req, res) => {
