@@ -86,6 +86,7 @@ export function createAdminRouter({ db, generation, mine = false }) {
       name: main?.name ?? null,
       description: main?.description ?? null,
       model: latest.model,
+      kind: latest.kind, // e.g. 'upload': the newest version is a file being checked (plan §57)
       error: latest.status === 'failed' ? latest.error : null,
       ownerUserId: game.ownerUserId,
       ownerName: names.get(game.ownerUserId) ?? null,

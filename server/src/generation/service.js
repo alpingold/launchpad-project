@@ -243,8 +243,13 @@ export class GenerationService {
       basedOn === undefined
         ? (findVersion(game, game.playtestVersion) ?? findVersion(game, game.publishedVersion) ?? game.versions.findLast((v) => v.status === 'ready'))
         : findVersion(game, basedOn);
-    if (!base || base.status !== 'ready') {
+    // An uploaded file that failed the checks can be fixed by the AI too (plan §57).
+    const fixable = base?.status === 'ready' || (base?.kind === 'upload' && base.status === 'failed' && base.source !== null);
+    if (!fixable) {
       throw new GenerationError(409, 'NO_BASE_VERSION', 'Changes can only be made to a version that passed the tests.');
+    }
+    if (Buffer.byteLength(base.source, 'utf8') > MAX_AI_SOURCE_BYTES) {
+      throw new GenerationError(413, 'TOO_BIG_FOR_AI', `The AI can only change game files up to ${MAX_AI_SOURCE_BYTES / 1024} KB. Upload a changed file instead.`);
     }
     addVersion(this.db, id, { request: trimmed, basedOn: base.version, model, kind, status: skipDesign === true ? 'generating' : 'designing' });
     this.enqueue(id);

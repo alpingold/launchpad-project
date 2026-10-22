@@ -104,3 +104,33 @@ test('refused: not a game file, too big, one at a time, and a few an hour', asyn
   const tooMany = await post('/api/generations/upload', { source: TAP_SOURCE }, sam);
   assert.deepEqual([tooMany.status, (await tooMany.json()).error], [429, 'TOO_MANY_UPLOADS']);
 });
+
+test('with a key, the AI can fix a failed upload or review a passing one, up to 100 KB', async () => {
+  const sam = await signUp(baseUrl, 'sam');
+  const putKey = { method: 'PUT', headers: { Cookie: sam, 'Content-Type': 'application/json' }, body: JSON.stringify({ key: 'sk-0123456789abcdef0123456789abcdef' }) };
+  assert.equal((await fetch(`${baseUrl}/api/account/genai-key`, putKey)).status, 200);
+  const { game } = await (await post('/api/generations/upload', { source: TAP_SOURCE }, sam)).json();
+  jobs[0].finish({ ok: false, error: "it didn't pass the checks", source: TAP_SOURCE, report: { ok: false, problems: ['stuck'] }, attempts: [] });
+  await server.generation.current;
+
+  const fix = await post(`/api/generations/${game.id}/versions`, { request: 'Fix these problems: stuck', basedOn: 1, skipDesign: true }, sam);
+  assert.equal(fix.status, 202);
+  assert.deepEqual([jobs[1].job.step, jobs[1].job.change.source, jobs[1].job.change.design], ['build', TAP_SOURCE, null]);
+  assert.equal(jobs[1].apiKey !== undefined, true, 'the AI parts use your key');
+  jobs[1].finish(passed(renamedSource('Tap Fixed')));
+  await server.generation.current;
+
+  assert.equal((await post(`/api/generations/${game.id}/versions/2/review-again`, {}, sam)).status, 202);
+  assert.equal(jobs[2].job.step, 'recheck');
+  assert.ok(jobs[2].job.idea.startsWith('Tap Test: '), "with no design, the review reads the game's own description");
+  jobs[2].finish(passed(renamedSource('Tap Fixed')));
+  await server.generation.current;
+
+  // A bigger file than the AI can change: upload it (it passes), then the AI refuses it.
+  const big = `${TAP_SOURCE}<!--${'x'.repeat(100 * 1024)}-->`;
+  assert.equal((await post(`/api/generations/${game.id}/upload`, { source: big }, sam)).status, 202);
+  jobs[3].finish(passed(big));
+  await server.generation.current;
+  const refused = await post(`/api/generations/${game.id}/versions`, { request: 'Make it blue please', basedOn: 4, skipDesign: true }, sam);
+  assert.deepEqual([refused.status, (await refused.json()).error], [413, 'TOO_BIG_FOR_AI']);
+});
