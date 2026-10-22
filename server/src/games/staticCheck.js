@@ -65,6 +65,9 @@ const ERROR_RULES = [
   { rule: 'outside', in: 'all', re: /<(iframe|frame|object|embed)\b/gi, message: '<$1> isn\'t allowed in a game.' },
   { rule: 'outside', in: 'style', re: /@import\b|url\(\s*["']?(https?:)?\/\//gi, message: 'Styles, fonts and pictures from elsewhere are blocked. Use system fonts, or draw it.' },
   { rule: 'outside', in: 'markup', re: /\b(src|srcset|poster|data)\s*=\s*["']?\s*(https?:)?\/\//gi, message: 'Files from elsewhere are blocked. Draw it, or use `party.asset(id)` for our art.' },
+  // A fake "log in again" box (plan §57): BoilerGames never asks for a password in a game.
+  // In markup (type="password") and in code (.type = 'password', setAttribute('type', 'password'), { type: 'password' }).
+  { rule: 'password', in: 'all', re: /\btype["'`]?\s*[=:,]\s*["'`]?password\b/gi, message: 'Password boxes aren\'t allowed in a game: BoilerGames never asks for a password in one.' },
 ];
 
 /** Rules that only flag a line for review: probably a mistake, but not always. */

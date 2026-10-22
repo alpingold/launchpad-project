@@ -45,6 +45,9 @@ test('each kind of mistake is caught, with its line', () => {
     ['document.cookie', 'storage'],
     ['alert("You win!")', 'dialog'],
     ['document.write("<p>hi</p>")', 'dialog'],
+    ["box.type = 'password'", 'password'],
+    ["box.setAttribute('type', 'password')", 'password'],
+    ["party.ui.el('input', { type: 'password' })", 'password'],
   ];
   for (const [line, rule] of cases) {
     const { errors } = staticCheck(game(line));
@@ -59,6 +62,7 @@ test('markup mistakes: links, forms, refresh, outside scripts, fonts and picture
   const cases = [
     ['<a href="https://example.com">Click</a>', 'navigation'],
     ['<form><input name="q"></form>', 'navigation'],
+    ['<input type="password" placeholder="Log in again">', 'password'],
     ['<meta http-equiv="refresh" content="0; url=https://example.com">', 'navigation'],
     ['<script src="https://cdn.example.com/lib.js"></script>', 'outside'],
     ['<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto">', 'outside'],
