@@ -69,7 +69,9 @@ export default function Privacy() {
         <h2 id="where">Where it's kept</h2>
         <p>
           On one server in the United States (Amazon Web Services). A copy of the database is made every day for safety,
-          and copies older than 14 days are deleted. The site always uses an encrypted connection (HTTPS).
+          and copies older than 14 days are deleted. Saved API keys stay encrypted in those copies, and the secret that
+          unlocks them is never copied with them, so the copies alone can't reveal any key. The site always uses an
+          encrypted connection (HTTPS).
         </p>
       </section>
 
