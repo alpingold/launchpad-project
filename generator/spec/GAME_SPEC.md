@@ -163,11 +163,11 @@ party.end({ rankings: [playerId, ...], scores: { [playerId]: number } })   // th
 - **Players are known by their `id`.** Keep each player's data in an object keyed by id
   (`scores[p.id]`), and compare ids with ids. A list's position (`0`, `1`, `2`) is never a
   player's id: comparing the two is always false, and the scores come out wrong.
-- **Something that builds up over time** (seconds in a guard's view, a lock being picked, a bar
-  filling) adds a little each frame and resets only when its cause stops. Work out the cause
-  once per frame first ("seen by any guard?"), then add or reset once: resetting it at the top
-  of each frame, or in a loop where one guard's "not seen" undoes another's "seen", means it
-  never fills.
+- **Something that builds up over time** (a charge meter, a zone being held, a bar filling
+  while a button is held) adds a little each frame and resets only when its cause stops. Work
+  out the cause once per frame first ("is anyone still on the zone?"), then add or reset once:
+  resetting it at the top of each frame, or in a loop where one thing's "no" undoes another's
+  "yes", means it never fills.
 
 ### Reloads
 
