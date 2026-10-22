@@ -2164,6 +2164,14 @@ version worked.
   heading). Change plans aren't checked (their format has no instructions per heading).
 - **Tried:** 0 false alarms on the 48 designs on disk (the official ones and every experiment's).
 
+## 56. Rulebook: two bugs that kept coming back (2026-10-21)
+
+Reading the brief-sentence games ([brief-medium.md](experiments/brief-medium.md)) found two kinds
+of bug in several builds, each passing every check: per-player data compared by list position
+with a player's id (scores wrong in 3 bake-offs), and a build-up that never fills (spotting or a
+lockpick reset every frame, or by one guard while another sees: 4 heists). GAME_SPEC's "How to
+use it well" now says both in plain words. Not yet tried on the model (GenAI Studio was down).
+
 ## Verification (how to confirm the plan worked once built)
 
 - `npm test` (root) → runs `node --test server/test`, all unit and integration tests green.
