@@ -14,6 +14,7 @@ import {
   discardVersion,
   reviewAgain,
   remixDesign,
+  uploadGame,
 } from '../net/admin.js';
 import { usePageTitle } from '../usePageTitle.js';
 import GenaiStatus from '../components/GenaiStatus.jsx';
@@ -23,6 +24,7 @@ import BlockedWords from '../components/generation/BlockedWords.jsx';
 import { timeAgo } from '../components/timeAgo.js';
 import ChangeForm from '../components/generation/ChangeForm.jsx';
 import MakeItYourOwn from '../components/generation/MakeItYourOwn.jsx';
+import UploadForm from '../components/generation/UploadForm.jsx';
 import { DesignEditor } from '../components/generation/DesignEditor.jsx';
 import { ChangedLines, Attempts, Report, SourceCode } from '../components/generation/VersionDetails.jsx';
 import { POLL_MS, VERSION_STATUS_TEXT, PLAN_STATUS_TEXT, hasWholeDesign } from '../components/generation/text.js';
@@ -35,9 +37,11 @@ import { POLL_MS, VERSION_STATUS_TEXT, PLAN_STATUS_TEXT, hasWholeDesign } from '
 // Same API and rules as the admin page (the server checks everything); this page only
 // decides what to show. While something is being made it asks for the (small) list every
 // 2 s, and fetches the full game (with its code) only when it changed.
+// An uploaded file (plan §57) has its own track, Upload → Check → Play: no design, no AI.
 
 const STEPS_NEW = ['Idea', 'Design', 'Build', 'Play'];
 const STEPS_CHANGE = ['Change', 'Plan', 'Build', 'Play'];
+const STEPS_UPLOAD = ['Upload', 'Check', 'Play'];
 
 /**
  * Where a game is, from its newest version: which space of the track (0–3) and what's
@@ -45,6 +49,7 @@ const STEPS_CHANGE = ['Change', 'Plan', 'Build', 'Play'];
  * @returns {{ at: number, state: 'working' | 'yours' | 'failed' }}
  */
 export function whereIs(version) {
+  if (version.kind === 'upload') return { at: version.status === 'ready' ? 2 : 1, state: { generating: 'working', failed: 'failed' }[version.status] ?? 'yours' };
   switch (version.status) {
     case 'designing':
       return { at: 1, state: 'working' };
@@ -214,8 +219,9 @@ export default function CreateGame({ id }) {
   }
 
   const latest = game.versions.at(-1);
+  const isUpload = latest.kind === 'upload';
   // A change has a plan; a new game, or a remix made its own (plan §45b), a whole design.
-  const isChange = !hasWholeDesign(latest);
+  const isChange = !hasWholeDesign(latest) && !isUpload;
   const where = whereIs(latest);
   const name = summary.name ?? latest.name ?? 'Your new game';
   const running = summary.progress?.queuePosition === 0;
@@ -226,7 +232,9 @@ export default function CreateGame({ id }) {
       <BackLink />
       <header className="create-hero">
         <h1 className="create-title">{name}</h1>
-        {!isChange && summary.remixOf ? (
+        {isUpload ? (
+          <p className="create-idea">{latest.version === 1 ? 'A game file you uploaded.' : `Version ${latest.version}: a game file you uploaded.`}</p>
+        ) : !isChange && summary.remixOf ? (
           <p className="create-idea">
             Your remix of <a href={`/games/${encodeURIComponent(summary.remixOf.id)}`}>{summary.remixOf.name}</a>
             {latest.kind === 'remix' && (
@@ -245,7 +253,7 @@ export default function CreateGame({ id }) {
 
       <GenaiStatus />
 
-      <Track labels={isChange ? STEPS_CHANGE : STEPS_NEW} at={where.at} state={where.state} initial={initialOf(name === 'Your new game' ? summary.prompt : name)} />
+      <Track labels={isUpload ? STEPS_UPLOAD : isChange ? STEPS_CHANGE : STEPS_NEW} at={where.at} state={where.state} initial={initialOf(name === 'Your new game' ? summary.prompt : name)} />
 
       {error && (
         <p className="error" role="alert">
@@ -267,7 +275,11 @@ export default function CreateGame({ id }) {
       <section className="create-panel" aria-live="polite">
         {where.state === 'working' && <Working progress={summary.progress} version={latest} isChange={isChange} />}
 
-        {where.state === 'failed' && latest.design === null && (
+        {where.state === 'failed' && isUpload && (
+          <FailedUpload summary={summary} version={latest} info={info} busy={busy} run={run} canDiscard={canDiscard} />
+        )}
+
+        {where.state === 'failed' && latest.design === null && !isUpload && (
           <>
             <h2>The AI couldn't write {isChange ? 'a plan' : 'a design'}</h2>
             <p>{sentence(latest.error ?? 'It stopped without saying why')}</p>
@@ -354,7 +366,16 @@ function BackLink() {
 
 /** The AI is on it: what it's doing now, how long it's been, and that you can leave. */
 function Working({ progress, version, isChange }) {
-  const what = version.kind === 'recheck' ? 'Reviewing the code' : version.status === 'generating' ? 'Building your game' : isChange ? 'Writing the plan' : 'Writing the design';
+  const what =
+    version.kind === 'upload'
+      ? 'Checking your file'
+      : version.kind === 'recheck'
+        ? 'Reviewing the code'
+        : version.status === 'generating'
+          ? 'Building your game'
+          : isChange
+            ? 'Writing the plan'
+            : 'Writing the design';
   if (progress?.queuePosition > 0) {
     return (
       <>
@@ -375,7 +396,9 @@ function Working({ progress, version, isChange }) {
         {now && <span className="muted"> ({formatSeconds(now.seconds)} in)</span>}
       </p>
       <p className="muted">
-        {version.status === 'generating'
+        {version.kind === 'upload'
+          ? 'The site plays your game in a hidden browser with pretend phones, looking for crashes, a game that gets stuck, and broken text on the screen. No AI is involved. This usually takes a minute or two.'
+          : version.status === 'generating'
           ? version.kind === 'recheck'
             ? 'An AI reads the code against the design, looking for bugs. If it finds a crash or a dead end, it fixes it, and the fixed game goes through the checks again. This usually takes about ten minutes.'
             : 'The AI writes the game, then plays it in a hidden browser with pretend phones. If the checks find a problem, it fixes it and tries again. Then another AI reads the code, looking for bugs the checks can miss, and fixes any crash or dead end it finds. This usually takes 15–25 minutes.'
@@ -409,6 +432,60 @@ const capitalize = (text) => text.charAt(0).toUpperCase() + text.slice(1);
 const sentence = (text) => capitalize(/[.!?]$/.test(text) ? text : `${text}.`);
 
 const formatSeconds = (s) => (s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${s % 60} s`);
+
+/** Can the AI work on this version's code (plan §57): your key saved, and a file it can change? */
+const aiCanChange = (info, version) => info.enabled && info.canGenerate !== false && new Blob([version.source ?? '']).size <= info.maxAiSourceBytes;
+
+/** Why the AI can't, in a sentence, or null when it can. */
+function whyNoAi(info, version) {
+  if (!info.enabled) return null;
+  if (info.canGenerate === false) return 'With your GenAI Studio key saved on your account page, the AI can work on it too.';
+  if (!aiCanChange(info, version)) return `The AI can only change game files up to ${Math.round(info.maxAiSourceBytes / 1024)} KB, so change this one yourself.`;
+  return null;
+}
+
+/** Uploads the game's next version; the form shows a refusal itself (with the file's problems), the page the new version. */
+async function uploadVersion(id, source, run) {
+  const res = await uploadGame(source, id);
+  if (res.ok) await run(async () => res);
+  return res;
+}
+
+/** An uploaded file that didn't pass the checks (plan §57): what they found, then a fixed file, or the AI's fix. */
+function FailedUpload({ summary, version: v, info, busy, run, canDiscard }) {
+  const problems = v.report?.problems ?? [];
+  const fixRequest = `Fix the problems the checks found:\n${problems.map((p) => `- ${typeof p === 'string' ? p : `${p.line ? `line ${p.line}: ` : ''}${p.message}`}`).join('\n')}`.slice(0, info.maxRequestLength);
+  const why = whyNoAi(info, v);
+  return (
+    <>
+      <h2>Your file didn't pass the checks</h2>
+      {v.error && <p className="error">{sentence(v.error)}</p>}
+      {v.report && <Report report={v.report} />}
+      <p>Fix it and upload it again{why === null ? ', or ask the AI to fix it (with your GenAI Studio key)' : ''}.</p>
+      {why === null && (
+        <div className="gen-actions">
+          <button
+            type="button"
+            className="primary-button"
+            disabled={busy || problems.length === 0}
+            onClick={() => run(() => requestChanges(summary.id, fixRequest, v.version, true), 'Ask the AI to fix these? It makes a new version with the fix, and takes about 15 minutes.')}
+          >
+            Ask the AI to fix these
+          </button>
+        </div>
+      )}
+      {why !== null && <p className="muted small">{why}</p>}
+      <UploadForm info={info} newVersion disabled={busy} onUpload={(source) => uploadVersion(summary.id, source, run)} />
+      {canDiscard && (
+        <p>
+          <button type="button" className="link-button" disabled={busy} onClick={() => run(() => discardVersion(summary.id, v.version), 'Throw this version away?')}>
+            Throw this version away
+          </button>
+        </p>
+      )}
+    </>
+  );
+}
 
 /** The newest version passed the checks: its screenshots, Play it now, and ask for changes. */
 function ReadyToPlay({ summary, game, version: v, info, busy, run }) {
@@ -456,6 +533,26 @@ function ReadyToPlay({ summary, game, version: v, info, busy, run }) {
           onReviewAgain={() => run(() => reviewAgain(summary.id, v.version), 'Review the code again? It takes about ten minutes, and makes a new version if it fixes anything.')}
         />
       )}
+      {v.kind === 'upload' && !v.codeReview && (
+        <div className="create-review-offer">
+          <p>
+            The checks passed. An AI can also read the code, looking for bugs the checks can miss, and fix any crash or dead
+            end it finds (about ten minutes, with your GenAI Studio key).
+          </p>
+          {whyNoAi(info, v) === null ? (
+            <button
+              type="button"
+              className="secondary-button"
+              disabled={busy || game.versions.some((x) => ['designing', 'design_ready', 'generating'].includes(x.status))}
+              onClick={() => run(() => reviewAgain(summary.id, v.version), 'Ask the AI to review the code? It makes a new version if it fixes anything.')}
+            >
+              Ask the AI to review it
+            </button>
+          ) : (
+            <p className="muted small">{whyNoAi(info, v)}</p>
+          )}
+        </div>
+      )}
       <div className="gen-actions">
         <button type="button" className="primary-button" disabled={busy} onClick={play}>
           Play it now
@@ -500,6 +597,11 @@ function ReadyToPlay({ summary, game, version: v, info, busy, run }) {
           onAsk={(text, basedOn, smallFix) => run(() => requestChanges(summary.id, text, basedOn, smallFix))}
         />
       )}
+      <details className="create-upload-version">
+        <summary>Upload a new version</summary>
+        <p className="muted small">Changed the file yourself? Upload it: it's checked again, and becomes the next version.</p>
+        <UploadForm info={info} newVersion disabled={busy} onUpload={(source) => uploadVersion(summary.id, source, run)} />
+      </details>
     </>
   );
 }
@@ -532,14 +634,16 @@ function History({ game, summary }) {
         locked-down frame on the big screen and the phones; the AI follows the <a href="/kit">docs</a>.
       </p>
       {[...game.versions].reverse().map((v) => {
-        const statusText = (hasWholeDesign(v) ? VERSION_STATUS_TEXT : PLAN_STATUS_TEXT)[v.status];
+        const statusText = v.kind === 'upload' && v.status === 'generating' ? 'Checking' : (hasWholeDesign(v) ? VERSION_STATUS_TEXT : PLAN_STATUS_TEXT)[v.status];
         return (
           <article key={v.version} className="create-version" aria-label={`Version ${v.version}`}>
             <h3>
               Version {v.version} <span className={`status-chip status-${v.status}`}>{statusText}</span>
             </h3>
             <p className="small">
-              {v.basedOn === null ? (
+              {v.kind === 'upload' ? (
+                'A game file you uploaded'
+              ) : v.basedOn === null ? (
                 summary.remixOf ? `A copy of ${summary.remixOf.name}` : 'Made from your idea'
               ) : (
                 <>
