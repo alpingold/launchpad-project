@@ -9,7 +9,8 @@
 //      It writes a renamed Probe ("Robot Majority"); a change request renames it to
 //      "Robot Majority 2"; a remix made its own (plan §45b) keeps the copy, marked. An idea with "rude" in it names it "Robot Bullshit" (for the word
 //      filter, plan §49). It still sends progress steps, and checks the game file the same
-//      way the real one will.
+//      way the real one will. An uploaded file's check (plan §57) uses the real static check;
+//      a file containing "stuck" fails the "playtest".
 //   2. An admin account (accounts.js) in the throwaway in-memory database.
 //   3. A 5 s hang watchdog instead of 15 s.
 import { readFileSync } from 'node:fs';
@@ -76,6 +77,14 @@ async function fakeGenerator(job, { onStep }) {
     onStep(`${job.change ? 'plan' : 'design'}: asking ${job.model}`);
     await pause(2500); // long enough for the page to show this step while it runs
     return { ok: true, model: job.model, design: fakeDesign(job), attempts: [] };
+  }
+  if (job.step === 'check') {
+    onStep('testing the game');
+    await pause(1500);
+    const checked = frameGameReport(job.source);
+    const report = checked.ok && job.source.includes('stuck') ? { ...checked, ok: false, problems: [{ line: 1, message: 'The game got stuck: nothing happened for 60 seconds.' }] } : withFakePlaytest(checked);
+    const attempts = [{ attempt: 1, mode: 'whole', ok: report.ok, problems: report.problems.length, source: job.source, report }];
+    return report.ok ? { ok: true, model: null, source: job.source, report, attempts } : { ok: false, model: null, source: job.source, report, attempts, error: "it didn't pass the checks" };
   }
   onStep(`attempt 1/4: asking ${job.model}`);
   await pause(1000);

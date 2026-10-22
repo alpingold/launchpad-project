@@ -163,6 +163,7 @@ test('phone layout in a game (plan §21): no site header, the game nearly fills 
   await expect(alex.page.locator('.site-header')).toBeHidden();
   const bar = alex.page.locator('.phone-bar');
   await expect(bar).toContainText('Alex · room');
+  await expect(bar).toContainText('BoilerGames never asks for your password in a game.'); // plan §57
   await expect(bar.getByRole('button', { name: 'Leave' })).toBeVisible();
   const frameBox = await alex.page.locator('iframe.game-frame').boundingBox();
   const { height } = alex.page.viewportSize();
