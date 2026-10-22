@@ -30,7 +30,9 @@ test('every page has Games, Docs and Sign up at the top; Account once logged in;
 
 test("a card opens its game's page: screenshots, creator, facts, Host this game; logged out it asks to log in to vote", async ({ page }) => {
   await page.goto('/games');
-  await page.locator('.game-card', { hasText: 'Bumper Blobs' }).click(); // anywhere on the card
+  // The card whose title links to the game: by name alone, a remix published by another test
+  // ("Bumper Blobs - Remixed") would match too.
+  await page.locator('.game-card', { has: page.locator('a.game-card-title[href="/games/bumper-blobs"]') }).click(); // anywhere on the card
   await expect(page).toHaveURL('/games/bumper-blobs');
   await expect(page).toHaveTitle('Bumper Blobs · BoilerGames');
   await expect(page.getByRole('heading', { name: 'Bumper Blobs', level: 1 })).toBeVisible();
@@ -61,7 +63,7 @@ test('votes: ▲, change to ▼, press again to take it back; the card shows the
   await expect(up).toHaveAttribute('aria-pressed', 'false');
   await expect(down).toHaveAttribute('aria-pressed', 'true');
   await page.goto('/games');
-  await expect(page.locator('.game-card', { hasText: 'Bumper Blobs' }).locator('.game-votes')).toContainText('▼ 1');
+  await expect(page.locator('.game-card', { has: page.locator('a.game-card-title[href="/games/bumper-blobs"]') }).locator('.game-votes')).toContainText('▼ 1');
   await page.goto('/games/bumper-blobs');
   await page.getByRole('button', { name: /I don't like it/ }).click(); // take it back
   await expect(page.getByRole('button', { name: /I don't like it/ })).toHaveAttribute('aria-pressed', 'false');

@@ -6,7 +6,7 @@ import { test as roomTest, uniqueUsername } from './helpers.js';
 test('/games shows every game with its picture, players, length and tags', async ({ page }) => {
   await page.goto('/games');
   await expect(page).toHaveTitle('Games · BoilerGames');
-  const blobs = page.locator('.game-card', { hasText: 'Bumper Blobs' });
+  const blobs = page.locator('.game-card', { has: page.locator('a.game-card-title[href="/games/bumper-blobs"]') });
   await expect(blobs).toContainText('2–12 players · 2–5 min');
   await expect(blobs.locator('.game-tags')).toHaveText('action');
   // Official games have a screenshot; the test-only Probe has none, so it gets a letter tile.
@@ -18,7 +18,7 @@ test('/games shows every game with its picture, players, length and tags', async
 test('/games: search, tags and the player count narrow the list; Clear filters brings it back', async ({ page }) => {
   await page.goto('/games');
   const cards = page.locator('.game-card');
-  await expect(cards.filter({ hasText: 'Bumper Blobs' })).toBeVisible(); // loaded
+  await expect(cards.filter({ has: page.locator('a.game-card-title[href="/games/bumper-blobs"]') })).toBeVisible(); // loaded
   const total = await cards.count();
   expect(total).toBeGreaterThan(3);
 
@@ -32,13 +32,13 @@ test('/games: search, tags and the player count narrow the list; Clear filters b
   await expect(page.getByRole('button', { name: 'board', exact: true })).toHaveAttribute('aria-pressed', 'true');
   // Only board games: Treasure Hunt stays (and any official board game), Bumper Blobs goes.
   await expect(cards.filter({ hasText: 'Treasure Hunt' })).toHaveCount(1);
-  await expect(cards.filter({ hasText: 'Bumper Blobs' })).toHaveCount(0);
+  await expect(cards.filter({ has: page.locator('a.game-card-title[href="/games/bumper-blobs"]') })).toHaveCount(0);
   expect(await cards.count()).toBeLessThan(total);
   await page.getByRole('button', { name: 'board', exact: true }).click();
 
   await page.getByRole('combobox', { name: 'Players' }).selectOption('7');
   await expect(cards.filter({ hasText: 'Treasure Hunt' })).toHaveCount(0); // 1–6 players
-  await expect(cards.filter({ hasText: 'Bumper Blobs' })).toHaveCount(1); // 2–12
+  await expect(cards.filter({ has: page.locator('a.game-card-title[href="/games/bumper-blobs"]') })).toHaveCount(1); // 2–12
 
   await page.getByRole('combobox', { name: 'Players' }).selectOption('');
   await page.getByRole('combobox', { name: 'Sort' }).selectOption('name');
