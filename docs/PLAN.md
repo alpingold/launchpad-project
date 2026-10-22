@@ -2153,6 +2153,17 @@ version worked.
 - **API keys and RCAC:** using personal GenAI Studio keys this way is fine (it's the same use as
   OpenCode, which is allowed).
 
+## 55. Designs that copy the format's instructions are asked for again (2026-10-21)
+
+- **Why:** testing §50, one design's Rules section was DESIGN.md's own instruction ("Step by
+  step, from the start to the end, with numbers…"), and the Ending likewise. Only the headings
+  were checked, so it counted as complete and would have been built from nothing.
+- **How:** a design section that contains the start of its heading's instruction (its first line
+  in DESIGN.md, `designInstructions` in prompt.js; `copiedSections` in extract.js) counts as
+  copied; the design is asked for again, naming those sections (the same one retry as a missing
+  heading). Change plans aren't checked (their format has no instructions per heading).
+- **Tried:** 0 false alarms on the 48 designs on disk (the official ones and every experiment's).
+
 ## Verification (how to confirm the plan worked once built)
 
 - `npm test` (root) → runs `node --test server/test`, all unit and integration tests green.
