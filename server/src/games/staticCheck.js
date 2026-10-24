@@ -37,6 +37,8 @@ const ERROR_RULES = [
   // The network: the CSP blocks all of it; the platform's only door is the party SDK.
   { rule: 'network', in: 'code', re: /\bfetch\s*\(/g, message: '`fetch` is blocked in a game. Games have no network: talk through `party` only.' },
   { rule: 'network', in: 'code', re: /\b(XMLHttpRequest|WebSocket|EventSource|RTCPeerConnection|WebTransport)\b/g, message: '`$1` is blocked in a game. Games have no network: talk through `party` only.' },
+  // Also in strings (plan §59): `self['RTC' + 'PeerConnection']` is the same thing, spelled to hide.
+  { rule: 'network', in: 'text', re: /PeerConnection|RTCDataChannel/g, message: 'WebRTC is removed from game frames. Games have no network: talk through `party` only.' },
   { rule: 'network', in: 'code', re: /\bsendBeacon\b/g, message: '`sendBeacon` is blocked in a game. Games have no network.' },
   { rule: 'network', in: 'code', re: /\b(importScripts|serviceWorker)\b|\bnew\s+(Shared)?Worker\b/g, message: 'Workers are blocked in a game: keep all the code in the page.' },
   { rule: 'network', in: 'code', re: /(?<![.\w$])import\s*\(|(?<=(?:^|[;{}\n])[ \t]*)import\s+[\w{*'"]/g, message: '`import` loads code from elsewhere, which is blocked. Put everything in this one file.' },
@@ -63,6 +65,7 @@ const ERROR_RULES = [
   { rule: 'outside', in: 'all', re: /<script\b[^>]*\bsrc\s*=/gi, message: 'Scripts from elsewhere are blocked. Put the code in this file.' },
   { rule: 'outside', in: 'all', re: /<link\b/gi, message: 'Stylesheets and fonts from elsewhere are blocked. Put styles in a <style> element and use system fonts.' },
   { rule: 'outside', in: 'all', re: /<(iframe|frame|object|embed)\b/gi, message: '<$1> isn\'t allowed in a game.' },
+  { rule: 'outside', in: 'text', re: /\bcreateElement\s*\(\s*["'`](iframe|frame|object|embed)\b/gi, message: '<$1> isn\'t allowed in a game (the platform removes it).' },
   { rule: 'outside', in: 'style', re: /@import\b|url\(\s*["']?(https?:)?\/\//gi, message: 'Styles, fonts and pictures from elsewhere are blocked. Use system fonts, or draw it.' },
   { rule: 'outside', in: 'markup', re: /\b(src|srcset|poster|data)\s*=\s*["']?\s*(https?:)?\/\//gi, message: 'Files from elsewhere are blocked. Draw it, or use `party.asset(id)` for our art.' },
   // A fake "log in again" box (plan §57): BoilerGames never asks for a password in a game.

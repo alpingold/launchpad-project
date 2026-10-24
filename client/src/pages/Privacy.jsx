@@ -10,7 +10,7 @@ export default function Privacy() {
   return (
     <main className="page privacy-page">
       <h1>Privacy</h1>
-      <p className="muted">Last changed October 22, 2026.</p>
+      <p className="muted">Last changed October 24, 2026.</p>
       <p>
         BoilerGames is a student project. It keeps as little about you as it can, never sells or shares it, and has no ads,
         no analytics and no tracking cookies. Here is everything it keeps, and why.
@@ -21,6 +21,12 @@ export default function Privacy() {
         <p>
           Joining a game needs no account. The name you type is only used in that room, and the room is gone when the game
           ends.
+        </p>
+        <p>
+          Games are made by players, and they go public without anyone at BoilerGames checking them first. Each game runs
+          walled off from the rest of the site, with no access to your account, but a game made to misbehave could still
+          send what it sees (the players' names, what you type into it, and your device's internet address) to another
+          website. Don't type anything private into a game, and report a game that asks for it.
         </p>
       </section>
 

@@ -27,6 +27,9 @@ test('each kind of mistake is caught, with its line', () => {
     ['fetch("/api/me")', 'network'],
     ['const ws = new WebSocket("wss://x")', 'network'],
     ['navigator.sendBeacon("/x", "y")', 'network'],
+    ['new RTCPeerConnection({ iceServers: [] })', 'network'],
+    ["const P = self['RTC' + 'PeerConnection']", 'network'], // hidden in strings (plan §59)
+    ["document.body.append(document.createElement('iframe'))", 'outside'],
     ['new Worker("w.js")', 'network'],
     ['import("./other.js")', 'network'],
     ['location.href = "https://example.com"', 'navigation'],

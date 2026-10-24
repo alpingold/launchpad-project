@@ -60,6 +60,14 @@
     ws.onopen = () => resolve('connected');
     ws.onerror = reject;
   }));
+  // WebRTC isn't covered by the CSP, so the frame removes it (plan §59), and removes child
+  // frames too, which would have their own.
+  wall('webrtc', () => new self['RTC' + 'PeerConnection']());
+  wall('child frame', () => new Promise((resolve, reject) => {
+    const child = document.createElement('ifr' + 'ame');
+    document.body.append(child);
+    setTimeout(() => (child.isConnected ? resolve('still there') : reject()), 100);
+  }));
   wall('redirect the page', () => {
     window.top.location.href = '/?escaped';
     return 'navigated';

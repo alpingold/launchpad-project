@@ -34,7 +34,7 @@ test('phones send events, the big screen answers each phone, and the game ends w
 
 test('the walls hold: no cookies, storage, network, eval or way into the page, on any screen', async ({ people }) => {
   const { host, alex } = await startProbe(people);
-  const expected = ['cookie', 'localStorage', 'sessionStorage', 'parent page', 'fetch', 'outside script', 'eval', 'websocket', 'redirect the page'];
+  const expected = ['cookie', 'localStorage', 'sessionStorage', 'parent page', 'fetch', 'outside script', 'eval', 'websocket', 'webrtc', 'child frame', 'redirect the page'];
   for (const page of [host.page, alex.page]) {
     const walls = frame(page).getByRole('region', { name: 'Walls' }).getByRole('listitem');
     await expect(walls).toHaveCount(expected.length); // the async tries (fetch, script, websocket) have answered
