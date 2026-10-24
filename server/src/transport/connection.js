@@ -13,10 +13,12 @@ export class Connection {
    * @param {string} id     unique per connection, e.g. "c7"
    * @param {WebSocket} ws
    * @param {{ ratePerSec: number, burst: number }} rateLimit
+   * @param {{ maxBufferedBytes?: number }} [limits]  unsent data held for this socket before it's dropped
    */
-  constructor(id, ws, rateLimit) {
+  constructor(id, ws, rateLimit, { maxBufferedBytes = Infinity } = {}) {
     this.id = id;
     this.ws = ws;
+    this.maxBufferedBytes = maxBufferedBytes;
 
     // Heartbeat: set to false when we ping, back to true when the pong arrives.
     this.isAlive = true;
@@ -37,11 +39,20 @@ export class Connection {
   /**
    * Sends a message object as JSON. Silently does nothing if the socket is no longer open:
    * a player who just disconnected shouldn't cause errors for everyone else's broadcast.
+   * A socket that isn't reading what it's sent (more than maxBufferedBytes waiting) is
+   * dropped instead (plan §59): terminate(), not close(), since a close message would only
+   * wait behind the rest. Its 'close' event then cleans up as for any disconnect.
    * @returns {boolean} whether the message was handed to the socket
    */
   send(msg) {
     if (this.ws.readyState !== WebSocket.OPEN) return false;
-    this.ws.send(JSON.stringify(msg));
+    const json = JSON.stringify(msg);
+    if (this.ws.bufferedAmount + Buffer.byteLength(json) > this.maxBufferedBytes) {
+      console.warn(`[ws] ${this.id} isn't reading its messages (${this.ws.bufferedAmount} bytes waiting): dropped`);
+      this.ws.terminate();
+      return false;
+    }
+    this.ws.send(json);
     return true;
   }
 

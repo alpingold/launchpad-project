@@ -62,10 +62,12 @@ export function attachWebSocketServer(httpServer, handlers, overrides = {}) {
   httpServer.on('upgrade', onUpgrade);
 
   wss.on('connection', (ws, req) => {
-    const conn = new Connection(`c${nextId++}`, ws, {
-      ratePerSec: cfg.RATE_LIMIT_PER_SEC,
-      burst: cfg.RATE_LIMIT_BURST,
-    });
+    const conn = new Connection(
+      `c${nextId++}`,
+      ws,
+      { ratePerSec: cfg.RATE_LIMIT_PER_SEC, burst: cfg.RATE_LIMIT_BURST },
+      { maxBufferedBytes: cfg.WS_MAX_BUFFERED_BYTES },
+    );
     // The login is read once, when the socket opens. Logging out elsewhere doesn't affect an
     // already-open socket; it ends when the page closes or reloads.
     const user = handlers.identify?.(req) ?? null;

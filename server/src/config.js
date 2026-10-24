@@ -31,6 +31,13 @@ export const config = {
   // this is exceeded. Raised from 32 KB on 2026-10-15, as games get bigger.
   WS_MAX_PAYLOAD_BYTES: 128 * 1024,
 
+  // Most the server holds, unsent, for one socket (plan §59). A browser that stops reading
+  // (or a script pretending to be one) would otherwise make the server keep every message
+  // for it until the heartbeat notices, up to ~30 s: hundreds of MB in a busy game. Over
+  // this, the socket is dropped (a phone comes back with player:resume). It must stay well
+  // above the biggest message, game:started with a 1 MB game file in it.
+  WS_MAX_BUFFERED_BYTES: 4 * 1024 * 1024,
+
   // How often we ping every socket. A socket that hasn't answered the previous
   // ping by the next tick is considered dead and dropped (so worst case ~2x this).
   HEARTBEAT_INTERVAL_MS: 15_000,
