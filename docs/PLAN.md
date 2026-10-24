@@ -2327,6 +2327,48 @@ phone (`'all'`) is never a vote; every reveal animates. No difference that 3 bui
 reveal and final screens (rule 9, which stays in the rulebook). It passed the checks: the
 playtest's name-injection check didn't reach those screens.
 
+## 59. Security review fixes (2026-10-24)
+
+**Why:** a security review of the whole site found one serious gap and five ways one person
+could take the site down or find other people's rooms. Each fix has a test.
+
+**Decided: games still go public without review** (§49 stays). So the game frame is the only
+wall, and it has two holes no browser setting closes:
+- **WebRTC.** The CSP has no rule for it (Chromium ignores `webrtc 'block'`, tried), so a game
+  could reach any STUN/TURN server: every player's IP address, and anything it was told.
+- **Loading another page into its frame.** GameFrame removes the frame, but only after that
+  first request has left, with whatever the game put in its address.
+
+What was done instead, as speed bumps:
+- **The frame removes WebRTC** before anything else runs (`LOCKDOWN` in `frame/template.js`),
+  and removes any frame, object or embed the moment it's added, since a child frame would
+  have its own WebRTC (tried: a child `srcdoc` frame got it back; with the remover, it didn't).
+  The playtest builds the same document, so a game using WebRTC throws there too.
+- **The static check** also finds WebRTC spelled to hide (`self['RTC' + 'PeerConnection']`)
+  and frames made with `createElement`.
+- **The Privacy page** says games aren't checked first, and what a game made to misbehave
+  could still send.
+- **Probe** (the e2e test game) tries both: "webrtc" and "child frame" must say blocked.
+
+A determined game can still leave by the second route, or hide from the check. A review step
+before publishing (§44) is the real fix if that ever matters more than self-publishing.
+
+**The limits** (all in `config.js`):
+
+| Problem | Fix |
+|---|---|
+| Unlimited remixes (each a whole copy of a game), and every /create visit loading every version of every game | `MAX_GAMES_PER_ACCOUNT` 50 (admins: none) for new games, uploads and remixes; `REMIXES_PER_WINDOW` 10 an hour; a person's own list loads only their games |
+| The server kept every message for a socket that stopped reading, ~30 s until the heartbeat (measured: 22 MB in 10 s for one phone) | `WS_MAX_BUFFERED_BYTES` 4 MB, then the socket is dropped (`terminate`); a phone comes back with player:resume |
+| Room codes (160,000) could be tried at 20 a second, on any number of sockets | `JOIN_FAILURES_PER_WINDOW` 60 wrong codes or tokens per address per 10 minutes, then TOO_MANY_ATTEMPTS; a socket closes after 10; `MAX_CONNECTIONS_PER_IP` 100 |
+| A few new accounts could fill the AI queue (8 places) for an hour each | `GENERATION_JOBS_PER_IP` 2 waiting or running per address (admins: none); an upload's check stops after `GENERATION_CHECK_TIMEOUT_MS` (15 min), not 60 |
+| The service could use sudo, and write anywhere ubuntu can | `boilergames.service`: NoNewPrivileges, ProtectSystem=full, kernel protections, UMask 0077 |
+
+Addresses for sockets come from `transport/clientIp.js`: Caddy's X-Forwarded-For, believed only
+with TRUST_PROXY and a connection from this machine (Express does the same for normal requests).
+Not done: running the server as a user outside the docker group (deploy/README.md, "What the
+service may do", says why). After the first deploy with the new service limits, make one game
+to check generating still works.
+
 ## Verification (how to confirm the plan worked once built)
 
 - `npm test` (root) → runs `node --test server/test`, all unit and integration tests green.
