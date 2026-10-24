@@ -120,6 +120,18 @@ chmod 600 ~/boilergames/server/data/key-secret
 
 Lost for good, the only harm is that saved keys can't be opened: people save theirs again.
 
+**What the service may do** (plan §59). `boilergames.service` limits the server: no sudo or
+other setuid programs from inside it, /usr, /boot and /etc read-only, no kernel settings, and
+new files readable only by ubuntu. `update.sh` installs a changed unit by itself. After the
+first deploy with these limits, make one game (or upload one) to check that generating still
+works, and look at `journalctl -u boilergames` if it doesn't.
+
+What's still true: the server runs as ubuntu, which is in the docker group (step 6), and
+that's as strong as root. A bug that let someone run code in the server could take over the
+machine. Running it as a user of its own, outside the docker group, would close that, but the
+server drives OpenShell, whose gateway runs as ubuntu with Docker. It needs that gateway to
+accept commands from another user, which hasn't been tried yet.
+
 ## 5. Caddy (HTTPS)
 
 ```bash

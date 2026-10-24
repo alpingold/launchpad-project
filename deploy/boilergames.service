@@ -16,5 +16,21 @@ RestartSec=3
 # The server shuts down cleanly on SIGTERM (src/index.js); give it a moment.
 TimeoutStopSec=10
 
+# Limits on what the server process may do (plan §59), so a bug in it can do less. Each one
+# leaves alone what the server needs: its folder, /tmp, and the docker and openshell commands.
+# Files it makes (database backups, the key secret) are readable only by this user.
+UMask=0077
+# No sudo or other setuid programs from inside the server, even though ubuntu may use sudo.
+NoNewPrivileges=yes
+RestrictSUIDSGID=yes
+# /usr, /boot and /etc read-only; no changing kernel settings, modules or control groups.
+ProtectSystem=full
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+LockPersonality=yes
+# Still true: ubuntu is in the docker group, which is as strong as root (deploy/README.md,
+# "What the service may do").
+
 [Install]
 WantedBy=multi-user.target
