@@ -45,8 +45,8 @@ export function createAccountRouter({ db, userKeys, generation, cfg }) {
     try {
       // JSON only, like every POST and PUT (requireJsonPosts): a page on another site can't send it.
       if (!req.is('application/json')) return res.status(415).json({ error: 'JSON_REQUIRED', message: 'Requests must be sent as JSON.' });
-      if (saves.isBlocked(req.user.id)) return res.status(429).json({ error: 'TOO_MANY_ATTEMPTS', message: 'Too many tries. Wait a few minutes.' });
-      saves.record(req.user.id);
+      if (saves.isBlocked(String(req.user.id))) return res.status(429).json({ error: 'TOO_MANY_ATTEMPTS', message: 'Too many tries. Wait a few minutes.' });
+      saves.record(String(req.user.id)); // String, like the key saves: the same key in the Map
       const password = req.body?.password;
       const login = findUserForLogin(db, req.user.username);
       if (typeof password !== 'string' || !login || !(await verifyPassword(password, login.passwordHash))) {

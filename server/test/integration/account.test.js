@@ -69,6 +69,18 @@ test('at most 10 tries per account in 10 minutes (each one asks GenAI Studio)', 
   assert.equal((await call('PUT', cookie, { key: KEY })).status, 429);
 });
 
+test('wrong passwords for deleting the account use up the same 10 tries as saving a key', async () => {
+  const cookie = await signUp(baseUrl);
+  verdict = 'rejected';
+  for (let i = 0; i < 10; i++) assert.equal((await call('PUT', cookie, { key: KEY })).status, 400);
+  const res = await fetch(`${baseUrl}/api/account`, {
+    method: 'DELETE',
+    headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password: 'not it at all' }),
+  });
+  assert.deepEqual([res.status, (await res.json()).error], [429, 'TOO_MANY_ATTEMPTS']);
+});
+
 test('deleting your account (plan §54): your password again, then everything of yours is gone and you are logged out', async () => {
   const { createGameServer } = await import('../../src/server.js');
   const { GameRegistry } = await import('../../src/games/registry.js');
