@@ -24,6 +24,7 @@ export const ERRORS = Object.freeze({
   NAME_TAKEN: 'Someone in this room already has that name.',
   ROOM_FULL: 'This room is full.',
   PLAYER_NOT_FOUND: 'That player is not in the room.',
+  TOO_MANY_ATTEMPTS: 'Too many wrong room codes. Wait a few minutes, then try again.',
 
   // Games (M5)
   GAME_IN_PROGRESS: 'A game is already in progress.',

@@ -30,8 +30,12 @@ export class Connection {
     this.userId = null;
     this.username = null;
 
+    // The visitor's IP address (clientIp.js), for limits per address.
+    this.ip = null;
+
     // Abuse tracking.
     this.badMessageCount = 0;
+    this.failedJoins = 0; // wrong room codes and expired tokens (router.js)
     this.rateLimitStrikes = 0;
     this.rateLimiter = new TokenBucket(rateLimit);
   }

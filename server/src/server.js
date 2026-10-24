@@ -82,7 +82,7 @@ export function createGameServer(overrides = {}, { games = createDefaultRegistry
     deleteExpiredSessions(db);
   }, cfg.ROOM_SWEEP_INTERVAL_MS);
 
-  const router = createRouter(rooms);
+  const router = createRouter(rooms, { cfg });
 
   const transport = attachWebSocketServer(
     httpServer,

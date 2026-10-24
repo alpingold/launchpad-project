@@ -1,5 +1,13 @@
 import { CLIENT } from './protocol/messageTypes.js';
 import { RoomError } from './rooms/RoomError.js';
+import { AttemptLimiter } from './auth/attemptLimiter.js';
+import { config } from './config.js';
+
+// Requests that need a room code or a token, and the answers that mean it was wrong
+// (plan §59): those count toward the limits on guessing (config.JOIN_FAILURES_*).
+const GUESSABLE = new Set([CLIENT.HOST_RESUME, CLIENT.PLAYER_JOIN, CLIENT.PLAYER_RESUME]);
+const WRONG_GUESS = new Set(['ROOM_NOT_FOUND', 'INVALID_TOKEN', 'SESSION_EXPIRED']);
+const CLOSE_POLICY_VIOLATION = 1008;
 
 /**
  * Who is allowed to send a message type:
@@ -16,9 +24,21 @@ import { RoomError } from './rooms/RoomError.js';
  * The router answers "WHO may send this?" (from the table below).
  * RoomManager answers "is this allowed RIGHT NOW?" (room exists, name free, ...).
  *
+ * Wrong room codes and tokens are counted per IP address and per socket: past the limit, an
+ * address gets TOO_MANY_ATTEMPTS for a while, and a socket is closed.
+ *
  * @param {import('./rooms/RoomManager.js').RoomManager} rooms
+ * @param {{ cfg?: typeof config }} [opts]
  */
-export function createRouter(rooms) {
+export function createRouter(rooms, { cfg = config } = {}) {
+  const wrongGuesses = new AttemptLimiter({ max: cfg.JOIN_FAILURES_PER_WINDOW, windowMs: cfg.JOIN_FAILURES_WINDOW_MS });
+
+  function countWrongGuess(conn) {
+    wrongGuesses.record(conn.ip);
+    conn.failedJoins = (conn.failedJoins ?? 0) + 1;
+    if (conn.failedJoins >= cfg.MAX_JOIN_FAILURES_PER_CONNECTION) conn.ws.close(CLOSE_POLICY_VIOLATION, 'too many wrong codes');
+  }
+
   /** @type {Record<string, { sender: Sender, run: (conn: any, msg: any) => void }>} */
   const routes = {
     [CLIENT.HOST_CREATE_ROOM]: {
@@ -74,13 +94,20 @@ export function createRouter(rooms) {
         return;
       }
 
+      const guessable = GUESSABLE.has(requestType);
+      if (guessable && wrongGuesses.isBlocked(conn.ip)) {
+        conn.sendError('TOO_MANY_ATTEMPTS', { requestType });
+        return;
+      }
+
       try {
         route.run(conn, msg);
       } catch (err) {
         // Expected failures (room full, name taken, ...) become a normal error reply.
         // Anything else is a bug: rethrow so the transport logs it and sends INTERNAL_ERROR.
-        if (err instanceof RoomError) conn.sendError(err.code, { requestType });
-        else throw err;
+        if (!(err instanceof RoomError)) throw err;
+        conn.sendError(err.code, { requestType });
+        if (guessable && WRONG_GUESS.has(err.code)) countWrongGuess(conn);
       }
     },
 

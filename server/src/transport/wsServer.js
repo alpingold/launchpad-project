@@ -3,6 +3,7 @@ import { config } from '../config.js';
 import { Connection } from './connection.js';
 import { parseClientMessage } from '../protocol/validate.js';
 import { isAllowedOrigin } from './origin.js';
+import { clientIp } from './clientIp.js';
 
 // WebSocket close codes we use (defined by the WebSocket standard, RFC 6455).
 const CLOSE_POLICY_VIOLATION = 1008; // client broke the rules (spam, garbage)
@@ -33,6 +34,8 @@ export function attachWebSocketServer(httpServer, handlers, overrides = {}) {
 
   /** @type {Map<string, Connection>} every open connection, by id */
   const connections = new Map();
+  /** @type {Map<string, number>} open sockets per IP address */
+  const openPerIp = new Map();
   let nextId = 1;
 
   // `noServer: true` means WE decide which HTTP upgrade requests become WebSockets
@@ -57,11 +60,17 @@ export function attachWebSocketServer(httpServer, handlers, overrides = {}) {
       socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
       return;
     }
-    wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req));
+    // Only so many open sockets per address (plan §59).
+    const ip = clientIp(req, cfg.TRUST_PROXY);
+    if ((openPerIp.get(ip) ?? 0) >= cfg.MAX_CONNECTIONS_PER_IP) {
+      socket.end('HTTP/1.1 429 Too Many Requests\r\nConnection: close\r\n\r\n');
+      return;
+    }
+    wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req, ip));
   }
   httpServer.on('upgrade', onUpgrade);
 
-  wss.on('connection', (ws, req) => {
+  wss.on('connection', (ws, req, ip) => {
     const conn = new Connection(
       `c${nextId++}`,
       ws,
@@ -73,6 +82,8 @@ export function attachWebSocketServer(httpServer, handlers, overrides = {}) {
     const user = handlers.identify?.(req) ?? null;
     conn.userId = user?.id ?? null;
     conn.username = user?.username ?? null;
+    conn.ip = ip;
+    openPerIp.set(ip, (openPerIp.get(ip) ?? 0) + 1);
     connections.set(conn.id, conn);
 
     // REQUIRED: in Node, an 'error' event with no listener crashes the whole process.
@@ -87,6 +98,9 @@ export function attachWebSocketServer(httpServer, handlers, overrides = {}) {
 
     ws.on('close', () => {
       connections.delete(conn.id);
+      const left = (openPerIp.get(ip) ?? 1) - 1;
+      if (left > 0) openPerIp.set(ip, left);
+      else openPerIp.delete(ip);
       try {
         handlers.onDisconnect?.(conn);
       } catch (err) {

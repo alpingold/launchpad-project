@@ -54,6 +54,17 @@ export const config = {
   // Consecutive rate-limited messages before we give up and close the connection.
   MAX_RATE_LIMIT_STRIKES: 20,
 
+  // Open sockets from one IP address (plan §59). Generous: a whole party, or a classroom
+  // behind one router, is far below it; a script opening thousands is not.
+  MAX_CONNECTIONS_PER_IP: Number(process.env.MAX_CONNECTIONS_PER_IP) || 100,
+
+  // Wrong room codes and expired tokens (plan §59). There are only 160,000 codes, so without a
+  // limit a script could find live rooms by trying them all. Per IP address per window, and per
+  // socket (which is then closed). A person mistyping a code a few times is far below both.
+  JOIN_FAILURES_PER_WINDOW: Number(process.env.JOIN_FAILURES_PER_WINDOW) || 60,
+  JOIN_FAILURES_WINDOW_MS: 10 * 60 * 1000,
+  MAX_JOIN_FAILURES_PER_CONNECTION: 10,
+
   // --- Rooms ---
 
   // Global player cap for any room. A game may set a lower max when it starts (M5).

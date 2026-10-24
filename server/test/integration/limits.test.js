@@ -2,6 +2,7 @@ import { test, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { createGameServer } from '../../src/server.js';
 import { GameRegistry } from '../../src/games/registry.js';
+import { config } from '../../src/config.js';
 import { openClient } from '../helpers/wsClient.js';
 import { signUp } from '../helpers/accounts.js';
 import { tapGame } from '../helpers/frameGames.js';
@@ -31,6 +32,44 @@ const until = async (client, type) => {
     if (msg.type === type) return msg;
   }
 };
+const wrongJoin = (client, i) => client.send({ type: 'player:join', code: `ZZZ${'BCDFGHJKLM'[i % 10]}`, name: `g${i}` });
+
+test('a socket that keeps trying wrong room codes is closed', async () => {
+  await start();
+  const guesser = await openClient(wsUrl);
+  for (let i = 0; i < config.MAX_JOIN_FAILURES_PER_CONNECTION; i++) {
+    wrongJoin(guesser, i);
+    assert.equal((await guesser.next()).code, 'ROOM_NOT_FOUND');
+  }
+  assert.equal((await guesser.closed).code, 1008);
+});
+
+test('an address that keeps getting room codes wrong is told to wait, even with a right code', async () => {
+  await start({ JOIN_FAILURES_PER_WINDOW: 3 });
+  const host = await openClient(wsUrl, { headers: { Cookie: await signUp(baseUrl) } });
+  host.send({ type: 'host:create_room' });
+  const { code } = await until(host, 'room:created');
+
+  const guesser = await openClient(wsUrl);
+  for (let i = 0; i < 3; i++) {
+    wrongJoin(guesser, i);
+    assert.equal((await guesser.next()).code, 'ROOM_NOT_FOUND');
+  }
+  const phone = await openClient(wsUrl); // a new socket from the same address
+  phone.send({ type: 'player:join', code, name: 'Alex' });
+  assert.equal((await phone.next()).code, 'TOO_MANY_ATTEMPTS');
+});
+
+test('only so many sockets from one address', async () => {
+  await start({ MAX_CONNECTIONS_PER_IP: 2 });
+  const first = await openClient(wsUrl);
+  await openClient(wsUrl);
+  await assert.rejects(openClient(wsUrl), /429/);
+  first.close();
+  await first.closed;
+  await new Promise((r) => setTimeout(r, 50)); // the server sees the close too
+  await openClient(wsUrl); // a place is free again
+});
 
 test("a phone that stops reading is dropped, instead of the server keeping everything for it", { timeout: 20_000 }, async () => {
   await start({ WS_MAX_BUFFERED_BYTES: 512 * 1024 });
