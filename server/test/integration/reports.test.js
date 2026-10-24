@@ -57,8 +57,9 @@ test('a report is checked: its kind, 10-2000 characters, and a page on this site
   assert.equal((await post('/api/reports', { ...REPORT, body: 'x'.repeat(2001) })).status, 400);
   assert.equal((await post('/api/reports', { ...REPORT, page: '//evil.example/x' })).status, 201);
   assert.equal((await post('/api/reports', { ...REPORT, page: 'https://evil.example' })).status, 201);
+  assert.equal((await post('/api/reports', { ...REPORT, page: '/\\evil.example/x' })).status, 201); // browsers read it as //evil.example
   const { reports } = await (await get('/api/admin/reports', await adminCookie())).json();
-  assert.deepEqual(reports.map((r) => r.page), [null, null], 'saved, without the outside address');
+  assert.deepEqual(reports.map((r) => r.page), [null, null, null], 'saved, without the outside address');
 });
 
 test('a few per address per window, then "try again later"; a bot filling the hidden field is told ok but nothing is saved', async () => {

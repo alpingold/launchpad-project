@@ -154,9 +154,12 @@ export function createReportsRouter({ db, games, cfg }) {
   return router;
 }
 
-/** A page on this site ("/games/punchline"), or null. Never another site: "//x.com" is one. */
+/**
+ * A page on this site ("/games/punchline"), or null. Never another site: "//x.com" is one, and
+ * so is "/\x.com" (browsers read a backslash as a slash), so no backslash at all.
+ */
 function sitePath(value) {
-  return typeof value === 'string' && /^\/(?!\/)[^\s]{0,199}$/.test(value) ? value : null;
+  return typeof value === 'string' && /^\/(?!\/)[^\s\\]{0,199}$/.test(value) ? value : null;
 }
 
 /** Text cut to `max` characters, or null. */
