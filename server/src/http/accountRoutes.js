@@ -52,7 +52,7 @@ export function createAccountRouter({ db, userKeys, generation, cfg }) {
       if (typeof password !== 'string' || !login || !(await verifyPassword(password, login.passwordHash))) {
         return res.status(403).json({ error: 'WRONG_PASSWORD', message: "That's not your password." });
       }
-      const games = generation ? generation.list().filter((g) => g.ownerUserId === req.user.id) : [];
+      const games = generation ? generation.list({ ownerUserId: req.user.id }) : [];
       if (games.some((g) => generation.running.has(g.id) || generation.queue.includes(g.id))) {
         return res.status(409).json({ error: 'GAME_IN_PROGRESS', message: 'One of your games is being made. Wait for it to finish (or stop it), then delete your account.' });
       }

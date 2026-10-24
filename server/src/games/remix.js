@@ -2,7 +2,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import { catalogGame, CatalogError } from './catalog.js';
 import { frameGameReport, GAME_INFO_RE } from './frameGame.js';
 import { officialGameSource, readOfficialShots } from './index.js';
-import { createRemix, getGeneratedGame } from '../db/generatedGames.js';
+import { createRemix, getGeneratedGame, countGamesOwnedBy } from '../db/generatedGames.js';
+import { config } from '../config.js';
 
 // Remixing (plan §45): your own copy of a public game, to change with the AI the way you change
 // your own games. The copy is version 1 of a new game, ready to play at once (its code already
@@ -30,6 +31,10 @@ export function remixGame(db, registry, viewer, id) {
     if (!game.canVote) throw new CatalogError(409, 'OWN_GAME', "It's your game: change it on /create instead.");
     if (game.source === 'generated' && game.status !== 'published') throw new CatalogError(409, 'NOT_PUBLIC', 'Only a published game can be remixed.');
     throw new CatalogError(403, 'REMIX_OFF', "This game's creator doesn't allow remixes.");
+  }
+  // Each remix is a whole copy of the game (plan §59): an account has at most so many games.
+  if (!viewer.isAdmin && countGamesOwnedBy(db, viewer.userId) >= config.MAX_GAMES_PER_ACCOUNT) {
+    throw new CatalogError(409, 'TOO_MANY_GAMES', `You have ${config.MAX_GAMES_PER_ACCOUNT} games, the most an account can have. Delete one to make another.`);
   }
   const copy = game.source === 'official' ? officialCopy(game) : generatedCopy(db, game);
   const name = remixedName(copy.name);

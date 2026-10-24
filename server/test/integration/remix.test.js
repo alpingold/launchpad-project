@@ -178,3 +178,9 @@ test('"Make it your own" (plan §45b): the remix gets its own whole design, then
   job = jobs.at(-1).job;
   assert.deepEqual([job.step, job.change.design, job.change.earlierRequests, job.change.source], ['design', NEW_DESIGN, [], teams]);
 });
+
+test('an account can make only so many remixes an hour (plan §59): each is a whole copy of a game', async () => {
+  const kim = await signUp(baseUrl, 'kim');
+  for (let i = 0; i < 10; i++) assert.equal((await post('/api/games/punchline/remix', {}, kim)).status, 201, `remix ${i + 1}`);
+  assert.deepEqual(await errorOf(await post('/api/games/punchline/remix', {}, kim)), [429, 'TOO_MANY_REMIXES']);
+});

@@ -4,6 +4,8 @@ import { requireJsonPosts } from './requireJson.js';
 import { catalogList, catalogGame, editGamePage, voteOnGame, CatalogError } from '../games/catalog.js';
 import { getProfile } from '../db/users.js';
 import { remixGame } from '../games/remix.js';
+import { AttemptLimiter } from '../auth/attemptLimiter.js';
+import { config } from '../config.js';
 
 /**
  * The game catalogue and profiles (plan §14, §16), mounted under /api. Anyone can look; a
@@ -21,9 +23,9 @@ import { remixGame } from '../games/remix.js';
  *
  * Errors: { error: 'CODE', message }.
  *
- * @param {{ db: import('better-sqlite3').Database, games: import('../games/registry.js').GameRegistry }} deps
+ * @param {{ db: import('better-sqlite3').Database, games: import('../games/registry.js').GameRegistry, cfg?: typeof config }} deps
  */
-export function createGamesRouter({ db, games }) {
+export function createGamesRouter({ db, games, cfg = config }) {
   const router = express.Router();
   router.use(['/games', '/users'], requireJsonPosts);
 
@@ -88,9 +90,19 @@ export function createGamesRouter({ db, games }) {
     handle((req, res) => res.json({ game: voteOnGame(db, games, viewerOf(req), req.params.id, req.body?.value) })),
   );
 
+  // Remixes per account per hour (plan §59): each one is a whole copy of a game.
+  const remixes = new AttemptLimiter({ max: cfg.REMIXES_PER_WINDOW, windowMs: cfg.REMIXES_WINDOW_MS });
   router.post(
     '/games/:id/remix',
-    handle((req, res) => res.status(201).json({ id: remixGame(db, games, viewerOf(req), req.params.id) })),
+    handle((req, res) => {
+      const viewer = viewerOf(req);
+      if (viewer.userId !== null && remixes.isBlocked(viewer.userId)) {
+        throw new CatalogError(429, 'TOO_MANY_REMIXES', "That's a lot of remixes in an hour! Try again a bit later.");
+      }
+      const id = remixGame(db, games, viewer, req.params.id);
+      remixes.record(viewer.userId);
+      res.status(201).json({ id });
+    }),
   );
 
   router.get(

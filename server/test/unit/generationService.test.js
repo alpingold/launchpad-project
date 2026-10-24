@@ -6,6 +6,7 @@ import { createGeneratedGame, getGeneratedGame, gameStatus, saveDraft, startRedr
 import { GameRegistry } from '../../src/games/registry.js';
 import { GenerationService, MAX_WAITING, RECHECK_REQUEST } from '../../src/generation/service.js';
 import { renamedSource } from '../helpers/frameGames.js';
+import { config } from '../../src/config.js';
 
 // The generation queue, designs, versions and going live (plan §11 A5, §12e K6, §13i F5).
 // A fake generator stands in for the OpenShell sandbox; each call waits until the test lets
@@ -532,4 +533,17 @@ test('"Review again" (plan §47): the next version is a code review round on the
   // Like a change: not while another version is being made, and only on a version that passed.
   service.reviewAgain({ id });
   assert.throws(() => service.reviewAgain({ id }), /already being made/);
+});
+test('an account has at most MAX_GAMES_PER_ACCOUNT games (plan §59); admins have no limit', async (t) => {
+  const { db, admin, service, calls } = setup();
+  const kim = createUser(db, 'kim', 'scrypt$x');
+  const before = config.MAX_GAMES_PER_ACCOUNT;
+  config.MAX_GAMES_PER_ACCOUNT = 1;
+  t.after(() => (config.MAX_GAMES_PER_ACCOUNT = before));
+  createGeneratedGame(db, { ownerUserId: kim.id, prompt: IDEA, model: 'qwen3.8:27b' });
+  createGeneratedGame(db, { ownerUserId: admin.id, prompt: IDEA, model: 'qwen3.8:27b' });
+  assert.equal(codeOf(() => service.upload({ ownerUserId: kim.id, source: GOOD_SOURCE })), 'TOO_MANY_GAMES');
+  service.start({ ownerUserId: admin.id, idea: IDEA }); // an admin's second game
+  calls[0].finish(DESIGNED);
+  await service.current;
 });

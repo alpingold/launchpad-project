@@ -88,7 +88,7 @@ export function createApp({ games = new GameRegistry(), db = openDatabase(':memo
   });
 
   // The game catalogue, game pages, votes and profiles (plan §14, §16).
-  app.use('/api', createGamesRouter({ db, games }));
+  app.use('/api', createGamesRouter({ db, games, cfg }));
 
   // The game kit guide (/kit): how frame games work, the same text the AI reads.
   app.get('/api/kit', (_req, res) => {

@@ -31,6 +31,7 @@ import {
   setLiveVersions,
   getGeneratedGame,
   listGeneratedGames,
+  countGamesOwnedBy,
   listBusyVersions,
   deleteGeneratedGame,
   startRedraft,
@@ -171,6 +172,12 @@ export class GenerationService {
     }
   }
 
+  /** Refuses a new game for an account that has as many as it may (plan §59; admins have no limit). */
+  checkRoomForGame(ownerUserId) {
+    if (isAdminUser(this.db, ownerUserId) || countGamesOwnedBy(this.db, ownerUserId) < config.MAX_GAMES_PER_ACCOUNT) return;
+    throw new GenerationError(409, 'TOO_MANY_GAMES', `You have ${config.MAX_GAMES_PER_ACCOUNT} games, the most an account can have. Delete one to make another.`);
+  }
+
   /** Can this person's jobs run: their own saved key, or (admins) the server's? */
   hasKey(userId) {
     return isAdminUser(this.db, userId) || (this.userKeys?.status(userId).saved ?? false);
@@ -183,6 +190,7 @@ export class GenerationService {
    */
   start({ ownerUserId, idea, model = DEFAULT_MODEL }) {
     this.checkCanQueue(ownerUserId);
+    this.checkRoomForGame(ownerUserId);
     const trimmed = checkText(idea, 'INVALID_IDEA', 'Describe the game');
     checkModel(model);
     const game = createGeneratedGame(this.db, { ownerUserId, prompt: trimmed, model });
@@ -210,6 +218,7 @@ export class GenerationService {
       if (open) throw new GenerationError(409, 'BUSY', open.status === 'design_ready' ? `v${open.version}'s design is waiting for you: build it or discard it first.` : 'A version of this game is already being made. Wait for it to finish.');
     }
     this.checkCanQueue(ownerUserId, { needsKey: false });
+    if (!game) this.checkRoomForGame(ownerUserId);
     const now = Date.now();
     const recent = (this.uploads.get(ownerUserId) ?? []).filter((t) => now - t < 60 * 60 * 1000);
     if (recent.length >= MAX_UPLOADS_PER_HOUR) {
@@ -478,8 +487,9 @@ export class GenerationService {
     return at === -1 ? null : { queuePosition: at + 1, steps: [] };
   }
 
-  list() {
-    return listGeneratedGames(this.db);
+  /** @param {{ ownerUserId?: number }} [opts]  only this account's games */
+  list(opts) {
+    return listGeneratedGames(this.db, opts);
   }
 
   /** @returns {import('../db/generatedGames.js').GeneratedGame} */

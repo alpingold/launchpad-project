@@ -153,7 +153,7 @@ export function createAdminRouter({ db, generation, mine = false }) {
   router.get(
     '/generations',
     handle((req, res) => {
-      const games = mine ? generation.list().filter((g) => g.ownerUserId === req.user.id) : generation.list();
+      const games = generation.list(mine ? { ownerUserId: req.user.id } : {});
       // canGenerate: whether this person's jobs can run at all (their own key, or an admin).
       const info = { ...generation.info(), canGenerate: generation.hasKey(req.user.id), isAdmin: isAdminUser(db, req.user.id) };
       const names = usernamesById(db);

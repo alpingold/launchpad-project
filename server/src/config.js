@@ -95,6 +95,13 @@ export const config = {
   GAME_REPORTS_PER_WINDOW: Number(process.env.GAME_REPORTS_PER_WINDOW) || 10,
   GAME_REPORTS_WINDOW_MS: 60 * 60 * 1000,
 
+  // Games one account may have (made, uploaded or remixed; admins have no limit), and remixes
+  // it may make per hour (plan §59). Each game holds whole copies of its code, so without
+  // these, one account could fill the disk with remixes.
+  MAX_GAMES_PER_ACCOUNT: Number(process.env.MAX_GAMES_PER_ACCOUNT) || 50,
+  REMIXES_PER_WINDOW: Number(process.env.REMIXES_PER_WINDOW) || 10,
+  REMIXES_WINDOW_MS: 60 * 60 * 1000,
+
   // Behind a reverse proxy (Caddy, M8) every request seems to come from the proxy itself.
   // Setting this (e.g. TRUST_PROXY=loopback) tells Express to use the visitor's real IP from
   // the X-Forwarded-For header, but only when the request came from that trusted proxy.

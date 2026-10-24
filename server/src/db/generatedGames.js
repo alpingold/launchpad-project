@@ -421,12 +421,23 @@ export function getGeneratedGame(db, id) {
   return gameFromRow(db, db.prepare('SELECT * FROM generated_games WHERE id = ?').get(id));
 }
 
-/** Every generated game, newest first (for the admin). @returns {GeneratedGame[]} */
-export function listGeneratedGames(db) {
-  return db
-    .prepare('SELECT * FROM generated_games ORDER BY created_at DESC, id')
-    .all()
-    .map((row) => gameFromRow(db, row));
+/**
+ * Every generated game, newest first (for the admin), or only one account's (plan §59: each
+ * game comes with all its versions' code, so a person's own list mustn't load everyone's).
+ * @param {{ ownerUserId?: number }} [opts]
+ * @returns {GeneratedGame[]}
+ */
+export function listGeneratedGames(db, { ownerUserId } = {}) {
+  const rows =
+    ownerUserId === undefined
+      ? db.prepare('SELECT * FROM generated_games ORDER BY created_at DESC, id').all()
+      : db.prepare('SELECT * FROM generated_games WHERE owner_user_id = ? ORDER BY created_at DESC, id').all(ownerUserId);
+  return rows.map((row) => gameFromRow(db, row));
+}
+
+/** How many games an account has (made, uploaded or remixed). */
+export function countGamesOwnedBy(db, ownerUserId) {
+  return db.prepare('SELECT COUNT(*) AS n FROM generated_games WHERE owner_user_id = ?').get(ownerUserId).n;
 }
 
 /**
