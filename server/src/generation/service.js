@@ -117,6 +117,8 @@ export class GenerationService {
     this.steps = new Map();
     /** @type {Promise<unknown>} settles when the jobs running now finish (tests wait on it) */
     this.current = Promise.resolve();
+    /** @type {Map<string, string>} where each queued or running job was asked for (an IP address), by game id */
+    this.jobIps = new Map();
     /** @type {Map<number, number[]>} when each person uploaded in the last hour */
     this.uploads = new Map();
   }
@@ -156,7 +158,7 @@ export class GenerationService {
    * @param {number} ownerUserId  whose job it would be
    * @param {{ needsKey?: boolean }} [opts]  false: a job with no AI in it (an upload's check)
    */
-  checkCanQueue(ownerUserId, { needsKey = true } = {}) {
+  checkCanQueue(ownerUserId, { needsKey = true, ip = null } = {}) {
     if (!this.enabled) {
       throw new GenerationError(503, 'GENERATION_DISABLED', this.disabledReason);
     }
@@ -166,6 +168,11 @@ export class GenerationService {
     const busy = [...this.running.keys(), ...this.queue].some((id) => getGeneratedGame(this.db, id)?.ownerUserId === ownerUserId);
     if (busy) {
       throw new GenerationError(409, 'ALREADY_RUNNING', 'You already have a game being made. Wait for it to finish, then start the next one.');
+    }
+    // One job per account isn't enough on its own: accounts are cheap to make (plan §59).
+    const fromHere = ip === null ? 0 : [...this.running.keys(), ...this.queue].filter((id) => this.jobIps.get(id) === ip).length;
+    if (fromHere >= config.GENERATION_JOBS_PER_IP && !isAdminUser(this.db, ownerUserId)) {
+      throw new GenerationError(429, 'TOO_MANY_FROM_HERE', `${fromHere} games are already being made from your network. Wait for one to finish.`);
     }
     if (this.running.size >= this.maxRunning && this.queue.length >= MAX_WAITING) {
       throw new GenerationError(429, 'QUEUE_FULL', `${this.running.size + this.queue.length} games are already being made. Wait for one to finish.`);
@@ -188,13 +195,13 @@ export class GenerationService {
    * the background.
    * @param {{ ownerUserId: number, idea: unknown, model?: unknown }} request  idea/model are untrusted input
    */
-  start({ ownerUserId, idea, model = DEFAULT_MODEL }) {
-    this.checkCanQueue(ownerUserId);
+  start({ ownerUserId, idea, model = DEFAULT_MODEL, ip = null }) {
+    this.checkCanQueue(ownerUserId, { ip });
     this.checkRoomForGame(ownerUserId);
     const trimmed = checkText(idea, 'INVALID_IDEA', 'Describe the game');
     checkModel(model);
     const game = createGeneratedGame(this.db, { ownerUserId, prompt: trimmed, model });
-    this.enqueue(game.id);
+    this.enqueue(game.id, ip);
     return this.get(game.id);
   }
 
@@ -204,7 +211,7 @@ export class GenerationService {
    * build's, with no AI. Returns right away.
    * @param {{ ownerUserId: number, id?: string, source: unknown }} upload  source is untrusted input
    */
-  upload({ ownerUserId, id, source }) {
+  upload({ ownerUserId, id, source, ip = null }) {
     if (typeof source !== 'string' || source.trim() === '') throw new GenerationError(400, 'INVALID_FILE', 'Choose a game file (one .html file).');
     const info = readFrameGame(source, 'game');
     if (!info.ok) {
@@ -217,7 +224,7 @@ export class GenerationService {
       const open = game.versions.find((v) => BUSY_STATUSES.includes(v.status) || v.status === 'design_ready');
       if (open) throw new GenerationError(409, 'BUSY', open.status === 'design_ready' ? `v${open.version}'s design is waiting for you: build it or discard it first.` : 'A version of this game is already being made. Wait for it to finish.');
     }
-    this.checkCanQueue(ownerUserId, { needsKey: false });
+    this.checkCanQueue(ownerUserId, { needsKey: false, ip });
     if (!game) this.checkRoomForGame(ownerUserId);
     const now = Date.now();
     const recent = (this.uploads.get(ownerUserId) ?? []).filter((t) => now - t < 60 * 60 * 1000);
@@ -229,7 +236,7 @@ export class GenerationService {
     const said = `${info.game.name}: ${info.game.description}`;
     const prompt = (said.length >= MIN_IDEA_LENGTH ? said : `${info.game.name}: a party game, uploaded as a file`).slice(0, MAX_IDEA_LENGTH);
     const uploaded = addUpload(this.db, { ownerUserId, gameId: game?.id ?? null, prompt, source, now });
-    this.enqueue(uploaded.id);
+    this.enqueue(uploaded.id, ip);
     return this.get(uploaded.id);
   }
 
@@ -239,7 +246,7 @@ export class GenerationService {
    * with a plan of the change, unless `skipDesign` (a small fix: straight to the code).
    * @param {{ id: string, request: unknown, basedOn?: unknown, model?: unknown, skipDesign?: unknown }} change  untrusted input
    */
-  requestChanges({ id, request, basedOn, model = DEFAULT_MODEL, skipDesign = false, kind = null }) {
+  requestChanges({ id, request, basedOn, model = DEFAULT_MODEL, skipDesign = false, kind = null, ip = null }) {
     const game = this.get(id);
     const trimmed = checkText(request, 'INVALID_REQUEST', 'Describe the change', MAX_REQUEST_LENGTH);
     checkModel(model);
@@ -248,7 +255,7 @@ export class GenerationService {
       const why = open.status === 'design_ready' ? `v${open.version}'s ${hasWholeDesign(open) ? 'design' : 'plan'} is waiting for you: build it or discard it first.` : 'A version of this game is already being made. Wait for it to finish.';
       throw new GenerationError(409, 'BUSY', why);
     }
-    this.checkCanQueue(game.ownerUserId);
+    this.checkCanQueue(game.ownerUserId, { ip });
     const base =
       basedOn === undefined
         ? (findVersion(game, game.playtestVersion) ?? findVersion(game, game.publishedVersion) ?? game.versions.findLast((v) => v.status === 'ready'))
@@ -262,7 +269,7 @@ export class GenerationService {
       throw new GenerationError(413, 'TOO_BIG_FOR_AI', `The AI can only change game files up to ${MAX_AI_SOURCE_BYTES / 1024} KB. Upload a changed file instead.`);
     }
     addVersion(this.db, id, { request: trimmed, basedOn: base.version, model, kind, status: skipDesign === true ? 'generating' : 'designing' });
-    this.enqueue(id);
+    this.enqueue(id, ip);
     return this.get(id);
   }
 
@@ -272,7 +279,7 @@ export class GenerationService {
    * game's, then the copy's code is rewritten for it. Only on a remix, before any other change.
    * @param {{ id: string, request: unknown, model?: unknown }} remix  untrusted input
    */
-  requestRemixDesign({ id, request, model = DEFAULT_MODEL }) {
+  requestRemixDesign({ id, request, model = DEFAULT_MODEL, ip = null }) {
     const game = this.get(id);
     if (!game.remixOf) throw new GenerationError(409, 'NOT_A_REMIX', 'Only a remix can be made your own this way: ask for a change instead.');
     if (game.versions.length > 1) throw new GenerationError(409, 'ALREADY_CHANGED', 'This remix already has changes: ask for another change instead.');
@@ -280,9 +287,9 @@ export class GenerationService {
     checkModel(model);
     const base = findVersion(game, 1);
     if (!base || base.status !== 'ready') throw new GenerationError(409, 'NO_BASE_VERSION', 'The copy has no code to start from.');
-    this.checkCanQueue(game.ownerUserId);
+    this.checkCanQueue(game.ownerUserId, { ip });
     addVersion(this.db, id, { request: trimmed, basedOn: base.version, model, kind: 'remix', status: 'designing' });
-    this.enqueue(id);
+    this.enqueue(id, ip);
     return this.get(id);
   }
 
@@ -292,8 +299,8 @@ export class GenerationService {
    * if there are none, the new version has the same code, with the new review.
    * @param {{ id: string, basedOn?: unknown, model?: unknown }} recheck  untrusted input
    */
-  reviewAgain({ id, basedOn, model = DEFAULT_MODEL }) {
-    return this.requestChanges({ id, request: RECHECK_REQUEST, basedOn, model, skipDesign: true, kind: 'recheck' });
+  reviewAgain({ id, basedOn, model = DEFAULT_MODEL, ip = null }) {
+    return this.requestChanges({ id, request: RECHECK_REQUEST, basedOn, model, skipDesign: true, kind: 'recheck', ip });
   }
 
   /**
@@ -311,15 +318,15 @@ export class GenerationService {
   }
 
   /** "Change the design": the model writes a new draft with the admin's feedback. */
-  redesign({ id, version: versionNumber, feedback }) {
+  redesign({ id, version: versionNumber, feedback, ip = null }) {
     const { game, version } = this.designedVersion(id, versionNumber);
-    this.checkCanQueue(game.ownerUserId);
+    this.checkCanQueue(game.ownerUserId, { ip });
     const trimmed = typeof feedback === 'string' ? feedback.trim() : '';
     if (trimmed.length < MIN_FEEDBACK_LENGTH || trimmed.length > MAX_IDEA_LENGTH) {
       throw new GenerationError(400, 'INVALID_FEEDBACK', `Say what to change in ${MIN_FEEDBACK_LENGTH}–${MAX_IDEA_LENGTH} characters.`);
     }
     startRedraft(this.db, id, version.version, trimmed);
-    this.enqueue(id);
+    this.enqueue(id, ip);
     return this.get(id);
   }
 
@@ -336,11 +343,11 @@ export class GenerationService {
   }
 
   /** "Build it": writes the code from the approved design (or tries again after a failed build). */
-  build({ id, version: versionNumber }) {
+  build({ id, version: versionNumber, ip = null }) {
     const { game, version } = this.designedVersion(id, versionNumber);
-    this.checkCanQueue(game.ownerUserId);
+    this.checkCanQueue(game.ownerUserId, { ip });
     startBuild(this.db, id, version.version);
-    this.enqueue(id);
+    this.enqueue(id, ip);
     return this.get(id);
   }
 
@@ -358,8 +365,10 @@ export class GenerationService {
     return this.get(id);
   }
 
-  enqueue(id) {
+  /** @param {string | null} [ip]  where the request came from (for config.GENERATION_JOBS_PER_IP) */
+  enqueue(id, ip = null) {
     this.steps.set(id, []);
+    if (ip !== null) this.jobIps.set(id, ip);
     this.queue.push(id);
     this.next();
   }
@@ -375,6 +384,7 @@ export class GenerationService {
       const job = this.run(id).finally(() => {
         this.running.delete(id);
         this.steps.delete(id);
+        this.jobIps.delete(id);
         this.next();
       });
       this.running.set(id, job);
@@ -573,6 +583,7 @@ export class GenerationService {
     if (this.queue.includes(id)) {
       this.queue.splice(this.queue.indexOf(id), 1); // still waiting: just drop it
       this.steps.delete(id);
+      this.jobIps.delete(id);
     }
     this.unload(game, 'published');
     this.unload(game, 'playtest');

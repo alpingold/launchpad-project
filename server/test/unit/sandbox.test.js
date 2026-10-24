@@ -161,3 +161,11 @@ test("an upload's check (plan §57) gets no provider, even with a key: no key in
   assert.deepEqual(calls.map((c) => c.args.slice(0, 2)), [['sandbox', 'create'], ['sandbox', 'exec'], ['sandbox', 'delete']]);
   assert.ok(!calls[0].args.includes('--provider'));
 });
+
+test("an upload's check gets its own, much shorter time limit (plan §59): a few uploads can't hold the queue for an hour each", async () => {
+  const { run, calls } = fakeOpenshell({ exec: { code: 0, stdout: `${JSON.stringify(RESULT)}\n`, stderr: '' } });
+  await runGeneratorInSandbox({ step: 'check', idea: 'Tap Test: tap', source: '<p>game</p>' }, { run });
+  await runGeneratorInSandbox(job, { run });
+  const limits = calls.filter((c) => c.args[1] === 'exec').map((c) => Number(c.args[c.args.indexOf('--timeout') + 1]));
+  assert.deepEqual(limits, [config.GENERATION_CHECK_TIMEOUT_MS / 1000, config.GENERATION_TIMEOUT_MS / 1000]);
+});

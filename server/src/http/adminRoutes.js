@@ -165,7 +165,7 @@ export function createAdminRouter({ db, generation, mine = false }) {
     '/generations',
     handle((req, res) => {
       const { idea, model } = req.body ?? {};
-      const game = generation.start({ ownerUserId: req.user.id, idea, model });
+      const game = generation.start({ ownerUserId: req.user.id, idea, model, ip: req.ip });
       res.status(202).json({ game: summary(game) });
     }),
   );
@@ -173,7 +173,7 @@ export function createAdminRouter({ db, generation, mine = false }) {
   router.post(
     '/generations/upload',
     handle((req, res) => {
-      const game = generation.upload({ ownerUserId: req.user.id, source: req.body?.source });
+      const game = generation.upload({ ownerUserId: req.user.id, source: req.body?.source, ip: req.ip });
       res.status(202).json({ game: summary(game) });
     }),
   );
@@ -181,7 +181,7 @@ export function createAdminRouter({ db, generation, mine = false }) {
   router.post(
     '/generations/:id/upload',
     handle((req, res) => {
-      const game = generation.upload({ ownerUserId: req.user.id, id: req.params.id, source: req.body?.source });
+      const game = generation.upload({ ownerUserId: req.user.id, id: req.params.id, source: req.body?.source, ip: req.ip });
       res.status(202).json({ game: detail(game) });
     }),
   );
@@ -197,7 +197,7 @@ export function createAdminRouter({ db, generation, mine = false }) {
     '/generations/:id/versions',
     handle((req, res) => {
       const { request, basedOn, model, skipDesign } = req.body ?? {};
-      const game = generation.requestChanges({ id: req.params.id, request, basedOn, model, skipDesign });
+      const game = generation.requestChanges({ id: req.params.id, request, basedOn, model, skipDesign, ip: req.ip });
       res.status(202).json({ game: detail(game) });
     }),
   );
@@ -206,7 +206,7 @@ export function createAdminRouter({ db, generation, mine = false }) {
     '/generations/:id/remix-design',
     handle((req, res) => {
       const { request, model } = req.body ?? {};
-      res.status(202).json({ game: detail(generation.requestRemixDesign({ id: req.params.id, request, model })) });
+      res.status(202).json({ game: detail(generation.requestRemixDesign({ id: req.params.id, request, model, ip: req.ip })) });
     }),
   );
 
@@ -215,7 +215,7 @@ export function createAdminRouter({ db, generation, mine = false }) {
   router.post(
     '/generations/:id/versions/:version/redesign',
     handle((req, res) => {
-      res.status(202).json({ game: detail(generation.redesign({ ...versionOf(req), feedback: req.body?.feedback })) });
+      res.status(202).json({ game: detail(generation.redesign({ ...versionOf(req), feedback: req.body?.feedback, ip: req.ip })) });
     }),
   );
 
@@ -229,7 +229,7 @@ export function createAdminRouter({ db, generation, mine = false }) {
   router.post(
     '/generations/:id/versions/:version/build',
     handle((req, res) => {
-      res.status(202).json({ game: detail(generation.build(versionOf(req))) });
+      res.status(202).json({ game: detail(generation.build({ ...versionOf(req), ip: req.ip })) });
     }),
   );
 
@@ -244,7 +244,7 @@ export function createAdminRouter({ db, generation, mine = false }) {
     '/generations/:id/versions/:version/review-again',
     handle((req, res) => {
       const { id, version } = versionOf(req);
-      res.status(202).json({ game: detail(generation.reviewAgain({ id, basedOn: version, model: req.body?.model })) });
+      res.status(202).json({ game: detail(generation.reviewAgain({ id, basedOn: version, model: req.body?.model, ip: req.ip })) });
     }),
   );
 

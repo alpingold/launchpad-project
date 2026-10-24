@@ -88,7 +88,8 @@ export async function runGeneratorInSandbox(job, { onStep = () => {}, onAttempt 
   const noAi = job.step === 'check';
   const keyProvider = apiKey && !noAi ? `bg-key-${hex}` : null;
   const bin = cfg.OPENSHELL_BIN;
-  const limitSeconds = Math.ceil(cfg.GENERATION_TIMEOUT_MS / 1000);
+  const limitMs = noAi ? cfg.GENERATION_CHECK_TIMEOUT_MS : cfg.GENERATION_TIMEOUT_MS; // plan §59
+  const limitSeconds = Math.ceil(limitMs / 1000);
   // No error message may ever contain the key, even if a command printed it back.
   const hideKey = (text) => (apiKey ? text.split(apiKey).join('[key]') : text);
   const failed = (error) => ({ ok: false, model: job.model ?? null, source: null, report: null, attempts: [], error: hideKey(error) });
@@ -129,7 +130,7 @@ export async function runGeneratorInSandbox(job, { onStep = () => {}, onAttempt 
           input: `${JSON.stringify(gate ? { ...job, browserGate: gate.token } : job)}\n`,
           keepStdinOpen: Boolean(gate),
           onStart: (child) => gate?.attach(child),
-          timeoutMs: cfg.GENERATION_TIMEOUT_MS + 60_000,
+          timeoutMs: limitMs + 60_000,
           onStderrLine: (line) => {
             if (gate?.handle(line)) return;
             if (line.startsWith('ATTEMPT ')) {

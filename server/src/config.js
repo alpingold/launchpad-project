@@ -202,6 +202,14 @@ export const config = {
   // (generator/src/llm.js), so a slow but working model is never cut off by this in practice.
   // Was 20 minutes until 2026-10-15, with 5 minutes per call.
   GENERATION_TIMEOUT_MS: 60 * 60 * 1000,
+  // An uploaded file's check (plan §57) has no AI in it: a playtest of ~1–2 minutes, plus the
+  // wait for the browser. Its own, much shorter limit (plan §59), so a few uploads can't hold
+  // the queue for an hour each.
+  GENERATION_CHECK_TIMEOUT_MS: 15 * 60 * 1000,
+  // Jobs waiting or running from one IP address (plan §59; admins have no limit). One per
+  // account isn't enough on its own, as accounts are cheap to make. 2, not 1: friends on the
+  // same Wi-Fi may both be making a game.
+  GENERATION_JOBS_PER_IP: Number(process.env.GENERATION_JOBS_PER_IP) || 2,
 
   // Longest raw name string accepted before normalization. The real display-name
   // rules (1–16 characters, etc.) come in M3; this just stops absurd input early.

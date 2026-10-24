@@ -4,12 +4,13 @@ import { createGameServer } from '../../src/server.js';
 import { GameRegistry } from '../../src/games/registry.js';
 import { config } from '../../src/config.js';
 import { openClient } from '../helpers/wsClient.js';
-import { signUp } from '../helpers/accounts.js';
+import { signUp, postJson } from '../helpers/accounts.js';
 import { tapGame } from '../helpers/frameGames.js';
 
 // Limits that keep one person (or script) from taking the site down or finding other
 // people's rooms (plan §59). Small values here, so the tests run fast.
 
+const KEY = 'sk-0123456789abcdef0123456789abcdef';
 let server;
 let baseUrl;
 let wsUrl;
@@ -93,4 +94,20 @@ test("a phone that stops reading is dropped, instead of the server keeping every
   }
   assert.ok(left, 'the stalled phone was never dropped');
   for (const conn of server.transport.connections.values()) assert.ok(conn.ws.bufferedAmount <= 512 * 1024);
+});
+
+test('games made from one address at once are limited, whoever is logged in (accounts are cheap)', async () => {
+  const jobs = [];
+  await start({ GENERATION_ENABLED: true }, { runGenerator: () => new Promise((finish) => jobs.push(finish)), checkKey: async () => 'ok' });
+  const start1 = async () => {
+    const cookie = await signUp(baseUrl);
+    await fetch(`${baseUrl}/api/account/genai-key`, { method: 'PUT', headers: { Cookie: cookie, 'Content-Type': 'application/json' }, body: JSON.stringify({ key: KEY }) });
+    return postJson(baseUrl, '/api/generations', { idea: 'Everyone votes; the most popular answer wins' }, { Cookie: cookie });
+  };
+  for (let i = 0; i < config.GENERATION_JOBS_PER_IP; i++) assert.equal((await start1()).status, 202);
+  const refused = await start1();
+  assert.equal(refused.status, 429);
+  assert.equal((await refused.json()).error, 'TOO_MANY_FROM_HERE');
+  for (const finish of jobs) finish({ ok: false, error: 'stopped by the test' });
+  await server.generation.current;
 });
