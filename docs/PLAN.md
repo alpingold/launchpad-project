@@ -2432,6 +2432,37 @@ installs before 0.0.37. Plain rerun of the installer with `OPENSHELL_VERSION=v0.
 **Money:** ~$21/month against $120 is ~5½ months, a little short of the free plan's end; the
 starter activities' credits (up to $200 in all) cover the rest.
 
+## 62. The playtest fast-forwards through the whole game (2026-10-25)
+
+**Problem:** the clock jump at the end (§41) moved every clock once and ran the timers already
+waiting. Most party games set each phase's deadline when the phase starts ("now + 15 s"), so
+the jump only finished the phase the game was in: the next one got a deadline on the moved
+clock and ran at normal speed. The game moved (not stuck), and the playtest stopped. The
+reveal and final screens were never checked: a "Most Likely To" build
+(`generator/out/vote-moved/control-1`) put names into its final screens with `innerHTML`
+and passed. Only bumper-blobs and stowaways of the 7 official games ever reached `party.end`
+in the playtest; the rest were "still running at the end".
+
+**Decision:** the same total jump (past the game's whole length, at least 2 minutes), taken
+in steps (`checkMovesOn` in `generator/src/check/playtest.js`):
+- each step moves the clocks 30 s ahead (more for long games: the length in 16 steps), then
+  waits for the game to react (a phone's state or the save changes), at most 400 ms;
+- **the budget is steps, not moved time.** A step finishes at most one phase however short
+  (a 7 s break uses up a whole step), so a game needs about one step per phase. Measured on
+  the official games: 5 to 29 steps. So the steps go on until the game ends, up to 60 steps
+  or 15 s of real time;
+- past the game's whole length with nothing changed at all, it's stuck: it stops there, and
+  the stuck check (and its message) is as before.
+
+**Result:** every official game now plays to `party.end` in the playtest and still passes
+(0.7 to 6.2 s of fast-forward, against today's wait of up to 5 s); the voting build now fails
+with 5 problems from its late screens (3 names as HTML before only by hand). Three fixtures
+pin it (`phases-name-html`, `phases-nan`, `phases-ok`), each failing on the old playtest.
+**The cost:** a game that never ends by design (the `timed` and `frozen` fixtures) keeps
+changing, so it uses the whole 15 s.
+
+Needs the generator image rebuilt to reach the site (`update.sh` does it on deploy).
+
 ## Verification (how to confirm the plan worked once built)
 
 - `npm test` (root) → runs `node --test server/test`, all unit and integration tests green.
