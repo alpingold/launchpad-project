@@ -2401,10 +2401,10 @@ patched into all of them, and they had started to disagree.
 - An uploaded version 1 counted as having a whole design (every caller added "and not an
   upload"). Its `designKind` is `none`.
 
-**Not done (the review's other candidates):** the job's shape owned by the generator (it's
-built in `jobFor` and checked in `runJob`, and its typedef is out of date); one guard for "may
-this game start new work" (the busy checks and the default base version are copied, in two
-orders); untangling build and review in `runJob`.
+**Not done (the review's other candidates):** the job's shape owned by the generator (it was
+built in `jobFor` and checked in `runJob`, and its typedef was out of date): done in §63; one
+guard for "may this game start new work" (the busy checks and the default base version are
+copied, in two orders); untangling build and review in `runJob`.
 
 ## 61. A new AWS project, and OpenShell 0.1.5 (2026-10-25)
 
@@ -2462,6 +2462,51 @@ pin it (`phases-name-html`, `phases-nan`, `phases-ok`), each failing on the old 
 changing, so it uses the whole 15 s.
 
 Needs the generator image rebuilt to reach the site (`update.sh` does it on deploy).
+
+## 63. The generator owns the job (2026-10-25)
+
+**Problem:** every step a version's sandbox run makes is one **job** (`GLOSSARY.md`): a plain
+object the server sends and the generator runs. Nothing owned its shape. It was described four
+times, by hand, and the four disagreed:
+- the server's `jobFor` wrote the field names;
+- the generator's checks in `runJob` read them;
+- the generator's typedef listed 5 of its 7 steps, with no field for a remix or an upload's file;
+- the generator's top comment restated it all again.
+
+The server also read its own job back to choose its log line. The two halves were only tested
+apart (the server's tests asserted the job's fields, the generator's wrote jobs by hand), so a
+mismatch only showed in a real sandbox. It did once: an upload's check was refused by the
+generator for lack of a game idea (the file's short name and empty description).
+
+**Decision:** one job module on the generator's side, `generator/src/job.js`, imported by both:
+- `makeJob(facts)` → `{ job, label }`: the job for a version's next step, and the label the
+  server logs ("design", "new draft", "build", "code review", "upload check"). It also gives
+  every site build its review round (§47), so the server can't forget it.
+- `checkJob(job)`: the checks that were in `runJob`, unchanged in what they accept and refuse
+  (the experiment-only steps and switches too, so the scripts keep working). `runJob` checks
+  every job with it. The typedef next to it is the one description; the top comment points there.
+- **Facts cross, not field names.** The server says what it knows (the step from the version
+  kind module, §60; the idea, model, design or plan, feedback; for a change, its request, the
+  file it starts from, the game's design and the requests since, from the history walk it
+  still owns; for a remix, the copy's file and design; for an upload, its file). It writes and
+  reads no job field. The sandbox runner passes the job on as it is (adding only the browser
+  slot's token, §28).
+
+No change to what runs: the same jobs, results and log lines as before.
+
+**Tests:** the generation module's tests run the **real generator** in place of the sandbox
+(`server/test/helpers/realGenerator.js`: `runJob` in-process, the job through JSON first, a
+fake model that answers by response format and notes what it's asked, and the server's static
+check for a checker). `generationWithGenerator.test.js` drives every kind through the module's
+own actions (a new game's design, new draft and build; a change's plan, its new draft, its build
+and a small fix; "Review again"; a remix's own design and its build; uploads, the short-name
+one that broke before; a failed upload fixed as a change; a game too big for the AI; the
+admin's own edit built, and built again after a failure) and checks only what a maker sees:
+statuses, results, messages, and what reached the AI. The server tests that asserted a job's
+raw fields are gone. The generator's own tests are unchanged.
+
+Needs the generator image rebuilt before deploying (`update.sh` does it on deploy), or the
+sandbox runs the old checks.
 
 ## Verification (how to confirm the plan worked once built)
 

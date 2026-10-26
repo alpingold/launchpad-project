@@ -143,14 +143,13 @@ test('designs: new drafts with feedback, the admin\'s own edits, and what is ref
   service.editDesign({ ...v, design: v1.design });
   assert.equal(service.get(id).versions[0].drafts.length, 3, 'an unchanged edit adds no draft');
 
-  // Building uses the latest draft. A failed build keeps the design: change it, or build again.
+  // A failed build keeps the design: change it, or build again. (That the build is written
+  // from the latest draft: generationWithGenerator.test.js, with the real generator.)
   service.build(v);
-  assert.match(calls[3].job.design, /30 s each/);
   calls[3].finish({ ok: false, source: null, report: null, error: 'no passing game after 4 attempts' });
   await service.current;
   assert.equal(service.get(id).versions[0].status, 'failed');
   service.build(v);
-  assert.match(calls[4].job.design, /30 s each/, 'built again from the same design');
   calls[4].finish(PASSED);
   await service.current;
   assert.equal(codeOf(() => service.redesign({ ...v, feedback: 'Too late now' })), 'WRONG_STATUS', 'built and passed');
@@ -177,7 +176,6 @@ test('one job at a time, in order; one per person; the queue has a limit', async
   calls[0].finish(DESIGNED);
   await service.current;
   assert.equal(calls.length, 2, 'the next one started');
-  assert.equal(calls[1].job.model, 'qwen3.8:27b');
   assert.equal(service.progress(first.id), null);
   assert.equal(service.progress(second.id).queuePosition, 0);
 });
