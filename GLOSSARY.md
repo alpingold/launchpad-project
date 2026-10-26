@@ -12,6 +12,10 @@ _Avoid_: revision, build (a build is one step that makes a version's code)
 What a version is: a new game, a change, a "Review again" round, a remix's own design ("Make it your own"), a remix's copy, or an uploaded file. With the version's status it decides the version's next step, whether that step needs the AI, whether it has a design, and its track.
 _Avoid_: version type, mode
 
+**Job**:
+One step a version's sandbox run makes: a design (or plan, or new draft), a build, a "Review again" round, or an upload's check. The generator's job module makes it from what the site knows about the version, and checks it before it runs.
+_Avoid_: task, request (that's what a maker asks for in a change)
+
 **Design**:
 The written plan of a whole game (its rules, screens, art and length), read and approved before any code is written. A new game and a remix made its own have one; an uploaded file has none.
 _Avoid_: spec, outline
