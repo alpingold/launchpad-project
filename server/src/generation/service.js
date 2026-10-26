@@ -54,6 +54,7 @@ import { getGamePage } from '../db/gamePages.js';
 import { blockedFields, blockedMessage } from '../games/wordFilter.js';
 import { MODELS, DEFAULT_MODEL, isAllowedModel } from '../../../generator/src/models.js';
 import { MAX_DESIGN_LENGTH } from '../../../generator/src/extract.js';
+import { makeJob } from '../../../generator/src/job.js';
 // What people may type: the same numbers the generator checks (generator/src/prompt.js says why).
 import { MIN_IDEA_LENGTH, MIN_FEEDBACK_LENGTH, MAX_IDEA_LENGTH, MAX_REQUEST_LENGTH } from '../../../generator/src/prompt.js';
 
@@ -409,14 +410,14 @@ export class GenerationService {
     };
     const designing = version.status === 'designing';
     const { needsAi } = versionKind(version);
-    const job = this.jobFor(game, version);
+    const { job, label } = this.jobFor(game, version);
 
     // The owner's own key (plan §15); none: an admin's job uses the server's key. Never logged.
     // A job without the AI (an upload's check) gets no key at all.
     const apiKey = needsAi ? (this.userKeys?.keyFor(game.ownerUserId) ?? null) : null;
 
-    const what = designing ? (job.redraft ? 'new draft' : 'design') : { recheck: 'code review', check: 'upload check' }[job.step] ?? 'build';
-    this.log(`[generate] ${id} v${version.version}: ${what} started${job.model ? ` with ${job.model}` : ''}${apiKey ? " (the owner's key)" : ''}`);
+    const model = needsAi ? version.model : null;
+    this.log(`[generate] ${id} v${version.version}: ${label} started${model ? ` with ${model}` : ''}${apiKey ? " (the owner's key)" : ''}`);
     let result;
     if (needsAi && !apiKey && !isAdminUser(this.db, game.ownerUserId)) {
       result = { ok: false, error: "Your GenAI Studio key couldn't be used. Save it again on your account page, then try again." };
@@ -459,38 +460,38 @@ export class GenerationService {
     }
   }
 
-  /** The sandbox job for a version's next step (generator/src/run.js describes them). */
+  /**
+   * The sandbox job for a version's next step, and its log label: the job module (generator/src/job.js)
+   * makes both from what this module knows about the version.
+   * @returns {{ job: import('../../../generator/src/job.js').GeneratorJob, label: string }}
+   */
   jobFor(game, version) {
     const { step } = versionKind(version);
-    // An upload (plan §57): its file is only checked.
-    if (step === 'check') return { step, idea: game.prompt, source: version.source };
-    const designing = step === 'design';
-    const job = { step, idea: game.prompt, model: version.model };
-    // Every build is reviewed, and its crashes and dead ends fixed (plan §47).
-    if (job.step === 'build') job.review = true;
-    if (version.kind === 'remix') {
-      // "Make it your own" (plan §45b): the remix's whole design, from the copy's design and what
-      // should be different; then the copy's code rewritten for it (the whole file).
-      const base = findVersion(game, version.basedOn);
-      job.remix = { source: base.source, design: designOf(game, base) };
-      if (designing) job.remix.request = version.request;
-      else job.design = version.design;
-    } else if (version.basedOn !== null) {
-      // The requests since the game's design, oldest first, so the model knows the history.
-      const earlierRequests = [];
-      for (let v = findVersion(game, version.basedOn); v && !versionKind(v).startsOver; v = findVersion(game, v.basedOn)) {
-        earlierRequests.unshift(v.request);
-      }
-      const gameDesign = designOf(game, findVersion(game, version.basedOn));
-      job.change = { request: version.request, source: findVersion(game, version.basedOn).source, design: gameDesign, earlierRequests };
-      if (!designing) job.change.plan = version.design; // null for a small fix
-    } else if (!designing) {
-      job.design = version.design;
+    const facts = { step, idea: game.prompt, model: version.model, design: version.design, feedback: version.designFeedback };
+    if (version.kind === 'upload') return makeJob({ ...facts, upload: { source: version.source } });
+    if (version.kind === 'remix') return makeJob({ ...facts, remix: this.remixFacts(game, version) });
+    if (version.basedOn !== null) return makeJob({ ...facts, change: this.changeFacts(game, version) });
+    return makeJob(facts); // a new game
+  }
+
+  /** What a change knows: its request, the game it starts from, the game's design and the requests since. */
+  changeFacts(game, version) {
+    // The requests since the game's design, oldest first, so the model knows the history.
+    const earlierRequests = [];
+    for (let v = findVersion(game, version.basedOn); v && !versionKind(v).startsOver; v = findVersion(game, v.basedOn)) {
+      earlierRequests.unshift(v.request);
     }
-    if (designing && version.designFeedback && version.design) {
-      job.redraft = { draft: version.design, feedback: version.designFeedback };
-    }
-    return job;
+    const gameDesign = designOf(game, findVersion(game, version.basedOn));
+    return { request: version.request, source: findVersion(game, version.basedOn).source, design: gameDesign, earlierRequests };
+  }
+
+  /**
+   * What a remix knows (plan §45b): the copy's file and design, and what should be different
+   * (for "Make it your own"; its build rewrites the copy's code for the approved design).
+   */
+  remixFacts(game, version) {
+    const base = findVersion(game, version.basedOn);
+    return { source: base.source, design: designOf(game, base), request: version.request };
   }
 
   /** Where a game's job is: its place in line (0 = running now) and its progress so far. */

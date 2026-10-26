@@ -32,11 +32,9 @@ test('an upload needs no key: its file is checked with no AI, then it plays and 
   const res = await post('/api/generations/upload', { source: TAP_SOURCE }, sam);
   assert.equal(res.status, 202);
   const { game } = await res.json();
+  // The check itself runs in the real generator in generationWithGenerator.test.js.
   assert.equal(jobs.length, 1);
-  assert.deepEqual(Object.keys(jobs[0].job).sort(), ['idea', 'source', 'step']);
-  assert.equal(jobs[0].job.step, 'check');
-  assert.equal(jobs[0].job.source, TAP_SOURCE);
-  assert.equal(jobs[0].apiKey, undefined, 'no key goes in the sandbox');
+  assert.deepEqual([jobs[0].apiKey, jobs[0].ai], [undefined, false], 'no key goes in the sandbox, and no AI runs');
 
   // The sandbox's answer can't swap the file: what's kept is what was uploaded.
   jobs[0].finish(passed(`${TAP_SOURCE}<!-- changed -->`));
@@ -62,7 +60,6 @@ test('a new version from a new file; a failing file keeps its report', async () 
   const next = renamedSource('Tap Test 2');
   const res = await post(`/api/generations/${game.id}/upload`, { source: next }, sam);
   assert.equal(res.status, 202);
-  assert.equal(jobs[1].job.step, 'check');
   const report = { ok: false, problems: [{ line: 3, message: 'TypeError: x is undefined' }] };
   jobs[1].finish({ ok: false, error: "it didn't pass the checks", source: next, report, attempts: [] });
   await server.generation.current;
