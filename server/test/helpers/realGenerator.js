@@ -38,11 +38,13 @@ export const staticOnly = async (source) => frameGameReport(source);
 /**
  * A runGenerator for GenerationService that runs the real generator, and what the model was
  * asked (`asked`, each ask's last message, by response format: 'design', 'plan', 'code', ...).
- * @param {{ model?: Parameters<typeof fakeModel>[0], check?: typeof staticOnly }} [opts]
+ * @param {{ model?: Parameters<typeof fakeModel>[0] | ReturnType<typeof fakeModel>, check?: typeof staticOnly }} [opts]
+ *   model: fakeModel's replies, or a fake model of a test's own (one that reads what it's asked;
+ *   `asked` stays empty then)
  */
 export function realGenerator({ model, check = staticOnly } = {}) {
   const asked = [];
-  const chatFn = fakeModel(model, asked);
+  const chatFn = typeof model === 'function' ? model : fakeModel(model, asked);
   const runGenerator = (job, { onStep } = {}) => runJob(JSON.parse(JSON.stringify(job)), { chatFn, check, onStep });
   return { runGenerator, asked };
 }

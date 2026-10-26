@@ -80,8 +80,10 @@ import { DEFAULT_MODEL, isAllowedModel } from './models.js';
  * @property {string | null} [feedback]  designing: the maker's feedback, asking for a new draft of `design`
  * @property {{ source: string }} [upload]  an uploaded file, to check
  * @property {ChangeFacts} [change]   a change (a plan, a small fix or "Review again")
- * @property {{ source: string, design: string | null, request: string }} [remix]
- *   a remix: still spelled close to the job's `remix` (plan for ticket 05: its own facts)
+ * @property {{ copy: string, copyDesign: string | null, request: string }} [remix]
+ *   a remix's own design ("Make it your own") or its build (plan §45b): the copy's game file, the
+ *   design that file was built from (plan §60), and what the remixer wants different; `design`
+ *   is then the remix's own (its last draft, or the approved one)
  */
 
 /**
@@ -132,11 +134,12 @@ function changeParts(step, { request, gameFile, gameDesign, requestsSince }, pla
 }
 
 /**
- * A remix's part of its job (plan §45b): the original's file and design; its design step
- * also gets what should be different, its build the remix's approved design.
+ * A remix's part of its job (plan §45b): the copy's file and the design it was built from; its
+ * design step also gets what should be different, its build the remix's approved design.
  */
-function remixParts(step, { source, design, request }, approved) {
-  return step === 'design' ? { remix: { source, design, request } } : { remix: { source, design }, design: approved };
+function remixParts(step, { copy, copyDesign, request }, approved) {
+  const remix = { source: copy, design: copyDesign };
+  return step === 'design' ? { remix: { ...remix, request } } : { remix, design: approved };
 }
 
 /** What qwen3.8:27b on GenAI Studio takes (plan §38). */
