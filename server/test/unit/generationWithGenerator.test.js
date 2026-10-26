@@ -6,7 +6,7 @@ import { gameStatus, createRemix } from '../../src/db/generatedGames.js';
 import { GameRegistry } from '../../src/games/registry.js';
 import { GenerationService } from '../../src/generation/service.js';
 import { realGenerator, fakeModel, staticOnly, withHeadings } from '../helpers/realGenerator.js';
-import { TAP_SOURCE } from '../helpers/frameGames.js';
+import { TAP_SOURCE, renamedSource } from '../helpers/frameGames.js';
 import { PLAN_HEADINGS } from '../../../generator/src/prompt.js';
 
 // The generation module with the REAL generator in place of the sandbox (its runJob, with a
@@ -21,9 +21,18 @@ function setup(model, check) {
   const db = openDatabase(':memory:');
   const admin = createUser(db, 'admin', 'scrypt$x');
   setAdmin(db, 'admin', true); // admins without their own key use the server's
-  const { runGenerator } = realGenerator({ model, check });
+  const { runGenerator, asked } = realGenerator({ model, check });
   const service = new GenerationService({ db, games: new GameRegistry(), enabled: true, runGenerator, log: () => {} });
-  return { admin, service };
+  return { admin, service, asked };
+}
+
+/** A new game, designed and built: version 1 is ready. */
+async function readyGame({ service, admin }) {
+  const { id } = service.start({ ownerUserId: admin.id, idea: IDEA });
+  await service.current;
+  service.build({ id, version: 1 });
+  await service.current;
+  return id;
 }
 
 test("a new game's design reaches \"design ready\" with the model's design", async () => {
@@ -83,6 +92,135 @@ test("an upload's new file is checked too; a file that fails its checks fails wi
   assert.equal(v1.status, 'ready');
   assert.deepEqual([v2.status, v2.kind, v2.basedOn, v2.source], ['failed', 'upload', 1, broken]);
   assert.deepEqual([v2.report?.ok, v2.report?.problems], [false, [stuck]]);
+});
+
+// --- Changes --------------------------------------------------------------------------------
+
+const PLAN = withHeadings('Change: Two rounds', PLAN_HEADINGS, (h) => `What changes for the ${h.toLowerCase()}.`);
+
+test("a change's plan reaches \"plan ready\", written from the game's file, its design and the request", async () => {
+  const ctx = setup({ design: DESIGN, plan: PLAN });
+  const id = await readyGame(ctx);
+  ctx.service.requestChanges({ id, request: 'Make it 2 rounds please' });
+  await ctx.service.current;
+  const v2 = ctx.service.get(id).versions[1];
+  assert.deepEqual([gameStatus(ctx.service.get(id)), v2.status, v2.error, v2.basedOn], ['design', 'design_ready', null, 1]);
+  assert.match(v2.design, /^# Change: Two rounds\n/);
+  const { text } = ctx.asked.at(-1);
+  assert.match(text, /<change-request>\nMake it 2 rounds please/);
+  assert.match(text, /# Majority Rules/, "the game's design");
+  assert.match(text, /"name": "Tap Test"/, "the game's file");
+});
+
+test('a new draft of a plan, with the feedback, is written from the last draft and reaches "plan ready"', async () => {
+  const ctx = setup({ design: DESIGN, plan: PLAN });
+  const id = await readyGame(ctx);
+  ctx.service.requestChanges({ id, request: 'Make it 2 rounds please' });
+  await ctx.service.current;
+  ctx.service.redesign({ id, version: 2, feedback: 'Keep the timer' });
+  await ctx.service.current;
+  const v2 = ctx.service.get(id).versions[1];
+  assert.deepEqual([v2.status, v2.error], ['design_ready', null]);
+  assert.deepEqual(v2.drafts.map((d) => [d.by, d.feedback ?? null]), [['ai', null], ['ai', 'Keep the timer']]);
+  const { text } = ctx.asked.at(-1);
+  assert.match(text, /Keep the timer/);
+  assert.match(text, /# Change: Two rounds/, 'the last draft');
+});
+
+test('an approved plan is built: the change is ready, and the next change knows the requests since the design', async () => {
+  const ctx = setup({ design: DESIGN, plan: PLAN, game: [TAP_SOURCE, renamedSource('Tap Twice')] });
+  const id = await readyGame(ctx);
+  ctx.service.requestChanges({ id, request: 'Make it 2 rounds please' });
+  await ctx.service.current;
+  ctx.service.build({ id, version: 2 });
+  await ctx.service.current;
+  const v2 = ctx.service.get(id).versions[1];
+  assert.deepEqual([gameStatus(ctx.service.get(id)), v2.status, v2.error, v2.name, v2.design], ['review', 'ready', null, 'Tap Twice', PLAN]);
+  assert.deepEqual(v2.codeReview?.bugs, [], 'the review round ran on the change too');
+  const build = ctx.asked.findLast((a) => a.kind === 'code');
+  assert.match(build.text, /The plan was approved/);
+  assert.match(build.text, /# Change: Two rounds/);
+
+  ctx.service.requestChanges({ id, request: 'Add a scoreboard please' });
+  await ctx.service.current;
+  const { text } = ctx.asked.at(-1);
+  assert.match(text, /<earlier-changes>\n- Make it 2 rounds please\n<\/earlier-changes>/);
+  assert.match(text, /"name": "Tap Twice"/, 'from the newest ready version');
+  assert.match(text, /# Majority Rules/, "still the game's design, not the plan");
+
+  // An explicit base: the history follows that version's line, not every version.
+  ctx.service.discard({ id, version: 3 });
+  ctx.service.requestChanges({ id, request: 'A different take on version 1', basedOn: 1 });
+  await ctx.service.current;
+  const other = ctx.asked.at(-1).text;
+  assert.doesNotMatch(other, /<earlier-changes>/);
+  assert.match(other, /"name": "Tap Test"/);
+});
+
+test('a small fix is built from the request alone, with no plan', async () => {
+  const ctx = setup({ design: DESIGN, game: renamedSource('Tap Fixed') });
+  const id = await readyGame(ctx);
+  ctx.service.requestChanges({ id, request: 'Fix the typo in the title', skipDesign: true });
+  await ctx.service.current;
+  const v2 = ctx.service.get(id).versions[1];
+  assert.deepEqual([v2.status, v2.error, v2.design, v2.name], ['ready', null, null, 'Tap Fixed']);
+  const build = ctx.asked.findLast((a) => a.kind === 'code');
+  assert.match(build.text, /Make this small change/);
+  assert.match(build.text, /Fix the typo in the title/);
+});
+
+test('"Review again" runs a review round on the version it names, against its design and the changes since', async () => {
+  const ctx = setup({ design: DESIGN });
+  const id = await readyGame(ctx);
+  ctx.service.requestChanges({ id, request: 'Fix the typo in the title', skipDesign: true });
+  await ctx.service.current;
+  const before = ctx.asked.length;
+  ctx.service.reviewAgain({ id, basedOn: 2 });
+  await ctx.service.current;
+  const [, v2, v3] = ctx.service.get(id).versions;
+  assert.deepEqual([v3.kind, v3.basedOn, v3.status, v3.error, v3.source], ['recheck', 2, 'ready', null, v2.source]);
+  assert.deepEqual(v3.codeReview?.bugs, []);
+  const asks = ctx.asked.slice(before);
+  assert.deepEqual(asks.map((a) => a.kind), ['critical_bugs'], 'only the review: nothing to fix, nothing built');
+  assert.match(asks[0].text, /Fix the typo in the title/);
+  assert.match(asks[0].text, /# Majority Rules/);
+});
+
+test('a change to a game too big for the AI is refused with the size limit', async () => {
+  const big = `${TAP_SOURCE}<!--${'x'.repeat(100 * 1024)}-->`;
+  const ctx = setup();
+  const { id } = ctx.service.upload({ ownerUserId: ctx.admin.id, source: big });
+  await ctx.service.current;
+  assert.equal(ctx.service.get(id).versions[0].status, 'ready');
+  const refusal = { code: 'TOO_BIG_FOR_AI', message: 'The AI can only change game files up to 100 KB. Upload a changed file instead.' };
+  assert.throws(() => ctx.service.requestChanges({ id, request: 'Make it blue please' }), refusal);
+  assert.throws(() => ctx.service.reviewAgain({ id }), refusal);
+  assert.equal(ctx.service.get(id).versions.length, 1, 'no version was added');
+});
+
+test('an uploaded file that failed its checks can be fixed by the AI as a change (plan §57)', async () => {
+  const stuck = { rule: 'stuck', message: 'nothing happens after the first round' };
+  const check = async (source) => (source.includes('<!-- stuck -->') ? { ...(await staticOnly(source)), ok: false, problems: [stuck] } : staticOnly(source));
+  const ctx = setup({ game: renamedSource('Tap Unstuck') }, check);
+  const broken = `${TAP_SOURCE}<!-- stuck -->`;
+  const { id } = ctx.service.upload({ ownerUserId: ctx.admin.id, source: broken });
+  await ctx.service.current;
+  assert.equal(ctx.service.get(id).versions[0].status, 'failed');
+  ctx.service.requestChanges({ id, request: 'Make the second round start', basedOn: 1, skipDesign: true });
+  await ctx.service.current;
+  const v2 = ctx.service.get(id).versions[1];
+  assert.deepEqual([v2.status, v2.error, v2.basedOn, v2.name], ['ready', null, 1, 'Tap Unstuck']);
+  const build = ctx.asked.findLast((a) => a.kind === 'code');
+  assert.match(build.text, /<!-- stuck -->/, 'from the uploaded file');
+
+  // "Review again" on it: with no design, the review reads the game's own description.
+  ctx.service.reviewAgain({ id, basedOn: 2 });
+  await ctx.service.current;
+  const v3 = ctx.service.get(id).versions[2];
+  assert.deepEqual([v3.kind, v3.status, v3.error], ['recheck', 'ready', null]);
+  const review = ctx.asked.at(-1);
+  assert.equal(review.kind, 'critical_bugs');
+  assert.match(review.text, /Tap Test: First to 3 taps wins/);
 });
 
 // A remix (plan §45b): kim's copy of a game, its code built from the copy's design.
