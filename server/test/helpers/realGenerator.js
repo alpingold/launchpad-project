@@ -16,19 +16,30 @@ export function withHeadings(title, headings = DESIGN_HEADINGS, text = (h) => `W
 /**
  * A fake model that answers by what it's asked for (the response format's name): a design, a
  * change plan, a code review's bugs; anything else is asked for code, and gets the game file
- * (a list: one per ask for code, in order, the last one from then on). Each ask's last message
- * is added to `asked` (if given), with the model it was asked of: what reached the AI.
+ * (a list: one per ask for code, in order, the last one from then on).
  * @param {{ design?: string, plan?: string, game?: string | string[], bugs?: object[] }} [replies]
- * @param {{ kind: string, model?: string, text: string }[]} [asked]
  */
-export function fakeModel({ design = withHeadings('A Game'), plan = withHeadings('Change: A change', PLAN_HEADINGS), game = TAP_SOURCE, bugs = [] } = {}, asked = []) {
+export function fakeModel({ design = withHeadings('A Game'), plan = withHeadings('Change: A change', PLAN_HEADINGS), game = TAP_SOURCE, bugs = [] } = {}) {
   const games = [game].flat();
   return async (messages, opts) => {
     const kind = opts?.responseFormat?.json_schema?.name ?? 'code';
-    asked.push({ kind, model: opts?.model, text: String(messages.at(-1)?.content ?? '') });
     const file = () => (games.length > 1 ? games.shift() : games[0]);
     const content = { design, plan, critical_bugs: JSON.stringify({ bugs }) }[kind] ?? `\`\`\`html\n${file()}\`\`\``;
     return { content, thinking: '', finishReason: 'stop', toolCalls: '', seconds: 1, usage: null };
+  };
+}
+
+/**
+ * A model that adds each ask to `asked` before `chatFn` answers it: its kind (the response
+ * format's name, or 'code'), the model it was asked of, and its last message (what reached the AI).
+ * @param {(messages: object[], opts?: object) => Promise<object>} chatFn
+ * @param {{ kind: string, model?: string, text: string }[]} asked
+ */
+function recording(chatFn, asked) {
+  return (messages, opts) => {
+    const kind = opts?.responseFormat?.json_schema?.name ?? 'code';
+    asked.push({ kind, model: opts?.model, text: String(messages.at(-1)?.content ?? '') });
+    return chatFn(messages, opts);
   };
 }
 
@@ -39,12 +50,12 @@ export const staticOnly = async (source) => frameGameReport(source);
  * A runGenerator for GenerationService that runs the real generator, and what the model was
  * asked (`asked`, each ask's last message, by response format: 'design', 'plan', 'code', ...).
  * @param {{ model?: Parameters<typeof fakeModel>[0] | ReturnType<typeof fakeModel>, check?: typeof staticOnly }} [opts]
- *   model: fakeModel's replies, or a fake model of a test's own (one that reads what it's asked;
- *   `asked` stays empty then)
+ *   model: fakeModel's replies, or a fake model of a test's own (one that reads what it's asked);
+ *   either way `asked` records every ask
  */
 export function realGenerator({ model, check = staticOnly } = {}) {
   const asked = [];
-  const chatFn = typeof model === 'function' ? model : fakeModel(model, asked);
+  const chatFn = recording(typeof model === 'function' ? model : fakeModel(model), asked);
   const runGenerator = (job, { onStep } = {}) => runJob(JSON.parse(JSON.stringify(job)), { chatFn, check, onStep });
   return { runGenerator, asked };
 }
