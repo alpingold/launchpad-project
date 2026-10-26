@@ -27,7 +27,7 @@ import MakeItYourOwn from '../components/generation/MakeItYourOwn.jsx';
 import UploadForm from '../components/generation/UploadForm.jsx';
 import { DesignEditor } from '../components/generation/DesignEditor.jsx';
 import { ChangedLines, Attempts, Report, SourceCode } from '../components/generation/VersionDetails.jsx';
-import { POLL_MS, VERSION_STATUS_TEXT, PLAN_STATUS_TEXT, hasWholeDesign } from '../components/generation/text.js';
+import { POLL_MS, VERSION_STATUS_TEXT, PLAN_STATUS_TEXT, UPLOAD_STATUS_TEXT } from '../components/generation/text.js';
 
 // One game you're making with AI, /create/<id> (plan §19): a board-game track shows the four
 // steps (Idea → Design → Build → Play, or Change → Plan → Build → Play for a change), and
@@ -43,33 +43,8 @@ const STEPS_NEW = ['Idea', 'Design', 'Build', 'Play'];
 const STEPS_CHANGE = ['Change', 'Plan', 'Build', 'Play'];
 const STEPS_UPLOAD = ['Upload', 'Check', 'Play'];
 
-/**
- * Where a game is, from its newest version: which space of the track (0–3) and what's
- * happening there. `working`: the AI is on it; `yours`: waiting for you; `failed`.
- * @returns {{ at: number, state: 'working' | 'yours' | 'failed' }}
- */
-export function whereIs(version) {
-  if (version.kind === 'upload') return { at: version.status === 'ready' ? 2 : 1, state: { generating: 'working', failed: 'failed' }[version.status] ?? 'yours' };
-  switch (version.status) {
-    case 'designing':
-      return { at: 1, state: 'working' };
-    case 'design_ready':
-      return { at: 1, state: 'yours' };
-    case 'generating':
-      return { at: 2, state: 'working' };
-    case 'failed':
-      return { at: version.design === null ? 1 : 2, state: 'failed' };
-    default:
-      return { at: 3, state: 'yours' };
-  }
-}
-
-/** The same, from a list summary (it has no versions): close enough for the list's small track. */
-export function whereIsSummary(game) {
-  const at = { designing: 1, design: 1, generating: 2, failed: 2 }[game.status] ?? 3;
-  const state = game.status === 'failed' ? 'failed' : game.progress ? 'working' : 'yours';
-  return { at, state };
-}
+/** Each track's spaces (the server says which track a version is on: versionKind.js, plan §60). */
+export const TRACK_STEPS = { new: STEPS_NEW, change: STEPS_CHANGE, upload: STEPS_UPLOAD };
 
 /** The first letter of a game's name, for its token. */
 const initialOf = (text) => (text?.trim()[0] ?? '?').toUpperCase();
@@ -103,11 +78,11 @@ export function Track({ labels, at, state, initial }) {
   );
 }
 
-/** The list's version of the track: four dots, no words (the row says the status). */
-export function MiniTrack({ at, state }) {
+/** The list's version of the track: a dot per space (4, or 3 for an upload), no words (the row says the status). */
+export function MiniTrack({ at, state, spaces = 4 }) {
   return (
     <span className={`mini-track track-${state}`} aria-hidden="true">
-      {[0, 1, 2, 3].map((i) => (
+      {Array.from({ length: spaces }, (_, i) => i).map((i) => (
         <span key={i} className={i < at ? 'passed' : i === at ? 'here' : 'ahead'} />
       ))}
     </span>
@@ -219,10 +194,11 @@ export default function CreateGame({ id }) {
   }
 
   const latest = game.versions.at(-1);
-  const isUpload = latest.kind === 'upload';
-  // A change has a plan; a new game, or a remix made its own (plan §45b), a whole design.
-  const isChange = !hasWholeDesign(latest) && !isUpload;
-  const where = whereIs(latest);
+  // Where it is, and on which track (the server says: plan §60). A change has a plan; a new game,
+  // or a remix made its own (plan §45b), a whole design; an uploaded file has none.
+  const where = latest.track;
+  const isUpload = where.kind === 'upload';
+  const isChange = where.kind === 'change';
   const name = summary.name ?? latest.name ?? 'Your new game';
   const running = summary.progress?.queuePosition === 0;
   const canDiscard = latest.version > 1 && ['design_ready', 'failed'].includes(latest.status);
@@ -253,7 +229,7 @@ export default function CreateGame({ id }) {
 
       <GenaiStatus />
 
-      <Track labels={isUpload ? STEPS_UPLOAD : isChange ? STEPS_CHANGE : STEPS_NEW} at={where.at} state={where.state} initial={initialOf(name === 'Your new game' ? summary.prompt : name)} />
+      <Track labels={TRACK_STEPS[where.kind]} at={where.at} state={where.state} initial={initialOf(name === 'Your new game' ? summary.prompt : name)} />
 
       {error && (
         <p className="error" role="alert">
@@ -367,7 +343,7 @@ function BackLink() {
 /** The AI is on it: what it's doing now, how long it's been, and that you can leave. */
 function Working({ progress, version, isChange }) {
   const what =
-    version.kind === 'upload'
+    version.track.kind === 'upload'
       ? 'Checking your file'
       : version.kind === 'recheck'
         ? 'Reviewing the code'
@@ -396,7 +372,7 @@ function Working({ progress, version, isChange }) {
         {now && <span className="muted"> ({formatSeconds(now.seconds)} in)</span>}
       </p>
       <p className="muted">
-        {version.kind === 'upload'
+        {version.track.kind === 'upload'
           ? 'The site plays your game in a hidden browser with pretend phones, looking for crashes, a game that gets stuck, and broken text on the screen. No AI is involved. This usually takes a minute or two.'
           : version.status === 'generating'
           ? version.kind === 'recheck'
@@ -502,7 +478,7 @@ function ReadyToPlay({ summary, game, version: v, info, busy, run }) {
 
   return (
     <>
-      <h2>{!hasWholeDesign(v) ? `Version ${v.version} is ready` : summary.remixOf ? 'Your remix is ready' : 'Your game is ready'}</h2>
+      <h2>{v.designKind !== 'whole' && v.version > 1 ? `Version ${v.version} is ready` : summary.remixOf ? 'Your remix is ready' : 'Your game is ready'}</h2>
       {v.basedOn === null && summary.remixOf && (
         <p>It's a copy of {summary.remixOf.name}, all yours: play it as it is, or ask the AI for changes below.</p>
       )}
@@ -533,7 +509,7 @@ function ReadyToPlay({ summary, game, version: v, info, busy, run }) {
           onReviewAgain={() => run(() => reviewAgain(summary.id, v.version), 'Review the code again? It takes about ten minutes, and makes a new version if it fixes anything.')}
         />
       )}
-      {v.kind === 'upload' && !v.codeReview && (
+      {v.track.kind === 'upload' && !v.codeReview && (
         <div className="create-review-offer">
           <p>
             The checks passed. An AI can also read the code, looking for bugs the checks can miss, and fix any crash or dead
@@ -634,14 +610,14 @@ function History({ game, summary }) {
         locked-down frame on the big screen and the phones; the AI follows the <a href="/kit">docs</a>.
       </p>
       {[...game.versions].reverse().map((v) => {
-        const statusText = v.kind === 'upload' && v.status === 'generating' ? 'Checking' : (hasWholeDesign(v) ? VERSION_STATUS_TEXT : PLAN_STATUS_TEXT)[v.status];
+        const statusText = { upload: UPLOAD_STATUS_TEXT, change: PLAN_STATUS_TEXT }[v.track.kind]?.[v.status] ?? VERSION_STATUS_TEXT[v.status];
         return (
           <article key={v.version} className="create-version" aria-label={`Version ${v.version}`}>
             <h3>
               Version {v.version} <span className={`status-chip status-${v.status}`}>{statusText}</span>
             </h3>
             <p className="small">
-              {v.kind === 'upload' ? (
+              {v.track.kind === 'upload' ? (
                 'A game file you uploaded'
               ) : v.basedOn === null ? (
                 summary.remixOf ? `A copy of ${summary.remixOf.name}` : 'Made from your idea'
@@ -654,7 +630,7 @@ function History({ game, summary }) {
             </p>
             {v.design !== null && (
               <details className="gen-source">
-                <summary>{hasWholeDesign(v) ? 'The design' : 'The plan'}</summary>
+                <summary>{v.designKind === 'plan' ? 'The plan' : 'The design'}</summary>
                 <Markdown text={v.design} headingOffset={3} />
               </details>
             )}

@@ -3,7 +3,7 @@ import { useCurrentUser } from '../net/auth.js';
 import { useOwnGamesApi, listGenerations, startGeneration, uploadGame } from '../net/admin.js';
 import { usePageTitle } from '../usePageTitle.js';
 import GenaiStatus from '../components/GenaiStatus.jsx';
-import { MiniTrack, whereIsSummary } from './CreateGame.jsx';
+import { MiniTrack, TRACK_STEPS } from './CreateGame.jsx';
 import { timeAgo } from '../components/timeAgo.js';
 import { EXAMPLE_IDEAS } from '../components/exampleIdeas.js';
 import UploadForm from '../components/generation/UploadForm.jsx';
@@ -30,12 +30,14 @@ const STATUS_WORDS = {
   designing: 'The AI is writing the design',
   design: 'The design is ready to read',
   generating: 'The AI is building it',
-  checking: 'Checking your file',
   failed: "Didn't work: see what happened",
   review: 'Ready to play',
   playtest: 'Ready to play',
   published: 'Everyone can play it',
 };
+
+/** An uploaded file is checked, not built (plan §57). */
+const UPLOAD_WORDS = { ...STATUS_WORDS, generating: 'Checking your file' };
 
 export default function Create() {
   usePageTitle('Make a game');
@@ -215,16 +217,16 @@ function YourGames({ games }) {
       ) : (
         <ul className="create-game-list">
           {games.map((game) => {
-            const where = whereIsSummary(game);
+            const where = game.track; // the newest version's, from the server (plan §60)
             return (
               <li key={game.id}>
                 <a href={`/create/${encodeURIComponent(game.id)}`} className="create-game-row">
                   <span className="create-game-name">{game.name ?? game.prompt}</span>
-                  <MiniTrack at={where.at} state={where.state} />
+                  <MiniTrack at={where.at} state={where.state} spaces={TRACK_STEPS[where.kind].length} />
                   <span className={`create-game-status status-${where.state}`}>
                     {game.progress?.queuePosition > 0
                       ? 'Waiting in line'
-                      : (STATUS_WORDS[game.status === 'generating' && game.kind === 'upload' ? 'checking' : game.status] ?? game.status)}
+                      : ((where.kind === 'upload' ? UPLOAD_WORDS : STATUS_WORDS)[game.status] ?? game.status)}
                   </span>
                   <span className="muted small create-game-when">started {timeAgo(game.createdAt)}</span>
                 </a>
