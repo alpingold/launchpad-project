@@ -17,15 +17,15 @@ export function withHeadings(title, headings = DESIGN_HEADINGS, text = (h) => `W
  * A fake model that answers by what it's asked for (the response format's name): a design, a
  * change plan, a code review's bugs; anything else is asked for code, and gets the game file
  * (a list: one per ask for code, in order, the last one from then on). Each ask's last message
- * is added to `asked` (if given): what reached the AI.
+ * is added to `asked` (if given), with the model it was asked of: what reached the AI.
  * @param {{ design?: string, plan?: string, game?: string | string[], bugs?: object[] }} [replies]
- * @param {{ kind: string, text: string }[]} [asked]
+ * @param {{ kind: string, model?: string, text: string }[]} [asked]
  */
 export function fakeModel({ design = withHeadings('A Game'), plan = withHeadings('Change: A change', PLAN_HEADINGS), game = TAP_SOURCE, bugs = [] } = {}, asked = []) {
   const games = [game].flat();
   return async (messages, opts) => {
     const kind = opts?.responseFormat?.json_schema?.name ?? 'code';
-    asked.push({ kind, text: String(messages.at(-1)?.content ?? '') });
+    asked.push({ kind, model: opts?.model, text: String(messages.at(-1)?.content ?? '') });
     const file = () => (games.length > 1 ? games.shift() : games[0]);
     const content = { design, plan, critical_bugs: JSON.stringify({ bugs }) }[kind] ?? `\`\`\`html\n${file()}\`\`\``;
     return { content, thinking: '', finishReason: 'stop', toolCalls: '', seconds: 1, usage: null };

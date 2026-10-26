@@ -8,6 +8,7 @@ import { GenerationService } from '../../src/generation/service.js';
 import { realGenerator, fakeModel, staticOnly, withHeadings } from '../helpers/realGenerator.js';
 import { TAP_SOURCE, renamedSource } from '../helpers/frameGames.js';
 import { PLAN_HEADINGS } from '../../../generator/src/prompt.js';
+import { DEFAULT_MODEL } from '../../../generator/src/models.js';
 
 // The generation module with the REAL generator in place of the sandbox (its runJob, with a
 // fake model and a fake checker): what the server sends is what the generator must accept,
@@ -76,6 +77,40 @@ test('a new draft of a design, with the feedback, reaches "design ready" with th
   const [v1] = service.get(id).versions;
   assert.deepEqual([v1.status, v1.error], ['design_ready', null]);
   assert.deepEqual(v1.drafts.map((d) => [d.by, d.feedback ?? null]), [['ai', null], ['ai', 'Make it 2 rounds']]);
+});
+
+test("a build is written from the latest draft, the admin's own edit too, and built again from it after a failure", async () => {
+  // A checker that fails every file until the test lets it pass.
+  let failing = true;
+  const bad = { rule: 'stuck', message: 'nothing happens after the first round' };
+  const check = async (source) => (failing ? { ...(await staticOnly(source)), ok: false, problems: [bad] } : staticOnly(source));
+  const { service, admin, asked } = setup({ design: DESIGN }, check);
+  const { id } = service.start({ ownerUserId: admin.id, idea: IDEA });
+  await service.current;
+  service.editDesign({ id, version: 1, design: withHeadings('Majority Rules', undefined, (h) => (h === 'Rules' ? 'Two rounds, 30 s each.' : `The ${h.toLowerCase()}.`)) });
+  service.build({ id, version: 1 });
+  await service.current;
+  assert.equal(service.get(id).versions[0].status, 'failed');
+  const firstBuild = asked.filter((a) => a.kind === 'code');
+  assert.ok(firstBuild.length > 0);
+  assert.match(firstBuild[0].text, /30 s each/, "the admin's edit reached the AI");
+  asked.length = 0;
+  failing = false;
+  service.build({ id, version: 1 });
+  await service.current;
+  assert.equal(service.get(id).versions[0].status, 'ready');
+  assert.match(asked.find((a) => a.kind === 'code').text, /30 s each/, 'built again from the same design');
+});
+
+test("a game's model is the one the AI is asked with, for its design and its build", async () => {
+  const { service, admin, asked } = setup({ design: DESIGN });
+  const { id } = service.start({ ownerUserId: admin.id, idea: IDEA, model: DEFAULT_MODEL });
+  await service.current;
+  service.build({ id, version: 1 });
+  await service.current;
+  assert.equal(service.get(id).versions[0].status, 'ready');
+  assert.deepEqual([...new Set(asked.map((a) => a.model))], [DEFAULT_MODEL]);
+  assert.deepEqual([...new Set(asked.map((a) => a.kind))].sort(), ['code', 'critical_bugs', 'design']);
 });
 
 test("an upload's new file is checked too; a file that fails its checks fails with its report", async () => {
