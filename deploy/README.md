@@ -158,9 +158,9 @@ sudo apt install -y docker.io docker-buildx
 sudo usermod -aG docker ubuntu   # then log out and back in
 docker run --rm hello-world
 # OpenShell: the installer downloads only from NVIDIA's GitHub releases and checks their
-# checksums. Pin the version the dev PC uses (`openshell --version` there; 0.1.3 at launch).
+# checksums. Pin the version the dev PC uses (`openshell --version` there; 0.1.5 since 2026-10-25).
 curl -fsSL https://raw.githubusercontent.com/NVIDIA/OpenShell/main/install.sh -o /tmp/openshell-install.sh
-OPENSHELL_VERSION=v0.1.3 sh /tmp/openshell-install.sh
+OPENSHELL_VERSION=v0.1.5 sh /tmp/openshell-install.sh
 # Its gateway is a *user* service of ubuntu: keep it running with nobody logged in, and
 # restart ubuntu's service manager so the gateway gets the new docker group (without this
 # it fails with "no compute driver configured").
