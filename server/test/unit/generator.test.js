@@ -564,6 +564,23 @@ test('bad jobs are refused before any model call', async () => {
   assert.equal(model.calls.length, 0);
 });
 
+test('bad jobs are refused before any model call: the upload check, the remix, and the experiment-only steps', async () => {
+  const model = fakeModel([]);
+  const idea = 'A long enough idea';
+  const cases = [
+    [{ step: 'design', idea, change: { request: 'More', source: GAME } }, /the change request must be/],
+    [{ step: 'build', idea, remix: { source: 'x'.repeat(110_000) } }, /too big for the AI to remix \(107 KB; at most 100 KB\)/],
+    [{ step: 'design', idea, remix: { request: 'Add power-ups', source: GAME, design: 7 } }, /the remix's original design must be text/],
+    [{ step: 'checklist', idea }, /a checklist needs the design/],
+    [{ step: 'critical', idea, design: DESIGN }, /a critical review needs the design and the game file/],
+  ];
+  for (const [job, error] of cases) assert.match((await runJob(job, { chatFn: model.chatFn })).error, error);
+  // An upload's check has no model, so its refusal names none, and needs no game idea (plan §57).
+  const noFile = await runJob({ step: 'check', source: '' }, { chatFn: model.chatFn });
+  assert.deepEqual([noFile.ok, noFile.model, noFile.error], [false, null, 'a check needs the game file']);
+  assert.equal(model.calls.length, 0);
+});
+
 test('formatReport: problems with their line and screen, then warnings', () => {
   const text = formatReport({ problems: ['no game info', { message: 'Threw', line: 3, code: 'x()', screen: 'phone 1', count: 2 }], warnings: [{ message: 'Never saves' }] });
   assert.equal(text, 'Problems (each must be fixed):\n- no game info\n- line 3: Threw\n    code: x() (on the phone 1, 2 times)\n\nAlso worth fixing:\n- Never saves');

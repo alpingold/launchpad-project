@@ -2,30 +2,13 @@
 // THE GENERATOR (plan §13i, F5). Runs inside the OpenShell sandbox, never on the server:
 // that's where the GenAI Studio key is, and where freshly written games are played.
 //
-// One job is one STEP, and the admin approves between them:
-//
-//   { "step": "design", "idea": "...", "model": "..." }
-//       → a design document. With "redraft": { "draft", "feedback" }: a new draft.
-//   { "step": "design", ..., "change": { "request", "source", "design"?, "earlierRequests"? } }
-//       → a change plan for an existing game (with "redraft" too).
-//   { "step": "build", "idea": "...", "design": "<the approved design>" }
-//       → a game file: ask the model → check it (checkGame: the static check and a playtest
-//         in a headless browser) → if it fails, show the model the problems and ask again.
-//   { "step": "build", ..., "change": { ..., "plan": "<the approved plan>" | null } }
-//       → the changed game file (plan null: a small fix with no plan).
-//   Builds use EDIT MODE (plan §23): once there's a file, the model sends changes to it
-//   (edits.js), not the whole file again. "edits": false turns it off.
-//   With "review": true, a passing build gets one REVIEW ROUND (plan §47): the reviewer reads
-//   the code against the design, its crashes and dead ends are fixed as a small change, and
-//   what it found comes back as "review", for the game's creator.
-//   { "step": "design", "idea": "...", "remix": { "request", "source", "design"? } }
-//       → a remix's whole design (plan §45b): the original's design with the changes worked in.
-//   { "step": "build", "idea": "...", "design": "<the remix's approved design>", "remix": { "source", "design"? } }
-//       → the original's code rewritten for the remix's design: the whole file, like a first
-//         build (edits only for a game too big to write whole), reviewed against the new design.
-//   { "step": "recheck", "idea": "...", "change": { "request", "source", "design"?, "earlierRequests"? } }
-//       → another review round on a finished game ("Review again"): the fixed file, or the
-//         same one (report null) if there was nothing to fix.
+// One job is one STEP, and the admin approves between them. What a job may contain (its
+// seven steps and every field) is described and checked in job.js: runJob checks every job
+// there before it runs. A design step asks for a design or a change plan; a build step asks
+// for the game file, then checks it (checkGame: the static check and a playtest in a headless
+// browser) and shows the model the problems until it passes. Builds use EDIT MODE (plan §23):
+// once there's a file, the model sends changes to it (edits.js). With "review": true, a
+// passing build gets one REVIEW ROUND (plan §47), and what it found comes back as "review".
 //
 // The job is the first line of stdin. With "browserGate": "<token>", the server shares one
 // browser between jobs: before each playtest the job asks for it on stderr and waits for the
@@ -60,36 +43,17 @@ import {
   NO_CODE_MESSAGE,
   DESIGN_HEADINGS,
   PLAN_HEADINGS,
-  MIN_IDEA_LENGTH,
-  MIN_FEEDBACK_LENGTH,
-  MAX_IDEA_LENGTH,
   MAX_REQUEST_LENGTH,
-  MAX_SOURCE_LENGTH,
   MAX_WHOLE_FILE_LENGTH,
   MAX_GAME_BYTES,
 } from './prompt.js';
-import { DEFAULT_MODEL, isAllowedModel, reasoningEffortFor } from './models.js';
+import { reasoningEffortFor } from './models.js';
+import { checkJob } from './job.js';
 import { checkGame } from './check/checkGame.js';
 import { NO_GATE, isGateToken, lineReader, stdinGate } from './browserGate.js';
 import { describeProblem } from '../../server/src/games/frameGame.js';
 
-/**
- * One job: one step (see the top of this file). Comes from the server, so it's checked.
- * @typedef {Object} GeneratorJob
- * @property {'design' | 'build' | 'recheck' | 'checklist' | 'review'} step
- * @property {string} idea
- * @property {string} [model]
- * @property {string} [design]            build: the approved design (a new game)
- * @property {{ request: string, source: string, design?: string | null, earlierRequests?: string[], plan?: string | null }} [change]
- *   a change to an existing game; build: `plan` is the approved plan (null: a small fix)
- * @property {{ draft: string, feedback: string }} [redraft]  design: a new draft of `draft`
- * @property {number} [maxAttempts]       build
- * @property {boolean} [edits]            build: false turns edit mode off (on by default, plan §23)
- * @property {'low' | 'medium' | 'xhigh'} [reasoningEffort]  for every step, instead of the model's own (models.js; plan §40's experiment)
- * @property {boolean} [briefThinking]    build: asks for a short plan before the file (on by default, plan §40)
- * @property {boolean} [keepThinking]     each attempt keeps the model's thinking and whole reply (plan §38's look; off on the site)
- * @property {boolean} [review]           build: a passing game gets a review round (plan §47; the site turns it on)
- */
+/** One job: one step. Described and checked in job.js. @typedef {import('./job.js').GeneratorJob} GeneratorJob */
 
 /**
  * One build attempt, as the result lists it. mode: how the model answered (plan §23). An
@@ -128,75 +92,28 @@ export const PLAYTEST_SECONDS = 15;
 
 /**
  * Runs one job. Everything outside is passed in, so tests can use a fake model and checker.
- * @param {GeneratorJob} job  untrusted: checked here
+ * @param {unknown} untrusted  the job as it came in: checked first (checkJob, job.js)
  * @param {{ chatFn?: typeof chat, check?: typeof checkGame, onStep?: OnStep, browser?: typeof NO_GATE, onAttempt?: (attempt: object) => void }} [deps]
  *   browser: the gate around each browser check (browserGate.js); none by default
  *   onAttempt: hears about each attempt as soon as it's recorded
  * @returns {Promise<GeneratorResult>}
  */
-export async function runJob(job, deps = {}) {
-  const model = job?.model ?? DEFAULT_MODEL;
-  const fail = (error) => ({ ok: false, model, attempts: [], error });
-  if (!job || typeof job !== 'object') return fail('the job must be an object');
-  // An uploaded file's check (plan §57): no model, so nothing else in the job matters.
-  if (job.step === 'check') {
-    if (typeof job.source !== 'string' || job.source.length === 0) return { ...fail('a check needs the game file'), model: null };
-    return checkUpload(job, deps);
-  }
-  if (!isAllowedModel(model)) return fail(`unknown model ${JSON.stringify(model)}`);
-  if (!isText(job.idea, MIN_IDEA_LENGTH)) return fail(`the game idea must be ${MIN_IDEA_LENGTH}–${MAX_IDEA_LENGTH} characters`);
-  const { change, redraft } = job;
-  if (change !== undefined) {
-    if (!isText(change?.request, MIN_IDEA_LENGTH, MAX_REQUEST_LENGTH)) return fail(`the change request must be ${MIN_IDEA_LENGTH}–${MAX_REQUEST_LENGTH} characters`);
-    if (typeof change.source !== 'string' || change.source.length === 0) return fail('a change needs the current game file');
-    // Without edit mode, the old game and the new one must both fit (prompt.js explains the numbers).
-    const limit = job.edits === false ? MAX_WHOLE_FILE_LENGTH : MAX_SOURCE_LENGTH;
-    if (change.source.length > limit) {
-      return fail(`the game is too big for the AI to change (${Math.round(change.source.length / 1024)} KB; at most ${limit / 1024} KB fits in the model's context)`);
-    }
-  }
-  const { remix } = job;
-  if (remix !== undefined) {
-    if (change !== undefined) return fail('a job is a change or a remix, not both');
-    if (typeof remix?.source !== 'string' || remix.source.length === 0) return fail('a remix needs the original game file');
-    if (remix.source.length > MAX_SOURCE_LENGTH) return fail(`the game is too big for the AI to remix (${Math.round(remix.source.length / 1024)} KB; at most ${MAX_SOURCE_LENGTH / 1024} KB)`);
-    if (remix.design !== undefined && remix.design !== null && typeof remix.design !== 'string') return fail("the remix's original design must be text");
-    if (job.step === 'design' && !isText(remix.request, MIN_IDEA_LENGTH, MAX_REQUEST_LENGTH)) return fail(`what the remix changes must be ${MIN_IDEA_LENGTH}–${MAX_REQUEST_LENGTH} characters`);
-  }
-  if (redraft !== undefined && (typeof redraft?.draft !== 'string' || !isText(redraft.feedback, MIN_FEEDBACK_LENGTH))) {
-    return fail('a new draft needs the last draft and what to change');
-  }
-  if (job.edits !== undefined && typeof job.edits !== 'boolean') return fail('edits must be true or false');
-  if (job.keepThinking !== undefined && typeof job.keepThinking !== 'boolean') return fail('keepThinking must be true or false');
-  if (job.reasoningEffort !== undefined && !REASONING_EFFORTS.includes(job.reasoningEffort)) return fail(`reasoningEffort must be one of ${REASONING_EFFORTS.join(', ')}`);
-  if (job.briefThinking !== undefined && typeof job.briefThinking !== 'boolean') return fail('briefThinking must be true or false');
-  if (job.briefText !== undefined && !isText(job.briefText, 5)) return fail(`briefText must be 5–${MAX_IDEA_LENGTH} characters`);
-  if (job.review !== undefined && typeof job.review !== 'boolean') return fail('review must be true or false');
-
+export async function runJob(untrusted, deps = {}) {
+  const checked = checkJob(untrusted);
+  if (!checked.ok) return { ok: false, model: checked.model, attempts: [], error: checked.error };
+  const { job, model } = checked;
+  if (job.step === 'check') return checkUpload(job, deps);
   if (job.step === 'design') return design(job, model, deps);
   // The reviewer's two steps on their own (plan §47's experiments: review-builds, review-fix).
-  if (job.step === 'checklist') {
-    if (typeof job.design !== 'string') return fail('a checklist needs the design');
-    return makeChecklist(job, model, deps);
-  }
-  if (job.step === 'review') {
-    if (!Array.isArray(job.checklist) || typeof job.source !== 'string') return fail('a review needs the checklist and the game file');
-    return reviewGame(job, model, deps);
-  }
-  if (job.step === 'critical') {
-    if (typeof job.design !== 'string' || typeof job.source !== 'string') return fail('a critical review needs the design and the game file');
-    return reviewCritical(job, model, deps);
-  }
+  if (job.step === 'checklist') return makeChecklist(job, model, deps);
+  if (job.step === 'review') return reviewGame(job, model, deps);
+  if (job.step === 'critical') return reviewCritical(job, model, deps);
   if (job.step === 'build') {
-    if (change === undefined && typeof job.design !== 'string') return fail('building needs the approved design');
     const built = await build(job, model, deps);
     return job.review === true && built.ok ? withReview(job, built, model, deps) : built;
   }
-  if (job.step === 'recheck') {
-    if (change === undefined) return fail('a review needs the game (change.source)');
-    return withReview(job, { ok: true, model, source: change.source, report: null, changelog: null, attempts: [] }, model, deps);
-  }
-  return fail('the step must be "design", "build", "recheck", "check", "checklist", "review" or "critical"');
+  // "recheck": checkJob made sure there's a game to review.
+  return withReview(job, { ok: true, model, source: job.change.source, report: null, changelog: null, attempts: [] }, model, deps);
 }
 
 /**
@@ -224,11 +141,6 @@ const thinkingOf = (job, reply) => ({
   ...(reply.toolCalls && { toolCallChars: reply.toolCalls.length }),
   ...(job.keepThinking && { thinking: reply.thinking ?? '', reply: reply.content ?? '', ...(reply.toolCalls && { toolCalls: reply.toolCalls }) }),
 });
-
-/** What qwen3.8:27b on GenAI Studio takes (plan §38). */
-const REASONING_EFFORTS = ['low', 'medium', 'xhigh'];
-
-const isText = (value, min, max = MAX_IDEA_LENGTH) => typeof value === 'string' && value.trim().length >= min && value.length <= max;
 
 /**
  * Step 1: a design (or a change plan). One model call, plus one retry if headings are missing.
