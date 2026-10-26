@@ -150,6 +150,13 @@ const REASONING_EFFORTS = ['low', 'medium', 'xhigh'];
 
 const isText = (value, min, max = MAX_IDEA_LENGTH) => typeof value === 'string' && value.trim().length >= min && value.length <= max;
 
+/** An experiment switch is left out, or true or false. */
+const isSwitch = (value) => value === undefined || typeof value === 'boolean';
+
+/** Why a game file is refused for being too big for the AI to `what` ("change", "remix"). */
+const tooBig = (what, source, limit, why = '') =>
+  `the game is too big for the AI to ${what} (${Math.round(source.length / 1024)} KB; at most ${limit / 1024} KB${why})`;
+
 /**
  * Checks a job before it runs: everything it says must make sense for its step.
  * @param {unknown} job  untrusted
@@ -174,13 +181,13 @@ export function checkJob(job) {
     // Without edit mode, the old game and the new one must both fit (prompt.js explains the numbers).
     const limit = j.edits === false ? MAX_WHOLE_FILE_LENGTH : MAX_SOURCE_LENGTH;
     if (change.source.length > limit) {
-      return fail(`the game is too big for the AI to change (${Math.round(change.source.length / 1024)} KB; at most ${limit / 1024} KB fits in the model's context)`);
+      return fail(tooBig('change', change.source, limit, " fits in the model's context"));
     }
   }
   if (remix !== undefined) {
     if (change !== undefined) return fail('a job is a change or a remix, not both');
     if (typeof remix?.source !== 'string' || remix.source.length === 0) return fail('a remix needs the original game file');
-    if (remix.source.length > MAX_SOURCE_LENGTH) return fail(`the game is too big for the AI to remix (${Math.round(remix.source.length / 1024)} KB; at most ${MAX_SOURCE_LENGTH / 1024} KB)`);
+    if (remix.source.length > MAX_SOURCE_LENGTH) return fail(tooBig('remix', remix.source, MAX_SOURCE_LENGTH));
     if (remix.design !== undefined && remix.design !== null && typeof remix.design !== 'string') return fail("the remix's original design must be text");
     if (j.step === 'design' && !isText(remix.request, MIN_IDEA_LENGTH, MAX_REQUEST_LENGTH)) return fail(`what the remix changes must be ${MIN_IDEA_LENGTH}–${MAX_REQUEST_LENGTH} characters`);
   }
@@ -188,12 +195,12 @@ export function checkJob(job) {
     return fail('a new draft needs the last draft and what to change');
   }
   // The experiment switches (plan §23, §38, §40) and the site's review round (plan §47).
-  if (j.edits !== undefined && typeof j.edits !== 'boolean') return fail('edits must be true or false');
-  if (j.keepThinking !== undefined && typeof j.keepThinking !== 'boolean') return fail('keepThinking must be true or false');
+  if (!isSwitch(j.edits)) return fail('edits must be true or false');
+  if (!isSwitch(j.keepThinking)) return fail('keepThinking must be true or false');
   if (j.reasoningEffort !== undefined && !REASONING_EFFORTS.includes(j.reasoningEffort)) return fail(`reasoningEffort must be one of ${REASONING_EFFORTS.join(', ')}`);
-  if (j.briefThinking !== undefined && typeof j.briefThinking !== 'boolean') return fail('briefThinking must be true or false');
+  if (!isSwitch(j.briefThinking)) return fail('briefThinking must be true or false');
   if (j.briefText !== undefined && !isText(j.briefText, 5)) return fail(`briefText must be 5–${MAX_IDEA_LENGTH} characters`);
-  if (j.review !== undefined && typeof j.review !== 'boolean') return fail('review must be true or false');
+  if (!isSwitch(j.review)) return fail('review must be true or false');
 
   // What each step needs on top.
   const ok = { ok: /** @type {const} */ (true), job: j, model };
