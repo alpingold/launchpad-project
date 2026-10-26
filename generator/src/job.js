@@ -111,7 +111,8 @@ const LABELS = /** @type {const} */ ({ design: 'design', build: 'build', recheck
  * @returns {{ job: GeneratorJob, label: JobLabel }}
  */
 export function makeJob(facts) {
-  const { step, idea, model, draft = null, feedback = null, design = null, plan = null } = facts;
+  // The approved design and plan go into the job as given: a missing one isn't made null.
+  const { step, idea, model, draft = null, feedback = null, design, plan } = facts;
   // An upload (plan §57): its file is only checked, with no model.
   if (step === 'check') return { job: { step, idea, source: facts.upload.source }, label: LABELS.check };
   /** @type {GeneratorJob} */
@@ -129,7 +130,7 @@ export function makeJob(facts) {
  * approved plan (null: a small fix, or "Review again").
  * @param {JobFacts['step']} step
  * @param {ChangeFacts} facts
- * @param {string | null} plan
+ * @param {string | null | undefined} plan
  */
 function changeParts(step, { request, gameFile, gameDesign, requestsSince }, plan) {
   const change = { request, source: gameFile, design: gameDesign, earlierRequests: requestsSince };
@@ -141,7 +142,7 @@ function changeParts(step, { request, gameFile, gameDesign, requestsSince }, pla
  * design step also gets what should be different, its build the remix's approved design.
  * @param {JobFacts['step']} step
  * @param {NonNullable<JobFacts['remix']>} facts
- * @param {string | null} approved  building: the remix's approved design
+ * @param {string | null | undefined} approved  building: the remix's approved design
  */
 function remixParts(step, { copy, copyDesign, request }, approved) {
   const remix = { source: copy, design: copyDesign };
