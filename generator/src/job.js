@@ -75,15 +75,16 @@ import { DEFAULT_MODEL, isAllowedModel } from './models.js';
  * @property {'design' | 'build' | 'recheck' | 'check'} step  the version's next step
  * @property {string} idea               the game's idea
  * @property {string | null} model       the version's model (null for an upload)
- * @property {string | null} [design]    the version's design: its last draft while designing, the
- *   approved one when building (a change's plan; null for a small fix or an upload)
- * @property {string | null} [feedback]  designing: the maker's feedback, asking for a new draft of `design`
+ * @property {string | null} [draft]     designing: the version's last draft (none yet: null)
+ * @property {string | null} [feedback]  designing: the maker's feedback, asking for a new draft of `draft`
+ * @property {string | null} [design]    building a new game or a remix: the approved design
+ * @property {string | null} [plan]      building a change (or reviewing again): the approved plan (null: a small fix)
  * @property {{ source: string }} [upload]  an uploaded file, to check
  * @property {ChangeFacts} [change]   a change (a plan, a small fix or "Review again")
  * @property {{ copy: string, copyDesign: string | null, request: string }} [remix]
  *   a remix's own design ("Make it your own") or its build (plan §45b): the copy's game file, the
- *   design that file was built from (plan §60), and what the remixer wants different; `design`
- *   is then the remix's own (its last draft, or the approved one)
+ *   design that file was built from (plan §60), and what the remixer wants different; `draft`
+ *   and `design` are then the remix's own
  */
 
 /**
@@ -107,16 +108,16 @@ import { DEFAULT_MODEL, isAllowedModel } from './models.js';
  * @returns {{ job: GeneratorJob, label: JobLabel }}
  */
 export function makeJob(facts) {
-  const { step, idea, model, design = null, feedback = null } = facts;
+  const { step, idea, model, draft = null, feedback = null, design = null, plan = null } = facts;
   // An upload (plan §57): its file is only checked, with no model.
   if (step === 'check') return { job: { step, idea, source: facts.upload.source }, label: 'upload check' };
   /** @type {GeneratorJob} */
   const job = { step, idea, model };
   if (step === 'build') job.review = true;
   if (facts.remix) Object.assign(job, remixParts(step, facts.remix, design));
-  else if (facts.change) job.change = changeParts(step, facts.change, design);
+  else if (facts.change) job.change = changeParts(step, facts.change, plan);
   else if (step !== 'design') job.design = design; // a new game's approved design
-  if (step === 'design' && feedback && design) job.redraft = { draft: design, feedback };
+  if (step === 'design' && feedback && draft) job.redraft = { draft, feedback };
   const label = step === 'design' ? (job.redraft ? 'new draft' : 'design') : step === 'recheck' ? 'code review' : 'build';
   return { job, label };
 }
