@@ -463,15 +463,18 @@ export class GenerationService {
   /**
    * The sandbox job for a version's next step, and its log label: the job module (generator/src/job.js)
    * makes both from what this module knows about the version.
-   * @returns {{ job: import('../../../generator/src/job.js').GeneratorJob, label: string }}
+   * @returns {{ job: import('../../../generator/src/job.js').GeneratorJob, label: import('../../../generator/src/job.js').JobLabel }}
    */
   jobFor(game, version) {
     const { step } = versionKind(version);
-    const facts = { step, idea: game.prompt, model: version.model, design: version.design, feedback: version.designFeedback };
+    const facts = { step, idea: game.prompt, model: version.model };
     if (version.kind === 'upload') return makeJob({ ...facts, upload: { source: version.source } });
-    if (version.kind === 'remix') return makeJob({ ...facts, remix: this.remixFacts(game, version) });
-    if (version.basedOn !== null) return makeJob({ ...facts, change: this.changeFacts(game, version) });
-    return makeJob(facts); // a new game
+    // The version's own text: its last draft while designing (with the maker's feedback on it),
+    // then the approved design it's built from; a change's is its plan (null: a small fix).
+    const draft = step === 'design' ? { draft: version.design, feedback: version.designFeedback } : null;
+    if (version.kind === 'remix') return makeJob({ ...facts, ...(draft ?? { design: version.design }), remix: this.remixFacts(game, version) });
+    if (version.basedOn !== null) return makeJob({ ...facts, ...(draft ?? { plan: version.design }), change: this.changeFacts(game, version) });
+    return makeJob({ ...facts, ...(draft ?? { design: version.design }) }); // a new game
   }
 
   /**
@@ -491,6 +494,7 @@ export class GenerationService {
    * What a remix knows (plan §45b): the copy's file, the design that file was built from (plan
    * §60), and what should be different (for "Make it your own"; its build rewrites the copy's
    * code for the approved design).
+   * @returns {NonNullable<import('../../../generator/src/job.js').JobFacts['remix']>}
    */
   remixFacts(game, version) {
     const copy = findVersion(game, version.basedOn);

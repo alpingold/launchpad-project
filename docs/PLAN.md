@@ -2503,7 +2503,9 @@ and a small fix; "Review again"; a remix's own design and its build; uploads, th
 one that broke before; a failed upload fixed as a change; a game too big for the AI; the
 admin's own edit built, and built again after a failure) and checks only what a maker sees:
 statuses, results, messages, and what reached the AI. The server tests that asserted a job's
-raw fields are gone. The generator's own tests are unchanged.
+raw fields are gone. The generator's own tests are kept as they were, plus one that pins the
+refusals they didn't cover yet (an upload's check, a remix, the experiment-only steps), so
+moving the checks into `checkJob` couldn't change what's refused unseen.
 
 Needs the generator image rebuilt before deploying (`update.sh` does it on deploy), or the
 sandbox runs the old checks.

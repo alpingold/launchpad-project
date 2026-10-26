@@ -75,15 +75,16 @@ import { DEFAULT_MODEL, isAllowedModel } from './models.js';
  * @property {'design' | 'build' | 'recheck' | 'check'} step  the version's next step
  * @property {string} idea               the game's idea
  * @property {string | null} model       the version's model (null for an upload)
- * @property {string | null} [design]    the version's design: its last draft while designing, the
- *   approved one when building (a change's plan; null for a small fix or an upload)
- * @property {string | null} [feedback]  designing: the maker's feedback, asking for a new draft of `design`
+ * @property {string | null} [draft]     designing: the version's last draft (none yet: null)
+ * @property {string | null} [feedback]  designing: the maker's feedback, asking for a new draft of `draft`
+ * @property {string | null} [design]    building a new game or a remix: the approved design
+ * @property {string | null} [plan]      building a change (or reviewing again): the approved plan (null: a small fix)
  * @property {{ source: string }} [upload]  an uploaded file, to check
  * @property {ChangeFacts} [change]   a change (a plan, a small fix or "Review again")
  * @property {{ copy: string, copyDesign: string | null, request: string }} [remix]
  *   a remix's own design ("Make it your own") or its build (plan §45b): the copy's game file, the
- *   design that file was built from (plan §60), and what the remixer wants different; `design`
- *   is then the remix's own (its last draft, or the approved one)
+ *   design that file was built from (plan §60), and what the remixer wants different; `draft`
+ *   and `design` are then the remix's own
  */
 
 /**
@@ -100,6 +101,9 @@ import { DEFAULT_MODEL, isAllowedModel } from './models.js';
  * @typedef {'design' | 'new draft' | 'build' | 'code review' | 'upload check'} JobLabel
  */
 
+/** Each step's label; a design with the maker's feedback is a 'new draft' instead. */
+const LABELS = /** @type {const} */ ({ design: 'design', build: 'build', recheck: 'code review', check: 'upload check' });
+
 /**
  * Makes the job for a version's next step, and the short label the server logs for it.
  * Every build the site asks for gets the review round (plan §47): that's what its build step is.
@@ -107,18 +111,18 @@ import { DEFAULT_MODEL, isAllowedModel } from './models.js';
  * @returns {{ job: GeneratorJob, label: JobLabel }}
  */
 export function makeJob(facts) {
-  const { step, idea, model, design = null, feedback = null } = facts;
+  // The approved design and plan go into the job as given: a missing one isn't made null.
+  const { step, idea, model, draft = null, feedback = null, design, plan } = facts;
   // An upload (plan §57): its file is only checked, with no model.
-  if (step === 'check') return { job: { step, idea, source: facts.upload.source }, label: 'upload check' };
+  if (step === 'check') return { job: { step, idea, source: facts.upload.source }, label: LABELS.check };
   /** @type {GeneratorJob} */
   const job = { step, idea, model };
   if (step === 'build') job.review = true;
   if (facts.remix) Object.assign(job, remixParts(step, facts.remix, design));
-  else if (facts.change) job.change = changeParts(step, facts.change, design);
+  else if (facts.change) job.change = changeParts(step, facts.change, plan);
   else if (step !== 'design') job.design = design; // a new game's approved design
-  if (step === 'design' && feedback && design) job.redraft = { draft: design, feedback };
-  const label = step === 'design' ? (job.redraft ? 'new draft' : 'design') : step === 'recheck' ? 'code review' : 'build';
-  return { job, label };
+  if (step === 'design' && feedback && draft) job.redraft = { draft, feedback };
+  return { job, label: job.redraft ? 'new draft' : LABELS[step] };
 }
 
 /**
@@ -126,7 +130,7 @@ export function makeJob(facts) {
  * approved plan (null: a small fix, or "Review again").
  * @param {JobFacts['step']} step
  * @param {ChangeFacts} facts
- * @param {string | null} plan
+ * @param {string | null | undefined} plan
  */
 function changeParts(step, { request, gameFile, gameDesign, requestsSince }, plan) {
   const change = { request, source: gameFile, design: gameDesign, earlierRequests: requestsSince };
@@ -136,6 +140,9 @@ function changeParts(step, { request, gameFile, gameDesign, requestsSince }, pla
 /**
  * A remix's part of its job (plan §45b): the copy's file and the design it was built from; its
  * design step also gets what should be different, its build the remix's approved design.
+ * @param {JobFacts['step']} step
+ * @param {NonNullable<JobFacts['remix']>} facts
+ * @param {string | null | undefined} approved  building: the remix's approved design
  */
 function remixParts(step, { copy, copyDesign, request }, approved) {
   const remix = { source: copy, design: copyDesign };
@@ -146,6 +153,13 @@ function remixParts(step, { copy, copyDesign, request }, approved) {
 const REASONING_EFFORTS = ['low', 'medium', 'xhigh'];
 
 const isText = (value, min, max = MAX_IDEA_LENGTH) => typeof value === 'string' && value.trim().length >= min && value.length <= max;
+
+/** An experiment switch is left out, or true or false. */
+const isSwitch = (value) => value === undefined || typeof value === 'boolean';
+
+/** Why a game file is refused for being too big for the AI to `what` ("change", "remix"). */
+const tooBig = (what, source, limit, why = '') =>
+  `the game is too big for the AI to ${what} (${Math.round(source.length / 1024)} KB; at most ${limit / 1024} KB${why})`;
 
 /**
  * Checks a job before it runs: everything it says must make sense for its step.
@@ -171,13 +185,13 @@ export function checkJob(job) {
     // Without edit mode, the old game and the new one must both fit (prompt.js explains the numbers).
     const limit = j.edits === false ? MAX_WHOLE_FILE_LENGTH : MAX_SOURCE_LENGTH;
     if (change.source.length > limit) {
-      return fail(`the game is too big for the AI to change (${Math.round(change.source.length / 1024)} KB; at most ${limit / 1024} KB fits in the model's context)`);
+      return fail(tooBig('change', change.source, limit, " fits in the model's context"));
     }
   }
   if (remix !== undefined) {
     if (change !== undefined) return fail('a job is a change or a remix, not both');
     if (typeof remix?.source !== 'string' || remix.source.length === 0) return fail('a remix needs the original game file');
-    if (remix.source.length > MAX_SOURCE_LENGTH) return fail(`the game is too big for the AI to remix (${Math.round(remix.source.length / 1024)} KB; at most ${MAX_SOURCE_LENGTH / 1024} KB)`);
+    if (remix.source.length > MAX_SOURCE_LENGTH) return fail(tooBig('remix', remix.source, MAX_SOURCE_LENGTH));
     if (remix.design !== undefined && remix.design !== null && typeof remix.design !== 'string') return fail("the remix's original design must be text");
     if (j.step === 'design' && !isText(remix.request, MIN_IDEA_LENGTH, MAX_REQUEST_LENGTH)) return fail(`what the remix changes must be ${MIN_IDEA_LENGTH}–${MAX_REQUEST_LENGTH} characters`);
   }
@@ -185,12 +199,12 @@ export function checkJob(job) {
     return fail('a new draft needs the last draft and what to change');
   }
   // The experiment switches (plan §23, §38, §40) and the site's review round (plan §47).
-  if (j.edits !== undefined && typeof j.edits !== 'boolean') return fail('edits must be true or false');
-  if (j.keepThinking !== undefined && typeof j.keepThinking !== 'boolean') return fail('keepThinking must be true or false');
+  if (!isSwitch(j.edits)) return fail('edits must be true or false');
+  if (!isSwitch(j.keepThinking)) return fail('keepThinking must be true or false');
   if (j.reasoningEffort !== undefined && !REASONING_EFFORTS.includes(j.reasoningEffort)) return fail(`reasoningEffort must be one of ${REASONING_EFFORTS.join(', ')}`);
-  if (j.briefThinking !== undefined && typeof j.briefThinking !== 'boolean') return fail('briefThinking must be true or false');
+  if (!isSwitch(j.briefThinking)) return fail('briefThinking must be true or false');
   if (j.briefText !== undefined && !isText(j.briefText, 5)) return fail(`briefText must be 5–${MAX_IDEA_LENGTH} characters`);
-  if (j.review !== undefined && typeof j.review !== 'boolean') return fail('review must be true or false');
+  if (!isSwitch(j.review)) return fail('review must be true or false');
 
   // What each step needs on top.
   const ok = { ok: /** @type {const} */ (true), job: j, model };
