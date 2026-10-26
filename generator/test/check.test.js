@@ -114,6 +114,23 @@ test('a broken value shown as text (NaN, undefined, [object Object]) is caught, 
   assert.deepEqual(rules(fine.problems).filter((r) => r === 'text'), [], JSON.stringify(fine.problems));
 });
 
+test('a game whose phases each set their own deadline is fast-forwarded to its final screen, where a name as HTML is caught', opts, async () => {
+  const report = await check('phases-name-html');
+  const html = report.problems.find((p) => p.rule === 'html');
+  assert.ok(html, JSON.stringify(report.problems));
+  assert.match(html.code, /app\.innerHTML = '<h1>Thanks for playing/);
+  assert.equal(fixture('phases-name-html').split('\n')[html.line - 1].trim(), html.code);
+});
+
+test('the fast-forward reaches a final scoreboard that shows "NaN"; the same game without it passes and ends', opts, async () => {
+  const nan = (await check('phases-nan')).problems.find((p) => p.rule === 'text');
+  assert.ok(nan, 'NaN on the final screen');
+  assert.match(nan.code, /app\.textContent = 'Score: ' \+ g\.total/);
+  const fine = await check('phases-ok');
+  assert.deepEqual(fine.problems, [], JSON.stringify(fine.problems));
+  assert.equal(fine.playtest.ended, true);
+});
+
 test('results naming someone who isn\'t playing are refused', opts, async () => {
   const report = await check('bad-end');
   assert.ok(rules(report.problems).includes('results'), JSON.stringify(report.problems));

@@ -19,9 +19,10 @@
 //  - a big screen that stops ticking (an endless loop), a blank screen, phones that never
 //    hear from the big screen, messages the server would refuse, bad results in party.end
 //  - a game that never moves on (plan §41): at the end, with the bots stopped, every clock the
-//    game can read jumps past the game's whole length (its game-info minutes; at least 2
-//    minutes), and timers due by then run, so every deadline is past; if no phone's state, the
-//    save or the end changes after that, nothing ever moves it
+//    game can read jumps ahead in steps (plan §62) past the game's whole length (its game-info
+//    minutes; at least 2 minutes), and timers due by then run, so every deadline is past and a
+//    working game plays through to its end screen; if no phone's state, the save or the end
+//    changes after that, nothing ever moves it
 //  - a frozen big screen (plan §47): the game goes on (the phones' states or its save change,
 //    and the jump moves it on too) but the big screen never shows anything new after it last loaded
 // While it plays: bots tap buttons, drag and hold (joysticks, drawing pads), type in text
@@ -51,7 +52,16 @@ const HANG_MS = 5000; // the big screen ticks every second; 5 s of silence means
 const LOAD_TIMEOUT_MS = 8000;
 const FIRST_WORD_MS = 6000; // phones should hear from the big screen by then
 const MIN_JUMP_MINUTES = 2; // the jump at the end: past the game's whole length, at least this
-const MOVE_ON_MS = 5000; // how long the game gets to react to it
+// ...taken in steps, so a phase that sets its deadline when it starts is run through by the
+// next step. A step finishes at most one phase however short it is, so a game needs about as
+// many steps as it has phases (the official games: 5 to 29), not its length's worth: the
+// budget is steps and real time, and a working game ends long before it.
+const MIN_STEP_MS = 30_000;
+const STEPS_PER_LENGTH = 16; // the steps that cover the game's whole length (bigger for long games)
+const MAX_STEPS = 60;
+const FAST_FORWARD_MS = 15_000; // real time, at most
+const STEP_WAIT_MS = 400; // real time after each step for the game to start its next phase (less if it does)
+const MOVE_ON_MS = 5000; // how long a game that hasn't moved after the steps gets to react
 const LOOK_EVERY_MS = 1000; // how often the big screen's look is sampled (the frozen check)
 
 /** The page around each game iframe: what GameFrame.jsx does, minus React and the socket. */
@@ -557,16 +567,27 @@ export async function playtest(source, opts = {}) {
 
   /**
    * Plan §41: the bots have stopped, so only time can move the game now. Warp every screen's
-   * clocks past the game's whole length (INIT_SCRIPT) and see whether anything changes: a
-   * phone's state, the save, or the end.
+   * clocks past the game's whole length (INIT_SCRIPT), a step at a time, and see whether
+   * anything changes: a phone's state, the save, or the end. One jump only finished the phase
+   * the game was in: the next one set its deadline on the moved clock, so the reveal and the
+   * final screen were never checked.
    */
   async function checkMovesOn() {
     await sleep(500); // what the bots' last taps caused
     const before = gameState();
-    onStep(`playtest: moving the clock ${jumpMinutes} minutes ahead (every timer runs out)`);
+    const totalMs = jumpMinutes * 60_000;
+    const stepMs = Math.max(MIN_STEP_MS, Math.ceil(totalMs / STEPS_PER_LENGTH));
+    onStep(`playtest: fast-forwarding through the game (${stepMs / 1000} s at a time, past its whole length of ${jumpMinutes} minutes)`);
     findings.afterJump = true;
-    for (const s of screens.values()) {
-      await gameFrame(s)?.evaluate((ms) => window.__warp?.(ms), jumpMinutes * 60_000).catch(() => {});
+    const stopAt = Date.now() + FAST_FORWARD_MS;
+    // Past the game's whole length with nothing changed, it's stuck: no need to go on.
+    for (let step = 0, done = 0; step < MAX_STEPS && Date.now() < stopAt && !summary.ended && !hung; step++, done += stepMs) {
+      if (done >= totalMs && gameState() === before) break;
+      const state = gameState();
+      for (const s of screens.values()) {
+        await gameFrame(s)?.evaluate((ms) => window.__warp?.(ms), stepMs).catch(() => {});
+      }
+      await until(() => summary.ended || gameState() !== state, STEP_WAIT_MS);
     }
     // The game may freeze for a while catching up (that's not held against it either).
     const moved = await until(() => summary.ended || gameState() !== before, MOVE_ON_MS);

@@ -1,0 +1,39 @@
+<script type="application/json" id="game-info">{ "name": "Phases Name HTML", "description": "A broken test game.", "minPlayers": 1, "maxPlayers": 4, "minutes": [2, 3] }</script>
+<div id="app"></div>
+<script>
+  // Phases that each set their deadline when they start (intro, 3 rounds, reveal, final), like
+  // most party games. Only the final screen lists the players with innerHTML: a name like
+  // "<svg onload=…>" would run as code there.
+  party.ready(({ role }) => {
+    const app = document.getElementById('app');
+    if (role === 'host') {
+      const phases = [
+        { name: 'intro', ms: 20000 },
+        { name: 'round', ms: 30000 },
+        { name: 'round', ms: 30000 },
+        { name: 'round', ms: 30000 },
+        { name: 'reveal', ms: 15000 },
+        { name: 'final', ms: 10000 },
+      ];
+      let g = { at: 0, endsAt: party.now() + phases[0].ms };
+      const show = () => {
+        const phase = phases[g.at].name;
+        if (phase === 'final') app.innerHTML = '<h1>Thanks for playing</h1><p>' + party.players.map((p) => p.name).join(', ') + '</p>';
+        else app.textContent = phase === 'round' ? 'Round ' + g.at : phase;
+        party.setState('all', { text: phase });
+        party.save(g);
+      };
+      show();
+      setInterval(() => {
+        if (party.now() < g.endsAt) return;
+        if (g.at === phases.length - 1) return party.end({ rankings: party.players.map((p) => p.id) });
+        g = { at: g.at + 1, endsAt: party.now() + phases[g.at + 1].ms };
+        show();
+      }, 250);
+    } else {
+      const text = party.ui.el('p');
+      app.append(text);
+      party.on('state', (s) => (text.textContent = s.text));
+    }
+  });
+</script>
