@@ -139,6 +139,9 @@ function changeParts(step, { request, gameFile, gameDesign, requestsSince }, pla
 /**
  * A remix's part of its job (plan §45b): the copy's file and the design it was built from; its
  * design step also gets what should be different, its build the remix's approved design.
+ * @param {JobFacts['step']} step
+ * @param {NonNullable<JobFacts['remix']>} facts
+ * @param {string | null} approved  building: the remix's approved design
  */
 function remixParts(step, { copy, copyDesign, request }, approved) {
   const remix = { source: copy, design: copyDesign };

@@ -463,7 +463,7 @@ export class GenerationService {
   /**
    * The sandbox job for a version's next step, and its log label: the job module (generator/src/job.js)
    * makes both from what this module knows about the version.
-   * @returns {{ job: import('../../../generator/src/job.js').GeneratorJob, label: string }}
+   * @returns {{ job: import('../../../generator/src/job.js').GeneratorJob, label: import('../../../generator/src/job.js').JobLabel }}
    */
   jobFor(game, version) {
     const { step } = versionKind(version);
@@ -494,6 +494,7 @@ export class GenerationService {
    * What a remix knows (plan §45b): the copy's file, the design that file was built from (plan
    * §60), and what should be different (for "Make it your own"; its build rewrites the copy's
    * code for the approved design).
+   * @returns {NonNullable<import('../../../generator/src/job.js').JobFacts['remix']>}
    */
   remixFacts(game, version) {
     const copy = findVersion(game, version.basedOn);
