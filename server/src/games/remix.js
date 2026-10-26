@@ -3,7 +3,7 @@ import { catalogGame, CatalogError } from './catalog.js';
 import { frameGameReport, GAME_INFO_RE } from './frameGame.js';
 import { officialGameSource, readOfficialShots } from './index.js';
 import { createRemix, getGeneratedGame, countGamesOwnedBy } from '../db/generatedGames.js';
-import { madeBy } from './generated.js';
+import { madeBy } from '../generation/versionKind.js';
 import { designOf } from '../generation/service.js';
 import { config } from '../config.js';
 

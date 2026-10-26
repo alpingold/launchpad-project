@@ -75,17 +75,18 @@ export function runCommand(bin, args, { input, timeoutMs, onStderrLine = () => {
  *   onStep: the generator's progress; `replace` updates the last step (a streaming reply)
  *   onAttempt: each attempt as it ends (keepThinking jobs only: compare-builds keeps them if stopped)
  *   apiKey: the job owner's own GenAI Studio key (plan §15); without it, the server's provider.
- *     An uploaded file's check (step 'check', plan §57) gets neither: no AI, so no key and no network
+ *   ai: false for a job without the AI (the caller says, from versionKind: plan §60): it gets
+ *     neither, so no key and no network
  *   browserSlot: shared between jobs, so only so many browser checks run at once (plan §28);
  *     without it the job checks whenever it likes
  * @returns {Promise<import('../../../generator/src/run.js').GeneratorResult>}
  */
-export async function runGeneratorInSandbox(job, { onStep = () => {}, onAttempt = () => {}, cfg = config, run = runCommand, apiKey, browserSlot } = {}) {
+export async function runGeneratorInSandbox(job, { onStep = () => {}, onAttempt = () => {}, cfg = config, run = runCommand, apiKey, browserSlot, ai = true } = {}) {
   const hex = randomBytes(4).toString('hex');
   const name = `bg-gen-${hex}`; // OpenShell allows at most 19 characters
-  // An upload's check runs someone's own code and needs no AI: no provider, so no key in reach
-  // and (the policy has no rules of its own) no network at all.
-  const noAi = job.step === 'check';
+  // A job without the AI (an upload's check, plan §57) runs someone's own code: no provider, so
+  // no key in reach and (the policy has no rules of its own) no network at all.
+  const noAi = !ai;
   const keyProvider = apiKey && !noAi ? `bg-key-${hex}` : null;
   const bin = cfg.OPENSHELL_BIN;
   const limitMs = noAi ? cfg.GENERATION_CHECK_TIMEOUT_MS : cfg.GENERATION_TIMEOUT_MS; // plan §59

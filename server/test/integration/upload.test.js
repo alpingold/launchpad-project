@@ -15,7 +15,7 @@ let jobs; // what the fake generator was asked: [{ job, apiKey, finish }]
 
 beforeEach(async () => {
   jobs = [];
-  const runGenerator = (job, { apiKey }) => new Promise((finish) => jobs.push({ job, apiKey, finish }));
+  const runGenerator = (job, { apiKey, ai }) => new Promise((finish) => jobs.push({ job, apiKey, ai, finish }));
   server = createGameServer({ GENERATION_ENABLED: true }, { games: new GameRegistry(), runGenerator, checkKey: async () => 'ok' });
   server.generation.log = () => {};
   await new Promise((resolve) => server.httpServer.listen(0, resolve));
@@ -117,6 +117,7 @@ test('with a key, the AI can fix a failed upload or review a passing one, up to 
   assert.equal(fix.status, 202);
   assert.deepEqual([jobs[1].job.step, jobs[1].job.change.source, jobs[1].job.change.design], ['build', TAP_SOURCE, null]);
   assert.equal(jobs[1].apiKey !== undefined, true, 'the AI parts use your key');
+  assert.equal(jobs[1].ai, true);
   jobs[1].finish(passed(renamedSource('Tap Fixed')));
   await server.generation.current;
 
@@ -154,4 +155,10 @@ test("a remix of an upload is a copy, not an upload, and still says \"Uploaded\"
   await post(`/api/generations/${remixId}/publish`, {}, kim);
   const listed = (await (await get('/api/games', kim)).json()).games.find((g) => g.pageId === remixId);
   assert.equal(listed.madeBy, 'upload', 'the label is the original\'s');
+});
+
+test('the service tells the sandbox when a job has no AI (plan §60): an upload\'s check, never a build', async () => {
+  const sam = await signUp(baseUrl, 'sam');
+  await post('/api/generations/upload', { source: TAP_SOURCE }, sam);
+  assert.equal(jobs[0].ai, false);
 });

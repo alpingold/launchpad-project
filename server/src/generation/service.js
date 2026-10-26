@@ -44,6 +44,7 @@ import {
   BUSY_STATUSES,
 } from '../db/generatedGames.js';
 import { readFrameGame } from '../games/frameGame.js';
+import { versionKind } from './versionKind.js';
 import { config } from '../config.js';
 import { liveGameId, registerVersion } from '../games/generated.js';
 import { runGeneratorInSandbox } from './sandbox.js';
@@ -252,7 +253,7 @@ export class GenerationService {
     checkModel(model);
     const open = game.versions.find((v) => BUSY_STATUSES.includes(v.status) || v.status === 'design_ready');
     if (open) {
-      const why = open.status === 'design_ready' ? `v${open.version}'s ${hasWholeDesign(open) ? 'design' : 'plan'} is waiting for you: build it or discard it first.` : 'A version of this game is already being made. Wait for it to finish.';
+      const why = open.status === 'design_ready' ? `v${open.version}'s ${versionKind(open).designKind === 'plan' ? 'plan' : 'design'} is waiting for you: build it or discard it first.` : 'A version of this game is already being made. Wait for it to finish.';
       throw new GenerationError(409, 'BUSY', why);
     }
     this.checkCanQueue(game.ownerUserId, { ip });
@@ -261,7 +262,7 @@ export class GenerationService {
         ? (findVersion(game, game.playtestVersion) ?? findVersion(game, game.publishedVersion) ?? game.versions.findLast((v) => v.status === 'ready'))
         : findVersion(game, basedOn);
     // An uploaded file that failed the checks can be fixed by the AI too (plan §57).
-    const fixable = base?.status === 'ready' || (base?.kind === 'upload' && base.status === 'failed' && base.source !== null);
+    const fixable = base?.status === 'ready' || (base && versionKind(base).track.kind === 'upload' && base.status === 'failed' && base.source !== null);
     if (!fixable) {
       throw new GenerationError(409, 'NO_BASE_VERSION', 'Changes can only be made to a version that passed the tests.');
     }
@@ -407,27 +408,28 @@ export class GenerationService {
       else if (steps.length < MAX_STEPS) steps.push(step);
     };
     const designing = version.status === 'designing';
+    const { needsAi } = versionKind(version);
     const job = this.jobFor(game, version);
 
     // The owner's own key (plan §15); none: an admin's job uses the server's key. Never logged.
-    const apiKey = this.userKeys?.keyFor(game.ownerUserId) ?? null;
+    // A job without the AI (an upload's check) gets no key at all.
+    const apiKey = needsAi ? (this.userKeys?.keyFor(game.ownerUserId) ?? null) : null;
 
     const what = designing ? (job.redraft ? 'new draft' : 'design') : { recheck: 'code review', check: 'upload check' }[job.step] ?? 'build';
     this.log(`[generate] ${id} v${version.version}: ${what} started${job.model ? ` with ${job.model}` : ''}${apiKey ? " (the owner's key)" : ''}`);
     let result;
-    if (job.step !== 'check' && !apiKey && !isAdminUser(this.db, game.ownerUserId)) {
+    if (needsAi && !apiKey && !isAdminUser(this.db, game.ownerUserId)) {
       result = { ok: false, error: "Your GenAI Studio key couldn't be used. Save it again on your account page, then try again." };
     } else {
       try {
-        // An upload's check has no AI in it: no key goes in its sandbox.
-        result = await this.runGenerator(job, { onStep, browserSlot: this.browserSlot, ...(apiKey && job.step !== 'check' && { apiKey }) });
+        result = await this.runGenerator(job, { onStep, browserSlot: this.browserSlot, ai: needsAi, ...(apiKey && { apiKey }) });
       } catch (err) {
         result = { ok: false, error: err.message };
       }
     }
     if (!getGeneratedGame(this.db, id)) return; // deleted while it was running
     // An upload keeps exactly the file uploaded, whatever the sandbox sends back.
-    if (job.step === 'check') result = { ...result, source: version.source };
+    if (versionKind(version).track.kind === 'upload') result = { ...result, source: version.source };
 
     if (designing) {
       if (result.ok && typeof result.design === 'string') {
@@ -459,10 +461,11 @@ export class GenerationService {
 
   /** The sandbox job for a version's next step (generator/src/run.js describes them). */
   jobFor(game, version) {
+    const { step } = versionKind(version);
     // An upload (plan §57): its file is only checked.
-    if (version.kind === 'upload') return { step: 'check', idea: game.prompt, source: version.source };
-    const designing = version.status === 'designing';
-    const job = { step: designing ? 'design' : version.kind === 'recheck' ? 'recheck' : 'build', idea: game.prompt, model: version.model };
+    if (step === 'check') return { step, idea: game.prompt, source: version.source };
+    const designing = step === 'design';
+    const job = { step, idea: game.prompt, model: version.model };
     // Every build is reviewed, and its crashes and dead ends fixed (plan §47).
     if (job.step === 'build') job.review = true;
     if (version.kind === 'remix') {
@@ -475,7 +478,7 @@ export class GenerationService {
     } else if (version.basedOn !== null) {
       // The requests since the game's design, oldest first, so the model knows the history.
       const earlierRequests = [];
-      for (let v = findVersion(game, version.basedOn); v && !startsOver(v); v = findVersion(game, v.basedOn)) {
+      for (let v = findVersion(game, version.basedOn); v && !versionKind(v).startsOver; v = findVersion(game, v.basedOn)) {
         earlierRequests.unshift(v.request);
       }
       const gameDesign = designOf(game, findVersion(game, version.basedOn));
@@ -591,20 +594,13 @@ export class GenerationService {
   }
 }
 
-/**
- * Does this version hold a whole design of the game (version 1's, or a remix's own: plan §45b),
- * rather than a change plan?
- */
-export const hasWholeDesign = (version) => version.basedOn === null || version.kind === 'remix';
 
 /** The game's design as of this version: the whole design it, or the version it's based on, came from. */
 export function designOf(game, version) {
-  for (let v = version; v; v = findVersion(game, v.basedOn)) if (startsOver(v)) return v.design ?? null;
+  for (let v = version; v; v = findVersion(game, v.basedOn)) if (versionKind(v).startsOver) return v.design ?? null;
   return null;
 }
 
-/** Does the game's history start over at this version: a whole design, or an uploaded file (which has none)? */
-const startsOver = (version) => hasWholeDesign(version) || version.kind === 'upload';
 
 /** @returns {import('../db/generatedGames.js').GameVersion | undefined} */
 function findVersion(game, number) {

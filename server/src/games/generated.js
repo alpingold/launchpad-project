@@ -1,5 +1,6 @@
 import { listLiveVersions, sha256 } from '../db/generatedGames.js';
 import { frameGameOrThrow } from './frameGame.js';
+import { madeBy } from '../generation/versionKind.js';
 
 /**
  * The id a live version of a generated game runs under:
@@ -25,19 +26,6 @@ export function shotsFromReport(report) {
     if (typeof url === 'string' && url.startsWith(prefix)) shots[which] = Buffer.from(url.slice(prefix.length), 'base64');
   }
   return shots;
-}
-
-/**
- * How a game was made, for its label (plan §57): 'ai' when the site's AI built any version;
- * else 'upload' when someone uploaded one; else a remix's is its original's (plan §60); else
- * 'ai' (games from before uploads, and imported ones).
- * @param {import('../db/generatedGames.js').GeneratedGame} game
- * @returns {'ai' | 'upload'}
- */
-export function madeBy(game) {
-  if (game.versions.some((v) => v.model !== null)) return 'ai';
-  if (game.versions.some((v) => v.kind === 'upload')) return 'upload';
-  return game.remixOfMadeBy ?? 'ai';
 }
 
 /**
