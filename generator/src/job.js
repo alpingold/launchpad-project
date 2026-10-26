@@ -101,6 +101,9 @@ import { DEFAULT_MODEL, isAllowedModel } from './models.js';
  * @typedef {'design' | 'new draft' | 'build' | 'code review' | 'upload check'} JobLabel
  */
 
+/** Each step's label; a design with the maker's feedback is a 'new draft' instead. */
+const LABELS = /** @type {const} */ ({ design: 'design', build: 'build', recheck: 'code review', check: 'upload check' });
+
 /**
  * Makes the job for a version's next step, and the short label the server logs for it.
  * Every build the site asks for gets the review round (plan §47): that's what its build step is.
@@ -110,7 +113,7 @@ import { DEFAULT_MODEL, isAllowedModel } from './models.js';
 export function makeJob(facts) {
   const { step, idea, model, draft = null, feedback = null, design = null, plan = null } = facts;
   // An upload (plan §57): its file is only checked, with no model.
-  if (step === 'check') return { job: { step, idea, source: facts.upload.source }, label: 'upload check' };
+  if (step === 'check') return { job: { step, idea, source: facts.upload.source }, label: LABELS.check };
   /** @type {GeneratorJob} */
   const job = { step, idea, model };
   if (step === 'build') job.review = true;
@@ -118,8 +121,7 @@ export function makeJob(facts) {
   else if (facts.change) job.change = changeParts(step, facts.change, plan);
   else if (step !== 'design') job.design = design; // a new game's approved design
   if (step === 'design' && feedback && draft) job.redraft = { draft, feedback };
-  const label = step === 'design' ? (job.redraft ? 'new draft' : 'design') : step === 'recheck' ? 'code review' : 'build';
-  return { job, label };
+  return { job, label: job.redraft ? 'new draft' : LABELS[step] };
 }
 
 /**
