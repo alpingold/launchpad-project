@@ -2406,6 +2406,32 @@ built in `jobFor` and checked in `runJob`, and its typedef is out of date); one 
 this game start new work" (the busy checks and the default base version are copied, in two
 orders); untangling build and review in `runJob`.
 
+## 61. A new AWS project, and OpenShell 0.1.5 (2026-10-25)
+
+**What happened:** the AWS project changed: the old one (and its server, Elastic IP
+18.222.40.29, §29) is gone, and with it the database and its backups, which only lived on
+that server. The new project is account 658548982168, selected Region us-east-2, free plan
+($120 credits at the start, ends 2027-04-25). **Decision:** start the live site with an empty
+database rather than chase the old data.
+
+**Rebuilt as in §29 (us-east-2, all tagged `project=boilergames`):** instance `boilergames`
+(`t3.small`, Canonical's Ubuntu 24.04, 30 GB encrypted gp3, IMDSv2 required with hop limit 1
+so the sandboxes' containers can't reach it, CPU credits "standard"); Elastic IP
+**77.112.255.29**; security group `boilergames-web` (22 key-only, 80, 443); the user's SSH
+public key; budget `boilergames-monthly`, $25/month, emailing at 80% actual and 100%
+forecast. Then `deploy/README.md` steps 2 to 7 over SSH, with a new read-only deploy key
+(the old server's key deleted on GitHub). Checked: HTTPS and `wss://` from outside (101),
+port 3000 closed, GenAI Studio reachable (401 without a key), the checker passing a game in
+the image, and everything back by itself after a reboot.
+
+**OpenShell 0.1.3 → 0.1.5**, on the server and the dev PC (the two stay on the same
+version). Nothing in the 0.1.4 and 0.1.5 notes touches us (Kubernetes, the Go SDK, snap
+installs and log file names); the installer's "breaking upgrade" guard only applies to
+installs before 0.0.37. Plain rerun of the installer with `OPENSHELL_VERSION=v0.1.5`.
+
+**Money:** ~$21/month against $120 is ~5½ months, a little short of the free plan's end; the
+starter activities' credits (up to $200 in all) cover the rest.
+
 ## Verification (how to confirm the plan worked once built)
 
 - `npm test` (root) → runs `node --test server/test`, all unit and integration tests green.
