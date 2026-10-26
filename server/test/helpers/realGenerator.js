@@ -15,13 +15,19 @@ export function withHeadings(title, headings = DESIGN_HEADINGS, text = (h) => `W
 
 /**
  * A fake model that answers by what it's asked for (the response format's name): a design, a
- * change plan, a code review's bugs; anything else is asked for code, and gets the game file.
- * @param {{ design?: string, plan?: string, game?: string, bugs?: object[] }} [replies]
+ * change plan, a code review's bugs; anything else is asked for code, and gets the game file
+ * (a list: one per ask for code, in order, the last one from then on). Each ask's last message
+ * is added to `asked` (if given): what reached the AI.
+ * @param {{ design?: string, plan?: string, game?: string | string[], bugs?: object[] }} [replies]
+ * @param {{ kind: string, text: string }[]} [asked]
  */
-export function fakeModel({ design = withHeadings('A Game'), plan = withHeadings('Change: A change', PLAN_HEADINGS), game = TAP_SOURCE, bugs = [] } = {}) {
+export function fakeModel({ design = withHeadings('A Game'), plan = withHeadings('Change: A change', PLAN_HEADINGS), game = TAP_SOURCE, bugs = [] } = {}, asked = []) {
+  const games = [game].flat();
   return async (messages, opts) => {
     const kind = opts?.responseFormat?.json_schema?.name ?? 'code';
-    const content = { design, plan, critical_bugs: JSON.stringify({ bugs }) }[kind] ?? `\`\`\`html\n${game}\`\`\``;
+    asked.push({ kind, text: String(messages.at(-1)?.content ?? '') });
+    const file = () => (games.length > 1 ? games.shift() : games[0]);
+    const content = { design, plan, critical_bugs: JSON.stringify({ bugs }) }[kind] ?? `\`\`\`html\n${file()}\`\`\``;
     return { content, thinking: '', finishReason: 'stop', toolCalls: '', seconds: 1, usage: null };
   };
 }
@@ -30,11 +36,13 @@ export function fakeModel({ design = withHeadings('A Game'), plan = withHeadings
 export const staticOnly = async (source) => frameGameReport(source);
 
 /**
- * A runGenerator for GenerationService that runs the real generator.
+ * A runGenerator for GenerationService that runs the real generator, and what the model was
+ * asked (`asked`, each ask's last message, by response format: 'design', 'plan', 'code', ...).
  * @param {{ model?: Parameters<typeof fakeModel>[0], check?: typeof staticOnly }} [opts]
  */
 export function realGenerator({ model, check = staticOnly } = {}) {
-  const chatFn = fakeModel(model);
+  const asked = [];
+  const chatFn = fakeModel(model, asked);
   const runGenerator = (job, { onStep } = {}) => runJob(JSON.parse(JSON.stringify(job)), { chatFn, check, onStep });
-  return { runGenerator };
+  return { runGenerator, asked };
 }

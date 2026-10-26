@@ -112,15 +112,13 @@ test('with a key, the AI can fix a failed upload or review a passing one, up to 
 
   const fix = await post(`/api/generations/${game.id}/versions`, { request: 'Fix these problems: stuck', basedOn: 1, skipDesign: true }, sam);
   assert.equal(fix.status, 202);
-  assert.deepEqual([jobs[1].job.step, jobs[1].job.change.source, jobs[1].job.change.design], ['build', TAP_SOURCE, null]);
   assert.equal(jobs[1].apiKey !== undefined, true, 'the AI parts use your key');
   assert.equal(jobs[1].ai, true);
   jobs[1].finish(passed(renamedSource('Tap Fixed')));
   await server.generation.current;
 
   assert.equal((await post(`/api/generations/${game.id}/versions/2/review-again`, {}, sam)).status, 202);
-  assert.equal(jobs[2].job.step, 'recheck');
-  assert.ok(jobs[2].job.idea.startsWith('Tap Test: '), "with no design, the review reads the game's own description");
+  // What the fix and the review are given: generationWithGenerator.test.js.
   jobs[2].finish(passed(renamedSource('Tap Fixed')));
   await server.generation.current;
 

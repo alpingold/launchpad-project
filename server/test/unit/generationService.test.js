@@ -333,25 +333,19 @@ test('stopping a playtest and unpublishing take versions down', async () => {
   assert.equal(gameStatus(service.get(id)), 'review', 'nothing live');
 });
 
-test('asking for changes: the model gets the base code and the earlier requests; the changelog is saved', async () => {
+test('asking for changes: each version remembers its request, base, plan and changelog (what the model is given: generationWithGenerator.test.js)', async () => {
   const ctx = setup();
-  const { service, calls } = ctx;
+  const { service } = ctx;
   const id = await reviewed(ctx);
   const v2 = await changed(ctx, id, '  Make the rounds shorter  ');
-  // The plan job, then the build job with the approved plan. Both see the game's design.
-  const change = { request: 'Make the rounds shorter', source: GOOD_SOURCE, design: DESIGN, earlierRequests: [] };
-  assert.deepEqual(calls.at(-2).job, { step: 'design', idea: IDEA, model: 'qwen3.8:27b', change });
-  assert.deepEqual(calls.at(-1).job, { step: 'build', idea: IDEA, model: 'qwen3.8:27b', change: { ...change, plan: PLAN }, review: true });
   assert.deepEqual([v2.request, v2.basedOn, v2.changelog, v2.status, v2.design], ['Make the rounds shorter', 1, '- Renamed it', 'ready', PLAN]);
 
-  await changed(ctx, id, 'Add a scoreboard after each round');
-  assert.equal(calls.at(-1).job.change.source, CHANGED_SOURCE, 'by default, changes the newest ready version');
-  assert.deepEqual(calls.at(-1).job.change.earlierRequests, ['Make the rounds shorter']);
+  const v3 = await changed(ctx, id, 'Add a scoreboard after each round');
+  assert.equal(v3.basedOn, 2, 'by default, changes the newest ready version');
 
-  // An explicit base: the history follows that version's line, not every version.
-  await changed(ctx, id, 'A different take on version 1', CHANGED, 1);
-  assert.equal(calls.at(-1).job.change.source, GOOD_SOURCE);
-  assert.deepEqual(calls.at(-1).job.change.earlierRequests, []);
+  // An explicit base.
+  const v4 = await changed(ctx, id, 'A different take on version 1', CHANGED, 1);
+  assert.equal(v4.basedOn, 1);
 
   // While something is playtested, that's the default base.
   await service.playtest(id, 2);
@@ -454,8 +448,7 @@ test('small fixes skip the plan; the newest version can be discarded while it ha
   const { service, calls } = ctx;
   const id = await reviewed(ctx);
   service.requestChanges({ id, request: 'Fix the typo in the title', skipDesign: true });
-  assert.equal(service.get(id).versions[1].status, 'generating');
-  assert.deepEqual(calls.at(-1).job.change.plan, null, 'built from the request alone');
+  assert.equal(service.get(id).versions[1].status, 'generating', 'built from the request alone');
   calls.at(-1).finish(CHANGED);
   await service.current;
   assert.equal(service.get(id).versions[1].status, 'ready');
@@ -498,7 +491,7 @@ test('the code review (plan §47): what the review round found is kept with the 
   assert.deepEqual(ctx.service.get(other).versions[0].codeReview, { error: 'no review: the model wrote no review' });
 });
 
-test('"Review again" (plan §47): the next version is a code review round on the one it names', async () => {
+test('"Review again" (plan §47): the next version is a code review round on the one it names (what it reviews: generationWithGenerator.test.js)', async () => {
   const ctx = setup();
   const { service, calls } = ctx;
   const id = await reviewed(ctx);
@@ -507,13 +500,7 @@ test('"Review again" (plan §47): the next version is a code review round on the
   // Nothing to fix: the same code, its report carried over, and the new review.
   const look = { score: { points: 1, of: 1 }, bugs: [{ severity: 'spoils', what: 'the timer never turns red', fixed: false }], missing: [], fix: null };
   service.reviewAgain({ id, basedOn: 2 });
-  const job = calls.at(-1).job;
-  assert.deepEqual(job, {
-    step: 'recheck',
-    idea: IDEA,
-    model: 'qwen3.8:27b',
-    change: { request: RECHECK_REQUEST, source: CHANGED_SOURCE, design: DESIGN, earlierRequests: ['Give it a new name please'], plan: null },
-  });
+  assert.equal(service.get(id).versions.at(-1).request, RECHECK_REQUEST);
   calls.at(-1).finish({ ok: true, model: 'qwen3.8:27b', source: CHANGED_SOURCE, report: null, changelog: null, attempts: [], review: look });
   await service.current;
   const v3 = service.get(id).versions.at(-1);
