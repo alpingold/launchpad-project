@@ -134,3 +134,24 @@ test('with a key, the AI can fix a failed upload or review a passing one, up to 
   const refused = await post(`/api/generations/${game.id}/versions`, { request: 'Make it blue please', basedOn: 4, skipDesign: true }, sam);
   assert.deepEqual([refused.status, (await refused.json()).error], [413, 'TOO_BIG_FOR_AI']);
 });
+
+test("a remix of an upload is a copy, not an upload, and still says \"Uploaded\" (plan §60)", async () => {
+  const sam = await signUp(baseUrl, 'sam');
+  const { game } = await (await post('/api/generations/upload', { source: TAP_SOURCE }, sam)).json();
+  jobs[0].finish(passed(TAP_SOURCE));
+  await server.generation.current;
+  await post(`/api/generations/${game.id}/versions/1/playtest`, {}, sam);
+  await post(`/api/generations/${game.id}/publish`, {}, sam);
+
+  const kim = await signUp(baseUrl, 'kim');
+  const made = await post(`/api/games/${game.id}/remix`, {}, kim);
+  assert.equal(made.status, 201);
+  const remixId = (await made.json()).id;
+  const copy = (await (await get(`/api/generations/${remixId}`, kim)).json()).game.versions[0];
+  assert.equal(copy.kind, null, "kim didn't upload anything: it's a copy");
+
+  await post(`/api/generations/${remixId}/versions/1/playtest`, {}, kim);
+  await post(`/api/generations/${remixId}/publish`, {}, kim);
+  const listed = (await (await get('/api/games', kim)).json()).games.find((g) => g.pageId === remixId);
+  assert.equal(listed.madeBy, 'upload', 'the label is the original\'s');
+});

@@ -65,6 +65,7 @@ export const BUSY_STATUSES = Object.freeze(['designing', 'generating']);
  * @property {number | null} publishedVersion
  * @property {number | null} playtestVersion
  * @property {{ id: string, version: number | null, name: string } | null} remixOf  the game it was copied from (plan §45)
+ * @property {'ai' | 'upload' | null} remixOfMadeBy  how that game was made, when it was copied (plan §60)
  * @property {GameVersion[]} versions        oldest first
  * @property {number} createdAt
  * @property {number} updatedAt
@@ -116,6 +117,7 @@ function gameFromRow(db, row) {
     publishedVersion: row.published_version,
     playtestVersion: row.playtest_version,
     remixOf: row.remix_of === null ? null : { id: row.remix_of, version: row.remix_of_version, name: row.remix_of_name },
+    remixOfMadeBy: row.remix_of_made_by ?? null,
     versions: db.prepare('SELECT * FROM game_versions WHERE game_id = ? ORDER BY version').all(row.id).map(versionFromRow),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -157,17 +159,17 @@ export function createGeneratedGame(db, { ownerUserId, prompt, model = null, sta
  * @returns {GeneratedGame}
  */
 export function createRemix(db, copy) {
-  const { ownerUserId, prompt, remixOf, design, source, report, name, description, model = null, kind = null, now = Date.now() } = copy;
+  const { ownerUserId, prompt, remixOf, design, source, report, name, description, model = null, madeBy = null, now = Date.now() } = copy;
   const id = newGeneratedGameId();
   db.transaction(() => {
     db.prepare(
-      `INSERT INTO generated_games (id, owner_user_id, prompt, remix_of, remix_of_version, remix_of_name, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(id, ownerUserId, prompt, remixOf.id, remixOf.version, remixOf.name, now, now);
+      `INSERT INTO generated_games (id, owner_user_id, prompt, remix_of, remix_of_version, remix_of_name, remix_of_made_by, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(id, ownerUserId, prompt, remixOf.id, remixOf.version, remixOf.name, madeBy, now, now);
     db.prepare(
-      `INSERT INTO game_versions (game_id, version, request, model, kind, status, design, name, description, source, source_sha256, report_json, created_at, updated_at)
-       VALUES (?, 1, ?, ?, ?, 'ready', ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(id, `Remix of ${remixOf.name}`, model, kind, design, name, description, source, sha256(source), JSON.stringify(report ?? null), now, now);
+      `INSERT INTO game_versions (game_id, version, request, model, status, design, name, description, source, source_sha256, report_json, created_at, updated_at)
+       VALUES (?, 1, ?, ?, 'ready', ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(id, `Remix of ${remixOf.name}`, model, design, name, description, source, sha256(source), JSON.stringify(report ?? null), now, now);
   })();
   return getGeneratedGame(db, id);
 }

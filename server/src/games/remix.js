@@ -3,6 +3,7 @@ import { catalogGame, CatalogError } from './catalog.js';
 import { frameGameReport, GAME_INFO_RE } from './frameGame.js';
 import { officialGameSource, readOfficialShots } from './index.js';
 import { createRemix, getGeneratedGame, countGamesOwnedBy } from '../db/generatedGames.js';
+import { madeBy } from './generated.js';
 import { config } from '../config.js';
 
 // Remixing (plan §45): your own copy of a public game, to change with the AI the way you change
@@ -100,7 +101,7 @@ function generatedCopy(db, game) {
     name: version.name,
     description: version.description,
     model: version.model,
-    // A copy of an uploaded file is still one (plan §57), for its label.
-    kind: version.kind === 'upload' ? 'upload' : null,
+    // Its label carries over (plan §60): a copy of an uploaded game still says "Uploaded".
+    madeBy: madeBy(original),
   };
 }

@@ -345,6 +345,19 @@ export const MIGRATIONS = [
       ALTER TABLE site_reports DROP COLUMN kind_before_17;
     `,
   },
+  {
+    version: 18,
+    description: "a remix remembers how its original was made (plan §60)",
+    sql: `
+      -- 'ai' or 'upload', at the time of the remix, like remix_of_name: the copy's label ("AI-made",
+      -- "Uploaded") without its version pretending to be an upload of its own.
+      ALTER TABLE generated_games ADD COLUMN remix_of_made_by TEXT CHECK (remix_of_made_by IS NULL OR remix_of_made_by IN ('ai', 'upload'));
+      UPDATE generated_games SET remix_of_made_by = 'upload'
+        WHERE remix_of IS NOT NULL AND EXISTS (SELECT 1 FROM game_versions v WHERE v.game_id = generated_games.id AND v.version = 1 AND v.kind = 'upload');
+      UPDATE game_versions SET kind = NULL
+        WHERE version = 1 AND kind = 'upload' AND game_id IN (SELECT id FROM generated_games WHERE remix_of IS NOT NULL);
+    `,
+  },
 ];
 
 /** The version a fully up-to-date database has. */
