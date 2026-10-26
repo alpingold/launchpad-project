@@ -70,7 +70,7 @@ export function runCommand(bin, args, { input, timeoutMs, onStderrLine = () => {
 
 /**
  * Generates a game in a fresh sandbox.
- * @param {import('../../../generator/src/run.js').GeneratorJob} job  sent to the generator as it is
+ * @param {import('../../../generator/src/job.js').GeneratorJob} job  sent to the generator as it is
  * @param {{ onStep?: import('../../../generator/src/run.js').OnStep, onAttempt?: (attempt: object) => void, cfg?: typeof config, run?: typeof runCommand, apiKey?: string, browserSlot?: import('./browserSlot.js').BrowserSlot }} [deps]
  *   onStep: the generator's progress; `replace` updates the last step (a streaming reply)
  *   onAttempt: each attempt as it ends (keepThinking jobs only: compare-builds keeps them if stopped)
