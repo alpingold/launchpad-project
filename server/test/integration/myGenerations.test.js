@@ -69,7 +69,7 @@ test('with a key: your job runs with YOUR key; one at a time; only you see your 
   await server.generation.current;
   assert.equal((await post(`/api/generations/${game.id}/versions/1/build`, {}, sam)).status, 202);
   assert.equal(jobs[1].apiKey, KEY);
-  assert.equal(jobs[1].job.step, 'build');
+  assert.equal((await (await get(`/api/generations/${game.id}`, sam)).json()).game.versions[0].status, 'generating', 'it is being built');
   assert.equal((await post(`/api/generations/${game.id}/publish`, {}, kim)).status, 404, "kim can't publish sam's game");
 
   // An admin sees sam's game on the admin page and could publish it.
