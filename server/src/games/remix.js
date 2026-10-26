@@ -4,6 +4,7 @@ import { frameGameReport, GAME_INFO_RE } from './frameGame.js';
 import { officialGameSource, readOfficialShots } from './index.js';
 import { createRemix, getGeneratedGame, countGamesOwnedBy } from '../db/generatedGames.js';
 import { madeBy } from './generated.js';
+import { designOf } from '../generation/service.js';
 import { config } from '../config.js';
 
 // Remixing (plan §45): your own copy of a public game, to change with the AI the way you change
@@ -95,7 +96,7 @@ function generatedCopy(db, game) {
   return {
     version: version.version,
     prompt: original.prompt,
-    design: original.versions[0]?.design ?? null, // the game's own design is version 1's
+    design: designOf(original, version), // the design its code was built from (plan §60): a remix's own, after "Make it your own"
     source: version.source,
     report: version.report,
     name: version.name,

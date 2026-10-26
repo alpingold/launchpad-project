@@ -598,7 +598,7 @@ export class GenerationService {
 export const hasWholeDesign = (version) => version.basedOn === null || version.kind === 'remix';
 
 /** The game's design as of this version: the whole design it, or the version it's based on, came from. */
-function designOf(game, version) {
+export function designOf(game, version) {
   for (let v = version; v; v = findVersion(game, v.basedOn)) if (startsOver(v)) return v.design ?? null;
   return null;
 }

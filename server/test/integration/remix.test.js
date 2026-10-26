@@ -166,11 +166,19 @@ test('"Make it your own" (plan §45b): the remix gets its own whole design, then
   await post(`/api/generations/${remixId}/versions/2/build`, {}, kim);
   job = jobs.at(-1).job;
   assert.deepEqual([job.step, job.design, job.remix.design, job.remix.source, job.review], ['build', NEW_DESIGN, copy.design, copy.source, true]);
-  const teams = renamedSource('Majority Rules - Remixed').replace('</script>', '// teams\n</script>');
+  const teams = `${renamedSource('Majority Rules - Remixed')}<!-- teams -->\n`;
   jobs.at(-1).finish({ ok: true, source: teams, report: { ok: true, problems: [], game: { name: 'Majority Rules - Remixed', description: 'Teams vote' } }, changelog: '- Two teams' });
   await server.generation.current;
   game = (await get(`/api/generations/${remixId}`, kim)).game;
   assert.equal(game.versions[1].status, 'ready');
+
+  // Published, and remixed again: the copy gets the design its code was built from (v2's own),
+  // not v1's, which is the original's (plan §60).
+  assert.equal((await post(`/api/generations/${remixId}/versions/2/playtest`, {}, kim)).status, 200);
+  assert.equal((await post(`/api/generations/${remixId}/publish`, {}, kim)).status, 200);
+  const lee = await signUp(baseUrl, 'lee');
+  const again = (await (await post(`/api/games/${remixId}/remix`, {}, lee)).json()).id;
+  assert.equal((await get(`/api/generations/${again}`, lee)).game.versions[0].design, NEW_DESIGN);
 
   // Only once: after that, ordinary changes, planned against the remix's own design.
   assert.deepEqual(await errorOf(await post(`/api/generations/${remixId}/remix-design`, { request: 'Something else again' }, kim)), [409, 'ALREADY_CHANGED']);
