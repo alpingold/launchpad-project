@@ -80,7 +80,6 @@ test('a new game: its design is written first, then built when the admin says so
   assert.equal(gameStatus(game), 'designing');
   assert.equal(game.prompt, IDEA, 'trimmed');
   assert.equal(game.versions[0].model, 'qwen3.8:27b', 'default model');
-  assert.deepEqual(calls[0].job, { step: 'design', idea: IDEA, model: 'qwen3.8:27b' });
 
   calls[0].onStep('design: asking qwen3.8:27b');
   calls[0].onStep('design: asking qwen3.8:27b (thinking 400 tokens, writing 0)', { replace: true });
@@ -98,7 +97,7 @@ test('a new game: its design is written first, then built when the admin says so
 
   service.build({ id: game.id, version: 1 });
   assert.equal(gameStatus(service.get(game.id)), 'generating');
-  assert.deepEqual(calls[1].job, { step: 'build', idea: IDEA, model: 'qwen3.8:27b', design: DESIGN, review: true });
+  assert.equal(calls.length, 2, 'the build started');
   calls[1].finish(PASSED);
   await service.current;
   saved = getGeneratedGame(db, game.id);
@@ -117,11 +116,10 @@ test('designs: new drafts with feedback, the admin\'s own edits, and what is ref
   calls[0].finish(DESIGNED);
   await service.current;
 
-  // A new draft: the job carries the last draft and the feedback.
+  // A new draft (generationWithGenerator.test.js runs it in the real generator).
   assert.equal(codeOf(() => service.redesign({ ...v, feedback: 'no' })), 'INVALID_FEEDBACK');
   service.redesign({ ...v, feedback: '  Make it 2 rounds  ' });
   assert.equal(gameStatus(service.get(id)), 'designing');
-  assert.deepEqual(calls[1].job.redraft, { draft: DESIGN, feedback: 'Make it 2 rounds' });
   calls[1].finish({ ...DESIGNED, design: '# Majority Rules\n## Rules\nTwo rounds.\n' });
   await service.current;
   let v1 = service.get(id).versions[0];
@@ -490,11 +488,10 @@ test('every build attempt is kept, passing or not, as one build per "Build it" (
   assert.deepEqual(attempts.map((a) => [a.build, a.attempt, a.ok]), [[1, 1, false], [2, 1, false], [2, 2, true]]);
 });
 
-test('the code review (plan §47): every build asks for one, and what it found is kept with the version', async () => {
+test('the code review (plan §47): what the review round found is kept with the version (that every build gets one: generationWithGenerator.test.js)', async () => {
   const ctx = setup();
   const codeReview = { score: { points: 30, of: 40 }, bugs: [{ severity: 'crash', what: 'scores is not defined', fixed: true }], missing: [], fix: { ok: true, changelog: '- Defined scores' } };
   const id = await reviewed(ctx, { ...PASSED, review: codeReview });
-  assert.equal(ctx.calls.at(-1).job.review, true);
   assert.deepEqual(ctx.service.get(id).versions[0].codeReview, codeReview);
   // A review that couldn't finish is kept too: the creator sees why.
   const other = await reviewed(ctx, { ...PASSED, review: { error: 'no review: the model wrote no review' } });
