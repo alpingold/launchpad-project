@@ -2,6 +2,7 @@ import express from 'express';
 import { currentUser } from '../auth/currentUser.js';
 import { requireJsonPosts } from './requireJson.js';
 import { GenerationError } from '../generation/service.js';
+import { versionKind } from '../generation/versionKind.js';
 import { gameStatus, mainVersion, listBuildAttempts } from '../db/generatedGames.js';
 import { changedLines } from '../generation/lineDiff.js';
 import { isAdminUser, usernamesById } from '../db/users.js';
@@ -12,7 +13,8 @@ import { isAdminUser, usernamesById } from '../db/users.js';
  *
  *   GET    /api/admin/generations                    → { info, games: [summary] }   (newest first)
  *   POST   /api/admin/generations  { idea, model? }  → 202 { game }   a new game: its design is written first
- *   GET    /api/admin/generations/:id                → { game }   every version: design, drafts, code, report, changes
+ *   GET    /api/admin/generations/:id                → { game }   every version: design, drafts, code, report, changes,
+ *                                                    and what it is (designKind, track: versionKind.js, plan §60)
  *   POST   /api/admin/generations/upload  { source } → 202 { game }   a game file of your own (plan §57): checked
  *                                                    in a sandbox with no AI (no key needed); 422 { problems }
  *                                                    if its game info can't be read
@@ -87,6 +89,7 @@ export function createAdminRouter({ db, generation, mine = false }) {
       description: main?.description ?? null,
       model: latest.model,
       kind: latest.kind, // e.g. 'upload': the newest version is a file being checked (plan §57)
+      track: versionKind(latest).track, // where the newest version is on the maker's board (plan §60)
       error: latest.status === 'failed' ? latest.error : null,
       ownerUserId: game.ownerUserId,
       ownerName: names.get(game.ownerUserId) ?? null,
@@ -115,6 +118,9 @@ export function createAdminRouter({ db, generation, mine = false }) {
           basedOn: v.basedOn,
           changelog: v.changelog,
           kind: v.kind,
+          // What this version is (plan §60): the pages read these instead of working them out.
+          designKind: versionKind(v).designKind,
+          track: versionKind(v).track,
           // What the code review found and fixed (plan §47), for the game's creator.
           codeReview: v.codeReview,
           model: v.model,

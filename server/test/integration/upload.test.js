@@ -162,3 +162,13 @@ test('the service tells the sandbox when a job has no AI (plan §60): an upload\
   await post('/api/generations/upload', { source: TAP_SOURCE }, sam);
   assert.equal(jobs[0].ai, false);
 });
+
+test('the pages get what each version is from the server (plan §60): designKind and its track', async () => {
+  const sam = await signUp(baseUrl, 'sam');
+  const { game } = await (await post('/api/generations/upload', { source: TAP_SOURCE }, sam)).json();
+  assert.deepEqual(game.track, { kind: 'upload', at: 1, state: 'working' });
+  jobs[0].finish(passed(TAP_SOURCE));
+  await server.generation.current;
+  const [v1] = (await (await get(`/api/generations/${game.id}`, sam)).json()).game.versions;
+  assert.deepEqual([v1.designKind, v1.track], ['none', { kind: 'upload', at: 2, state: 'yours' }]);
+});
