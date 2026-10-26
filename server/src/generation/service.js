@@ -486,12 +486,13 @@ export class GenerationService {
   }
 
   /**
-   * What a remix knows (plan §45b): the copy's file and design, and what should be different
-   * (for "Make it your own"; its build rewrites the copy's code for the approved design).
+   * What a remix knows (plan §45b): the copy's file, the design that file was built from (plan
+   * §60), and what should be different (for "Make it your own"; its build rewrites the copy's
+   * code for the approved design).
    */
   remixFacts(game, version) {
-    const base = findVersion(game, version.basedOn);
-    return { source: base.source, design: designOf(game, base), request: version.request };
+    const copy = findVersion(game, version.basedOn);
+    return { copy: copy.source, copyDesign: designOf(game, copy), request: version.request };
   }
 
   /** Where a game's job is: its place in line (0 = running now) and its progress so far. */
