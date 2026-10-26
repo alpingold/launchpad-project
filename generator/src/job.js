@@ -79,10 +79,18 @@ import { DEFAULT_MODEL, isAllowedModel } from './models.js';
  *   approved one when building (a change's plan; null for a small fix or an upload)
  * @property {string | null} [feedback]  designing: the maker's feedback, asking for a new draft of `design`
  * @property {{ source: string }} [upload]  an uploaded file, to check
- * @property {{ request: string, source: string, design: string | null, earlierRequests: string[] }} [change]
- *   a change: still spelled as the job's `change` (plan for ticket 04: its own facts)
+ * @property {ChangeFacts} [change]   a change (a plan, a small fix or "Review again")
  * @property {{ source: string, design: string | null, request: string }} [remix]
  *   a remix: still spelled close to the job's `remix` (plan for ticket 05: its own facts)
+ */
+
+/**
+ * What a change starts from: the server walks the game's versions for these.
+ * @typedef {Object} ChangeFacts
+ * @property {string} request            what the maker asked for ("Review again": its standard request)
+ * @property {string} gameFile           the file of the version it's based on
+ * @property {string | null} gameDesign  the game's whole design as of that version (null: an upload's)
+ * @property {string[]} requestsSince    the changes asked for since that design, oldest first
  */
 
 /**
@@ -111,9 +119,16 @@ export function makeJob(facts) {
   return { job, label };
 }
 
-/** A change's part of its job: the game it starts from; when building, the approved plan (null: a small fix). */
-function changeParts(step, change, plan) {
-  return step === 'design' ? { ...change } : { ...change, plan };
+/**
+ * A change's part of its job: the game it starts from; when building (or reviewing again), the
+ * approved plan (null: a small fix, or "Review again").
+ * @param {JobFacts['step']} step
+ * @param {ChangeFacts} facts
+ * @param {string | null} plan
+ */
+function changeParts(step, { request, gameFile, gameDesign, requestsSince }, plan) {
+  const change = { request, source: gameFile, design: gameDesign, earlierRequests: requestsSince };
+  return step === 'design' ? change : { ...change, plan };
 }
 
 /**

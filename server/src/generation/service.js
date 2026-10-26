@@ -474,15 +474,17 @@ export class GenerationService {
     return makeJob(facts); // a new game
   }
 
-  /** What a change knows: its request, the game it starts from, the game's design and the requests since. */
+  /**
+   * What a change knows, from the game's versions: its request, the file it starts from, the
+   * game's design and the requests since that design.
+   * @returns {import('../../../generator/src/job.js').ChangeFacts}
+   */
   changeFacts(game, version) {
+    const base = findVersion(game, version.basedOn);
     // The requests since the game's design, oldest first, so the model knows the history.
-    const earlierRequests = [];
-    for (let v = findVersion(game, version.basedOn); v && !versionKind(v).startsOver; v = findVersion(game, v.basedOn)) {
-      earlierRequests.unshift(v.request);
-    }
-    const gameDesign = designOf(game, findVersion(game, version.basedOn));
-    return { request: version.request, source: findVersion(game, version.basedOn).source, design: gameDesign, earlierRequests };
+    const requestsSince = [];
+    for (let v = base; v && !versionKind(v).startsOver; v = findVersion(game, v.basedOn)) requestsSince.unshift(v.request);
+    return { request: version.request, gameFile: base.source, gameDesign: designOf(game, base), requestsSince };
   }
 
   /**
