@@ -65,6 +65,65 @@ import { DEFAULT_MODEL, isAllowedModel } from './models.js';
  * @typedef {{ ok: true, job: GeneratorJob, model: string | null } | { ok: false, model: string | null, error: string }} JobCheck
  */
 
+/**
+ * What the site knows about a version's next step: its facts, not the job's field names. The
+ * server works these out (the step from its version kind module, the history walk) and
+ * makeJob spells the job. Each kind of version has its own group: none for a new game, `upload`
+ * for an uploaded file, `change` for a change, `remix` for a remix.
+ *
+ * @typedef {Object} JobFacts
+ * @property {'design' | 'build' | 'recheck' | 'check'} step  the version's next step
+ * @property {string} idea               the game's idea
+ * @property {string | null} model       the version's model (null for an upload)
+ * @property {string | null} [design]    the version's design: its last draft while designing, the
+ *   approved one when building (a change's plan; null for a small fix or an upload)
+ * @property {string | null} [feedback]  designing: the maker's feedback, asking for a new draft of `design`
+ * @property {{ source: string }} [upload]  an uploaded file, to check
+ * @property {{ request: string, source: string, design: string | null, earlierRequests: string[] }} [change]
+ *   a change: still spelled as the job's `change` (plan for ticket 04: its own facts)
+ * @property {{ source: string, design: string | null, request: string }} [remix]
+ *   a remix: still spelled close to the job's `remix` (plan for ticket 05: its own facts)
+ */
+
+/**
+ * What the server logs for a job.
+ * @typedef {'design' | 'new draft' | 'build' | 'code review' | 'upload check'} JobLabel
+ */
+
+/**
+ * Makes the job for a version's next step, and the short label the server logs for it.
+ * Every build the site asks for gets the review round (plan §47): that's what its build step is.
+ * @param {JobFacts} facts
+ * @returns {{ job: GeneratorJob, label: JobLabel }}
+ */
+export function makeJob(facts) {
+  const { step, idea, model, design = null, feedback = null } = facts;
+  // An upload (plan §57): its file is only checked, with no model.
+  if (step === 'check') return { job: { step, idea, source: facts.upload.source }, label: 'upload check' };
+  /** @type {GeneratorJob} */
+  const job = { step, idea, model };
+  if (step === 'build') job.review = true;
+  if (facts.remix) Object.assign(job, remixParts(step, facts.remix, design));
+  else if (facts.change) job.change = changeParts(step, facts.change, design);
+  else if (step !== 'design') job.design = design; // a new game's approved design
+  if (step === 'design' && feedback && design) job.redraft = { draft: design, feedback };
+  const label = step === 'design' ? (job.redraft ? 'new draft' : 'design') : step === 'recheck' ? 'code review' : 'build';
+  return { job, label };
+}
+
+/** A change's part of its job: the game it starts from; when building, the approved plan (null: a small fix). */
+function changeParts(step, change, plan) {
+  return step === 'design' ? { ...change } : { ...change, plan };
+}
+
+/**
+ * A remix's part of its job (plan §45b): the original's file and design; its design step
+ * also gets what should be different, its build the remix's approved design.
+ */
+function remixParts(step, { source, design, request }, approved) {
+  return step === 'design' ? { remix: { source, design, request } } : { remix: { source, design }, design: approved };
+}
+
 /** What qwen3.8:27b on GenAI Studio takes (plan §38). */
 const REASONING_EFFORTS = ['low', 'medium', 'xhigh'];
 
