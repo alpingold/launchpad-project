@@ -2,11 +2,12 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { openDatabase } from '../../src/db/database.js';
 import { createUser, setAdmin } from '../../src/db/users.js';
-import { gameStatus } from '../../src/db/generatedGames.js';
+import { gameStatus, createRemix } from '../../src/db/generatedGames.js';
 import { GameRegistry } from '../../src/games/registry.js';
 import { GenerationService } from '../../src/generation/service.js';
-import { realGenerator, staticOnly, withHeadings } from '../helpers/realGenerator.js';
+import { realGenerator, fakeModel, staticOnly, withHeadings } from '../helpers/realGenerator.js';
 import { TAP_SOURCE } from '../helpers/frameGames.js';
+import { PLAN_HEADINGS } from '../../../generator/src/prompt.js';
 
 // The generation module with the REAL generator in place of the sandbox (its runJob, with a
 // fake model and a fake checker): what the server sends is what the generator must accept,
@@ -82,4 +83,83 @@ test("an upload's new file is checked too; a file that fails its checks fails wi
   assert.equal(v1.status, 'ready');
   assert.deepEqual([v2.status, v2.kind, v2.basedOn, v2.source], ['failed', 'upload', 1, broken]);
   assert.deepEqual([v2.report?.ok, v2.report?.problems], [false, [stuck]]);
+});
+
+// A remix (plan §45b): kim's copy of a game, its code built from the copy's design.
+const COPY_DESIGN = withHeadings('Majority Rules', undefined, (h) => (h === 'Rules' ? 'Everyone votes alone.' : `The ${h.toLowerCase()}.`));
+const TEAMS_DESIGN = withHeadings('Majority Teams', undefined, (h) => (h === 'Rules' ? 'Two teams vote.' : `The ${h.toLowerCase()}.`));
+const TEAMS_SOURCE = `${TAP_SOURCE}<!-- teams -->\n`;
+const WISH = 'Make it a team game: two teams vote';
+const TEAMS_PLAN = withHeadings('Change: A shorter vote', PLAN_HEADINGS);
+
+/**
+ * A fake model that reads what it's asked: it writes the teams design only when asked with the
+ * copy's design and what kim wants different, and the teams game only when asked to rewrite the
+ * copy's code, from the copy's design, into the teams design; a change plan only when asked
+ * against the teams design alone. Anything else gets replies the
+ * tests can tell apart (a design called "Not asked right", the copy's own code).
+ */
+function remixModel() {
+  const otherwise = fakeModel({ design: withHeadings('Not asked right') });
+  return async (messages, opts) => {
+    const asked = messages.map((m) => m.content).join('\n');
+    const kind = opts?.responseFormat?.json_schema?.name ?? 'code';
+    if (kind === 'design' && asked.includes('Everyone votes alone.') && asked.includes(WISH)) return fakeModel({ design: TEAMS_DESIGN })(messages, opts);
+    const fromCopy = /<original-design>[^]*Everyone votes alone\.[^]*<\/original-design>/.test(asked);
+    const toTeams = /<design>[^]*Two teams vote\.[^]*<\/design>/.test(asked);
+    if (kind === 'code' && fromCopy && toTeams && asked.includes(TAP_SOURCE)) return fakeModel({ game: TEAMS_SOURCE })(messages, opts);
+    if (kind === 'plan' && toTeams && !asked.includes('Everyone votes alone.')) return fakeModel({ plan: TEAMS_PLAN })(messages, opts);
+    return otherwise(messages, opts);
+  };
+}
+
+/** kim's remix: version 1 is the copy, ready, with the design its code was built from. */
+function remixSetup() {
+  const db = openDatabase(':memory:');
+  const kim = createUser(db, 'kim', 'scrypt$x');
+  setAdmin(db, 'kim', true);
+  const { runGenerator } = realGenerator({ model: remixModel() });
+  const service = new GenerationService({ db, games: new GameRegistry(), enabled: true, runGenerator, log: () => {} });
+  const { id } = createRemix(db, {
+    ownerUserId: kim.id,
+    prompt: IDEA,
+    remixOf: { id: 'g-original', version: 1, name: 'Majority Rules' },
+    design: COPY_DESIGN,
+    source: TAP_SOURCE,
+    report: null,
+    name: 'Tap Test',
+    description: 'First to 3 taps wins. Test-only.',
+  });
+  return { service, id };
+}
+
+test('"Make it your own" reaches "design ready" with the remix\'s whole design, written from the copy\'s design and what should be different', async () => {
+  const { service, id } = remixSetup();
+  service.requestRemixDesign({ id, request: WISH });
+  await service.current;
+  const [, v2] = service.get(id).versions;
+  assert.deepEqual([v2.kind, v2.status, v2.error, v2.design], ['remix', 'design_ready', null, TEAMS_DESIGN]);
+});
+
+test("a remix's approved design is built from the copy's code and the design that code was built from (plan §60), and reviewed", async () => {
+  const { service, id } = remixSetup();
+  service.requestRemixDesign({ id, request: WISH });
+  await service.current;
+  service.build({ id, version: 2 });
+  await service.current;
+  const [, v2] = service.get(id).versions;
+  assert.deepEqual([v2.status, v2.error, v2.source], ['ready', null, TEAMS_SOURCE]);
+  assert.deepEqual(v2.codeReview?.bugs, [], 'the review round ran, and found nothing');
+});
+
+test("after that, a change to the remix is planned against the remix's own design, not the copy's", async () => {
+  const { service, id } = remixSetup();
+  service.requestRemixDesign({ id, request: WISH });
+  await service.current;
+  service.build({ id, version: 2 });
+  await service.current;
+  service.requestChanges({ id, request: 'Make the vote 20 seconds', basedOn: 2 });
+  await service.current;
+  const [, , v3] = service.get(id).versions;
+  assert.deepEqual([v3.status, v3.error, v3.design], ['design_ready', null, TEAMS_PLAN]);
 });

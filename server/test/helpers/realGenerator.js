@@ -31,10 +31,11 @@ export const staticOnly = async (source) => frameGameReport(source);
 
 /**
  * A runGenerator for GenerationService that runs the real generator.
- * @param {{ model?: Parameters<typeof fakeModel>[0], check?: typeof staticOnly }} [opts]
+ * @param {{ model?: Parameters<typeof fakeModel>[0] | ReturnType<typeof fakeModel>, check?: typeof staticOnly }} [opts]
+ *   model: fakeModel's replies, or a fake model of a test's own (one that reads what it's asked)
  */
 export function realGenerator({ model, check = staticOnly } = {}) {
-  const chatFn = fakeModel(model);
+  const chatFn = typeof model === 'function' ? model : fakeModel(model);
   const runGenerator = (job, { onStep } = {}) => runJob(JSON.parse(JSON.stringify(job)), { chatFn, check, onStep });
   return { runGenerator };
 }
