@@ -2369,6 +2369,43 @@ Not done: running the server as a user outside the docker group (deploy/README.m
 service may do", says why). After the first deploy with the new service limits, make one game
 to check generating still works.
 
+## 60. The version kind: one place that says what a version is (2026-10-25)
+
+**Why:** an architecture review of the AI pipeline (the recent hot spots) found that what a
+version *is* (a new game, a change, "Review again", a remix's own design, a remix's copy, an
+upload) was worked out from its kind, status and `basedOn` in about 14 places, on the server and
+in the pages, each with its own copy of the rules. Each new kind (§47, §45b, §57) had to be
+patched into all of them, and they had started to disagree.
+
+**Built:** `server/src/generation/versionKind.js`.
+- `versionKind(version)` → its next `step` (design, build, recheck, check or none), `needsAi`,
+  `designKind` (`whole`, `plan` or `none`), `startsOver` (earlier requests and designs stop
+  applying) and its `track` (`new`, `change` or `upload`; the space; working, yours or failed).
+- `madeBy(game)`: "AI-made" if the site's AI built any version; else "Uploaded" if one was
+  uploaded; else a remix's original's; else "AI-made" (older and imported games).
+- The server's callers ask it: the job's step, whether a key is needed, the history walk, the
+  design lookup. The sandbox no longer looks at the job: the service passes `ai: false`.
+- The API sends `designKind` and `track` with each version, and the newest version's `track`
+  with each game in the list; the pages read them (`whereIs`, `whereIsSummary` and the client's
+  `hasWholeDesign` are gone). The words stay in the pages.
+- Tested as a table: every kind × status in, the answers out (`versionKind.test.js`).
+- `GLOSSARY.md` (new) names the terms: version, version kind, design, plan, upload, remix,
+  track, made by.
+
+**Three bugs it found, fixed first, each with a test that failed first:**
+- A remix of an uploaded game told the remixer "A game file you uploaded": the copy's version
+  was marked an upload to carry the label. Now it's a plain copy, and the label comes from
+  `remix_of_made_by` (migration 18, like `remix_of_name`; old copies are moved over).
+- A remix copied version 1's design, not the one its code was built from: wrong after "Make it
+  your own". It now uses the same lookup as changes.
+- An uploaded version 1 counted as having a whole design (every caller added "and not an
+  upload"). Its `designKind` is `none`.
+
+**Not done (the review's other candidates):** the job's shape owned by the generator (it's
+built in `jobFor` and checked in `runJob`, and its typedef is out of date); one guard for "may
+this game start new work" (the busy checks and the default base version are copied, in two
+orders); untangling build and review in `runJob`.
+
 ## Verification (how to confirm the plan worked once built)
 
 - `npm test` (root) → runs `node --test server/test`, all unit and integration tests green.
