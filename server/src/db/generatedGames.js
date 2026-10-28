@@ -528,13 +528,21 @@ export function listLiveVersions(db) {
 
 export function deleteGeneratedGame(db, id) {
   return db.transaction(() => {
-    // Its catalogue entry and votes (plan §16), its bug reports (§31b) and its games played go with it.
-    db.prepare('DELETE FROM game_pages WHERE game_id = ?').run(id);
-    db.prepare('DELETE FROM game_votes WHERE game_id = ?').run(id);
-    deleteGameReportsFor(db, id);
-    deletePlaysOf(db, id);
+    deleteRecordsOfGame(db, id);
     return db.prepare('DELETE FROM generated_games WHERE id = ?').run(id).changes === 1;
   })();
+}
+
+/**
+ * What's tied to a generated game only by its id (no foreign key), for deleting the game or its
+ * creator's account: its catalogue entry and votes (plan §16), its bug reports (§31b) and its
+ * games played.
+ */
+export function deleteRecordsOfGame(db, id) {
+  db.prepare('DELETE FROM game_pages WHERE game_id = ?').run(id);
+  db.prepare('DELETE FROM game_votes WHERE game_id = ?').run(id);
+  deleteGameReportsFor(db, id);
+  deletePlaysOf(db, id);
 }
 
 // --- Describing a game (for the admin page and the admin script) ----------------------------

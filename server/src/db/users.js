@@ -2,6 +2,8 @@
 // are passed separately from the SQL text, so a username like "x'; DROP TABLE users;--"
 // is just an odd username, never SQL (no SQL injection).
 
+import { deleteRecordsOfGame } from './generatedGames.js';
+
 /**
  * @typedef {{ id: number, username: string, isAdmin: boolean }} User   safe to send to the browser
  */
@@ -81,12 +83,7 @@ export function listUsers(db) {
  */
 export function deleteUser(db, userId, gameIds) {
   db.transaction(() => {
-    for (const id of gameIds) {
-      db.prepare('DELETE FROM game_pages WHERE game_id = ?').run(id);
-      db.prepare('DELETE FROM game_votes WHERE game_id = ?').run(id);
-      db.prepare('DELETE FROM game_reports WHERE game_id = ?').run(id);
-      db.prepare('DELETE FROM game_plays WHERE game_id = ?').run(id);
-    }
+    for (const id of gameIds) deleteRecordsOfGame(db, id);
     db.prepare('DELETE FROM users WHERE id = ?').run(userId);
   })();
 }
