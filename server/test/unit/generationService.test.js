@@ -646,3 +646,22 @@ test('the upload limit is kept in the database: a restart, a deleted game or a d
   const kim = createUser(db, 'kim', 'scrypt$x');
   assert.equal(codeOf(() => restarted.upload({ ownerUserId: kim.id, source: GOOD_SOURCE })), 'no error');
 });
+
+test("an upload is kept only as long as the limit needs it: once it's older than the window, it's deleted", async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: 1_000_000 });
+  const { db, admin, service, calls } = setup();
+  const kim = createUser(db, 'kim', 'scrypt$x');
+  const upload = async (user) => {
+    service.upload({ ownerUserId: user.id, source: GOOD_SOURCE });
+    calls.at(-1).finish(PASSED);
+    await service.current;
+  };
+  await upload(kim);
+  for (let i = 0; i < config.MAX_UPLOADS_PER_HOUR; i++) await upload(admin);
+  assert.equal(codeOf(() => service.upload({ ownerUserId: admin.id, source: GOOD_SOURCE })), 'TOO_MANY_UPLOADS');
+
+  t.mock.timers.tick(config.UPLOADS_WINDOW_MS);
+  await upload(admin);
+  const kept = db.prepare('SELECT user_id AS userId, created_at AS at FROM uploads').all();
+  assert.deepEqual(kept, [{ userId: admin.id, at: 1_000_000 + config.UPLOADS_WINDOW_MS }], "everyone's older uploads are gone");
+});

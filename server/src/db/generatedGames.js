@@ -205,6 +205,11 @@ export function countUploadsSince(db, ownerUserId, since) {
   return db.prepare('SELECT COUNT(*) AS n FROM uploads WHERE user_id = ? AND created_at > ?').get(ownerUserId, since).n;
 }
 
+/** Forgets everyone's uploads made at or before `until` (ms): ones the limit no longer counts. */
+export function deleteUploadsUntil(db, until) {
+  db.prepare('DELETE FROM uploads WHERE created_at <= ?').run(until);
+}
+
 const startStatus = (status) => {
   if (status !== 'designing' && status !== 'generating') throw new Error(`a version can't start as ${status}`);
   return status;

@@ -120,8 +120,10 @@ export const config = {
   REMIXES_PER_WINDOW: Number(process.env.REMIXES_PER_WINDOW) || 10,
   REMIXES_WINDOW_MS: 60 * 60 * 1000,
   // Uploads per account per hour: each one is a playtest in a sandbox. Counted from the
-  // database, so a restart, a deleted game or a discarded version frees none.
+  // database, so a restart, a deleted game or a discarded version frees none. An upload older
+  // than the window no longer counts, and is deleted (the privacy page says so).
   MAX_UPLOADS_PER_HOUR: Number(process.env.MAX_UPLOADS_PER_HOUR) || 6,
+  UPLOADS_WINDOW_MS: 60 * 60 * 1000,
 
   // Behind a reverse proxy (Caddy, M8) every request seems to come from the proxy itself.
   // Setting this (e.g. TRUST_PROXY=loopback) tells Express to use the visitor's real IP from

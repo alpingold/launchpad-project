@@ -42,6 +42,7 @@ import {
   saveBuildAttempts,
   addUpload,
   countUploadsSince,
+  deleteUploadsUntil,
   BUSY_STATUSES,
 } from '../db/generatedGames.js';
 import { readFrameGame } from '../games/frameGame.js';
@@ -219,9 +220,14 @@ export class GenerationService {
     throw new GenerationError(409, 'TOO_MANY_GAMES', `You have ${config.MAX_GAMES_PER_ACCOUNT} games, the most an account can have. Delete one to make another.`);
   }
 
-  /** Refuses an upload over config.MAX_UPLOADS_PER_HOUR (counted from the database, so a restart forgets none). */
+  /**
+   * Refuses an upload over config.MAX_UPLOADS_PER_HOUR (counted from the database, so a restart
+   * forgets none). Uploads older than the window count for nobody any more, so they're deleted.
+   */
   checkUploadsThisHour(ownerUserId) {
-    if (countUploadsSince(this.db, ownerUserId, Date.now() - 60 * 60 * 1000) < config.MAX_UPLOADS_PER_HOUR) return;
+    const since = Date.now() - config.UPLOADS_WINDOW_MS;
+    deleteUploadsUntil(this.db, since);
+    if (countUploadsSince(this.db, ownerUserId, since) < config.MAX_UPLOADS_PER_HOUR) return;
     throw new GenerationError(429, 'TOO_MANY_UPLOADS', `That's ${config.MAX_UPLOADS_PER_HOUR} uploads this hour. Try again later.`);
   }
 

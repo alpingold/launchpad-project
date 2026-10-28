@@ -19,7 +19,7 @@ export const TABLE_NOTES = {
   game_reports: "Bug reports on a game's page (plan §31b). No foreign key on game_id, like game_pages.",
   game_report_votes: 'Up/down votes on game reports: one per account per report. The total is their sum (plan §31b).',
   game_plays: "Every game that ended in a room (not a maker's playtest): which game and version, and whether it was stopped (and why). Nothing about the players. No foreign key on game_id, like game_pages.",
-  uploads: 'When each upload was made, for the uploads-an-hour limit. Kept when its game or version is deleted.',
+  uploads: "When each upload was made, for the uploads-an-hour limit. Kept when its game or version is deleted; deleted once it's older than the limit's window (an hour).",
 };
 
 /**

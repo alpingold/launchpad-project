@@ -50,6 +50,10 @@ export default function Privacy() {
             <strong>What you add:</strong> your bio, the games you make or upload (their ideas, designs and code), your
             votes, and bug reports.
           </li>
+          <li>
+            <strong>When you uploaded a game file</strong>, only the time, to hold uploads to a few an hour. It's kept for an
+            hour (even if you delete the game), then deleted.
+          </li>
         </ul>
       </section>
 

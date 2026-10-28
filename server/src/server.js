@@ -13,6 +13,7 @@ import { createUserKeys } from './generation/userKeys.js';
 import { randomBytes } from 'node:crypto';
 import { deleteExpiredSessions } from './db/sessions.js';
 import { recordPlay } from './db/plays.js';
+import { deleteUploadsUntil } from './db/generatedGames.js';
 import { currentUser } from './auth/currentUser.js';
 
 /**
@@ -78,10 +79,12 @@ export function createGameServer(overrides = {}, { games = createDefaultRegistry
     onGamePlayed: (play) => recordPlay(db, play),
   });
 
-  // Every few minutes, close rooms nobody has touched in hours, and clear out expired logins.
+  // Every few minutes, close rooms nobody has touched in hours, and clear out expired logins
+  // and uploads the limit no longer counts (uploading clears them too, but nobody may upload).
   const sweeper = setInterval(() => {
     rooms.sweepIdleRooms();
     deleteExpiredSessions(db);
+    deleteUploadsUntil(db, Date.now() - cfg.UPLOADS_WINDOW_MS);
   }, cfg.ROOM_SWEEP_INTERVAL_MS);
 
   const router = createRouter(rooms, { cfg });

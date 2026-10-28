@@ -210,7 +210,7 @@ Sent from the /report form, by anyone: logged out, user_id is NULL (plan §31c).
 
 ## uploads
 
-When each upload was made, for the uploads-an-hour limit. Kept when its game or version is deleted.
+When each upload was made, for the uploads-an-hour limit. Kept when its game or version is deleted; deleted once it's older than the limit's window (an hour).
 
 | Column | Type | Rules | Notes |
 |---|---|---|---|

@@ -396,7 +396,8 @@ export const MIGRATIONS = [
     description: 'when each upload was made, for the uploads-an-hour limit',
     sql: `
       -- Not the upload versions themselves: deleting a game or discarding a version would
-      -- forget them, and free an upload.
+      -- forget them, and free an upload. Rows older than the limit's window (an hour) are
+      -- deleted: nothing is kept longer than the limit needs.
       CREATE TABLE uploads (
         user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         created_at INTEGER NOT NULL
