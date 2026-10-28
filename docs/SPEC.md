@@ -55,7 +55,7 @@ the players' browsers, and the server never runs game code.
 16. ✅ As a member, I want a profile with a bio that lists my games, so that people can find what else I made.
 17. ✅ As a visitor, I want the home page to lead with making a game, and show top and newest games, so that I see what's special about the site.
 18. ✅ As someone searching the web, I want BoilerGames' pages to show up with real titles and descriptions, so that I can find the site.
-19. ⬜ As a visitor, I want to sort by most played, so that I see what groups actually enjoy. _(Needs play counts, not recorded yet.)_
+19. ⬜ As a visitor, I want to sort by most played, so that I see what groups actually enjoy. _(Games played are recorded now, and a game's page shows its count; the sort isn't built yet.)_
 
 **Making a game with the site's AI**
 
@@ -118,7 +118,7 @@ the players' browsers, and the server never runs game code.
 
 **Rooms and the protocol**
 - Rooms, players and game state live only in memory; a restart loses them (deploys wait for an
-  empty server). SQLite holds accounts, sessions, games and their versions, pages, votes and reports.
+  empty server). SQLite holds accounts, sessions, games and their versions, pages, votes, reports and games played.
 - Room codes are 4 letters from 20 consonants. Up to 12 players; a game may set fewer. No joining
   once a game has started.
 - Each player has a public `playerId` and a secret resume `token` (kept in the tab's
@@ -247,8 +247,8 @@ the players' browsers, and the server never runs game code.
 - A config comment still says the AI's rulebook allows 300 KB; it's 100 KB.
 - The upload rate limit is in memory, so a restart forgets it.
 - Watch how often the AI's edits fail to apply, and fix calls that end with no reply.
-- Later, if wanted: a length choice on the new-game form; recording games played and finished
-  (for "most played" and for judging AI games); a shape-drawing helper and an openly licensed
+- Later, if wanted: a length choice on the new-game form; using the record of games played
+  (built: every finished or stopped game) for "most played" and for judging AI games; a shape-drawing helper and an openly licensed
   art set; vibration on phones; an automatic secret-leak check in the playtest.
 - Real-group play-tests to tune: Stowaways balance, Comet Crew's late waves, Doodle Drift and
   Punchline timers.

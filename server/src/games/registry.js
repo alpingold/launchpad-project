@@ -67,6 +67,16 @@ export class GameRegistry {
   }
 
   /**
+   * Which game and version a registered id runs: a playtest "g-…-v2" is game "g-…", version 2.
+   * Official games have no versions (null).
+   * @returns {{ gameId: string, version: number | null } | undefined}
+   */
+  versionOf(id) {
+    const entry = this.entries.get(id);
+    return entry && { gameId: entry.meta.baseId, version: entry.meta.version };
+  }
+
+  /**
    * One of a game's screenshots (JPEG), if this user may see the game and it has that one.
    * @param {string} id
    * @param {'host' | 'phone'} which

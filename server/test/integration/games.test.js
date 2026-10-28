@@ -129,3 +129,25 @@ test('only the host may start a game; players get NOT_HOST', async () => {
   host.close();
   alex.close();
 });
+
+test("a game's page counts the times it was played to the end; stopped games don't count", async () => {
+  const plays = async () => (await (await fetch(`${baseUrl}/api/games/tap-test`)).json()).game.plays;
+  assert.equal(await plays(), 0);
+
+  const host = await openHost();
+  host.send({ type: 'host:create_room' });
+  const { code } = await host.next();
+  const alex = await openClient(wsUrl);
+  alex.send({ type: 'player:join', code, name: 'Alex' });
+  const { playerId } = await nextOfType(alex, 'room:joined');
+
+  for (const end of [{ type: 'game:end', rankings: [playerId] }, { type: 'host:stop_game' }, { type: 'game:end', rankings: [playerId] }]) {
+    host.send({ type: 'host:start_game', gameId: 'tap-test' });
+    await nextOfType(alex, 'game:started');
+    host.send(end);
+    await nextOfType(alex, 'game:ended');
+  }
+  assert.equal(await plays(), 2);
+  host.close();
+  alex.close();
+});
