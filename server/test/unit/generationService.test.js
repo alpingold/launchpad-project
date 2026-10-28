@@ -614,3 +614,10 @@ test('one guard: every action that starts work is refused for the same reasons, 
     assert.equal(codeOf(() => action.act(ctx, id)), 'QUEUE_FULL', `${action.name}: a full queue, and nothing to build from`);
   }
 });
+
+test('"Make it your own" is held to the AI\'s size limit too, like a change', async () => {
+  const ctx = setup();
+  const big = `${GOOD_SOURCE}<!--${'x'.repeat(100 * 1024)}-->`;
+  const remix = createRemix(ctx.db, { ownerUserId: ctx.admin.id, prompt: IDEA, remixOf: { id: 'stowaways', version: null, name: 'Stowaways' }, design: DESIGN, source: big, report: PASSED.report, name: 'Majority Rules', description: 'Vote!' });
+  assert.equal(codeOf(() => ctx.service.requestRemixDesign({ id: remix.id, request: 'Make it about cats please' })), 'TOO_BIG_FOR_AI');
+});
