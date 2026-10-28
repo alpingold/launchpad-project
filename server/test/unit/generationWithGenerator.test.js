@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { openDatabase } from '../../src/db/database.js';
 import { createUser, setAdmin } from '../../src/db/users.js';
-import { gameStatus, createRemix } from '../../src/db/generatedGames.js';
+import { gameStatus, createRemix, listBuildAttempts } from '../../src/db/generatedGames.js';
 import { GameRegistry } from '../../src/games/registry.js';
 import { GenerationService } from '../../src/generation/service.js';
 import { realGenerator, fakeModel, staticOnly, withHeadings } from '../helpers/realGenerator.js';
@@ -24,7 +24,7 @@ function setup(model, check) {
   setAdmin(db, 'admin', true); // admins without their own key use the server's
   const { runGenerator, asked } = realGenerator({ model, check });
   const service = new GenerationService({ db, games: new GameRegistry(), enabled: true, runGenerator, log: () => {} });
-  return { admin, service, asked };
+  return { db, admin, service, asked };
 }
 
 /** A new game, designed and built: version 1 is ready. */
@@ -103,7 +103,7 @@ test("a build is written from the latest draft, the admin's own edit too, and bu
 });
 
 test("a game's model is the one the AI is asked with, for its design and its build", async () => {
-  const { service, admin, asked } = setup({ design: DESIGN });
+  const { db, service, admin, asked } = setup({ design: DESIGN });
   const { id } = service.start({ ownerUserId: admin.id, idea: IDEA, model: DEFAULT_MODEL });
   await service.current;
   service.build({ id, version: 1 });
@@ -111,6 +111,9 @@ test("a game's model is the one the AI is asked with, for its design and its bui
   assert.equal(service.get(id).versions[0].status, 'ready');
   assert.deepEqual([...new Set(asked.map((a) => a.model))], [DEFAULT_MODEL]);
   assert.deepEqual([...new Set(asked.map((a) => a.kind))].sort(), ['code', 'critical_bugs', 'design']);
+  // Its build attempts keep it too, with what the generator said about each call (the edit stats).
+  const attempts = listBuildAttempts(db, id).get(1);
+  assert.deepEqual(attempts.map((a) => [a.model, a.fix, a.noReply, a.editsApplied]), [[DEFAULT_MODEL, false, false, null]]);
 });
 
 test("an upload's new file is checked too; a file that fails its checks fails with its report", async () => {

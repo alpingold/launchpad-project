@@ -23,6 +23,7 @@ import {
   gameStatus,
   mainVersion,
   listBuildAttempts,
+  buildAttemptStats,
 } from '../src/db/generatedGames.js';
 import { frameGameReport, describeProblem } from '../src/games/frameGame.js';
 import { datasetRecords, toJsonLines } from '../src/generation/dataset.js';
@@ -43,6 +44,10 @@ const HELP = `Usage: npm run admin -- <command>
   delete-game <game id>                 the game and all its versions
   export-data <file.jsonl>              every version of every AI game as JSON Lines (plan §13n):
                                         idea, design drafts with feedback, code, checks, outcome
+  edit-stats [--since <YYYY-MM-DD>] [--until <YYYY-MM-DD>]
+                                        by model: how often the AI's edits failed to apply, and how
+                                        often a call (a fix especially) got no reply. Days in UTC,
+                                        both included; default: the last ${config.EDIT_STATS_DAYS} days
 
 Database: ${config.DB_PATH}`;
 
@@ -69,6 +74,18 @@ switch (command) {
     const out = path.resolve(process.env.INIT_CWD || process.cwd(), file);
     await writeFile(out, toJsonLines(records));
     done(`Wrote ${records.length} version${records.length === 1 ? '' : 's'} to ${out}`);
+    break;
+  }
+  case 'edit-stats': {
+    const DAY = 24 * 60 * 60 * 1000;
+    const day = (text) => (/^\d{4}-\d{2}-\d{2}$/.test(text) && Number.isFinite(Date.parse(text)) ? Date.parse(text) : NaN);
+    const until = flag('until') === undefined ? Math.floor(Date.now() / DAY) * DAY : day(flag('until'));
+    const since = flag('since') === undefined ? until - (config.EDIT_STATS_DAYS - 1) * DAY : day(flag('since'));
+    if (!Number.isFinite(since) || !Number.isFinite(until) || since > until) done('--since and --until are days (YYYY-MM-DD), the first not after the last.', false);
+    const period = `from ${new Date(since).toISOString().slice(0, 10)} to ${new Date(until).toISOString().slice(0, 10)}`;
+    const stats = buildAttemptStats(db, { since, until: until + DAY });
+    if (stats.length === 0) done(`No build attempts recorded ${period}.`);
+    done([`Build attempts ${period} (UTC), by model:`, ...stats.flatMap((s) => ['', ...editStatsLines(s)])].join('\n'));
     break;
   }
   case 'users': {
@@ -149,4 +166,18 @@ switch (command) {
   }
   default:
     done(HELP, command === undefined || command === 'help');
+}
+
+/**
+ * One model's edit stats, as lines.
+ * @param {import('../src/db/generatedGames.js').BuildAttemptStats} s
+ */
+function editStatsLines(s) {
+  const rate = (part, whole) => `(${Math.round((100 * part) / whole)}%)`;
+  return [
+    s.model ?? '(model not recorded)',
+    `  calls      ${s.attempts} (${s.fixes} fixes)`,
+    `  edits      ${s.edits === 0 ? 'none' : `${s.edits} replies, ${s.editsFailed} didn't apply ${rate(s.editsFailed, s.edits)}`}`,
+    `  no reply   ${s.noReply} of ${s.attempts} calls ${rate(s.noReply, s.attempts)}; fixes: ${s.fixes === 0 ? 'none' : `${s.fixesNoReply} of ${s.fixes} ${rate(s.fixesNoReply, s.fixes)}`}`,
+  ];
 }

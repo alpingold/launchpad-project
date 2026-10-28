@@ -167,6 +167,8 @@ test('edits that fail twice in a row: the whole file is asked for instead, and t
   const result = await runJob(changeJob(), { chatFn: model.chatFn, check: passing, onStep: (t) => steps.push(t) });
   assert.equal(result.ok, true);
   assert.deepEqual(result.attempts.map((a) => a.mode), ['edits', 'edits', 'whole']);
+  // Each attempt says whether its edits applied (a whole file has none), for the edit stats.
+  assert.deepEqual(result.attempts.map((a) => a.editsApplied ?? null), [false, false, null]);
   assert.ok(steps.includes('edits failed twice: asking for the whole file instead'));
   // Nothing had been applied yet: it's the whole-file change prompt, from the start.
   assert.equal(model.calls[2].length, 2);
@@ -190,6 +192,7 @@ test('a first build: attempt 1 writes the whole file, the fixes are edits to it'
   const result = await runJob({ step: 'build', idea: 'A tapping race for friends', design: '# Tap\n## Rules\nTap.' }, { chatFn: model.chatFn, check });
   assert.equal(result.ok, true);
   assert.deepEqual(result.attempts.map((a) => [a.mode, a.ok]), [['whole', false], ['edits', true]]);
+  assert.deepEqual(result.attempts.map((a) => [a.editsApplied ?? null, a.fix, a.noReply]), [[null, false, false], [true, true, false]]);
   assert.equal(result.source, broken.replace('fetch("/x");\n', ''));
   const fix = model.calls[1];
   assert.equal(fix.length, 4);

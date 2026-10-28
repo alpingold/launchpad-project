@@ -59,7 +59,11 @@ import { describeProblem } from '../../server/src/games/frameGame.js';
 /**
  * One build attempt, as the result lists it. mode: how the model answered (plan §23). An
  * "edits" attempt whose edits didn't fit the file has no source; its report lists why.
+ * For the edit stats: fix (the call asked to fix an earlier attempt, or was the review's fix),
+ * noReply (the model wrote nothing: it ran out of room while thinking) and editsApplied (an
+ * "edits" reply only: whether its edits fit the file).
  * @typedef {{ attempt: number, mode?: 'whole' | 'edits', ok: boolean, problems: number, seconds: number,
+ *   fix?: boolean, noReply?: boolean, editsApplied?: boolean,
  *   usage: { prompt_tokens?: number, completion_tokens?: number } | null, finishReason?: string | null, toolCallChars?: number,
  *   thinking?: string, reply?: string, toolCalls?: string, outOfRoom?: true,
  *   source?: string | null, report?: import('../../server/src/games/frameGame.js').CheckReport }} AttemptResult
@@ -265,16 +269,17 @@ async function build(job, model, { chatFn = chat, check = checkGame, onStep = ()
     const mode = edits && current !== null ? 'edits' : 'whole';
     const asking = `attempt ${attempt}/${maxAttempts}${mode === 'edits' ? ' (edits)' : ''}: asking ${model}`;
     onStep(asking);
+    // The first request for the file can think until the context is full (plan §40): models.js
+    // may give it its own effort.
+    const step = messages === prompt ? 'build' : 'fix';
+    const fix = step === 'fix';
     let reply;
     try {
-      // The first request for the file can think until the context is full (plan §40): models.js
-      // may give it its own effort.
-      const step = messages === prompt ? 'build' : 'fix';
       reply = await chatFn(messages, { model, reasoningEffort: job.reasoningEffort ?? reasoningEffortFor(model, step), onRetry: onStep, onProgress: (p) => onStep(`${asking} (${progressText(p)})`, { replace: true }) });
     } catch (err) {
       if (!err.outOfRoom) return { ...result, error: err.message };
       // It thought until the context was full: a used-up attempt. The next one asks the same again.
-      result.attempts.push({ attempt, mode, seconds: err.seconds, usage: err.usage, ...thinkingOf(job, err), ok: false, problems: 1, outOfRoom: true, source: null });
+      result.attempts.push({ attempt, mode, fix, noReply: true, seconds: err.seconds, usage: err.usage, ...thinkingOf(job, err), ok: false, problems: 1, outOfRoom: true, source: null });
       onStep(`attempt ${attempt}/${maxAttempts}: ${err.message}`);
       continue;
     }
@@ -283,7 +288,8 @@ async function build(job, model, { chatFn = chat, check = checkGame, onStep = ()
 
     let source;
     let attemptMode = mode;
-    const record = (fields) => result.attempts.push({ attempt, mode: attemptMode, seconds: reply.seconds, usage: reply.usage, ...thinkingOf(job, reply), ...fields });
+    const record = (fields) =>
+      result.attempts.push({ attempt, mode: attemptMode, fix, noReply: false, ...(attemptMode === 'edits' && { editsApplied: true }), seconds: reply.seconds, usage: reply.usage, ...thinkingOf(job, reply), ...fields });
     if (mode === 'edits' && !hasEdits(reply.content) && extractGameFile(reply.content)) {
       // Asked for edits, sent the whole file anyway: that's fine, use it.
       source = extractGameFile(reply.content);
@@ -294,7 +300,7 @@ async function build(job, model, { chatFn = chat, check = checkGame, onStep = ()
         // Nothing was applied: the file is as it was. Say what didn't fit, and ask again.
         failedInARow += 1;
         const problems = applied.failures;
-        record({ ok: false, problems: problems.length, source: null, report: { ok: false, problems, warnings: [] } });
+        record({ ok: false, editsApplied: false, problems: problems.length, source: null, report: { ok: false, problems, warnings: [] } });
         onStep(`attempt ${attempt}/${maxAttempts}: ${problems.length} edit(s) didn't fit the file`);
         if (failedInARow >= 2 && current.length <= MAX_WHOLE_FILE_LENGTH) {
           edits = false;
@@ -425,7 +431,7 @@ async function reviewRound(job, source, model, deps) {
  */
 function withReview(job, built, { review, fix }) {
   if (!fix) return { ...built, review };
-  const attempts = [...built.attempts, ...fix.attempts.map((a) => ({ ...a, attempt: built.attempts.length + a.attempt, reviewFix: true }))];
+  const attempts = [...built.attempts, ...fix.attempts.map((a) => ({ ...a, attempt: built.attempts.length + a.attempt, reviewFix: true, fix: true }))];
   if (!fix.ok) return { ...built, attempts, review };
   // A recheck's only change is the fix, so its list of changes is the version's.
   const changelog = job.step === 'recheck' ? (fix.changelog ?? null) : built.changelog;

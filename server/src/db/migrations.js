@@ -377,6 +377,21 @@ export const MIGRATIONS = [
   },
   {
     version: 20,
+    description: 'how often edits fail to apply and calls end with no reply: kept with each build attempt',
+    sql: `
+      -- What the generator knew about each call, for "npm run admin -- edit-stats". NULL: not
+      -- recorded (an attempt from before this, or an upload's check, which calls no model).
+      -- model: the model asked. fix: 1 if the call asked to fix an earlier attempt (or was the
+      -- review's fix). no_reply: 1 if the model wrote nothing (it ran out of room while
+      -- thinking). edits_applied: for an 'edits' reply only, 1 if its edits fit the file.
+      ALTER TABLE build_attempts ADD COLUMN model TEXT;
+      ALTER TABLE build_attempts ADD COLUMN fix INTEGER;
+      ALTER TABLE build_attempts ADD COLUMN no_reply INTEGER;
+      ALTER TABLE build_attempts ADD COLUMN edits_applied INTEGER;
+    `,
+  },
+  {
+    version: 21,
     description: 'when each upload was made, for the uploads-an-hour limit',
     sql: `
       -- Not the upload versions themselves: deleting a game or discarding a version would
