@@ -621,3 +621,28 @@ test('"Make it your own" is held to the AI\'s size limit too, like a change', as
   const remix = createRemix(ctx.db, { ownerUserId: ctx.admin.id, prompt: IDEA, remixOf: { id: 'stowaways', version: null, name: 'Stowaways' }, design: DESIGN, source: big, report: PASSED.report, name: 'Majority Rules', description: 'Vote!' });
   assert.equal(codeOf(() => ctx.service.requestRemixDesign({ id: remix.id, request: 'Make it about cats please' })), 'TOO_BIG_FOR_AI');
 });
+
+test('the upload limit is kept in the database: a restart, a deleted game or a discarded version frees no upload', async () => {
+  const { db, admin, games, service, calls, runGenerator } = setup();
+  const first = service.upload({ ownerUserId: admin.id, source: GOOD_SOURCE });
+  calls.at(-1).finish(PASSED);
+  await service.current;
+  // A failed upload counts too, and so does one whose version is then discarded.
+  service.upload({ ownerUserId: admin.id, id: first.id, source: CHANGED_SOURCE });
+  calls.at(-1).finish({ ok: false, error: "it didn't pass the checks", source: CHANGED_SOURCE, report: { ok: false, problems: ['stuck'] }, attempts: [] });
+  await service.current;
+  service.discard({ id: first.id, version: 2 });
+  service.remove(first.id);
+  for (let i = 2; i < config.MAX_UPLOADS_PER_HOUR; i++) {
+    service.upload({ ownerUserId: admin.id, source: GOOD_SOURCE });
+    calls.at(-1).finish(PASSED);
+    await service.current;
+  }
+  assert.equal(codeOf(() => service.upload({ ownerUserId: admin.id, source: GOOD_SOURCE })), 'TOO_MANY_UPLOADS');
+
+  const restarted = new GenerationService({ db, games, enabled: true, runGenerator, log: () => {} });
+  assert.equal(codeOf(() => restarted.upload({ ownerUserId: admin.id, source: GOOD_SOURCE })), 'TOO_MANY_UPLOADS');
+  // Someone else's uploads are their own.
+  const kim = createUser(db, 'kim', 'scrypt$x');
+  assert.equal(codeOf(() => restarted.upload({ ownerUserId: kim.id, source: GOOD_SOURCE })), 'no error');
+});

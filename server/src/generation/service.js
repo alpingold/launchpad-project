@@ -41,6 +41,7 @@ import {
   deleteVersion,
   saveBuildAttempts,
   addUpload,
+  countUploadsSince,
   BUSY_STATUSES,
 } from '../db/generatedGames.js';
 import { readFrameGame } from '../games/frameGame.js';
@@ -69,8 +70,6 @@ export { MAX_DESIGN_LENGTH };
 export const RECHECK_REQUEST = 'Review the code again, and fix any crashes or dead ends it finds.';
 /** At most this many jobs waiting in line (besides those running), so nobody can queue up hours of work. */
 export const MAX_WAITING = 4;
-/** Uploads per person per hour (plan §57): each one is a playtest in a sandbox. */
-export const MAX_UPLOADS_PER_HOUR = 6;
 /** The biggest file the AI may change (plan §57): bigger uploads can only be replaced by hand. */
 export const MAX_AI_SOURCE_BYTES = 100 * 1024;
 /** Progress lines kept per job (the admin page shows them while it runs). */
@@ -124,8 +123,6 @@ export class GenerationService {
     this.current = Promise.resolve();
     /** @type {Map<string, string>} where each queued or running job was asked for (an IP address), by game id */
     this.jobIps = new Map();
-    /** @type {Map<number, number[]>} when each person uploaded in the last hour */
-    this.uploads = new Map();
   }
 
   /** On startup: anything the sandbox was working on was cut off by a restart. */
@@ -164,7 +161,8 @@ export class GenerationService {
    * 1. this game is busy (a version being made, or a design waiting for its maker);
    * 2. the maker or the site can't take another job (checkCanQueue);
    * 3. a new game the account has no room for;
-   * 4. nothing to build from, or too much for the AI.
+   * 4. an upload over the account's uploads this hour;
+   * 5. nothing to build from, or too much for the AI.
    * @param {Object} work
    * @param {number} work.ownerUserId  whose job it would be
    * @param {GeneratedGame | null} [work.game]  the game it's on; null: a new game
@@ -178,6 +176,7 @@ export class GenerationService {
     else if (game) checkNoOpenVersion(game);
     this.checkCanQueue(ownerUserId, { needsKey: kind !== 'upload', ip });
     if (!game) this.checkRoomForGame(ownerUserId);
+    if (kind === 'upload') this.checkUploadsThisHour(ownerUserId);
     if (!game || on || kind === 'upload') return null;
     return baseFor(game, kind, basedOn);
   }
@@ -220,6 +219,12 @@ export class GenerationService {
     throw new GenerationError(409, 'TOO_MANY_GAMES', `You have ${config.MAX_GAMES_PER_ACCOUNT} games, the most an account can have. Delete one to make another.`);
   }
 
+  /** Refuses an upload over config.MAX_UPLOADS_PER_HOUR (counted from the database, so a restart forgets none). */
+  checkUploadsThisHour(ownerUserId) {
+    if (countUploadsSince(this.db, ownerUserId, Date.now() - 60 * 60 * 1000) < config.MAX_UPLOADS_PER_HOUR) return;
+    throw new GenerationError(429, 'TOO_MANY_UPLOADS', `That's ${config.MAX_UPLOADS_PER_HOUR} uploads this hour. Try again later.`);
+  }
+
   /** Can this person's jobs run: their own saved key, or (admins) the server's? */
   hasKey(userId) {
     return isAdminUser(this.db, userId) || (this.userKeys?.status(userId).saved ?? false);
@@ -257,16 +262,10 @@ export class GenerationService {
       if (game.ownerUserId !== ownerUserId) throw new GenerationError(404, 'NOT_FOUND', 'There is no such game.');
     }
     this.mayStart({ ownerUserId, game, kind: 'upload', ip });
-    const now = Date.now();
-    const recent = (this.uploads.get(ownerUserId) ?? []).filter((t) => now - t < 60 * 60 * 1000);
-    if (recent.length >= MAX_UPLOADS_PER_HOUR) {
-      throw new GenerationError(429, 'TOO_MANY_UPLOADS', `That's ${MAX_UPLOADS_PER_HOUR} uploads this hour. Try again later.`);
-    }
-    this.uploads.set(ownerUserId, [...recent, now]);
     // Its idea, for the code review if one is asked for (there's no design): what the game says it is.
     const said = `${info.game.name}: ${info.game.description}`;
     const prompt = (said.length >= MIN_IDEA_LENGTH ? said : `${info.game.name}: a party game, uploaded as a file`).slice(0, MAX_IDEA_LENGTH);
-    const uploaded = addUpload(this.db, { ownerUserId, gameId: game?.id ?? null, prompt, source, now });
+    const uploaded = addUpload(this.db, { ownerUserId, gameId: game?.id ?? null, prompt, source });
     this.enqueue(uploaded.id, ip);
     return this.get(uploaded.id);
   }
