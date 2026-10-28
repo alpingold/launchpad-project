@@ -238,18 +238,17 @@ the players' browsers, and the server never runs game code.
 
 ## Further Notes
 
-**Open engineering items** (not user stories; carried over from the old plan, to become tickets):
-- Confirm the live server runs the newest generator image (the playtest fast-forward and the
-  generator-owned job both need it rebuilt) and that one real game still generates with the
-  service's newer limits.
-- Run the service as a user of its own, outside the docker group (deploy/README.md says why).
-- Untangle build and review in the generator's job runner.
-- A config comment still says the AI's rulebook allows 300 KB; it's 100 KB.
-- The upload rate limit is in memory, so a restart forgets it.
-- Watch how often the AI's edits fail to apply, and fix calls that end with no reply.
-- Later, if wanted: a length choice on the new-game form; using the record of games played
-  (built: every finished or stopped game) for "most played" and for judging AI games; a shape-drawing helper and an openly licensed
-  art set; vibration on phones; an automatic secret-leak check in the playtest.
+**Open engineering items** (not user stories; tickets in `.scratch/boilergames/issues/`):
+- Confirm the live server runs the newest generator image and that one real game still
+  generates with the service's newer limits (ticket 07). Migrations 19 to 21 and the generator's
+  new build-attempt fields need this deploy too.
+- Run the service as a user of its own, outside the docker group (ticket 08; deploy/README.md
+  says why).
+- Read `npm run admin -- edit-stats` after a few weeks of real builds, to decide whether failed
+  edits or fix calls with no reply need work.
+- Later, if wanted: a length choice on the new-game form; judging AI games by how often they're
+  played to the end; a shape-drawing helper and an openly licensed art set; vibration on
+  phones; an automatic secret-leak check in the playtest.
 - Real-group play-tests to tune: Stowaways balance, Comet Crew's late waves, Doodle Drift and
   Punchline timers.
 
