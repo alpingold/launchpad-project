@@ -429,6 +429,8 @@ test('build job: an attempt that ran out of room is recorded (with its thinking,
   const result = await runJob({ step: 'build', idea: 'A racing platformer for friends', design: DESIGN, keepThinking: true }, { chatFn, check: passing, onStep: (t) => steps.push(t) });
   assert.equal(result.ok, true);
   assert.deepEqual(result.attempts.map((a) => [a.ok, a.outOfRoom ?? false]), [[false, true], [true, false]]);
+  // "No reply" is recorded with each attempt (the edit stats count it); the same request again is no fix.
+  assert.deepEqual(result.attempts.map((a) => [a.noReply, a.fix]), [[true, false], [false, false]]);
   assert.equal(result.attempts[0].thinking, 'Wait. Actually…');
   assert.deepEqual(result.attempts[0].usage, { completion_tokens: 59_000 });
   assert.ok(steps.includes('attempt 1/4: the model ran out of room while thinking (59,000 tokens) and wrote no reply'));
@@ -772,6 +774,7 @@ test('recheck that finds a crash: the fix is the version\'s only change, so its 
   assert.equal(result.report.checked, 'fake');
   assert.equal(result.changelog, '- Scores are set in time');
   assert.deepEqual(result.attempts.map((a) => [a.attempt, a.reviewFix]), [[1, true]]);
+  assert.equal(result.attempts[0].fix, true, "the review's fix is a fix from its first call");
   assert.deepEqual(result.review.bugs, [{ severity: 'crash', what: CRASH.what, fixed: true }]);
 });
 

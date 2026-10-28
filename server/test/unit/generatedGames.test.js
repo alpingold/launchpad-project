@@ -19,6 +19,7 @@ import {
   deleteVersion,
   saveBuildAttempts,
   listBuildAttempts,
+  buildAttemptStats,
   deleteGeneratedGame,
   gameStatus,
   mainVersion,
@@ -258,6 +259,36 @@ test('designs: drafts pile up, a failed draft falls back to the last one, buildi
   assert.deepEqual(getGeneratedGame(db, id).versions.map((x) => x.version), [1]);
 });
 
+test('edit stats: per model, for the attempts saved in the period that recorded their calls', () => {
+  const { db, admin } = setup();
+  const { id } = createGeneratedGame(db, { ownerUserId: admin.id, prompt: 'a tapping game' });
+  const save = (model, now, attempts) => saveBuildAttempts(db, id, 1, attempts, { model, now });
+  // qwen: a first build that wrote a whole file, ran out of room on a fix, then two fixes as
+  // edits (the first didn't fit); then a review's fix whose edits fit.
+  save('qwen', 1_000, [
+    { attempt: 1, mode: 'whole', fix: false, noReply: false, ok: false },
+    { attempt: 2, mode: 'edits', fix: true, noReply: true, ok: false },
+    { attempt: 3, mode: 'edits', fix: true, noReply: false, editsApplied: false, ok: false },
+    { attempt: 4, mode: 'edits', fix: true, noReply: false, editsApplied: true, ok: true },
+  ]);
+  save('qwen', 2_000, [{ attempt: 1, mode: 'edits', fix: true, noReply: false, editsApplied: true, ok: true }]);
+  // gemma: a first build that ran out of room, then a whole file.
+  save('gemma', 1_500, [
+    { attempt: 1, mode: 'whole', fix: false, noReply: true, ok: false },
+    { attempt: 2, mode: 'whole', fix: false, noReply: false, ok: true },
+  ]);
+  // Left out: saved before or at/after the period, and an attempt that recorded nothing (an upload's check, or older).
+  save('qwen', 999, [{ attempt: 1, mode: 'edits', fix: true, noReply: false, editsApplied: false, ok: false }]);
+  save('qwen', 3_000, [{ attempt: 1, mode: 'edits', fix: true, noReply: false, editsApplied: false, ok: false }]);
+  save(null, 1_200, [{ attempt: 1, ok: true }]);
+
+  assert.deepEqual(buildAttemptStats(db, { since: 1_000, until: 3_000 }), [
+    { model: 'gemma', attempts: 2, edits: 0, editsFailed: 0, noReply: 1, fixes: 0, fixesNoReply: 0 },
+    { model: 'qwen', attempts: 5, edits: 3, editsFailed: 1, noReply: 1, fixes: 4, fixesNoReply: 1 },
+  ]);
+  assert.deepEqual(buildAttemptStats(db, { since: 5_000, until: 6_000 }), []);
+});
+
 test('build attempts: numbered per build, read back by version, deleted with their version', () => {
   const { db, admin } = setup();
   const { id } = createGeneratedGame(db, { ownerUserId: admin.id, prompt: 'a tapping game' });
@@ -276,6 +307,17 @@ test('build attempts: numbered per build, read back by version, deleted with the
   assert.equal(attempts[1].promptTokens, null);
   // How each was written (plan §23); an attempt from before edit mode has no mode.
   assert.deepEqual(attempts.map((a) => a.mode), ['whole', 'edits', null]);
+
+  // For the edit stats: the model, and what the generator said about each call. An attempt
+  // that didn't say (an upload's check, or from before) leaves them empty.
+  saveBuildAttempts(db, id, 1, [
+    { attempt: 1, mode: 'whole', fix: false, noReply: true, ok: false },
+    { attempt: 2, mode: 'edits', fix: true, noReply: false, editsApplied: false, ok: false },
+    { attempt: 3, mode: 'edits', fix: true, noReply: false, editsApplied: true, ok: true, source: 'good' },
+  ], { model: 'qwen3.8:27b' });
+  const third = listBuildAttempts(db, id).get(1).filter((a) => a.build === 3);
+  assert.deepEqual(third.map((a) => [a.model, a.fix, a.noReply, a.editsApplied]), [['qwen3.8:27b', false, true, null], ['qwen3.8:27b', true, false, false], ['qwen3.8:27b', true, false, true]]);
+  assert.deepEqual([attempts[0].model, attempts[0].fix, attempts[0].noReply, attempts[0].editsApplied], [null, null, null, null]);
 
   addVersion(db, id, { request: 'a tiny fix', basedOn: 1, status: 'generating' });
   saveBuildAttempts(db, id, 2, [{ attempt: 1, ok: true, source: 'v2' }]);

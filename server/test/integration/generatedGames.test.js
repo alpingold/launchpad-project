@@ -158,3 +158,60 @@ test('npm run admin: grant, import a game (only if its game info is valid), list
   assert.match(admin('delete-game', id).stdout, /Deleted/);
   assert.match(admin('games').stdout, /No generated games yet/);
 });
+
+test('npm run admin -- edit-stats: by model, how often edits failed to apply and calls (fixes too) got no reply', (t) => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'boilergames-stats-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const script = fileURLToPath(new URL('../../scripts/admin.js', import.meta.url));
+  const env = { ...process.env, DB_PATH: path.join(dir, 'test.db') };
+  const admin = (...args) => spawnSync(process.execPath, [script, ...args], { encoding: 'utf8', env });
+
+  assert.match(admin('edit-stats', '--since', '2026-10-01', '--until', '2026-10-10').stdout, /No build attempts recorded from 2026-10-01 to 2026-10-10/);
+
+  // A game whose builds (as the generator recorded them) fall inside the period, and one after it.
+  const seeded = spawnSync(
+    process.execPath,
+    [
+      '--input-type=module',
+      '-e',
+      `import { openDatabase } from '${new URL('../../src/db/database.js', import.meta.url)}';
+       import { createUser } from '${new URL('../../src/db/users.js', import.meta.url)}';
+       import { createGeneratedGame, saveBuildAttempts } from '${new URL('../../src/db/generatedGames.js', import.meta.url)}';
+       const db = openDatabase(process.env.DB_PATH);
+       const owner = createUser(db, 'alpingold', 'scrypt$x');
+       const { id } = createGeneratedGame(db, { ownerUserId: owner.id, prompt: 'a tapping game' });
+       const save = (model, day, attempts) => saveBuildAttempts(db, id, 1, attempts, { model, now: Date.parse(day) });
+       save('qwen', '2026-10-02T12:00Z', [
+         { attempt: 1, mode: 'whole', fix: false, noReply: false, ok: false },
+         { attempt: 2, mode: 'edits', fix: true, noReply: true, ok: false },
+         { attempt: 3, mode: 'edits', fix: true, noReply: false, editsApplied: false, ok: false },
+         { attempt: 4, mode: 'edits', fix: true, noReply: false, editsApplied: true, ok: true },
+       ]);
+       save('gemma', '2026-10-10T23:00Z', [{ attempt: 1, mode: 'whole', fix: false, noReply: false, ok: true }]);
+       save('qwen', '2026-10-11T00:00Z', [{ attempt: 1, mode: 'edits', fix: true, noReply: true, ok: false }]);`,
+    ],
+    { encoding: 'utf8', env },
+  );
+  assert.equal(seeded.status, 0, seeded.stderr);
+
+  const stats = admin('edit-stats', '--since', '2026-10-01', '--until', '2026-10-10');
+  assert.equal(stats.status, 0, stats.stderr);
+  assert.equal(
+    stats.stdout,
+    [
+      'Build attempts from 2026-10-01 to 2026-10-10 (UTC), by model:',
+      '',
+      'gemma',
+      '  calls      1 (0 fixes)',
+      '  edits      none',
+      '  no reply   0 of 1 calls (0%); fixes: none',
+      '',
+      'qwen',
+      '  calls      4 (3 fixes)',
+      "  edits      2 replies, 1 didn't apply (50%)",
+      '  no reply   1 of 4 calls (25%); fixes: 1 of 3 (33%)',
+      '',
+    ].join('\n'),
+  );
+  assert.equal(admin('edit-stats', '--since', 'yesterday').status, 1, 'not a date');
+});
