@@ -218,8 +218,7 @@ async function build(job, model, { chatFn = chat, check = checkGame, onStep = ()
   const { change } = job;
   // A remix (plan §45b) writes the whole file from the start, like a first build, from the
   // original's code, whatever its size (no MAX_WHOLE_FILE_LENGTH: tried on Stowaways, 62 KB).
-  // A fix inside the review round is a change (job.change), so it takes the change path.
-  const remix = change ? null : (job.remix ?? null);
+  const remix = job.remix ?? null;
   const remixJob = remix && { idea: job.idea, oldDesign: remix.design ?? null, design: job.design, source: remix.source };
   let edits = remix ? false : job.edits !== false;
   const plan = change?.plan ?? null;
@@ -372,7 +371,10 @@ async function withReview(job, built, model, deps) {
 
   const { request, included } = fixRequest(critical, MAX_REQUEST_LENGTH);
   onStep(`review: ${critical.length} crash(es) or dead end(s): fixing ${included === critical.length ? 'them' : `${included} of them`}`);
-  const fixJob = { ...job, step: 'build', review: false, maxAttempts: FIX_ATTEMPTS, change: { request, source: built.source, design, earlierRequests: changes, plan: null } };
+  // The fix is a small change to the game that passed, whatever the job was (a remix's too): it
+  // keeps the job's own switches (edit mode, reasoning effort, kept thinking), not its remix.
+  const { remix: _remix, review: _review, ...switches } = job;
+  const fixJob = { ...switches, step: 'build', maxAttempts: FIX_ATTEMPTS, change: { request, source: built.source, design, earlierRequests: changes, plan: null } };
   const fixed = await build(fixJob, model, deps);
   // The fix's attempts follow the build's, marked as the review's.
   const attempts = [...built.attempts, ...fixed.attempts.map((a) => ({ ...a, attempt: built.attempts.length + a.attempt, reviewFix: true }))];
