@@ -2,6 +2,7 @@ import { allGamePages, getGamePage, saveGamePage, voteCounts, votesBy, setVote }
 import { blockedFields, blockedMessage } from './wordFilter.js';
 import { usernamesById } from '../db/users.js';
 import { remixOrigins } from '../db/generatedGames.js';
+import { countFinishedPlays } from '../db/plays.js';
 import { tagProblems, minutesProblems } from './frameGame.js';
 import { GAME_TAGS, MAX_GAME_TAGS } from './tags.js';
 
@@ -108,16 +109,17 @@ export function catalogList(db, registry, viewer) {
 }
 
 /**
- * One game's page: everything on its card, plus its "About" text and, for whoever may edit it,
- * what the game file itself says (to show what an empty field falls back to).
- * @returns {CatalogGame & { about: string, fromFile?: { name: string, description: string, tags: string[], minutes: [number, number] | null },
+ * One game's page: everything on its card, plus its "About" text, how many times it was played
+ * to the end, and, for whoever may edit it, what the game file itself says (to show what an
+ * empty field falls back to).
+ * @returns {CatalogGame & { about: string, plays: number, fromFile?: { name: string, description: string, tags: string[], minutes: [number, number] | null },
  *   tagChoices?: string[], maxTags?: number }}  tagChoices/maxTags: for the edit form
  */
 export function catalogGame(db, registry, viewer, id) {
   const game = catalogList(db, registry, viewer).find((g) => g.id === id);
   if (!game) throw new CatalogError(404, 'NOT_FOUND', 'There is no such game.');
   const page = getGamePage(db, game.pageId);
-  const result = { ...game, about: page?.about ?? '' };
+  const result = { ...game, about: page?.about ?? '', plays: countFinishedPlays(db, game.pageId) };
   if (game.canEdit) {
     const file = registry.list({ userId: viewer.userId }).find((g) => g.id === id);
     result.fromFile = { name: file.name, description: file.description, tags: file.tags, minutes: file.minutes };

@@ -10,7 +10,7 @@ export default function Privacy() {
   return (
     <main className="page privacy-page">
       <h1>Privacy</h1>
-      <p className="muted">Last changed October 24, 2026.</p>
+      <p className="muted">Last changed October 28, 2026.</p>
       <p>
         BoilerGames is a student project. It keeps as little about you as it can, never sells or shares it, and has no ads,
         no analytics and no tracking cookies. Here is everything it keeps, and why.
@@ -21,6 +21,11 @@ export default function Privacy() {
         <p>
           Joining a game needs no account. The name you type is only used in that room, and the room is gone when the game
           ends.
+        </p>
+        <p>
+          When a game ends, the site notes which game it was and whether it was played to the end or stopped (and why),
+          to show on its page how many times it was played, and to see which games work well. Nothing about who played,
+          or anything anyone typed, is kept with it.
         </p>
         <p>
           Games are made by players, and they go public without anyone at BoilerGames checking them first. Each game runs
@@ -90,8 +95,8 @@ export default function Privacy() {
           </li>
           <li>
             <strong>Everything:</strong> delete your account on your <a href="/account">account page</a>. That deletes your
-            account, your games, your votes, your key and your logins at once. Bug reports you sent from the report form
-            stay, without your name. Daily copies of the database still hold it until they're deleted, within 14 days.
+            account, your games (with their votes, reports and the record of times they were played), your votes, your key
+            and your logins at once. Bug reports you sent from the report form stay, without your name. Daily copies of the database still hold it until they're deleted, within 14 days.
           </li>
         </ul>
       </section>

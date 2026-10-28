@@ -22,6 +22,14 @@ import { FrameRelay } from '../games/FrameRelay.js';
  */
 
 /**
+ * A game that ended, for the record of games played. Nothing about who played.
+ * @typedef {Object} GamePlayed
+ * @property {string} gameId          the game's page id ("g-…" for every version of a generated game)
+ * @property {number | null} version  generated games only
+ * @property {null | 'host' | 'reload' | 'unresponsive' | 'broken'} stopped  null: the big screen ended it
+ */
+
+/**
  * Owns every room on the server and all the rules for changing them.
  *
  * It does NOT import `ws` or know what a socket is. It talks to the outside world only
@@ -43,6 +51,7 @@ export class RoomManager {
    * @param {number} [deps.roomIdleMs]
    * @param {GameRegistry} [deps.games]  games that can be started (empty by default)
    * @param {number} [deps.gameWatchdogMs]  stop a game whose big screen stops answering for this long
+   * @param {(play: GamePlayed) => void} [deps.onGamePlayed]  told once about every game that ends
    */
   constructor({
     send,
@@ -54,6 +63,7 @@ export class RoomManager {
     roomIdleMs = config.ROOM_IDLE_MS,
     games = new GameRegistry(),
     gameWatchdogMs = config.GAME_WATCHDOG_MS,
+    onGamePlayed = () => {},
   }) {
     this.send = send;
     this.randomInt = randomInt;
@@ -64,6 +74,7 @@ export class RoomManager {
     this.roomIdleMs = roomIdleMs;
     this.games = games;
     this.gameWatchdogMs = gameWatchdogMs;
+    this.onGamePlayed = onGamePlayed;
 
     /** @type {Map<string, Room>} every live room, by code */
     this.rooms = new Map();
@@ -266,11 +277,16 @@ export class RoomManager {
     room.phase = 'in_game';
     room.gameId = gameId;
     room.lastActivityAt = this.now();
+    // Read now: a playtest version may be gone from the registry by the time the game ends.
+    const which = this.games.versionOf(gameId);
     const relay = new FrameRelay({
       game,
       players: players.map((p) => ({ id: p.id, name: p.name })),
       deliver: (target, msg) => this.deliverGameMessage(room, target, msg),
-      onEnd: (results) => this.handleGameEnd(room, relay, results),
+      onEnd: (results) => {
+        this.handleGameEnd(room, relay, results);
+        this.reportGamePlayed({ ...which, stopped: results.stopped ?? null });
+      },
     });
     room.game = relay;
 
@@ -486,6 +502,20 @@ export class RoomManager {
       if (!player.connected) this.startPlayerGraceTimer(room, player);
     }
     this.broadcastState(room);
+  }
+
+  /**
+   * Passes on a game that ended, for the record. A record that can't be saved is only logged:
+   * the game has ended for everyone either way (and the watchdog ends games from a timer, where
+   * a throw would stop the server).
+   * @param {GamePlayed} play
+   */
+  reportGamePlayed(play) {
+    try {
+      this.onGamePlayed(play);
+    } catch (err) {
+      console.error('[rooms] could not record a game played:', err);
+    }
   }
 
   /** Stops a running game without results (the room is closing). */

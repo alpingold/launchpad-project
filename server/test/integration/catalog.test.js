@@ -4,6 +4,7 @@ import { createGameServer } from '../../src/server.js';
 import { GameRegistry } from '../../src/games/registry.js';
 import { setAdmin } from '../../src/db/users.js';
 import { createGeneratedGame, deleteGeneratedGame } from '../../src/db/generatedGames.js';
+import { recordPlay } from '../../src/db/plays.js';
 import { signUp } from '../helpers/accounts.js';
 import { tapGame } from '../helpers/frameGames.js';
 
@@ -72,14 +73,15 @@ test("votes: logged in, once per account, changeable; not on your own game; a ga
   assert.equal((await get('/api/games/g-sam00001-v2', kim)).status, 404, 'a playtest version: only its creator');
 });
 
-test("deleting a generated game deletes its page and votes", async () => {
+test("deleting a generated game deletes its page, votes and games played", async () => {
   const kim = await signUp(baseUrl, 'kim');
   const kimId = (await me(kim)).id;
   const game = createGeneratedGame(server.db, { ownerUserId: kimId, prompt: 'A voting game for everyone' });
   setVoteAndPage(game.id, kimId);
-  assert.equal(count('game_votes', game.id) + count('game_pages', game.id), 2);
+  recordPlay(server.db, { gameId: game.id, version: 1, stopped: null });
+  assert.equal(count('game_votes', game.id) + count('game_pages', game.id) + count('game_plays', game.id), 3);
   deleteGeneratedGame(server.db, game.id);
-  assert.equal(count('game_votes', game.id) + count('game_pages', game.id), 0);
+  assert.equal(count('game_votes', game.id) + count('game_pages', game.id) + count('game_plays', game.id), 0);
 });
 
 const count = (table, id) => server.db.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE game_id = ?`).get(id).n;

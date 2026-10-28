@@ -91,3 +91,19 @@ test('/games fits a phone screen without sideways scrolling', async ({ browser }
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await context.close();
 });
+
+roomTest("a game's page counts the times it was played to the end", async ({ people, page }) => {
+  // Star Catch: a copy of Probe that no other test plays, so the count is this test's own.
+  const played = page.getByText(/Played \d+ times?/);
+  await page.goto('/games/star-catch');
+  const before = Number((await played.textContent()).match(/Played (\d+)/)[1]);
+
+  const host = await people.host({ game: 'star-catch' });
+  const alex = await people.player(host.code, 'Alex');
+  await host.page.getByRole('button', { name: 'Start game' }).click();
+  await alex.page.frameLocator('iframe.game-frame').getByRole('button', { name: 'Win' }).click();
+  await expect(host.page.getByText('Alex won the last game!')).toBeVisible();
+
+  await page.reload();
+  await expect(played).toContainText(`Played ${before + 1} time`);
+});
