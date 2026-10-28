@@ -525,6 +525,38 @@ test('a game that ends is reported once: which game and version, finished or sto
   ]);
 });
 
+test("a room that closes mid-game records the game as stopped: 'closed'", (t) => {
+  for (const close of [
+    (ctx) => ctx.rooms.leaveRoom('host'), // the host ended the room
+    (ctx) => {
+      ctx.rooms.handleDisconnect('host'); // the big screen never came back
+      ctx.tick(config.HOST_GRACE_MS);
+    },
+    (ctx) => {
+      ctx.rooms.handleHostGameAlive('host', { paused: true }); // a background tab, left overnight
+      ctx.tick(config.ROOM_IDLE_MS + 1);
+      ctx.rooms.sweepIdleRooms();
+    },
+  ]) {
+    const ctx = gameLobby(t, [], { now: () => Date.now() });
+    ctx.rooms.startGame('host', 'tap-test');
+    close(ctx);
+    assert.equal(ctx.rooms.getRoom(ctx.code), undefined);
+    assert.deepEqual(ctx.played, [{ gameId: 'tap-test', version: null, stopped: 'closed', endedAt: Date.now() }]);
+    t.mock.timers.reset();
+  }
+});
+
+test('a server shutdown records nothing, and a room closing in the lobby records nothing', (t) => {
+  const { rooms, room, played } = gameLobby(t);
+  rooms.closeRoom(room, 'idle');
+  t.mock.timers.reset();
+  const other = gameLobby(t);
+  other.rooms.startGame('host', 'tap-test');
+  other.rooms.dispose();
+  assert.deepEqual([...played, ...other.played], []);
+});
+
 test("a maker's playtest isn't a play: only published versions and official games are reported", (t) => {
   const { rooms, alex, played } = gameLobby(t, [], { host: { userId: 7 } });
   rooms.games.register(tapGame('g-abc-v3'), { source: 'generated', status: 'playtest', ownerUserId: 7, version: 3, baseId: 'g-abc' });

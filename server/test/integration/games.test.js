@@ -149,6 +149,15 @@ test("a game's page counts the times it was played to the end; stopped games don
     await nextOfType(alex, 'game:ended');
   }
   assert.equal(await plays(), 2);
+
+  // The host ends the room mid-game: the game is kept as stopped, 'closed'.
+  host.send({ type: 'host:start_game', gameId: 'tap-test' });
+  await nextOfType(alex, 'game:started');
+  host.send({ type: 'room:leave' });
+  await nextOfType(alex, 'room:closed');
+  const stopped = server.db.prepare('SELECT stopped FROM game_plays ORDER BY id').all().map((r) => r.stopped);
+  assert.deepEqual(stopped, [null, 'host', null, 'closed']);
+  assert.equal(await plays(), 2);
   host.close();
   alex.close();
 });

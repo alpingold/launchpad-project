@@ -39,6 +39,8 @@ export class Room {
     this.game = null; // FrameRelay while a game is running
     this.gameWatchdog = null; // stops the game if the big screen stops answering (F1)
     this.gameId = null;
+    /** @type {{ gameId: string, version: number | null } | null} what the running game's play is recorded as (null: not recorded, e.g. a playtest) */
+    this.playRecord = null;
 
     this.createdAt = now;
     this.lastActivityAt = now;

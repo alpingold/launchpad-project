@@ -364,12 +364,13 @@ export const MIGRATIONS = [
     sql: `
       -- One row per game that ended. game_id is an official game's id or a generated game's id
       -- (every version shares it), so there's no foreign key, like game_pages; deleting a
-      -- generated game deletes its rows. Nothing about the players.
+      -- generated game deletes its rows. Nothing about the players. A maker's playtests aren't
+      -- recorded, nor games cut off by a server shutdown.
       CREATE TABLE game_plays (
         id       INTEGER PRIMARY KEY,
         game_id  TEXT    NOT NULL,
         version  INTEGER,               -- which version was played (NULL: an official game)
-        stopped  TEXT    CHECK (stopped IS NULL OR stopped IN ('host', 'reload', 'unresponsive', 'broken')), -- NULL: the big screen ended it
+        stopped  TEXT    CHECK (stopped IS NULL OR stopped IN ('host', 'reload', 'unresponsive', 'broken', 'closed')), -- NULL: the big screen ended it; closed: the room closed mid-game
         ended_at INTEGER NOT NULL
       );
       CREATE INDEX game_plays_by_game ON game_plays (game_id);

@@ -80,7 +80,7 @@ Every game that ended in a room (not a maker's playtest): which game and version
 | `id` | INTEGER | primary key |  |
 | `game_id` | TEXT | not null |  |
 | `version` | INTEGER |  | which version was played (NULL: an official game) |
-| `stopped` | TEXT | check (stopped IS NULL OR stopped IN ('host', 'reload', 'unresponsive', 'broken')) | NULL: the big screen ended it |
+| `stopped` | TEXT | check (stopped IS NULL OR stopped IN ('host', 'reload', 'unresponsive', 'broken', 'closed')) | NULL: the big screen ended it; closed: the room closed mid-game |
 | `ended_at` | INTEGER | not null |  |
 
 Index `game_plays_by_game` on `game_id`.

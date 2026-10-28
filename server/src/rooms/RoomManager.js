@@ -27,7 +27,8 @@ import { FrameRelay } from '../games/FrameRelay.js';
  * @typedef {Object} GamePlayed
  * @property {string} gameId          the game's page id ("g-…" for every version of a generated game)
  * @property {number | null} version  generated games only
- * @property {null | 'host' | 'reload' | 'unresponsive' | 'broken'} stopped  null: the big screen ended it
+ * @property {null | 'host' | 'reload' | 'unresponsive' | 'broken' | 'closed'} stopped  null: the big
+ *   screen ended it. closed: the room closed mid-game (host left or timed out, or idle)
  * @property {number} endedAt         when it ended (ms, by RoomManager's clock)
  */
 
@@ -291,10 +292,11 @@ export class RoomManager {
       deliver: (target, msg) => this.deliverGameMessage(room, target, msg),
       onEnd: (results) => {
         this.handleGameEnd(room, relay, results);
-        if (playRecord) this.reportGamePlayed({ ...playRecord, stopped: results.stopped ?? null, endedAt: this.now() });
+        this.reportGamePlayed(playRecord, results.stopped ?? null);
       },
     });
     room.game = relay;
+    room.playRecord = playRecord;
 
     // Every page gets the game's file and starts it in an iframe: the big screen as the
     // referee, phones as controllers (plan §13b). Who's connected comes from room:state.
@@ -392,7 +394,10 @@ export class RoomManager {
     return closed;
   }
 
-  /** Cancels every pending timer and running game, and forgets every room (server shutdown and tests). */
+  /**
+   * Cancels every pending timer and running game, and forgets every room (server shutdown and
+   * tests). Games cut off by a shutdown aren't recorded: the database may be closing too.
+   */
   dispose() {
     for (const room of this.rooms.values()) {
       this.cancelRoomTimers(room);
@@ -499,6 +504,7 @@ export class RoomManager {
     this.disarmWatchdog(room);
     room.game = null;
     room.gameId = null;
+    room.playRecord = null;
     room.phase = 'lobby';
     room.lastActivityAt = this.now();
     this.broadcast(room, { type: SERVER.GAME_ENDED, results });
@@ -511,24 +517,27 @@ export class RoomManager {
   }
 
   /**
-   * Passes on a game that ended, for the record. A record that can't be saved is only logged:
-   * the game has ended for everyone either way (and the watchdog ends games from a timer, where
-   * a throw would stop the server).
-   * @param {GamePlayed} play
+   * Passes on a game that ended, for the record, stamped with the time. A record that can't be
+   * saved is only logged: the game has ended for everyone either way (and the watchdog ends
+   * games from a timer, where a throw would stop the server).
+   * @param {Room['playRecord']} playRecord  null: not recorded (a playtest)
+   * @param {GamePlayed['stopped']} stopped
    */
-  reportGamePlayed(play) {
+  reportGamePlayed(playRecord, stopped) {
+    if (!playRecord) return;
     try {
-      this.onGamePlayed(play);
+      this.onGamePlayed({ ...playRecord, stopped, endedAt: this.now() });
     } catch (err) {
       console.error('[rooms] could not record a game played:', err);
     }
   }
 
-  /** Stops a running game without results (the room is closing). */
+  /** Stops a running game without results or a record (the room is closing). */
   stopGame(room) {
     this.disarmWatchdog(room);
     room.game?.dispose();
     room.game = null;
+    room.playRecord = null;
   }
 
   /** In the lobby, a disconnected player's spot is freed if they don't return in time. */
@@ -549,6 +558,8 @@ export class RoomManager {
    */
   closeRoom(room, reason) {
     this.cancelRoomTimers(room);
+    // A game the room's closing cuts off ended too: it's recorded as stopped.
+    if (room.game) this.reportGamePlayed(room.playRecord, 'closed');
     this.stopGame(room);
     room.phase = 'closed';
     for (const connId of room.connectedIds()) this.detach(connId, reason);
