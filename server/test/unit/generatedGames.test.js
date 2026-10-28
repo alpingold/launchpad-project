@@ -277,6 +277,17 @@ test('build attempts: numbered per build, read back by version, deleted with the
   // How each was written (plan §23); an attempt from before edit mode has no mode.
   assert.deepEqual(attempts.map((a) => a.mode), ['whole', 'edits', null]);
 
+  // For the edit stats: the model, and what the generator said about each call. An attempt
+  // that didn't say (an upload's check, or from before) leaves them empty.
+  saveBuildAttempts(db, id, 1, [
+    { attempt: 1, mode: 'whole', fix: false, noReply: true, ok: false },
+    { attempt: 2, mode: 'edits', fix: true, noReply: false, editsApplied: false, ok: false },
+    { attempt: 3, mode: 'edits', fix: true, noReply: false, editsApplied: true, ok: true, source: 'good' },
+  ], { model: 'qwen3.8:27b' });
+  const third = listBuildAttempts(db, id).get(1).filter((a) => a.build === 3);
+  assert.deepEqual(third.map((a) => [a.model, a.fix, a.noReply, a.editsApplied]), [['qwen3.8:27b', false, true, null], ['qwen3.8:27b', true, false, false], ['qwen3.8:27b', true, false, true]]);
+  assert.deepEqual([attempts[0].model, attempts[0].fix, attempts[0].noReply, attempts[0].editsApplied], [null, null, null, null]);
+
   addVersion(db, id, { request: 'a tiny fix', basedOn: 1, status: 'generating' });
   saveBuildAttempts(db, id, 2, [{ attempt: 1, ok: true, source: 'v2' }]);
   deleteVersion(db, id, 2);

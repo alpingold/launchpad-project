@@ -443,7 +443,7 @@ export class GenerationService {
       return;
     }
     // Every attempt of this build, passing or not, is kept (plan §13n).
-    if (Array.isArray(result.attempts) && result.attempts.length > 0) saveBuildAttempts(this.db, id, version.version, result.attempts);
+    if (Array.isArray(result.attempts) && result.attempts.length > 0) saveBuildAttempts(this.db, id, version.version, result.attempts, { model: result.model ?? null });
     const changelog = result.changelog ?? null;
     if (result.ok && result.source) {
       // A code review that changed nothing comes back without a report: the code's own still holds.

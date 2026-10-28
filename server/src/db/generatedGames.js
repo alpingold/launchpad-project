@@ -323,6 +323,10 @@ export function markVersionFailed(db, gameId, version, error, { source = null, r
  * @property {number} build      1, or more if the version was built again after failing
  * @property {number} attempt    1–4 within that build
  * @property {'whole' | 'edits' | null} mode  how the model wrote it (plan §23): the whole file, or edits to the last one
+ * @property {string | null} model
+ * @property {boolean | null} fix           the call asked to fix an earlier attempt (null: not recorded)
+ * @property {boolean | null} noReply       the model wrote nothing (null: not recorded)
+ * @property {boolean | null} editsApplied  an "edits" reply's edits fit the file (null: not an edits reply, or not recorded)
  * @property {boolean} ok
  * @property {string | null} source
  * @property {import('../games/frameGame.js').CheckReport | null} report   without screenshots
@@ -335,18 +339,20 @@ export function markVersionFailed(db, gameId, version, error, { source = null, r
 /**
  * Saves the attempts of one build of a version (as the generator returned them), as the
  * next build number. Attempts without an attempt number are skipped.
- * @param {{ attempt: number, mode?: 'whole' | 'edits', ok: boolean, source?: string | null, report?: object | null, seconds?: number,
+ * @param {{ attempt: number, mode?: 'whole' | 'edits', fix?: boolean, noReply?: boolean, editsApplied?: boolean, ok: boolean,
+ *   source?: string | null, report?: object | null, seconds?: number,
  *   usage?: { prompt_tokens?: number, completion_tokens?: number } | null }[]} attempts
+ * @param {{ model?: string | null, now?: number }} [opts]  model: the one the build asked
  * @returns {number} the build number
  */
-export function saveBuildAttempts(db, gameId, version, attempts, { now = Date.now() } = {}) {
+export function saveBuildAttempts(db, gameId, version, attempts, { model = null, now = Date.now() } = {}) {
   return db.transaction(() => {
     const { next } = db
       .prepare('SELECT COALESCE(MAX(build), 0) + 1 AS next FROM build_attempts WHERE game_id = ? AND version = ?')
       .get(gameId, version);
     const insert = db.prepare(
-      `INSERT INTO build_attempts (game_id, version, build, attempt, mode, ok, source, report_json, seconds, prompt_tokens, completion_tokens, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO build_attempts (game_id, version, build, attempt, mode, model, fix, no_reply, edits_applied, ok, source, report_json, seconds, prompt_tokens, completion_tokens, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     for (const a of attempts ?? []) {
       if (!Number.isInteger(a?.attempt)) continue;
@@ -356,6 +362,10 @@ export function saveBuildAttempts(db, gameId, version, attempts, { now = Date.no
         next,
         a.attempt,
         a.mode === 'whole' || a.mode === 'edits' ? a.mode : null,
+        typeof model === 'string' ? model : null,
+        flag(a.fix),
+        flag(a.noReply),
+        flag(a.editsApplied),
         a.ok ? 1 : 0,
         typeof a.source === 'string' ? a.source : null,
         a.report ? JSON.stringify(a.report) : null,
@@ -368,6 +378,10 @@ export function saveBuildAttempts(db, gameId, version, attempts, { now = Date.no
     return next;
   })();
 }
+
+/** A yes/no the generator may leave out: 1, 0, or NULL when it didn't say. */
+const flag = (value) => (typeof value === 'boolean' ? Number(value) : null);
+const unflag = (value) => (value === null ? null : value === 1);
 
 /**
  * A game's build attempts, by version (oldest first). Kept out of getGeneratedGame, which
@@ -383,6 +397,10 @@ export function listBuildAttempts(db, gameId) {
       build: row.build,
       attempt: row.attempt,
       mode: row.mode,
+      model: row.model,
+      fix: unflag(row.fix),
+      noReply: unflag(row.no_reply),
+      editsApplied: unflag(row.edits_applied),
       ok: row.ok === 1,
       source: row.source,
       report: row.report_json ? JSON.parse(row.report_json) : null,
