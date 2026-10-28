@@ -177,11 +177,13 @@ export function createRemix(db, copy) {
 /**
  * An uploaded game file (plan §57), waiting to be checked ("generating", kind 'upload'): as version
  * 1 of a new game (no gameId), or the next version of one of yours, based on the version before.
- * Its fingerprint is taken once it passes (saveVersionSource).
+ * Its fingerprint is taken once it passes (saveVersionSource). The upload is also counted
+ * (countUploadsSince), and stays counted if the game or version is deleted.
  * @returns {GeneratedGame}
  */
 export function addUpload(db, { ownerUserId, gameId = null, prompt, source, now = Date.now() }) {
   return db.transaction(() => {
+    db.prepare('INSERT INTO uploads (user_id, created_at) VALUES (?, ?)').run(ownerUserId, now);
     let id = gameId;
     if (!id) {
       id = newGeneratedGameId();
@@ -195,6 +197,11 @@ export function addUpload(db, { ownerUserId, gameId = null, prompt, source, now 
     touch(db, id, now);
     return getGeneratedGame(db, id);
   })();
+}
+
+/** How many uploads this person has made after `since` (ms), deleted games and versions too. */
+export function countUploadsSince(db, ownerUserId, since) {
+  return db.prepare('SELECT COUNT(*) AS n FROM uploads WHERE user_id = ? AND created_at > ?').get(ownerUserId, since).n;
 }
 
 const startStatus = (status) => {

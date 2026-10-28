@@ -358,6 +358,19 @@ export const MIGRATIONS = [
         WHERE version = 1 AND kind = 'upload' AND game_id IN (SELECT id FROM generated_games WHERE remix_of IS NOT NULL);
     `,
   },
+  {
+    version: 19,
+    description: 'when each upload was made, for the uploads-an-hour limit',
+    sql: `
+      -- Not the upload versions themselves: deleting a game or discarding a version would
+      -- forget them, and free an upload.
+      CREATE TABLE uploads (
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at INTEGER NOT NULL
+      );
+      CREATE INDEX uploads_by_user ON uploads (user_id, created_at);
+    `,
+  },
 ];
 
 /** The version a fully up-to-date database has. */
