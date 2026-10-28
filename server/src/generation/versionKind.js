@@ -35,11 +35,25 @@ export function versionKind(version) {
     : 'build';
   return {
     step,
-    needsAi: step !== null && step !== 'check',
+    needsAi: step !== null && kindRules(version.kind).aiMade,
     designKind,
     startsOver: designKind !== 'plan',
     track: upload ? uploadTrack(version) : { kind: designKind === 'whole' ? 'new' : 'change', ...madeTrack(version) },
   };
+}
+
+/**
+ * What a version's kind decides on its own, before the version exists (the service asks, to
+ * start one): whether the AI makes it, so its jobs need the owner's key (an uploaded file is
+ * only checked), and what it's made from: 'chosen' (a change or "Review again": the version
+ * asked for, or the default one), 'copy' ("Make it your own": the remix's copy, v1) or null (an
+ * upload: the file is the version).
+ * @param {import('../db/generatedGames.js').GameVersion['kind']} kind
+ * @returns {{ aiMade: boolean, base: 'chosen' | 'copy' | null }}
+ */
+export function kindRules(kind) {
+  if (kind === 'upload') return { aiMade: false, base: null };
+  return { aiMade: true, base: kind === 'remix' ? 'copy' : 'chosen' };
 }
 
 /** Where a version the AI makes is: designing or its design waiting (1), building (2), ready (3). */

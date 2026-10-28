@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { versionKind, madeBy } from '../../src/generation/versionKind.js';
+import { versionKind, kindRules, madeBy } from '../../src/generation/versionKind.js';
 
 // What a version of an AI-made or uploaded game is, and what follows from it (plan §60): every
 // kind × status the site has, as a table. The callers (the service, the sandbox, the pages) only
@@ -37,6 +37,13 @@ test('every kind × status: its next step, whether it needs the AI, its design a
     const answer = versionKind(version);
     assert.deepEqual(answer, { step, needsAi, designKind, startsOver: designKind !== 'plan', track: { kind, at, state } }, what);
   }
+});
+
+test("what a kind decides before the version exists: whether the AI makes it (so its jobs need a key), and what it's made from", () => {
+  assert.deepEqual(kindRules(null), { aiMade: true, base: 'chosen' }, 'a change: from the version asked for');
+  assert.deepEqual(kindRules('recheck'), { aiMade: true, base: 'chosen' });
+  assert.deepEqual(kindRules('remix'), { aiMade: true, base: 'copy' }, '"Make it your own": from the copy');
+  assert.deepEqual(kindRules('upload'), { aiMade: false, base: null }, 'the file is the version');
 });
 
 test('made by (plan §57, §60): the AI if it built any version; else uploaded; else what a remix was copied from', () => {

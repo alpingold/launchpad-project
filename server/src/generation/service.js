@@ -46,7 +46,7 @@ import {
   BUSY_STATUSES,
 } from '../db/generatedGames.js';
 import { readFrameGame } from '../games/frameGame.js';
-import { versionKind } from './versionKind.js';
+import { versionKind, kindRules } from './versionKind.js';
 import { config } from '../config.js';
 import { liveGameId, registerVersion } from '../games/generated.js';
 import { runGeneratorInSandbox } from './sandbox.js';
@@ -167,19 +167,25 @@ export class GenerationService {
    * @param {Object} work
    * @param {number} work.ownerUserId  whose job it would be
    * @param {GeneratedGame | null} [work.game]  the game it's on; null: a new game
-   * @param {GameVersion | null} [work.on]  the version it's on (a new draft or a build); null: a new version
-   * @param {string | null} [work.kind]  the new version's kind: 'upload', 'remix', 'recheck' or null (a change)
+   * @param {GameVersion | null} [work.version]  the version it's on (a new draft or a build);
+   *   null: it makes a new version
+   * @param {GameVersion['kind']} [work.kind]  the new version's kind (versionKind.js: kindRules);
+   *   null: a change, or a new game's v1
    * @param {unknown} [work.basedOn]  untrusted input: the version a change is made from; undefined: the default
-   * @returns {GameVersion | null} the version the new one is made from (null if the AI makes none)
+   * @param {string | null} [work.ip]  where it was asked from (an IP address), for the per-address
+   *   limit; null: not limited that way
+   * @returns {GameVersion | null} the version the new one is made from (null when none: a new
+   *   game, an upload, or work on a version that exists)
    */
-  mayStart({ ownerUserId, game = null, on = null, kind = null, basedOn, ip = null }) {
-    if (game && on) this.checkNoJob(game.id);
+  mayStart({ ownerUserId, game = null, version = null, kind = null, basedOn, ip = null }) {
+    const { aiMade, base } = kindRules(version ? version.kind : kind);
+    if (version) this.checkNoJob(game.id);
     else if (game) checkNoOpenVersion(game);
-    this.checkCanQueue(ownerUserId, { needsKey: kind !== 'upload', ip });
+    this.checkCanQueue(ownerUserId, { needsKey: aiMade, ip });
     if (!game) this.checkRoomForGame(ownerUserId);
-    if (kind === 'upload') this.checkUploadsThisHour(ownerUserId);
-    if (!game || on || kind === 'upload') return null;
-    return baseFor(game, kind, basedOn);
+    if (!version && kind === 'upload') this.checkUploadsThisHour(ownerUserId);
+    if (!game || version || base === null) return null;
+    return baseFor(game, base, basedOn);
   }
 
   /** Refuses while this game has a job waiting or running. */
@@ -337,7 +343,7 @@ export class GenerationService {
   /** "Change the design": the model writes a new draft with the admin's feedback. */
   redesign({ id, version: versionNumber, feedback, ip = null }) {
     const { game, version } = this.designedVersion(id, versionNumber);
-    this.mayStart({ ownerUserId: game.ownerUserId, game, on: version, ip });
+    this.mayStart({ ownerUserId: game.ownerUserId, game, version, ip });
     const trimmed = typeof feedback === 'string' ? feedback.trim() : '';
     if (trimmed.length < MIN_FEEDBACK_LENGTH || trimmed.length > MAX_IDEA_LENGTH) {
       throw new GenerationError(400, 'INVALID_FEEDBACK', `Say what to change in ${MIN_FEEDBACK_LENGTH}–${MAX_IDEA_LENGTH} characters.`);
@@ -362,7 +368,7 @@ export class GenerationService {
   /** "Build it": writes the code from the approved design (or tries again after a failed build). */
   build({ id, version: versionNumber, ip = null }) {
     const { game, version } = this.designedVersion(id, versionNumber);
-    this.mayStart({ ownerUserId: game.ownerUserId, game, on: version, ip });
+    this.mayStart({ ownerUserId: game.ownerUserId, game, version, ip });
     startBuild(this.db, id, version.version);
     this.enqueue(id, ip);
     return this.get(id);
@@ -639,20 +645,24 @@ function checkNoOpenVersion(game) {
 }
 
 /**
- * The version the AI makes a new one from: the one asked for, or by default the one being
- * playtested, else the published one, else the newest ready one. A remix's own design starts
- * from the copy. Refused if it has no code that passed, or is too big for the AI.
+ * The version the AI makes a new one from (versionKind.js: kindRules): for 'chosen', the one
+ * asked for, or by default the one being playtested, else the published one, else the newest
+ * ready one; for 'copy', the remix's copy (v1). Refused if it has no code that passed, or is too
+ * big for the AI.
+ * @param {GeneratedGame} game
+ * @param {'chosen' | 'copy'} from
+ * @param {unknown} basedOn  untrusted input: the version asked for; undefined: the default
  * @returns {GameVersion}
  */
-function baseFor(game, kind, basedOn) {
+function baseFor(game, from, basedOn) {
   let base;
-  if (kind === 'remix') base = findVersion(game, 1);
+  if (from === 'copy') base = findVersion(game, 1);
   else if (basedOn === undefined) base = findVersion(game, game.playtestVersion) ?? findVersion(game, game.publishedVersion) ?? game.versions.findLast((v) => v.status === 'ready');
   else base = findVersion(game, basedOn);
   // An uploaded file that failed the checks can be fixed by the AI too (plan §57).
   const fixable = base?.status === 'ready' || (base && versionKind(base).track.kind === 'upload' && base.status === 'failed' && base.source !== null);
   if (!fixable) {
-    const why = kind === 'remix' ? 'The copy has no code to start from.' : 'Changes can only be made to a version that passed the tests.';
+    const why = from === 'copy' ? 'The copy has no code to start from.' : 'Changes can only be made to a version that passed the tests.';
     throw new GenerationError(409, 'NO_BASE_VERSION', why);
   }
   if (Buffer.byteLength(base.source, 'utf8') > MAX_AI_SOURCE_BYTES) {
