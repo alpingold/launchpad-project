@@ -376,9 +376,9 @@ export function saveBuildAttempts(db, gameId, version, attempts, { model = null,
         a.attempt,
         a.mode === 'whole' || a.mode === 'edits' ? a.mode : null,
         typeof model === 'string' ? model : null,
-        flag(a.fix),
-        flag(a.noReply),
-        flag(a.editsApplied),
+        yesNoColumn(a.fix),
+        yesNoColumn(a.noReply),
+        yesNoColumn(a.editsApplied),
         a.ok ? 1 : 0,
         typeof a.source === 'string' ? a.source : null,
         a.report ? JSON.stringify(a.report) : null,
@@ -393,8 +393,9 @@ export function saveBuildAttempts(db, gameId, version, attempts, { model = null,
 }
 
 /** A yes/no the generator may leave out: 1, 0, or NULL when it didn't say. */
-const flag = (value) => (typeof value === 'boolean' ? Number(value) : null);
-const unflag = (value) => (value === null ? null : value === 1);
+const yesNoColumn = (value) => (typeof value === 'boolean' ? Number(value) : null);
+/** A yes/no column read back: true, false, or null when it wasn't said. */
+const yesNoFromColumn = (value) => (value === null ? null : value === 1);
 
 /**
  * A game's build attempts, by version (oldest first). Kept out of getGeneratedGame, which
@@ -411,9 +412,9 @@ export function listBuildAttempts(db, gameId) {
       attempt: row.attempt,
       mode: row.mode,
       model: row.model,
-      fix: unflag(row.fix),
-      noReply: unflag(row.no_reply),
-      editsApplied: unflag(row.edits_applied),
+      fix: yesNoFromColumn(row.fix),
+      noReply: yesNoFromColumn(row.no_reply),
+      editsApplied: yesNoFromColumn(row.edits_applied),
       ok: row.ok === 1,
       source: row.source,
       report: row.report_json ? JSON.parse(row.report_json) : null,

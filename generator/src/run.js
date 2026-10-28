@@ -116,7 +116,7 @@ export async function runJob(untrusted, deps = {}) {
   if (job.step === 'critical') return reviewCritical(job, model, deps);
   // Building and reviewing are separate steps, joined only here. A build with "review" that
   // passes gets a review round; "recheck" is the round alone, on a finished game.
-  const built = job.step === 'build' ? await build(job, model, deps) : finishedGame(job, model);
+  const built = job.step === 'build' ? await build(job, model, deps) : gameToRecheck(job, model);
   if (!built.ok || (job.step === 'build' && job.review !== true)) return built;
   return withReview(job, built, await reviewRound(job, built.source, model, deps));
 }
@@ -127,7 +127,7 @@ export async function runJob(untrusted, deps = {}) {
  * @param {string} model
  * @returns {GeneratorResult}
  */
-const finishedGame = (job, model) => ({ ok: true, model, source: job.change.source, report: null, changelog: null, attempts: [] });
+const gameToRecheck = (job, model) => ({ ok: true, model, source: job.change.source, report: null, changelog: null, attempts: [] });
 
 /**
  * The list of attempts: an ordinary array that also tells `onAttempt` about each one as it's
@@ -273,17 +273,17 @@ async function build(job, model, { chatFn = chat, check = checkGame, onStep = ()
     // The first request for the file can think until the context is full (plan §40): models.js
     // may give it its own effort.
     const step = messages === prompt ? 'build' : 'fix';
-    const fix = step === 'fix';
+    const askedToFix = step === 'fix';
     let reply;
     try {
       reply = await chatFn(messages, { model, reasoningEffort: job.reasoningEffort ?? reasoningEffortFor(model, step), onRetry: onStep, onProgress: (p) => onStep(`${asking} (${progressText(p)})`, { replace: true }) });
     } catch (err) {
       // It gave up on empty replies (often the rate limit): the job fails, but the call is kept,
       // as one with no reply, for the edit stats.
-      if (err.noReply) result.attempts.push({ attempt, mode, fix, noReply: true, seconds: null, usage: null, ok: false, problems: 1, source: null });
+      if (err.noReply) result.attempts.push({ attempt, mode, fix: askedToFix, noReply: true, seconds: null, usage: null, ok: false, problems: 1, source: null });
       if (!err.outOfRoom) return { ...result, error: err.message };
       // It thought until the context was full: a used-up attempt. The next one asks the same again.
-      result.attempts.push({ attempt, mode, fix, noReply: true, seconds: err.seconds, usage: err.usage, ...thinkingOf(job, err), ok: false, problems: 1, outOfRoom: true, source: null });
+      result.attempts.push({ attempt, mode, fix: askedToFix, noReply: true, seconds: err.seconds, usage: err.usage, ...thinkingOf(job, err), ok: false, problems: 1, outOfRoom: true, source: null });
       onStep(`attempt ${attempt}/${maxAttempts}: ${err.message}`);
       continue;
     }
@@ -293,7 +293,7 @@ async function build(job, model, { chatFn = chat, check = checkGame, onStep = ()
     let source;
     let attemptMode = mode;
     const record = (fields) =>
-      result.attempts.push({ attempt, mode: attemptMode, fix, noReply: false, ...(attemptMode === 'edits' && { editsApplied: true }), seconds: reply.seconds, usage: reply.usage, ...thinkingOf(job, reply), ...fields });
+      result.attempts.push({ attempt, mode: attemptMode, fix: askedToFix, noReply: false, ...(attemptMode === 'edits' && { editsApplied: true }), seconds: reply.seconds, usage: reply.usage, ...thinkingOf(job, reply), ...fields });
     if (mode === 'edits' && !hasEdits(reply.content) && extractGameFile(reply.content)) {
       // Asked for edits, sent the whole file anyway: that's fine, use it.
       source = extractGameFile(reply.content);
@@ -390,12 +390,12 @@ function fixJob(job, game, request) {
  * The review round (plan §47), on a game that passed: the reviewer reads the code against the
  * design (and the changes since). Its CRITICAL bugs (a crash, or play that can't go on) go back
  * to the model as a small change, the way a creator's request would, and must pass the same
- * checks. It returns what the review found and the fix's build, passing or not (null if no fix
- * was tried); withReview decides what the version keeps.
+ * checks. It returns what the review found and the fix's build (fixBuild), passing or not (null
+ * if no fix was tried); withReview decides what the version keeps.
  * @param {GeneratorJob} job
  * @param {string} source  the game that passed
  * @param {string} model
- * @returns {Promise<{ review: import('./review.js').CreatorReview | { error: string }, fix: GeneratorResult | null }>}
+ * @returns {Promise<{ review: import('./review.js').CreatorReview | { error: string }, fixBuild: GeneratorResult | null }>}
  */
 async function reviewRound(job, source, model, deps) {
   const { onStep = () => {} } = deps;
@@ -404,42 +404,44 @@ async function reviewRound(job, source, model, deps) {
   const reviewed = await reviewFinished(game, model, { chatFn: deps.chatFn, onStep });
   if (!reviewed.ok) {
     onStep(`review: ${reviewed.error}`);
-    return { review: { error: reviewed.error }, fix: null };
+    return { review: { error: reviewed.error }, fixBuild: null };
   }
   // Crashes first: if they don't all fit in one request, those matter most.
   const critical = reviewed.bugs.filter((b) => CRITICAL.includes(b.severity)).sort((a, b) => CRITICAL.indexOf(a.severity) - CRITICAL.indexOf(b.severity));
   if (critical.length === 0) {
     onStep('review: no crashes or dead ends');
-    return { review: forCreator(reviewed), fix: null };
+    return { review: forCreator(reviewed), fixBuild: null };
   }
 
   const { request, included } = fixRequest(critical, MAX_REQUEST_LENGTH);
   onStep(`review: ${critical.length} crash(es) or dead end(s): fixing ${included === critical.length ? 'them' : `${included} of them`}`);
-  const fix = await build(fixJob(job, game, request), model, deps);
-  if (!fix.ok) {
+  const fixBuild = await build(fixJob(job, game, request), model, deps);
+  // The review's own `fix` says how it went, for the creator.
+  if (!fixBuild.ok) {
     onStep("review: the fix didn't pass the checks, so the game stays as it was");
-    return { review: { ...forCreator(reviewed), fix: { ok: false, error: fix.error ?? 'unknown error' } }, fix };
+    return { review: { ...forCreator(reviewed), fix: { ok: false, error: fixBuild.error ?? 'unknown error' } }, fixBuild };
   }
   onStep('review: fixed, and the fixed game passed the checks');
-  return { review: { ...forCreator(reviewed, critical.slice(0, included)), fix: { ok: true, changelog: fix.changelog ?? null } }, fix };
+  return { review: { ...forCreator(reviewed, critical.slice(0, included)), fix: { ok: true, changelog: fixBuild.changelog ?? null } }, fixBuild };
 }
 
 /**
  * The game that passed, with its review round: the review always comes along, and the fix's
- * attempts follow the build's, marked as the review's. A fix that passed replaces the game; one
- * that didn't keeps the game as it was. A review that failed never fails the job.
+ * attempts follow the build's, every one marked as a fix (its first call too). A fix that
+ * passed replaces the game; one that didn't keeps the game as it was. A review that failed
+ * never fails the job.
  * @param {GeneratorJob} job
  * @param {GeneratorResult} built  the game that passed (a recheck's: the finished game, report null)
  * @param {Awaited<ReturnType<typeof reviewRound>>} round
  * @returns {GeneratorResult}
  */
-function withReview(job, built, { review, fix }) {
-  if (!fix) return { ...built, review };
-  const attempts = [...built.attempts, ...fix.attempts.map((a) => ({ ...a, attempt: built.attempts.length + a.attempt, reviewFix: true, fix: true }))];
-  if (!fix.ok) return { ...built, attempts, review };
+function withReview(job, built, { review, fixBuild }) {
+  if (!fixBuild) return { ...built, review };
+  const attempts = [...built.attempts, ...fixBuild.attempts.map((a) => ({ ...a, attempt: built.attempts.length + a.attempt, fix: true }))];
+  if (!fixBuild.ok) return { ...built, attempts, review };
   // A recheck's only change is the fix, so its list of changes is the version's.
-  const changelog = job.step === 'recheck' ? (fix.changelog ?? null) : built.changelog;
-  return { ...built, source: fix.source, report: fix.report, changelog, attempts, review };
+  const changelog = job.step === 'recheck' ? (fixBuild.changelog ?? null) : built.changelog;
+  return { ...built, source: fixBuild.source, report: fixBuild.report, changelog, attempts, review };
 }
 
 /** A report without the playtest's screenshots (only the final report keeps them: they're large). */

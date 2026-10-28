@@ -689,7 +689,7 @@ test('the review round (plan §47, critical-only): a passing game is reviewed fo
   assert.equal(result.ok, true);
   assert.deepEqual(model.asked, ['code', 'critical_bugs', 'code']);
   assert.match(result.source, /\/\* fixed \*\//);
-  assert.deepEqual(result.attempts.map((a) => [a.attempt, a.reviewFix ?? false]), [[1, false], [2, true]]);
+  assert.deepEqual(result.attempts.map((a) => [a.attempt, a.fix]), [[1, false], [2, true]], "the review's fix follows the build, as a fix");
   assert.deepEqual(result.review, {
     bugs: [
       { severity: 'stuck', what: STUCK.what, fixed: true },
@@ -784,8 +784,7 @@ test('recheck that finds a crash: the fix is the version\'s only change, so its 
   assert.match(result.source, /\/\* fixed \*\//);
   assert.equal(result.report.checked, 'fake');
   assert.equal(result.changelog, '- Scores are set in time');
-  assert.deepEqual(result.attempts.map((a) => [a.attempt, a.reviewFix]), [[1, true]]);
-  assert.equal(result.attempts[0].fix, true, "the review's fix is a fix from its first call");
+  assert.deepEqual(result.attempts.map((a) => [a.attempt, a.fix]), [[1, true]], "the review's fix is a fix from its first call");
   assert.deepEqual(result.review.bugs, [{ severity: 'crash', what: CRASH.what, fixed: true }]);
 });
 
@@ -816,7 +815,7 @@ test("the review round's progress lines; a build that doesn't pass isn't reviewe
   const blocksFetch = async (source) => (source.includes('fetch') ? { ok: false, problems: ['`fetch` is blocked.'], warnings: [] } : passing());
   const unfixed = await reviewLines([reviewOf([CRASH])], [fenced('html', GAME), ...Array(3).fill(fenced('html', broken))], blocksFetch);
   assert.deepEqual(unfixed.lines, [reading, 'review: 1 crash(es) or dead end(s): fixing them', "review: the fix didn't pass the checks, so the game stays as it was"]);
-  assert.deepEqual(unfixed.result.attempts.map((a) => [a.attempt, a.reviewFix ?? false]), [[1, false], [2, true], [3, true], [4, true]]);
+  assert.deepEqual(unfixed.result.attempts.map((a) => [a.attempt, a.fix]), [[1, false], [2, true], [3, true], [4, true]]);
   assert.deepEqual(unfixed.result.review.fix, { ok: false, error: 'no passing game after 3 attempts' });
 
   const failed = await reviewLines([], [fenced('html', broken), fenced('html', broken)], blocksFetch, { maxAttempts: 2 });
