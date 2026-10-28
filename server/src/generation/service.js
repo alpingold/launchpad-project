@@ -58,6 +58,9 @@ import { makeJob } from '../../../generator/src/job.js';
 // What people may type: the same numbers the generator checks (generator/src/prompt.js says why).
 import { MIN_IDEA_LENGTH, MIN_FEEDBACK_LENGTH, MAX_IDEA_LENGTH, MAX_REQUEST_LENGTH } from '../../../generator/src/prompt.js';
 
+/** @typedef {import('../db/generatedGames.js').GeneratedGame} GeneratedGame */
+/** @typedef {import('../db/generatedGames.js').GameVersion} GameVersion */
+
 export { MIN_IDEA_LENGTH, MIN_FEEDBACK_LENGTH, MAX_IDEA_LENGTH, MAX_REQUEST_LENGTH };
 /** A design the admin edits by hand. */
 export const MIN_DESIGN_LENGTH = 20;
@@ -155,6 +158,36 @@ export class GenerationService {
   }
 
   /**
+   * The one guard every action that starts work asks: a new game, a new draft, a build, a
+   * change, "Review again", "Make it your own", an upload or a new upload version. Refuses,
+   * in this order:
+   * 1. this game is busy (a version being made, or a design waiting for its maker);
+   * 2. the maker or the site can't take another job (checkCanQueue);
+   * 3. a new game the account has no room for;
+   * 4. nothing to build from, or too much for the AI.
+   * @param {Object} work
+   * @param {number} work.ownerUserId  whose job it would be
+   * @param {GeneratedGame | null} [work.game]  the game it's on; null: a new game
+   * @param {GameVersion | null} [work.on]  the version it's on (a new draft or a build); null: a new version
+   * @param {string | null} [work.kind]  the new version's kind: 'upload', 'remix', 'recheck' or null (a change)
+   * @param {unknown} [work.basedOn]  untrusted input: the version a change is made from; undefined: the default
+   * @returns {GameVersion | null} the version the new one is made from (null if the AI makes none)
+   */
+  mayStart({ ownerUserId, game = null, on = null, kind = null, basedOn, ip = null }) {
+    if (game && on) this.checkNoJob(game.id);
+    else if (game) checkNoOpenVersion(game);
+    this.checkCanQueue(ownerUserId, { needsKey: kind !== 'upload', ip });
+    if (!game) this.checkRoomForGame(ownerUserId);
+    if (!game || on || kind === 'upload') return null;
+    return baseFor(game, kind, basedOn);
+  }
+
+  /** Refuses while this game has a job waiting or running. */
+  checkNoJob(id) {
+    if (this.running.has(id) || this.queue.includes(id)) throw new GenerationError(409, 'BUSY', 'This game has a job running. Wait for it to finish.');
+  }
+
+  /**
    * Refuses new work if generating is off, the queue is full, this person has no key to
    * use, or they already have a job waiting or running (one each, plan §15).
    * @param {number} ownerUserId  whose job it would be
@@ -198,8 +231,7 @@ export class GenerationService {
    * @param {{ ownerUserId: number, idea: unknown, model?: unknown }} request  idea/model are untrusted input
    */
   start({ ownerUserId, idea, model = DEFAULT_MODEL, ip = null }) {
-    this.checkCanQueue(ownerUserId, { ip });
-    this.checkRoomForGame(ownerUserId);
+    this.mayStart({ ownerUserId, ip });
     const trimmed = checkText(idea, 'INVALID_IDEA', 'Describe the game');
     checkModel(model);
     const game = createGeneratedGame(this.db, { ownerUserId, prompt: trimmed, model });
@@ -223,11 +255,8 @@ export class GenerationService {
     if (id !== undefined) {
       game = this.get(id);
       if (game.ownerUserId !== ownerUserId) throw new GenerationError(404, 'NOT_FOUND', 'There is no such game.');
-      const open = game.versions.find((v) => BUSY_STATUSES.includes(v.status) || v.status === 'design_ready');
-      if (open) throw new GenerationError(409, 'BUSY', open.status === 'design_ready' ? `v${open.version}'s design is waiting for you: build it or discard it first.` : 'A version of this game is already being made. Wait for it to finish.');
     }
-    this.checkCanQueue(ownerUserId, { needsKey: false, ip });
-    if (!game) this.checkRoomForGame(ownerUserId);
+    this.mayStart({ ownerUserId, game, kind: 'upload', ip });
     const now = Date.now();
     const recent = (this.uploads.get(ownerUserId) ?? []).filter((t) => now - t < 60 * 60 * 1000);
     if (recent.length >= MAX_UPLOADS_PER_HOUR) {
@@ -252,24 +281,7 @@ export class GenerationService {
     const game = this.get(id);
     const trimmed = checkText(request, 'INVALID_REQUEST', 'Describe the change', MAX_REQUEST_LENGTH);
     checkModel(model);
-    const open = game.versions.find((v) => BUSY_STATUSES.includes(v.status) || v.status === 'design_ready');
-    if (open) {
-      const why = open.status === 'design_ready' ? `v${open.version}'s ${versionKind(open).designKind === 'plan' ? 'plan' : 'design'} is waiting for you: build it or discard it first.` : 'A version of this game is already being made. Wait for it to finish.';
-      throw new GenerationError(409, 'BUSY', why);
-    }
-    this.checkCanQueue(game.ownerUserId, { ip });
-    const base =
-      basedOn === undefined
-        ? (findVersion(game, game.playtestVersion) ?? findVersion(game, game.publishedVersion) ?? game.versions.findLast((v) => v.status === 'ready'))
-        : findVersion(game, basedOn);
-    // An uploaded file that failed the checks can be fixed by the AI too (plan §57).
-    const fixable = base?.status === 'ready' || (base && versionKind(base).track.kind === 'upload' && base.status === 'failed' && base.source !== null);
-    if (!fixable) {
-      throw new GenerationError(409, 'NO_BASE_VERSION', 'Changes can only be made to a version that passed the tests.');
-    }
-    if (Buffer.byteLength(base.source, 'utf8') > MAX_AI_SOURCE_BYTES) {
-      throw new GenerationError(413, 'TOO_BIG_FOR_AI', `The AI can only change game files up to ${MAX_AI_SOURCE_BYTES / 1024} KB. Upload a changed file instead.`);
-    }
+    const base = this.mayStart({ ownerUserId: game.ownerUserId, game, kind, basedOn, ip });
     addVersion(this.db, id, { request: trimmed, basedOn: base.version, model, kind, status: skipDesign === true ? 'generating' : 'designing' });
     this.enqueue(id, ip);
     return this.get(id);
@@ -287,9 +299,7 @@ export class GenerationService {
     if (game.versions.length > 1) throw new GenerationError(409, 'ALREADY_CHANGED', 'This remix already has changes: ask for another change instead.');
     const trimmed = checkText(request, 'INVALID_REQUEST', 'Say what should be different', MAX_REQUEST_LENGTH);
     checkModel(model);
-    const base = findVersion(game, 1);
-    if (!base || base.status !== 'ready') throw new GenerationError(409, 'NO_BASE_VERSION', 'The copy has no code to start from.');
-    this.checkCanQueue(game.ownerUserId, { ip });
+    const base = this.mayStart({ ownerUserId: game.ownerUserId, game, kind: 'remix', ip });
     addVersion(this.db, id, { request: trimmed, basedOn: base.version, model, kind: 'remix', status: 'designing' });
     this.enqueue(id, ip);
     return this.get(id);
@@ -313,7 +323,7 @@ export class GenerationService {
     const game = this.get(id);
     const version = findVersion(game, versionNumber);
     if (!version) throw new GenerationError(404, 'NOT_FOUND', 'There is no such version.');
-    if (this.running.has(id) || this.queue.includes(id)) throw new GenerationError(409, 'BUSY', 'This game has a job running. Wait for it to finish.');
+    this.checkNoJob(id);
     const open = version.status === 'design_ready' || (version.status === 'failed' && version.design !== null);
     if (!open) throw new GenerationError(409, 'WRONG_STATUS', 'This version has no design waiting for you.');
     return { game, version };
@@ -322,7 +332,7 @@ export class GenerationService {
   /** "Change the design": the model writes a new draft with the admin's feedback. */
   redesign({ id, version: versionNumber, feedback, ip = null }) {
     const { game, version } = this.designedVersion(id, versionNumber);
-    this.checkCanQueue(game.ownerUserId, { ip });
+    this.mayStart({ ownerUserId: game.ownerUserId, game, on: version, ip });
     const trimmed = typeof feedback === 'string' ? feedback.trim() : '';
     if (trimmed.length < MIN_FEEDBACK_LENGTH || trimmed.length > MAX_IDEA_LENGTH) {
       throw new GenerationError(400, 'INVALID_FEEDBACK', `Say what to change in ${MIN_FEEDBACK_LENGTH}–${MAX_IDEA_LENGTH} characters.`);
@@ -347,7 +357,7 @@ export class GenerationService {
   /** "Build it": writes the code from the approved design (or tries again after a failed build). */
   build({ id, version: versionNumber, ip = null }) {
     const { game, version } = this.designedVersion(id, versionNumber);
-    this.checkCanQueue(game.ownerUserId, { ip });
+    this.mayStart({ ownerUserId: game.ownerUserId, game, on: version, ip });
     startBuild(this.db, id, version.version);
     this.enqueue(id, ip);
     return this.get(id);
@@ -362,7 +372,7 @@ export class GenerationService {
     if (version !== game.versions.at(-1) || !['design_ready', 'failed'].includes(version.status)) {
       throw new GenerationError(409, 'WRONG_STATUS', 'Only the newest version can be discarded, while it has no code that passed.');
     }
-    if (this.running.has(id) || this.queue.includes(id)) throw new GenerationError(409, 'BUSY', 'This game has a job running. Wait for it to finish.');
+    this.checkNoJob(id);
     deleteVersion(this.db, id, version.version);
     return this.get(id);
   }
@@ -613,6 +623,37 @@ export function designOf(game, version) {
 /** @returns {import('../db/generatedGames.js').GameVersion | undefined} */
 function findVersion(game, number) {
   return number === null ? undefined : game.versions.find((v) => v.version === number);
+}
+
+/** Refuses a new version while another is being made, or its design or plan waits for the maker. */
+function checkNoOpenVersion(game) {
+  const open = game.versions.find((v) => BUSY_STATUSES.includes(v.status) || v.status === 'design_ready');
+  if (!open) return;
+  const why = open.status === 'design_ready' ? `v${open.version}'s ${versionKind(open).designKind === 'plan' ? 'plan' : 'design'} is waiting for you: build it or discard it first.` : 'A version of this game is already being made. Wait for it to finish.';
+  throw new GenerationError(409, 'BUSY', why);
+}
+
+/**
+ * The version the AI makes a new one from: the one asked for, or by default the one being
+ * playtested, else the published one, else the newest ready one. A remix's own design starts
+ * from the copy. Refused if it has no code that passed, or is too big for the AI.
+ * @returns {GameVersion}
+ */
+function baseFor(game, kind, basedOn) {
+  let base;
+  if (kind === 'remix') base = findVersion(game, 1);
+  else if (basedOn === undefined) base = findVersion(game, game.playtestVersion) ?? findVersion(game, game.publishedVersion) ?? game.versions.findLast((v) => v.status === 'ready');
+  else base = findVersion(game, basedOn);
+  // An uploaded file that failed the checks can be fixed by the AI too (plan §57).
+  const fixable = base?.status === 'ready' || (base && versionKind(base).track.kind === 'upload' && base.status === 'failed' && base.source !== null);
+  if (!fixable) {
+    const why = kind === 'remix' ? 'The copy has no code to start from.' : 'Changes can only be made to a version that passed the tests.';
+    throw new GenerationError(409, 'NO_BASE_VERSION', why);
+  }
+  if (Buffer.byteLength(base.source, 'utf8') > MAX_AI_SOURCE_BYTES) {
+    throw new GenerationError(413, 'TOO_BIG_FOR_AI', `The AI can only change game files up to ${MAX_AI_SOURCE_BYTES / 1024} KB. Upload a changed file instead.`);
+  }
+  return base;
 }
 
 /** An idea or change request: trimmed, and of a sensible length. */
