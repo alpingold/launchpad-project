@@ -73,6 +73,16 @@ test("votes: logged in, once per account, changeable; not on your own game; a ga
   assert.equal((await get('/api/games/g-sam00001-v2', kim)).status, 404, 'a playtest version: only its creator');
 });
 
+test("the list carries each game's finished plays (for the \"most played\" sort); a game's versions share them", async () => {
+  const { sam } = await samsGame();
+  recordPlay(server.db, { gameId: 'g-sam00001', version: 1, stopped: null });
+  recordPlay(server.db, { gameId: 'g-sam00001', version: 2, stopped: null });
+  recordPlay(server.db, { gameId: 'g-sam00001', version: 1, stopped: 'host' }); // stopped: not counted
+  recordPlay(server.db, { gameId: 'official-one', version: null, stopped: null });
+  const { body } = await get('/api/games', sam);
+  assert.deepEqual(body.games.map((g) => [g.id, g.plays]), [['official-one', 1], ['g-sam00001', 2], ['g-sam00001-v2', 2]]);
+});
+
 test("deleting a generated game deletes its page, votes and games played", async () => {
   const kim = await signUp(baseUrl, 'kim');
   const kimId = (await me(kim)).id;

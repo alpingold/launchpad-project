@@ -10,9 +10,18 @@ export function recordPlay(db, { gameId, version, stopped }, now = Date.now()) {
   db.prepare('INSERT INTO game_plays (game_id, version, stopped, ended_at) VALUES (?, ?, ?, ?)').run(gameId, version, stopped, now);
 }
 
-/** How many times a game was played to the end (stopped games don't count). */
-export function countFinishedPlays(db, gameId) {
-  return db.prepare('SELECT COUNT(*) AS n FROM game_plays WHERE game_id = ? AND stopped IS NULL').get(gameId).n;
+/**
+ * How many times each game was played to the end (stopped games don't count), in one query.
+ * Games never finished aren't in it.
+ * @returns {Map<string, number>}
+ */
+export function finishedPlayCounts(db) {
+  return new Map(
+    db
+      .prepare('SELECT game_id, COUNT(*) AS n FROM game_plays WHERE stopped IS NULL GROUP BY game_id')
+      .all()
+      .map((r) => [r.game_id, r.n]),
+  );
 }
 
 /** Every record of a game, when the game itself is deleted. */

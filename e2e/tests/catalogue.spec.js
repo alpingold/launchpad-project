@@ -46,6 +46,23 @@ test('/games: search, tags and the player count narrow the list; Clear filters b
   expect(names).toEqual([...names].sort((a, b) => a.localeCompare(b)));
 });
 
+test('/games: "Most played" puts the games played to the end most first, ties newest first', async ({ page }) => {
+  // Other tests play games at the same time, so this sets the counts in the list the page gets.
+  const counts = { 'star-catch': [3, null], 'treasure-hunt': [1, 100], 'bumper-blobs': [1, 200] };
+  await page.route('/api/games', async (route) => {
+    const body = await (await route.fetch()).json();
+    for (const g of body.games) {
+      const [plays, addedAt] = counts[g.id] ?? [0, g.addedAt];
+      Object.assign(g, { plays, addedAt });
+    }
+    await route.fulfill({ json: body });
+  });
+  await page.goto('/games');
+  await page.getByRole('combobox', { name: 'Sort' }).selectOption({ label: 'Most played' });
+  const names = await page.locator('.game-card h3').allTextContents();
+  expect(names.slice(0, 3)).toEqual(['Star Catch', 'Bumper Blobs', 'Treasure Hunt']);
+});
+
 test('"Host this game": logged out it goes through the login, then the lobby has that game chosen', async ({ page }) => {
   await page.goto('/games');
   await page.getByRole('link', { name: 'Host Bumper Blobs' }).click();

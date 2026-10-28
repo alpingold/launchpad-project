@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
  * @typedef {{ id: string, pageId: string, name: string, description: string, minPlayers: number, maxPlayers: number,
  *   tags: string[], minutes: [number, number] | null, addedAt: number | null, shots: ('host' | 'phone')[],
  *   source: 'official' | 'generated', status?: 'playtest' | 'published', version?: number, madeBy?: 'ai' | 'upload',
- *   creator: { username: string } | null, votes: { up: number, down: number }, myVote: 1 | -1 | 0,
+ *   creator: { username: string } | null, votes: { up: number, down: number }, plays: number, myVote: 1 | -1 | 0,
  *   canEdit: boolean, canVote: boolean }} GameInfo
  *   status and version: AI-generated games only. tags []/minutes null: the game doesn't say.
  *   shots: the main one first. creator null: an official game (made by BoilerGames).
