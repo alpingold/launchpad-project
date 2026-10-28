@@ -12,10 +12,11 @@ import { tapGame, TAP_SOURCE } from '../helpers/frameGames.js';
  */
 function setup(options = {}) {
   const sent = []; // [{ to, msg }]
-  const rooms = new RoomManager({ send: (to, msg) => sent.push({ to, msg }), ...options });
+  const played = []; // every game that ended, as RoomManager reported it
+  const rooms = new RoomManager({ send: (to, msg) => sent.push({ to, msg }), onGamePlayed: (play) => played.push(play), ...options });
   /** All messages sent to one connection, in order. */
   const inbox = (connId) => sent.filter((s) => s.to === connId).map((s) => s.msg);
-  return { rooms, sent, inbox };
+  return { rooms, sent, inbox, played };
 }
 
 test('createRoom: host gets room:created (with token) then room:state', () => {
@@ -500,6 +501,34 @@ test('game:end: checked results end the game and the room returns to the lobby',
     assert.equal(ofType(id, 'room:state').at(-1).phase, 'lobby');
   }
   assert.doesNotThrow(() => rooms.startGame('host', 'tap-test'), 'can play again');
+});
+
+test('a game that ends is reported once: which game and version, finished or stopped, nothing about the players', (t) => {
+  const { rooms, room, alex, played } = gameLobby(t);
+  rooms.games.register(tapGame('g-abc-v2'), { source: 'generated', status: 'published', version: 2, baseId: 'g-abc' });
+
+  rooms.startGame('host', 'tap-test');
+  rooms.handleHostGameEnd('host', { rankings: [alex.id] });
+  rooms.startGame('host', 'g-abc-v2');
+  rooms.stopGameByHost('host', 'broken');
+  assert.equal(room.phase, 'lobby');
+
+  assert.deepEqual(played, [
+    { gameId: 'tap-test', version: null, stopped: null },
+    { gameId: 'g-abc', version: 2, stopped: 'broken' },
+  ]);
+});
+
+test("if a game can't be recorded, it still ends normally (the record is logged as lost)", (t) => {
+  const { rooms, room, alex } = gameLobby(t);
+  rooms.onGamePlayed = () => {
+    throw new Error('disk full');
+  };
+  t.mock.method(console, 'error', () => {});
+  rooms.startGame('host', 'tap-test');
+  assert.doesNotThrow(() => rooms.handleHostGameEnd('host', { rankings: [alex.id] }));
+  assert.equal(room.phase, 'lobby');
+  assert.equal(console.error.mock.callCount(), 1);
 });
 
 test('game:end with bad results is refused and the game keeps going', (t) => {

@@ -18,6 +18,7 @@ export const TABLE_NOTES = {
   site_reports: 'Sent from the /report form, by anyone: logged out, user_id is NULL (plan §31c).',
   game_reports: "Bug reports on a game's page (plan §31b). No foreign key on game_id, like game_pages.",
   game_report_votes: 'Up/down votes on game reports: one per account per report. The total is their sum (plan §31b).',
+  game_plays: "Every game that ended in a room: which game and version, and whether it was stopped (and why). Nothing about the players. No foreign key on game_id, like game_pages.",
   uploads: 'When each upload was made, for the uploads-an-hour limit. Kept when its game or version is deleted.',
 };
 

@@ -86,6 +86,7 @@ export default function GamePage({ id }) {
       <p className="muted">
         {playersText(game)}
         {length && ` · ${length}`}
+        {` · Played ${game.plays} ${game.plays === 1 ? 'time' : 'times'}`}
       </p>
       {game.tags.length > 0 && (
         <ul className="game-tags" aria-label="Tags">
