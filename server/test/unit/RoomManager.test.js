@@ -506,19 +506,22 @@ test('game:end: checked results end the game and the room returns to the lobby',
   assert.doesNotThrow(() => rooms.startGame('host', 'tap-test'), 'can play again');
 });
 
-test('a game that ends is reported once: which game and version, finished or stopped, nothing about the players', (t) => {
-  const { rooms, room, alex, played } = gameLobby(t);
+test('a game that ends is reported once: which game and version, finished or stopped, and when (by its clock); nothing about the players', (t) => {
+  let now = 1_000;
+  const { rooms, room, alex, played } = gameLobby(t, [], { now: () => now });
   rooms.games.register(tapGame('g-abc-v2'), { source: 'generated', status: 'published', version: 2, baseId: 'g-abc' });
 
   rooms.startGame('host', 'tap-test');
+  now = 2_000;
   rooms.handleHostGameEnd('host', { rankings: [alex.id] });
   rooms.startGame('host', 'g-abc-v2');
+  now = 3_000;
   rooms.stopGameByHost('host', 'broken');
   assert.equal(room.phase, 'lobby');
 
   assert.deepEqual(played, [
-    { gameId: 'tap-test', version: null, stopped: null },
-    { gameId: 'g-abc', version: 2, stopped: 'broken' },
+    { gameId: 'tap-test', version: null, stopped: null, endedAt: 2_000 },
+    { gameId: 'g-abc', version: 2, stopped: 'broken', endedAt: 3_000 },
   ]);
 });
 
@@ -533,10 +536,10 @@ test("a maker's playtest isn't a play: only published versions and official game
 });
 
 test("if a game can't be recorded, it still ends normally (the record is logged as lost)", (t) => {
-  const { rooms, room, alex } = gameLobby(t);
-  rooms.onGamePlayed = () => {
+  const onGamePlayed = () => {
     throw new Error('disk full');
   };
+  const { rooms, room, alex } = gameLobby(t, [], { onGamePlayed });
   t.mock.method(console, 'error', () => {});
   rooms.startGame('host', 'tap-test');
   assert.doesNotThrow(() => rooms.handleHostGameEnd('host', { rankings: [alex.id] }));

@@ -109,7 +109,7 @@ test('deleting your account (plan §54): your password again, then everything of
     await postJson(base, `/api/generations/${game.id}/publish`, {}, { Cookie: sam });
     assert.ok((await (await fetch(`${base}/api/games`)).json()).games.some((g) => g.id === game.id));
     const { recordPlay } = await import('../../src/db/plays.js');
-    recordPlay(server.db, { gameId: game.id, version: 1, stopped: null }); // someone played it
+    recordPlay(server.db, { gameId: game.id, version: 1, stopped: null, endedAt: 1 }); // someone played it
     // And an upload, counted for the uploads-an-hour limit.
     assert.equal((await postJson(base, `/api/generations/${game.id}/upload`, { source: renamedSource('Vote Off 2') }, { Cookie: sam })).status, 202);
     jobs.shift()({ ok: true, source: renamedSource('Vote Off 2'), report: { ok: true, problems: [], game: { name: 'Vote Off 2', description: 'Vote' } } });

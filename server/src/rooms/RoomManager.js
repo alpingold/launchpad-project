@@ -28,6 +28,7 @@ import { FrameRelay } from '../games/FrameRelay.js';
  * @property {string} gameId          the game's page id ("g-…" for every version of a generated game)
  * @property {number | null} version  generated games only
  * @property {null | 'host' | 'reload' | 'unresponsive' | 'broken'} stopped  null: the big screen ended it
+ * @property {number} endedAt         when it ended (ms, by RoomManager's clock)
  */
 
 /**
@@ -290,7 +291,7 @@ export class RoomManager {
       deliver: (target, msg) => this.deliverGameMessage(room, target, msg),
       onEnd: (results) => {
         this.handleGameEnd(room, relay, results);
-        if (playRecord) this.reportGamePlayed({ ...playRecord, stopped: results.stopped ?? null });
+        if (playRecord) this.reportGamePlayed({ ...playRecord, stopped: results.stopped ?? null, endedAt: this.now() });
       },
     });
     room.game = relay;

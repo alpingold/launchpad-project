@@ -4,11 +4,11 @@
 // game_pages. Nothing about who played or what anyone typed.
 
 /**
- * Records one game that ended.
+ * Records one game that ended, as it's given.
  * @param {import('../rooms/RoomManager.js').GamePlayed} play
  */
-export function recordPlay(db, { gameId, version, stopped }, now = Date.now()) {
-  db.prepare('INSERT INTO game_plays (game_id, version, stopped, ended_at) VALUES (?, ?, ?, ?)').run(gameId, version, stopped, now);
+export function recordPlay(db, { gameId, version, stopped, endedAt }) {
+  db.prepare('INSERT INTO game_plays (game_id, version, stopped, ended_at) VALUES (?, ?, ?, ?)').run(gameId, version, stopped, endedAt);
 }
 
 /**
