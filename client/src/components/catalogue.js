@@ -6,8 +6,9 @@
  * @property {string} search       part of the name or description; '' for all
  * @property {string[]} tags       games must have every one of these
  * @property {number | null} players  games this many people can play; null for any
- * @property {'featured' | 'top' | 'name' | 'newest'} sort
+ * @property {'featured' | 'top' | 'played' | 'name' | 'newest'} sort
  *   featured: the server's order (official games first); top: most ▲ minus ▼ votes (plan §16);
+ *   played: most times played to the end, ties newest first;
  *   newest: AI-made games by when they were made, official games after them
  */
 
@@ -21,7 +22,7 @@ export function fits(game, players) {
 
 /**
  * The games to show, in order.
- * @template {{ name: string, description: string, tags: string[], minPlayers: number, maxPlayers: number, addedAt: number | null, votes?: { up: number, down: number } }} G
+ * @template {{ name: string, description: string, tags: string[], minPlayers: number, maxPlayers: number, addedAt: number | null, votes?: { up: number, down: number }, plays?: number }} G
  * @param {G[]} games
  * @param {CatalogueFilters} filters
  * @returns {G[]}
@@ -36,8 +37,14 @@ export function filterGames(games, { search, tags, players, sort }) {
   );
   if (sort === 'name') return shown.sort((a, b) => a.name.localeCompare(b.name));
   if (sort === 'top') return shown.sort((a, b) => score(b) - score(a)); // a stable sort: ties keep the featured order
-  if (sort === 'newest') return shown.sort((a, b) => (b.addedAt ?? -1) - (a.addedAt ?? -1));
+  if (sort === 'played') return shown.sort((a, b) => (b.plays ?? 0) - (a.plays ?? 0) || newer(a, b));
+  if (sort === 'newest') return shown.sort(newer);
   return shown;
+}
+
+/** For sort(): the newer game first; official games (no date) after AI-made ones, in the featured order. */
+function newer(a, b) {
+  return (b.addedAt ?? -1) - (a.addedAt ?? -1);
 }
 
 /** Upvotes minus downvotes. */

@@ -44,6 +44,7 @@ export default function GameCatalogue({ games, action }) {
           <select value={filters.sort} onChange={(e) => set({ sort: e.target.value })}>
             <option value="featured">Featured</option>
             <option value="top">Top rated</option>
+            <option value="played">Most played</option>
             <option value="name">A–Z</option>
             <option value="newest">Newest</option>
           </select>
