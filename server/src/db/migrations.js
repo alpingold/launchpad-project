@@ -390,6 +390,19 @@ export const MIGRATIONS = [
       ALTER TABLE build_attempts ADD COLUMN edits_applied INTEGER;
     `,
   },
+  {
+    version: 21,
+    description: 'when each upload was made, for the uploads-an-hour limit',
+    sql: `
+      -- Not the upload versions themselves: deleting a game or discarding a version would
+      -- forget them, and free an upload.
+      CREATE TABLE uploads (
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at INTEGER NOT NULL
+      );
+      CREATE INDEX uploads_by_user ON uploads (user_id, created_at);
+    `,
+  },
 ];
 
 /** The version a fully up-to-date database has. */

@@ -119,6 +119,9 @@ export const config = {
   MAX_GAMES_PER_ACCOUNT: Number(process.env.MAX_GAMES_PER_ACCOUNT) || 50,
   REMIXES_PER_WINDOW: Number(process.env.REMIXES_PER_WINDOW) || 10,
   REMIXES_WINDOW_MS: 60 * 60 * 1000,
+  // Uploads per account per hour: each one is a playtest in a sandbox. Counted from the
+  // database, so a restart, a deleted game or a discarded version frees none.
+  MAX_UPLOADS_PER_HOUR: Number(process.env.MAX_UPLOADS_PER_HOUR) || 6,
 
   // Behind a reverse proxy (Caddy, M8) every request seems to come from the proxy itself.
   // Setting this (e.g. TRUST_PROXY=loopback) tells Express to use the visitor's real IP from
@@ -137,7 +140,8 @@ export const config = {
   // --- Games ---
 
   // Largest game file (plan §13c). It's sent to every phone when a game starts; a hand-made
-  // game is ~20–40 KB. The AI's rulebook asks for at most 300 KB (generator/src/prompt.js).
+  // game is ~20–40 KB. The AI's rulebook asks for at most 100 KB (MAX_GAME_BYTES in
+  // generator/src/prompt.js), the most the AI may change (MAX_AI_SOURCE_BYTES).
   // Raised from 512 KB on 2026-10-15, as games get bigger.
   FRAME_GAME_MAX_BYTES: 1024 * 1024,
 

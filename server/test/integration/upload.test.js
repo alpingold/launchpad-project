@@ -2,7 +2,7 @@ import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { createGameServer } from '../../src/server.js';
 import { GameRegistry } from '../../src/games/registry.js';
-import { MAX_UPLOADS_PER_HOUR } from '../../src/generation/service.js';
+import { config } from '../../src/config.js';
 import { signUp, postJson } from '../helpers/accounts.js';
 import { TAP_SOURCE, renamedSource } from '../helpers/frameGames.js';
 
@@ -93,7 +93,7 @@ test('refused: not a game file, too big, one at a time, and a few an hour', asyn
   jobs[0].finish(passed(TAP_SOURCE));
   await server.generation.current;
 
-  for (let i = 1; i < MAX_UPLOADS_PER_HOUR; i++) {
+  for (let i = 1; i < config.MAX_UPLOADS_PER_HOUR; i++) {
     assert.equal((await post('/api/generations/upload', { source: TAP_SOURCE }, sam)).status, 202);
     jobs[i].finish(passed(TAP_SOURCE));
     await server.generation.current;

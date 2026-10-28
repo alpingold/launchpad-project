@@ -110,6 +110,11 @@ test('deleting your account (plan §54): your password again, then everything of
     assert.ok((await (await fetch(`${base}/api/games`)).json()).games.some((g) => g.id === game.id));
     const { recordPlay } = await import('../../src/db/plays.js');
     recordPlay(server.db, { gameId: game.id, version: 1, stopped: null }); // someone played it
+    // And an upload, counted for the uploads-an-hour limit.
+    assert.equal((await postJson(base, `/api/generations/${game.id}/upload`, { source: renamedSource('Vote Off 2') }, { Cookie: sam })).status, 202);
+    jobs.shift()({ ok: true, source: renamedSource('Vote Off 2'), report: { ok: true, problems: [], game: { name: 'Vote Off 2', description: 'Vote' } } });
+    await server.generation.current;
+    assert.equal(server.db.prepare('SELECT COUNT(*) AS n FROM uploads').get().n, 1);
 
     // The wrong password: nothing happens.
     const wrong = await send('DELETE', '/api/account', { password: 'not it at all' }, sam);
@@ -124,6 +129,7 @@ test('deleting your account (plan §54): your password again, then everything of
     assert.equal(server.db.prepare('SELECT COUNT(*) AS n FROM generated_games').get().n, 0);
     assert.equal(server.db.prepare('SELECT COUNT(*) AS n FROM genai_keys').get().n, 0);
     assert.equal(server.db.prepare('SELECT COUNT(*) AS n FROM game_plays').get().n, 0);
+    assert.equal(server.db.prepare('SELECT COUNT(*) AS n FROM uploads').get().n, 0);
     assert.equal((await postJson(base, '/api/signup', { username: 'sam', password: 'another good password' })).status, 201);
   } finally {
     await server.close();

@@ -73,10 +73,10 @@ export function listUsers(db) {
 
 /**
  * Deletes an account for good (plan §54): the database removes what's tied to it by a foreign key
- * (its logins, saved key, games and their versions, its votes, its reports on game pages); what's
- * tied to its games only by id (their pages, the votes and reports on them, the games played) goes
- * here. Reports from the site-wide form stay, without the name. Remixes others made of its games
- * stay theirs.
+ * (its logins, saved key, games and their versions, its votes, its reports on game pages, its
+ * uploads); what's tied to its games only by id (their pages, the votes and reports on them, the
+ * games played) goes here. Reports from the site-wide form stay, without the name. Remixes others
+ * made of its games stay theirs.
  * @param {string[]} gameIds  the account's generated games (already taken off the running server)
  */
 export function deleteUser(db, userId, gameIds) {
