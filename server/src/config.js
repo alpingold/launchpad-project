@@ -210,6 +210,8 @@ export const config = {
   // account isn't enough on its own, as accounts are cheap to make. 2, not 1: friends on the
   // same Wi-Fi may both be making a game.
   GENERATION_JOBS_PER_IP: Number(process.env.GENERATION_JOBS_PER_IP) || 2,
+  // The period `npm run admin -- edit-stats` covers when it isn't given one: the last this many days.
+  EDIT_STATS_DAYS: 30,
 
   // Longest raw name string accepted before normalization. The real display-name
   // rules (1–16 characters, etc.) come in M3; this just stops absurd input early.
