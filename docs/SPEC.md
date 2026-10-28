@@ -55,7 +55,7 @@ the players' browsers, and the server never runs game code.
 16. ✅ As a member, I want a profile with a bio that lists my games, so that people can find what else I made.
 17. ✅ As a visitor, I want the home page to lead with making a game, and show top and newest games, so that I see what's special about the site.
 18. ✅ As someone searching the web, I want BoilerGames' pages to show up with real titles and descriptions, so that I can find the site.
-19. ⬜ As a visitor, I want to sort by most played, so that I see what groups actually enjoy. _(Games played are recorded now, and a game's page shows its count; the sort isn't built yet.)_
+19. ✅ As a visitor, I want to sort by most played, so that I see what groups actually enjoy.
 
 **Making a game with the site's AI**
 
