@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { openDatabase } from '../../src/db/database.js';
 import { createUser, setAdmin } from '../../src/db/users.js';
-import { createGeneratedGame, getGeneratedGame, gameStatus, saveDraft, startRedraft, listBuildAttempts } from '../../src/db/generatedGames.js';
+import { createGeneratedGame, getGeneratedGame, gameStatus, saveDraft, startRedraft, listBuildAttempts, createRemix, markVersionFailed } from '../../src/db/generatedGames.js';
 import { GameRegistry } from '../../src/games/registry.js';
 import { GenerationService, MAX_WAITING, RECHECK_REQUEST } from '../../src/generation/service.js';
 import { renamedSource } from '../helpers/frameGames.js';
@@ -528,4 +528,96 @@ test('an account has at most MAX_GAMES_PER_ACCOUNT games (plan §59); admins hav
   service.start({ ownerUserId: admin.id, idea: IDEA }); // an admin's second game
   calls[0].finish(DESIGNED);
   await service.current;
+});
+
+// Every action that starts work asks one guard, and gets the same refusals in the same order:
+// this game is busy, then its maker already has a job or the queue is full, then there's
+// nothing to build from. Each row is an action, set up so that it would start; each column is
+// one reason it can't. null: that reason can't happen for that action.
+const STARTING_ACTIONS = [
+  { name: 'a new game', game: null, act: (ctx) => ctx.service.start({ ownerUserId: ctx.admin.id, idea: IDEA }) },
+  { name: 'an upload', game: null, act: (ctx) => ctx.service.upload({ ownerUserId: ctx.admin.id, source: GOOD_SOURCE }) },
+  { name: 'a new draft', game: 'design', act: (ctx, id) => ctx.service.redesign({ id, version: 1, feedback: 'Make it 2 rounds' }) },
+  { name: 'a build', game: 'design', act: (ctx, id) => ctx.service.build({ id, version: 1 }) },
+  { name: 'a change', game: 'ready', act: (ctx, id) => ctx.service.requestChanges({ id, request: 'Give it a new name please' }) },
+  { name: '"Review again"', game: 'ready', act: (ctx, id) => ctx.service.reviewAgain({ id }) },
+  { name: 'a new upload version', game: 'ready', act: (ctx, id) => ctx.service.upload({ ownerUserId: ctx.admin.id, id, source: CHANGED_SOURCE }) },
+  { name: '"Make it your own"', game: 'remix', act: (ctx, id) => ctx.service.requestRemixDesign({ id, request: 'Make it about cats please' }) },
+];
+
+/**
+ * What each action gets, by reason. "This game is busy" is its maker's own job on it, so it
+ * also shows that the game comes first. A remix with work under way already has a change.
+ */
+const REFUSALS = {
+  'a new game': { free: null, makerBusy: 'ALREADY_RUNNING', gameBusy: null, queueFull: 'QUEUE_FULL', noBase: null },
+  'an upload': { free: null, makerBusy: 'ALREADY_RUNNING', gameBusy: null, queueFull: 'QUEUE_FULL', noBase: null },
+  'a new draft': { free: null, makerBusy: 'ALREADY_RUNNING', gameBusy: 'BUSY', queueFull: 'QUEUE_FULL', noBase: null },
+  'a build': { free: null, makerBusy: 'ALREADY_RUNNING', gameBusy: 'BUSY', queueFull: 'QUEUE_FULL', noBase: null },
+  'a change': { free: null, makerBusy: 'ALREADY_RUNNING', gameBusy: 'BUSY', queueFull: 'QUEUE_FULL', noBase: 'NO_BASE_VERSION' },
+  '"Review again"': { free: null, makerBusy: 'ALREADY_RUNNING', gameBusy: 'BUSY', queueFull: 'QUEUE_FULL', noBase: 'NO_BASE_VERSION' },
+  'a new upload version': { free: null, makerBusy: 'ALREADY_RUNNING', gameBusy: 'BUSY', queueFull: 'QUEUE_FULL', noBase: null },
+  '"Make it your own"': { free: null, makerBusy: 'ALREADY_RUNNING', gameBusy: 'ALREADY_CHANGED', queueFull: 'QUEUE_FULL', noBase: 'NO_BASE_VERSION' },
+};
+
+/** The maker's game for an action, with no job under way: its design waiting, its code ready, or a remix. */
+async function gameFor(ctx, kind, { noBase = false } = {}) {
+  if (kind === 'remix') {
+    const copy = { design: DESIGN, source: GOOD_SOURCE, report: PASSED.report, name: 'Majority Rules', description: 'Vote!' };
+    const remix = createRemix(ctx.db, { ownerUserId: ctx.admin.id, prompt: IDEA, remixOf: { id: 'stowaways', version: null, name: 'Stowaways' }, ...copy });
+    if (noBase) markVersionFailed(ctx.db, remix.id, 1, 'broken');
+    return remix.id;
+  }
+  const { id } = ctx.service.start({ ownerUserId: ctx.admin.id, idea: IDEA });
+  ctx.calls.at(-1).finish(DESIGNED);
+  await ctx.service.current;
+  if (kind === 'design') return id;
+  ctx.service.build({ id, version: 1 });
+  ctx.calls.at(-1).finish(noBase ? { ok: false, error: 'no passing game after 4 attempts' } : PASSED);
+  await ctx.service.current;
+  return id;
+}
+
+/** Puts one of this game's own jobs under way. */
+function occupy(ctx, kind, id) {
+  if (kind === 'design') ctx.service.redesign({ id, version: 1, feedback: 'Make it 3 rounds' });
+  else if (kind === 'remix') ctx.service.requestRemixDesign({ id, request: 'Make it about dogs please' });
+  else ctx.service.requestChanges({ id, request: 'Something else entirely' });
+}
+
+/** Fills the queue with other people's jobs: one running, MAX_WAITING waiting. */
+function fillQueue(ctx) {
+  for (let i = 0; i <= MAX_WAITING; i++) {
+    const user = createUser(ctx.db, `other${i}`, 'scrypt$x');
+    setAdmin(ctx.db, `other${i}`, true);
+    ctx.service.start({ ownerUserId: user.id, idea: IDEA });
+  }
+}
+
+test('one guard: every action that starts work is refused for the same reasons, in the same order', async () => {
+  for (const action of STARTING_ACTIONS) {
+    for (const [reason, expected] of Object.entries(REFUSALS[action.name])) {
+      if (expected === null && reason !== 'free') continue;
+      const ctx = setup();
+      const id = action.game === null ? null : await gameFor(ctx, action.game, { noBase: reason === 'noBase' });
+      if (reason === 'makerBusy') ctx.service.start({ ownerUserId: ctx.admin.id, idea: `${IDEA} too` });
+      if (reason === 'gameBusy') occupy(ctx, action.game, id);
+      if (reason === 'queueFull') fillQueue(ctx);
+      assert.equal(codeOf(() => action.act(ctx, id)), expected ?? 'no error', `${action.name}, ${reason}`);
+    }
+  }
+  // A full queue comes before nothing to build from.
+  for (const action of STARTING_ACTIONS.filter((a) => REFUSALS[a.name].noBase !== null)) {
+    const ctx = setup();
+    const id = await gameFor(ctx, action.game, { noBase: true });
+    fillQueue(ctx);
+    assert.equal(codeOf(() => action.act(ctx, id)), 'QUEUE_FULL', `${action.name}: a full queue, and nothing to build from`);
+  }
+});
+
+test('"Make it your own" is held to the AI\'s size limit too, like a change', async () => {
+  const ctx = setup();
+  const big = `${GOOD_SOURCE}<!--${'x'.repeat(100 * 1024)}-->`;
+  const remix = createRemix(ctx.db, { ownerUserId: ctx.admin.id, prompt: IDEA, remixOf: { id: 'stowaways', version: null, name: 'Stowaways' }, design: DESIGN, source: big, report: PASSED.report, name: 'Majority Rules', description: 'Vote!' });
+  assert.equal(codeOf(() => ctx.service.requestRemixDesign({ id: remix.id, request: 'Make it about cats please' })), 'TOO_BIG_FOR_AI');
 });

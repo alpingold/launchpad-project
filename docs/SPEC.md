@@ -243,8 +243,7 @@ the players' browsers, and the server never runs game code.
   generator-owned job both need it rebuilt) and that one real game still generates with the
   service's newer limits.
 - Run the service as a user of its own, outside the docker group (deploy/README.md says why).
-- One guard for "may this game start new work" (the busy checks and the default base version
-  are written twice, in two orders); untangle build and review in the generator's job runner.
+- Untangle build and review in the generator's job runner.
 - A config comment still says the AI's rulebook allows 300 KB; it's 100 KB.
 - The upload rate limit is in memory, so a restart forgets it.
 - Watch how often the AI's edits fail to apply, and fix calls that end with no reply.
