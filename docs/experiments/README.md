@@ -1,8 +1,8 @@
 # Experiments
 
 How BoilerGames' AI generation was tested: each file is one experiment's question, method,
-numbers and findings. What was decided because of it is in [the plan](../PLAN.md), which links
-here. Section numbers (§) are the plan's. Oldest first:
+numbers and findings. What was decided because of it is in [the spec](../SPEC.md). Section numbers (§) are the
+old plan's (`git show baf3c04:docs/PLAN.md`). Oldest first:
 
 | File | Question | Plan |
 |---|---|---|

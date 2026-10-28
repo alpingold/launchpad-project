@@ -107,7 +107,7 @@ and why the image keeps files at their repo paths. Sandbox names may be at most 
 
 `qwen3.8:27b`, the only one. It "thinks" before it writes, so an attempt takes about 1–3
 minutes. `gpt-oss:120b` was the fast default until 2026-10-14 (about 30 s per attempt), but
-qwen made the better games in both comparisons (docs/PLAN.md §11g, §12j), so it was dropped.
+qwen made the better games in both comparisons (docs/experiments/model-comparisons.md), so it was dropped.
 Adding a model back is one line in `src/models.js`.
 
 ## One-time setup (milestone A0)

@@ -1,7 +1,7 @@
 # History
 
-Designs BoilerGames used and then replaced. The plan ([../PLAN.md](../PLAN.md)) keeps a
-one-line note where each one was, linking here. Section numbers (§) are the plan's.
+Designs BoilerGames used and then replaced. Section numbers (§) are the old plan's, replaced
+by [the spec](../SPEC.md) on 2026-10-28 (`git show baf3c04:docs/PLAN.md`).
 
 | File | What | Replaced by |
 |---|---|---|

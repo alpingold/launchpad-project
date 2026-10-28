@@ -83,7 +83,7 @@ Purdue GenAI Studio (an open model, Qwen) · OpenShell sandboxes in Docker · AW
 | `generator/` | The AI side: prompts, the model calls, the game checker and playtest (`src/check/`), the code reviewer, and the rulebook the AI follows (`spec/`) |
 | `e2e/` | Browser tests (Playwright) against a test server with a fake AI |
 | `deploy/` | The production setup: Caddy, systemd, backups, the update script |
-| `docs/` | [PLAN.md](docs/PLAN.md) (every design decision, as it was made), [experiments/](docs/experiments/README.md), [history/](docs/history/README.md) |
+| `docs/` | [SPEC.md](docs/SPEC.md) (what the project is, what's built, and the decisions it rests on), [experiments/](docs/experiments/README.md), [history/](docs/history/README.md) |
 
 More: [generator/README.md](generator/README.md) (setting up AI generation),
 [deploy/README.md](deploy/README.md) (running it on a server), and the rulebook for game files,
