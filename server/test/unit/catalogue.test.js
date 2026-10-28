@@ -60,3 +60,22 @@ test('sort by top rated: most 👍 minus 👎 first; ties keep the order given',
   ];
   assert.deepEqual(filterGames(voted, { ...NO_FILTERS, sort: 'top' }).map((g) => g.name), ['B', 'A', 'D', 'C']);
 });
+
+test('sort by most played: most plays first; ties newest first, then official games in the order given', () => {
+  const played = [
+    { ...game('Official, played twice'), plays: 2 },
+    { ...game('Old, played twice', { addedAt: 100 }), plays: 2 },
+    { ...game('Never played', { addedAt: 300 }) }, // no count yet
+    { ...game('New, played twice', { addedAt: 200 }), plays: 2 },
+    { ...game('Played five times'), plays: 5 },
+    { ...game('Official, never played'), plays: 0 },
+  ];
+  assert.deepEqual(filterGames(played, { ...NO_FILTERS, sort: 'played' }).map((g) => g.name), [
+    'Played five times',
+    'New, played twice',
+    'Old, played twice',
+    'Official, played twice',
+    'Never played',
+    'Official, never played',
+  ]);
+});
