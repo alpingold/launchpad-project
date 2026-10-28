@@ -68,6 +68,25 @@
     document.body.append(child);
     setTimeout(() => (child.isConnected ? resolve('still there') : reject()), 100);
   }));
+  // The remover runs only after this script's step ends, so a game could try to beat it. Two
+  // ways: take the child's WebRTC in the same step it's added (the browser stops this one
+  // anyway: each sandboxed frame is its own "null" origin, so the child counts as another
+  // site), or let the child run its own script, which has WebRTC (the remover's job: the
+  // child must be gone before its script runs, so its message never comes).
+  wall('child frame webrtc, same step', () => {
+    const child = document.createElement('ifr' + 'ame');
+    document.body.append(child);
+    return new child.contentWindow['RTC' + 'PeerConnection']();
+  });
+  wall("child frame's own script", () => new Promise((resolve, reject) => {
+    addEventListener('message', (event) => {
+      if (String(event.data).startsWith('child ran')) resolve(event.data);
+    });
+    const child = document.createElement('ifr' + 'ame');
+    child.srcdoc = "<script>parent.postMessage('child ran, webrtc: ' + typeof RTCPeerConnection, '*')<\/script>";
+    document.body.append(child);
+    setTimeout(reject, 300);
+  }));
   wall('redirect the page', () => {
     window.top.location.href = '/?escaped';
     return 'navigated';
