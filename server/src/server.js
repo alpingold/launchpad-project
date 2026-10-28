@@ -12,6 +12,7 @@ import { createKeyVault } from './auth/keyVault.js';
 import { createUserKeys } from './generation/userKeys.js';
 import { randomBytes } from 'node:crypto';
 import { deleteExpiredSessions } from './db/sessions.js';
+import { recordPlay } from './db/plays.js';
 import { currentUser } from './auth/currentUser.js';
 
 /**
@@ -74,6 +75,7 @@ export function createGameServer(overrides = {}, { games = createDefaultRegistry
     roomIdleMs: cfg.ROOM_IDLE_MS,
     gameWatchdogMs: cfg.GAME_WATCHDOG_MS,
     games,
+    onGamePlayed: (play) => recordPlay(db, play),
   });
 
   // Every few minutes, close rooms nobody has touched in hours, and clear out expired logins.
