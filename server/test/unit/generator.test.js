@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { extractGameFile, extractDesign, extractHeadings, missingHeadings, extractChangelog } from '../../../generator/src/extract.js';
-import { chat, OutOfRoomError } from '../../../generator/src/llm.js';
+import { chat, OutOfRoomError, NoReplyError } from '../../../generator/src/llm.js';
 import { MODELS, DEFAULT_MODEL } from '../../../generator/src/models.js';
 import {
   designMessages,
@@ -215,6 +215,17 @@ test('chat: gives up after 4 tries, and does not retry a bad request', async () 
   const bad = fakeFetch([{ status: 400, body: { detail: 'Model not found' } }]);
   await assert.rejects(chat([], { model: 'm', fetchImpl: bad.fetchImpl, sleep: noSleep }), /HTTP 400.*Model not found/);
   assert.equal(bad.calls.length, 1);
+});
+
+test('chat: giving up on an empty reply says so (a call with no reply, for the edit stats); other failures don\'t', async () => {
+  const empty = fakeFetch([{ status: 503, body: {} }, ...Array.from({ length: 3 }, () => ({ body: null }))]);
+  const err = await chat([], { model: 'm', fetchImpl: empty.fetchImpl, sleep: noSleep }).catch((e) => e);
+  assert.ok(err instanceof NoReplyError);
+  assert.equal(err.noReply, true);
+  assert.match(err.message, /after 4 tries: empty reply \(often the rate limit\)/);
+
+  const busy = fakeFetch([{ body: null }, ...Array.from({ length: 3 }, () => ({ status: 503, body: {} }))]);
+  assert.equal((await chat([], { model: 'm', fetchImpl: busy.fetchImpl, sleep: noSleep }).catch((e) => e)).noReply, undefined);
 });
 
 // --- Models ------------------------------------------------------------------------------

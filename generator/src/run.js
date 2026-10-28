@@ -60,9 +60,10 @@ import { describeProblem } from '../../server/src/games/frameGame.js';
  * One build attempt, as the result lists it. mode: how the model answered (plan §23). An
  * "edits" attempt whose edits didn't fit the file has no source; its report lists why.
  * For the edit stats: fix (the call asked to fix an earlier attempt, or was the review's fix),
- * noReply (the model wrote nothing: it ran out of room while thinking) and editsApplied (an
+ * noReply (the model wrote nothing: it ran out of room while thinking, or the call gave up on
+ * empty replies; seconds null then) and editsApplied (an
  * "edits" reply only: whether its edits fit the file).
- * @typedef {{ attempt: number, mode?: 'whole' | 'edits', ok: boolean, problems: number, seconds: number,
+ * @typedef {{ attempt: number, mode?: 'whole' | 'edits', ok: boolean, problems: number, seconds: number | null,
  *   fix?: boolean, noReply?: boolean, editsApplied?: boolean,
  *   usage: { prompt_tokens?: number, completion_tokens?: number } | null, finishReason?: string | null, toolCallChars?: number,
  *   thinking?: string, reply?: string, toolCalls?: string, outOfRoom?: true,
@@ -277,6 +278,9 @@ async function build(job, model, { chatFn = chat, check = checkGame, onStep = ()
     try {
       reply = await chatFn(messages, { model, reasoningEffort: job.reasoningEffort ?? reasoningEffortFor(model, step), onRetry: onStep, onProgress: (p) => onStep(`${asking} (${progressText(p)})`, { replace: true }) });
     } catch (err) {
+      // It gave up on empty replies (often the rate limit): the job fails, but the call is kept,
+      // as one with no reply, for the edit stats.
+      if (err.noReply) result.attempts.push({ attempt, mode, fix, noReply: true, seconds: null, usage: null, ok: false, problems: 1, source: null });
       if (!err.outOfRoom) return { ...result, error: err.message };
       // It thought until the context was full: a used-up attempt. The next one asks the same again.
       result.attempts.push({ attempt, mode, fix, noReply: true, seconds: err.seconds, usage: err.usage, ...thinkingOf(job, err), ok: false, problems: 1, outOfRoom: true, source: null });

@@ -44,6 +44,20 @@ export class OutOfRoomError extends Error {
   }
 }
 
+const EMPTY_REPLY = 'empty reply (often the rate limit)';
+
+/**
+ * Every try came back empty, the last one too: the model wrote nothing (often the rate limit).
+ * Marked so a build can still record the call, as one with no reply (the edit stats).
+ */
+export class NoReplyError extends Error {
+  /** @param {number} tries */
+  constructor(tries) {
+    super(`model call failed after ${tries} tries: ${EMPTY_REPLY}`);
+    this.noReply = true;
+  }
+}
+
 /**
  * Sends a conversation to the model and returns its reply.
  * @param {Message[]} messages
@@ -60,6 +74,7 @@ export class OutOfRoomError extends Error {
  * @param {number} [opts.idleTimeoutMs]
  * @returns {Promise<ChatResult>}
  * @throws {OutOfRoomError} when the thinking filled the context and there's no reply
+ * @throws {NoReplyError} when it gave up on an empty reply
  */
 export async function chat(
   messages,
@@ -133,12 +148,14 @@ export async function chat(
     // Stopped by the length limit, or thought and then said nothing: out of room, not the rate limit.
     if (empty && (reply.finishReason === 'length' || reply.thinking)) throw new OutOfRoomError({ thinking: reply.thinking, finishReason: reply.finishReason, usage: reply.usage, seconds });
     if (empty) {
-      lastProblem = 'empty reply (often the rate limit)';
+      lastProblem = EMPTY_REPLY;
       continue;
     }
     return { content: reply.content ?? '', thinking: reply.thinking, finishReason: reply.finishReason, toolCalls: reply.toolCalls, seconds, usage: reply.usage };
   }
-  throw new Error(`model call failed after ${RETRY_DELAYS_MS.length + 1} tries: ${lastProblem}`);
+  const tries = RETRY_DELAYS_MS.length + 1;
+  if (lastProblem === EMPTY_REPLY) throw new NoReplyError(tries);
+  throw new Error(`model call failed after ${tries} tries: ${lastProblem}`);
 }
 
 /** An abort signal that fires after `ms` of silence; `touch()` restarts the wait. */

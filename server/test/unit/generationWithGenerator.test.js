@@ -2,13 +2,14 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { openDatabase } from '../../src/db/database.js';
 import { createUser, setAdmin } from '../../src/db/users.js';
-import { gameStatus, createRemix, listBuildAttempts } from '../../src/db/generatedGames.js';
+import { gameStatus, createRemix, listBuildAttempts, buildAttemptStats } from '../../src/db/generatedGames.js';
 import { GameRegistry } from '../../src/games/registry.js';
 import { GenerationService } from '../../src/generation/service.js';
 import { realGenerator, fakeModel, staticOnly, withHeadings } from '../helpers/realGenerator.js';
 import { TAP_SOURCE, renamedSource } from '../helpers/frameGames.js';
 import { PLAN_HEADINGS } from '../../../generator/src/prompt.js';
 import { DEFAULT_MODEL } from '../../../generator/src/models.js';
+import { NoReplyError } from '../../../generator/src/llm.js';
 
 // The generation module with the REAL generator in place of the sandbox (its runJob, with a
 // fake model and a fake checker): what the server sends is what the generator must accept,
@@ -114,6 +115,23 @@ test("a game's model is the one the AI is asked with, for its design and its bui
   // Its build attempts keep it too, with what the generator said about each call (the edit stats).
   const attempts = listBuildAttempts(db, id).get(1);
   assert.deepEqual(attempts.map((a) => [a.model, a.fix, a.noReply, a.editsApplied]), [[DEFAULT_MODEL, false, false, null]]);
+});
+
+test('a fix call the model gave up on (empty replies, often the rate limit) still counts in the edit stats, as a fix with no reply', async () => {
+  // The first file fails its checks; asked to fix it, the model only ever sends nothing.
+  const answers = fakeModel({ design: DESIGN, game: '<p>not a game yet</p>\n' });
+  let codeAsks = 0;
+  const model = async (messages, opts) => {
+    if (!opts?.responseFormat && ++codeAsks > 1) throw new NoReplyError(4);
+    return answers(messages, opts);
+  };
+  const { db, service, admin } = setup(model);
+  const id = await readyGame({ service, admin });
+  const [v1] = service.get(id).versions;
+  assert.deepEqual([v1.status, v1.error], ['failed', 'model call failed after 4 tries: empty reply (often the rate limit)']);
+  assert.deepEqual(buildAttemptStats(db, { since: 0, until: Date.now() + 1 }), [
+    { model: DEFAULT_MODEL, attempts: 2, edits: 0, editsFailed: 0, noReply: 1, fixes: 1, fixesNoReply: 1 },
+  ]);
 });
 
 test("an upload's new file is checked too; a file that fails its checks fails with its report", async () => {

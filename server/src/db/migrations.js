@@ -384,7 +384,7 @@ export const MIGRATIONS = [
       -- recorded (an attempt from before this, or an upload's check, which calls no model).
       -- model: the model asked. fix: 1 if the call asked to fix an earlier attempt (or was the
       -- review's fix). no_reply: 1 if the model wrote nothing (it ran out of room while
-      -- thinking). edits_applied: for an 'edits' reply only, 1 if its edits fit the file.
+      -- thinking, or the call gave up on empty replies). edits_applied: for an 'edits' reply only, 1 if its edits fit the file.
       ALTER TABLE build_attempts ADD COLUMN model TEXT;
       ALTER TABLE build_attempts ADD COLUMN fix INTEGER;
       ALTER TABLE build_attempts ADD COLUMN no_reply INTEGER;
