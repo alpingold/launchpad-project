@@ -53,6 +53,7 @@ test('GET /api/games lists the games for the host picker', async () => {
         pageId: 'tap-test',
         creator: null,
         votes: { up: 0, down: 0 },
+        plays: 0,
         myVote: 0,
         canEdit: false,
         canVote: false,

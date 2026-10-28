@@ -2,7 +2,7 @@ import { allGamePages, getGamePage, saveGamePage, voteCounts, votesBy, setVote }
 import { blockedFields, blockedMessage } from './wordFilter.js';
 import { usernamesById } from '../db/users.js';
 import { remixOrigins } from '../db/generatedGames.js';
-import { countFinishedPlays } from '../db/plays.js';
+import { finishedPlayCounts } from '../db/plays.js';
 import { tagProblems, minutesProblems } from './frameGame.js';
 import { GAME_TAGS, MAX_GAME_TAGS } from './tags.js';
 
@@ -46,6 +46,7 @@ export class CatalogError extends Error {
  * @property {'ai' | 'upload'} [madeBy]  an AI-made game, or a file someone uploaded (plan §57)
  * @property {{ username: string } | null} creator   null: an official game (made by BoilerGames)
  * @property {{ up: number, down: number }} votes
+ * @property {number} plays            how many times it was played to the end (every version together)
  * @property {1 | -1 | 0} myVote
  * @property {boolean} canEdit         this viewer may change its page: its creator, or an admin
  * @property {boolean} canVote         logged in, and not its creator
@@ -68,6 +69,7 @@ export function catalogList(db, registry, viewer) {
   const mine = viewer.userId === null ? new Map() : votesBy(db, viewer.userId);
   const names = usernamesById(db);
   const origins = remixOrigins(db);
+  const plays = finishedPlayCounts(db);
   const games = registry.list({ userId: viewer.userId }).map((g) => {
     const page = pages.get(g.baseId) ?? null;
     const isCreator = g.ownerUserId !== null && g.ownerUserId === viewer.userId;
@@ -89,6 +91,7 @@ export function catalogList(db, registry, viewer) {
       ...(g.source === 'generated' && { status: g.status, version: g.version, madeBy: g.madeBy }),
       creator: g.ownerUserId === null ? null : { username: names.get(g.ownerUserId) ?? 'someone' },
       votes: votes.get(g.baseId) ?? { up: 0, down: 0 },
+      plays: plays.get(g.baseId) ?? 0,
       myVote: mine.get(g.baseId) ?? 0,
       canEdit: isCreator || viewer.isAdmin === true,
       canVote: viewer.userId !== null && !isCreator,
@@ -109,17 +112,16 @@ export function catalogList(db, registry, viewer) {
 }
 
 /**
- * One game's page: everything on its card, plus its "About" text, how many times it was played
- * to the end, and, for whoever may edit it, what the game file itself says (to show what an
- * empty field falls back to).
- * @returns {CatalogGame & { about: string, plays: number, fromFile?: { name: string, description: string, tags: string[], minutes: [number, number] | null },
+ * One game's page: everything on its card, plus its "About" text and, for whoever may edit it,
+ * what the game file itself says (to show what an empty field falls back to).
+ * @returns {CatalogGame & { about: string, fromFile?: { name: string, description: string, tags: string[], minutes: [number, number] | null },
  *   tagChoices?: string[], maxTags?: number }}  tagChoices/maxTags: for the edit form
  */
 export function catalogGame(db, registry, viewer, id) {
   const game = catalogList(db, registry, viewer).find((g) => g.id === id);
   if (!game) throw new CatalogError(404, 'NOT_FOUND', 'There is no such game.');
   const page = getGamePage(db, game.pageId);
-  const result = { ...game, about: page?.about ?? '', plays: countFinishedPlays(db, game.pageId) };
+  const result = { ...game, about: page?.about ?? '' };
   if (game.canEdit) {
     const file = registry.list({ userId: viewer.userId }).find((g) => g.id === id);
     result.fromFile = { name: file.name, description: file.description, tags: file.tags, minutes: file.minutes };
