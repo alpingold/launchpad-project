@@ -46,4 +46,5 @@ modes in parallel from the same plan). Subjects: Bumper Blobs (18 KB), "Realm Pa
 
 **Recommended, and built that way:** edit mode is the default for changes and fixes; whole
 files stay as the fallback and for a new game's first attempt. Worth watching in real use:
-how often edits fail to apply (the admin page shows each attempt's mode and problems).
+how often edits fail to apply (the admin page shows each attempt's mode and problems;
+`npm run admin -- edit-stats` counts them by model, with calls that got no reply).
