@@ -137,7 +137,8 @@ export const config = {
   // --- Games ---
 
   // Largest game file (plan §13c). It's sent to every phone when a game starts; a hand-made
-  // game is ~20–40 KB. The AI's rulebook asks for at most 300 KB (generator/src/prompt.js).
+  // game is ~20–40 KB. The AI's rulebook asks for at most 100 KB (MAX_GAME_BYTES in
+  // generator/src/prompt.js), the most the AI may change (MAX_AI_SOURCE_BYTES).
   // Raised from 512 KB on 2026-10-15, as games get bigger.
   FRAME_GAME_MAX_BYTES: 1024 * 1024,
 
