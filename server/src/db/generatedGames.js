@@ -413,6 +413,42 @@ export function listBuildAttempts(db, gameId) {
   return byVersion;
 }
 
+/**
+ * How a model's calls went, over a period.
+ * @typedef {Object} BuildAttemptStats
+ * @property {string | null} model
+ * @property {number} attempts      calls made (attempts that recorded their call)
+ * @property {number} edits         replies with edits (an "edits" attempt the model answered with edits)
+ * @property {number} editsFailed   of those, how many didn't fit the file
+ * @property {number} noReply       calls the model wrote nothing for
+ * @property {number} fixes         calls that asked for a fix
+ * @property {number} fixesNoReply  of those, how many got nothing
+ */
+
+/**
+ * The edit stats: build attempts saved in [since, until), by model (by name). Only attempts
+ * that recorded their call count (not an upload's check, nor one saved before they did).
+ * @param {{ since: number, until: number }} period  ms since 1970
+ * @returns {BuildAttemptStats[]}
+ */
+export function buildAttemptStats(db, { since, until }) {
+  return db
+    .prepare(
+      `SELECT model,
+              COUNT(*)                                         AS attempts,
+              COUNT(edits_applied)                             AS edits,
+              COALESCE(SUM(edits_applied = 0), 0)              AS editsFailed,
+              COALESCE(SUM(no_reply), 0)                       AS noReply,
+              COALESCE(SUM(fix), 0)                            AS fixes,
+              COALESCE(SUM(fix = 1 AND no_reply = 1), 0)       AS fixesNoReply
+       FROM build_attempts
+       WHERE no_reply IS NOT NULL AND created_at >= ? AND created_at < ?
+       GROUP BY model
+       ORDER BY model`,
+    )
+    .all(since, until);
+}
+
 /** Every version the sandbox was working on ("designing" or "generating"): after a restart, these were cut off. */
 export function listBusyVersions(db) {
   return db.prepare("SELECT * FROM game_versions WHERE status IN ('designing', 'generating') ORDER BY created_at").all().map(versionFromRow);
