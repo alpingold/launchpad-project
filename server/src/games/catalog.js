@@ -46,7 +46,7 @@ export class CatalogError extends Error {
  * @property {'ai' | 'upload'} [madeBy]  an AI-made game, or a file someone uploaded (plan §57)
  * @property {{ username: string } | null} creator   null: an official game (made by BoilerGames)
  * @property {{ up: number, down: number }} votes
- * @property {number} plays            how many times it was played to the end (every version together)
+ * @property {number} plays            how many times it was played to the end (every published version together)
  * @property {1 | -1 | 0} myVote
  * @property {boolean} canEdit         this viewer may change its page: its creator, or an admin
  * @property {boolean} canVote         logged in, and not its creator

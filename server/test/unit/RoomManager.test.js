@@ -380,13 +380,16 @@ test('sweeper closes rooms idle for 2 hours; any activity resets the clock', (t)
 
 // --- Frame games in rooms (plan §13f) -------------------------------------------------------
 
-/** A lobby (host + Alex + Blake) on a server that offers the tap test game. */
-function gameLobby(t, extraGames = []) {
+/**
+ * A lobby (host + Alex + Blake) on a server that offers the tap test game.
+ * `host`: who's logged in on the big screen (createRoom's owner). Other options go to RoomManager.
+ */
+function gameLobby(t, extraGames = [], { host = {}, ...options } = {}) {
   const games = new GameRegistry();
   for (const g of [tapGame(), ...extraGames]) games.register(g);
   t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
-  const ctx = setup({ games });
-  ctx.code = ctx.rooms.createRoom('host').code;
+  const ctx = setup({ games, ...options });
+  ctx.code = ctx.rooms.createRoom('host', host).code;
   ctx.alex = ctx.rooms.joinRoom('c1', ctx.code, 'Alex');
   ctx.blake = ctx.rooms.joinRoom('c2', ctx.code, 'Blake');
   ctx.room = ctx.rooms.getRoom(ctx.code);
@@ -517,6 +520,16 @@ test('a game that ends is reported once: which game and version, finished or sto
     { gameId: 'tap-test', version: null, stopped: null },
     { gameId: 'g-abc', version: 2, stopped: 'broken' },
   ]);
+});
+
+test("a maker's playtest isn't a play: only published versions and official games are reported", (t) => {
+  const { rooms, alex, played } = gameLobby(t, [], { host: { userId: 7 } });
+  rooms.games.register(tapGame('g-abc-v3'), { source: 'generated', status: 'playtest', ownerUserId: 7, version: 3, baseId: 'g-abc' });
+  rooms.startGame('host', 'g-abc-v3');
+  rooms.handleHostGameEnd('host', { rankings: [alex.id] });
+  rooms.startGame('host', 'g-abc-v3');
+  rooms.stopGameByHost('host');
+  assert.deepEqual(played, []);
 });
 
 test("if a game can't be recorded, it still ends normally (the record is logged as lost)", (t) => {

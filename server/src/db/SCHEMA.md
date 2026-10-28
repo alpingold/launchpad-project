@@ -73,7 +73,7 @@ What a game's creator changed about how it's shown in the catalogue, never the g
 
 ## game_plays
 
-Every game that ended in a room: which game and version, and whether it was stopped (and why). Nothing about the players. No foreign key on game_id, like game_pages.
+Every game that ended in a room (not a maker's playtest): which game and version, and whether it was stopped (and why). Nothing about the players. No foreign key on game_id, like game_pages.
 
 | Column | Type | Rules | Notes |
 |---|---|---|---|

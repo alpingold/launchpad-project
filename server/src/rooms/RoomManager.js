@@ -22,7 +22,8 @@ import { FrameRelay } from '../games/FrameRelay.js';
  */
 
 /**
- * A game that ended, for the record of games played. Nothing about who played.
+ * A game that ended, for the record of games played (a published version or an official game,
+ * never a maker's playtest). Nothing about who played.
  * @typedef {Object} GamePlayed
  * @property {string} gameId          the game's page id ("g-…" for every version of a generated game)
  * @property {number | null} version  generated games only
@@ -52,6 +53,7 @@ export class RoomManager {
    * @param {GameRegistry} [deps.games]  games that can be started (empty by default)
    * @param {number} [deps.gameWatchdogMs]  stop a game whose big screen stops answering for this long
    * @param {(play: GamePlayed) => void} [deps.onGamePlayed]  told once about every game that ends
+   *   (not a maker's playtest)
    */
   constructor({
     send,
@@ -277,15 +279,18 @@ export class RoomManager {
     room.phase = 'in_game';
     room.gameId = gameId;
     room.lastActivityAt = this.now();
-    // Read now: a playtest version may be gone from the registry by the time the game ends.
-    const which = this.games.versionOf(gameId);
+    // What a play of this game is recorded as, read now: a playtest version may be gone from the
+    // registry by the time the game ends. A maker's playtests aren't plays (null): only a
+    // published version or an official game counts.
+    const { gameId: pageId, version, status } = this.games.versionOf(gameId);
+    const playRecord = status === 'playtest' ? null : { gameId: pageId, version };
     const relay = new FrameRelay({
       game,
       players: players.map((p) => ({ id: p.id, name: p.name })),
       deliver: (target, msg) => this.deliverGameMessage(room, target, msg),
       onEnd: (results) => {
         this.handleGameEnd(room, relay, results);
-        this.reportGamePlayed({ ...which, stopped: results.stopped ?? null });
+        if (playRecord) this.reportGamePlayed({ ...playRecord, stopped: results.stopped ?? null });
       },
     });
     room.game = relay;

@@ -67,13 +67,13 @@ export class GameRegistry {
   }
 
   /**
-   * Which game and version a registered id runs: a playtest "g-…-v2" is game "g-…", version 2.
-   * Official games have no versions (null).
-   * @returns {{ gameId: string, version: number | null } | undefined}
+   * Which game and version a registered id runs: a playtest "g-…-v2" is game "g-…", version 2,
+   * status 'playtest'. Official games have no versions or status (null).
+   * @returns {{ gameId: string, version: number | null, status: GameMeta['status'] } | undefined}
    */
   versionOf(id) {
     const entry = this.entries.get(id);
-    return entry && { gameId: entry.meta.baseId, version: entry.meta.version };
+    return entry && { gameId: entry.meta.baseId, version: entry.meta.version, status: entry.meta.status };
   }
 
   /**

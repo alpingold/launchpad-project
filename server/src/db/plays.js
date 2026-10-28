@@ -1,4 +1,5 @@
-// Games played: one row for every game that ended in a room, finished or stopped. Keyed by the
+// Games played: one row for every game that ended in a room, finished or stopped. Only plays
+// of an official game or a published version: a maker's playtests aren't recorded. Keyed by the
 // game's page id (an official game's id, or "g-..." for every version of a generated game), like
 // game_pages. Nothing about who played or what anyone typed.
 
