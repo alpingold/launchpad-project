@@ -1,5 +1,5 @@
 // THE REVIEWER (plan §47): reads a built game's code against its design. On the site, every
-// game that passes gets one review (run.js: withReview): its crashes and dead ends are fixed
+// game that passes gets one review (run.js: reviewRound): its crashes and dead ends are fixed
 // right away, and everything it found goes to the game's creator. Experiments use it to score
 // build variants on more than "did it pass the checks" (server/scripts/review-builds.js).
 // Two steps, each one model call:

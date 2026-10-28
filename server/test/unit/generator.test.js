@@ -645,20 +645,23 @@ test('the reviewer: bugs come with a severity, and the critical ones become a ch
 
 /**
  * A fake model for the review round: a checklist, then reviews (in turn), and code for the
- * build and the fix (in turn). `asked` lists what each call was.
+ * build and the fix (in turn). `asked` lists what each call was; `prompts`, each call's last
+ * message.
  */
 function reviewingModel({ reviews, files }) {
   const asked = [];
+  const prompts = [];
   const chatFn = async (messages, opts) => {
     const kind = opts.responseFormat?.json_schema.name ?? 'code';
     asked.push(kind);
+    prompts.push(messages.at(-1).content);
     if (kind === 'critical_bugs') {
       const review = reviews.shift();
       return { content: typeof review === 'string' ? review : JSON.stringify(review), usage: null, seconds: 1 };
     }
     return { content: files.shift(), usage: null, seconds: 1 };
   };
-  return { chatFn, asked };
+  return { chatFn, asked, prompts };
 }
 const reviewOf = (bugs) => ({ bugs });
 const CRASH = { lines: [1], what: 'scores is not defined when the round ends', severity: 'crash' };
@@ -720,4 +723,88 @@ test('recheck ("Review again"): a finished game, read against its design and the
   // The review knows about the changes since the design: they win where they differ.
   assert.match(criticalMessages(DESIGN, GAME, { changes: ['Make running faster'] })[1].content, /<changes>\n- Make running faster\n<\/changes>/);
   assert.doesNotMatch(criticalMessages(DESIGN, GAME)[1].content, /<changes>/);
+});
+
+test('the review round on a change: it reads the game\'s design and every request, this one too; the fix builds on all of them, and the version\'s list of changes stays the build\'s', async () => {
+  const fixedGame = GAME.replace('party.ready(', '/* fixed */ party.ready(');
+  const model = reviewingModel({ reviews: [reviewOf([CRASH])], files: [`CHANGES:\n- Faster running\n\n${fenced('html', GAME)}`, `CHANGES:\n- Scores are set in time\n\n${fenced('html', fixedGame)}`] });
+  const job = { step: 'build', idea: 'A racing platformer for friends', review: true, edits: false, change: { request: 'Make running faster', source: GAME, design: DESIGN, earlierRequests: ['Add a timer'], plan: null } };
+  const result = await runJob(job, { chatFn: model.chatFn, check: passing });
+  assert.deepEqual(model.asked, ['code', 'critical_bugs', 'code']);
+  const [, review, fix] = model.prompts;
+  assert.match(review, /<design>\n# Bumper Blobs/);
+  assert.match(review, /<changes>\n- Add a timer\n- Make running faster\n<\/changes>/);
+  // The fix: a small change, the review's bugs as its request, the build's request already made.
+  assert.match(fix, /Make this small change:[^]*scores is not defined when the round ends/);
+  assert.match(fix, /<earlier-changes>\n- Add a timer\n- Make running faster\n<\/earlier-changes>/);
+  assert.match(fix, /<design>\n# Bumper Blobs/);
+  assert.deepEqual([result.ok, result.changelog, result.review.fix], [true, '- Faster running', { ok: true, changelog: '- Scores are set in time' }]);
+  assert.match(result.source, /\/\* fixed \*\//);
+});
+
+test("the review round on a remix: it reads the remix's own design, and its fix is a small change to the new game, not another remix", async () => {
+  const fixedGame = GAME.replace('party.ready(', '/* fixed */ party.ready(');
+  const model = reviewingModel({ reviews: [reviewOf([CRASH])], files: [`CHANGES:\n- Power-ups\n\n${fenced('html', GAME)}`, `CHANGES:\n- Scores are set in time\n\n${fenced('html', fixedGame)}`] });
+  const job = { step: 'build', idea: 'Bump each other off the ice', review: true, design: '# New design\n## Rules\nPower-ups.', remix: { source: GAME, design: DESIGN } };
+  const result = await runJob(job, { chatFn: model.chatFn, check: passing });
+  assert.deepEqual(model.asked, ['code', 'critical_bugs', 'code']);
+  const [, review, fix] = model.prompts;
+  assert.match(review, /<design>\n# New design/);
+  assert.doesNotMatch(review, /<changes>/);
+  assert.match(fix, /Make this small change:[^]*scores is not defined/);
+  assert.match(fix, /Your edits to the code/, 'a change is asked for edits');
+  assert.doesNotMatch(fix, /<original-design>/);
+  assert.deepEqual([result.ok, result.changelog], [true, '- Power-ups']);
+  assert.match(result.source, /\/\* fixed \*\//);
+});
+
+test('recheck that finds a crash: the fix is the version\'s only change, so its file, report and list of changes are the version\'s', async () => {
+  const fixedGame = GAME.replace('party.ready(', '/* fixed */ party.ready(');
+  const model = reviewingModel({ reviews: [reviewOf([CRASH])], files: [`CHANGES:\n- Scores are set in time\n\n${fenced('html', fixedGame)}`] });
+  const job = { step: 'recheck', idea: 'A racing platformer for friends', edits: false, change: { request: 'Review the code again', source: GAME, design: DESIGN, earlierRequests: ['Make running faster'] } };
+  const result = await runJob(job, { chatFn: model.chatFn, check: passing });
+  assert.deepEqual(model.asked, ['critical_bugs', 'code']);
+  // "Review the code again" isn't a change the game has: neither the review nor the fix hears it.
+  assert.doesNotMatch(model.prompts.join('\n'), /Review the code again/);
+  assert.match(model.prompts[1], /<earlier-changes>\n- Make running faster\n<\/earlier-changes>/);
+  assert.equal(result.ok, true);
+  assert.match(result.source, /\/\* fixed \*\//);
+  assert.equal(result.report.checked, 'fake');
+  assert.equal(result.changelog, '- Scores are set in time');
+  assert.deepEqual(result.attempts.map((a) => [a.attempt, a.reviewFix]), [[1, true]]);
+  assert.deepEqual(result.review.bugs, [{ severity: 'crash', what: CRASH.what, fixed: true }]);
+});
+
+test("the review round's progress lines; a build that doesn't pass isn't reviewed", async () => {
+  const reviewLines = async (reviews, files, check = passing, job = {}) => {
+    const steps = [];
+    const model = reviewingModel({ reviews, files });
+    const result = await runJob({ step: 'build', idea: 'A racing platformer for friends', design: DESIGN, review: true, edits: false, ...job }, { chatFn: model.chatFn, check, onStep: (t) => steps.push(t) });
+    return { result, asked: model.asked, lines: steps.filter((t) => t.startsWith('review:')) };
+  };
+  const reading = 'review: reading the code against the design';
+  const fixedGame = GAME.replace('party.ready(', '/* fixed */ party.ready(');
+
+  assert.deepEqual((await reviewLines([reviewOf([])], [fenced('html', GAME)])).lines, [reading, 'review: no crashes or dead ends']);
+  assert.deepEqual((await reviewLines(['not json', 'not json'], [fenced('html', GAME)])).lines, [reading, 'review: no review: the model wrote no review']);
+  assert.deepEqual((await reviewLines([reviewOf([CRASH, STUCK])], [fenced('html', GAME), fenced('html', fixedGame)])).lines, [
+    reading,
+    'review: 2 crash(es) or dead end(s): fixing them',
+    'review: fixed, and the fixed game passed the checks',
+  ]);
+  // More bugs than fit in one request: the crashes go first, and only those that fit are marked fixed.
+  const long = (b, i) => ({ ...b, what: `${b.what} ${i} ${'x'.repeat(1500)}` });
+  const many = await reviewLines([reviewOf([long(STUCK, 1), long(CRASH, 2), long(CRASH, 3), long(STUCK, 4)])], [fenced('html', GAME), fenced('html', fixedGame)]);
+  assert.deepEqual(many.lines, [reading, 'review: 4 crash(es) or dead end(s): fixing 2 of them', 'review: fixed, and the fixed game passed the checks']);
+  assert.deepEqual(many.result.review.bugs.map((b) => [b.severity, b.fixed]), [['stuck', false], ['crash', true], ['crash', true], ['stuck', false]]);
+
+  const broken = GAME.replace('party.ready(', 'fetch("/x"); party.ready(');
+  const blocksFetch = async (source) => (source.includes('fetch') ? { ok: false, problems: ['`fetch` is blocked.'], warnings: [] } : passing());
+  const unfixed = await reviewLines([reviewOf([CRASH])], [fenced('html', GAME), ...Array(3).fill(fenced('html', broken))], blocksFetch);
+  assert.deepEqual(unfixed.lines, [reading, 'review: 1 crash(es) or dead end(s): fixing them', "review: the fix didn't pass the checks, so the game stays as it was"]);
+  assert.deepEqual(unfixed.result.attempts.map((a) => [a.attempt, a.reviewFix ?? false]), [[1, false], [2, true], [3, true], [4, true]]);
+  assert.deepEqual(unfixed.result.review.fix, { ok: false, error: 'no passing game after 3 attempts' });
+
+  const failed = await reviewLines([], [fenced('html', broken), fenced('html', broken)], blocksFetch, { maxAttempts: 2 });
+  assert.deepEqual([failed.result.ok, failed.result.review, failed.asked, failed.lines], [false, undefined, ['code', 'code'], []]);
 });
