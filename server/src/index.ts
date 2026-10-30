@@ -1,0 +1,10 @@
+import { createServer as createHttpServer, type Server } from "node:http";
+import { siteName } from "@boilergames/shared";
+
+// Placeholder until the real server (Express, ws) arrives: answers every request with its name.
+export function createServer(): Server {
+  return createHttpServer((_request, response) => {
+    response.writeHead(200, { "content-type": "text/plain; charset=utf-8" });
+    response.end(`${siteName} server`);
+  });
+}

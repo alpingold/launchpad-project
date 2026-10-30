@@ -1,0 +1,12 @@
+// The build: compiles src to dist (JavaScript and type declarations), leaving the tests out.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "composite": true,
+    "rootDir": "src",
+    "outDir": "dist",
+    "sourceMap": true
+  },
+  "exclude": ["src/**/*.test.ts"]
+}

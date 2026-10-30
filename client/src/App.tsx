@@ -1,0 +1,6 @@
+import { siteName } from "@boilergames/shared";
+
+// Placeholder page until the first real pages are built.
+export function App() {
+  return <h1>{siteName}</h1>;
+}

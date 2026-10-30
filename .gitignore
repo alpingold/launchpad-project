@@ -1,5 +1,7 @@
 node_modules/
-client/dist/
+# What tsc and Vite build: never committed, always rebuilt.
+dist/
+*.tsbuildinfo
 *.db
 *.db-journal
 .env

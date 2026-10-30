@@ -1,0 +1,17 @@
+{
+  "name": "@boilergames/shared",
+  "description": "Types and schemas used by every other package.",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "@boilergames/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json"
+  }
+}

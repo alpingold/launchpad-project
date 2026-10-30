@@ -1,0 +1,12 @@
+// The type check. Vite builds the client; tsc only checks it.
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "types": ["vite/client"]
+  },
+  "include": ["src", "vite.config.ts"]
+}

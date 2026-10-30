@@ -1,0 +1,22 @@
+// The strict settings every package's tsconfig extends.
+{
+  "compilerOptions": {
+    "target": "ES2024",
+    "lib": ["ES2024"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    // Packages import each other's TypeScript source through this export condition, so the type
+    // check, the tests and the client's Vite never need the other packages built first.
+    "customConditions": ["@boilergames/source"],
+    "types": [],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "noEmit": true
+  }
+}
