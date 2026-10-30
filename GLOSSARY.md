@@ -1,41 +1,149 @@
 # BoilerGames
 
-Party games for one big screen and everyone's phones, and the tools that let people make their own: with the site's AI, or by uploading a game file.
+Party games for one shared Screen and everyone's phones, and the tools that let people make their own: with the site's AI, or by uploading a Game they wrote.
+
+## Rooms and people
+
+**Room**:
+A live gathering on one Screen that Players join with its Room Code. It runs one Match at a time.
+_Avoid_: Session, server, party
+
+**Lobby**:
+The state of a Room between Matches, where Players gather and the Host picks a Game.
+_Avoid_: Waiting room, menu
+
+**Room Code**:
+The short code shown on the Screen that Players type on their phones to join a Room.
+_Avoid_: Join code, PIN
+
+**Screen**:
+The shared display (a laptop on a TV or projector) that runs a Room and shows the main game view.
+_Avoid_: Big screen, host screen, TV
+
+**Host**:
+The person who opens a Room and controls it: picking Games, starting and stopping Matches, removing Players.
+_Avoid_: Owner, admin, GM
+
+**Player**:
+A person who has joined a Room from their phone.
+_Avoid_: User, participant, guest
+
+**Seat**:
+A Player's place in a Room, which keeps who they are and their score through disconnects and reconnects. Someone who arrives during a Match gets a Seat and plays from the next Match, unless the Game takes late joiners. A Player who stays away too long loses their Seat.
+_Avoid_: Slot, session, spot, watcher
+
+**Controller**:
+The view on a Player's phone that they play through.
+_Avoid_: Gamepad, client, remote
+
+## Games
+
+**Game**:
+Something a Room can play: made by a Generation, uploaded, or remixed. A Game is a list of Versions.
+_Avoid_: App, experience, cartridge
+
+**Official game**:
+A Game the owner publishes as one of the site's own. Apart from its label, it is a Game like any other.
+_Avoid_: Built-in game, first-party game, source
+
+**Match**:
+One play-through of one Game in one Room.
+_Avoid_: Session, round, game (for a play-through)
+
+**Version**:
+One state of a Game's code, and how it got there. A Generation, a Revision, an Upload or a Remix's copy makes one; each after the first is made from an earlier one.
+_Avoid_: Revision (that's the change asked for), build (that's one step of making one)
+
+**SDK version**:
+Which edition of the platform's game toolkit a Version was written against. Always the two words, never "version" alone.
+_Avoid_: Version, runtime version
+
+**Kit**:
+The fixed set of parts (text, buttons, choices, text boxes, a drawing pad, a timer, a scoreboard...) that a Game's views are made of, drawn by the site rather than by the Game.
+_Avoid_: Components, widgets, blocks
 
 ## Making games
 
-**Version**:
-One state of a player-made game: its code, and how it got there. A game is a list of versions; each one after the first is made from an earlier one.
-_Avoid_: revision, build (a build is one step that makes a version's code)
+**Creator**:
+A signed-in person who makes a Game, by Generation, Upload or Remix.
+_Avoid_: Maker, author, developer
 
-**Version kind**:
-What a version is: a new game, a change, a "Review again" round, a remix's own design ("Make it your own"), a remix's copy, or an uploaded file. With the version's status it decides the version's next step, whether that step needs the AI, whether it has a design, and its track.
-_Avoid_: version type, mode
+**Purdue-verified**:
+An account that has confirmed a Purdue email address. It is needed to Vote and to start a Generation.
+_Avoid_: Student account, verified
 
-**Job**:
-One step a version's sandbox run makes: a design (or plan, or new draft), a build, a "Review again" round, or an upload's check. The generator's job module makes it from what the site knows about the version, and checks it before it runs.
-_Avoid_: task, request (that's what a maker asks for in a change)
+**Generation**:
+The whole process of turning a Creator's idea into a Game: a Concept, the Creator's approval, then Builds and Playtests.
+_Avoid_: Job, build, prompt
 
-**Design**:
-The written plan of a whole game (its rules, screens, art and length), read and approved before any code is written. A new game and a remix made its own have one; an uploaded file has none.
-_Avoid_: spec, outline
+**Concept**:
+The written design of a whole Game (its rules, screens and length) that a Generation drafts and the Creator approves before any code is written.
+_Avoid_: Design, idea, spec, pitch
+
+**Build**:
+The step where the AI writes a Game's code, from the approved Concept or a Revision. When a Playtest fails, its problems go back to Build, a few times at most.
+_Avoid_: Compile, codegen
+
+**Playtest**:
+An automated run of a Game with simulated Players, from start to finish, to check that it works before the Creator gets it.
+_Avoid_: Test run, validation, QA
+
+**Revision**:
+A change to an existing Game that its Creator asks for in plain words, made without rebuilding from the Concept.
+_Avoid_: Edit, patch, tweak
 
 **Plan**:
-The written plan of one change to a game, against its design. A small fix has no plan.
-_Avoid_: change design, diff
+The written plan of one Revision, against the Game's Concept. A small fix has no Plan.
+_Avoid_: Change design, diff
 
 **Upload**:
-A version whose game file its creator brought (written by hand, or with an AI of their own), checked like any other but never written by the site's AI.
-_Avoid_: import (that's an admin's command-line copy of a file)
+A Version whose code its Creator brought (written by hand, or with an AI of their own), checked like any other but never written by the site's AI.
+_Avoid_: Import (that's an admin's copy of a file)
 
 **Remix**:
-A player's own copy of someone else's public game, to play and change as their own. It credits the game it was copied from.
-_Avoid_: fork, clone
+A Creator's own copy of someone else's public Game, to play and change as their own. It credits the Game it was copied from.
+_Avoid_: Fork, clone
 
 **Track**:
-The board the maker's page shows for a version: Idea → Design → Build → Play for a new game, Change → Plan → Build → Play for a change, Upload → Check → Play for an upload, with where the version is and whether it's waiting for the AI, for its creator, or failed.
-_Avoid_: progress bar, pipeline
+The board a Creator's page shows for a Version in progress: where it is (Concept, Build, Playtest, ready) and whether it is waiting on the AI, on its Creator, or failed.
+_Avoid_: Progress bar, pipeline
 
 **Made by**:
-How a game was made, for its label: "AI-made" when the site's AI built any version of it, "Uploaded" when it was brought as a file, and for a remix, however its original was made.
-_Avoid_: source (that's official vs player-made), origin
+How a Game was made, for its label: "AI-made" when a Generation or Revision built any Version of it, "Uploaded" when it was brought as code, and for a Remix, however its original was made.
+_Avoid_: Source, origin
+
+## The Library
+
+**Library**:
+The shared collection of published Games that any Host can choose from. A Game is private to its Creator until they publish it.
+_Avoid_: Catalog, games page, store
+
+**Profile**:
+A Creator's public page: their name, description and published Games.
+_Avoid_: Account page, user page, bio
+
+**Vote**:
+A Purdue-verified account's up or down vote on someone else's Game in the Library; at most one per Game.
+_Avoid_: Like, rating, score
+
+**Voted off**:
+A published Game whose Vote total is at or below −5. It is left out of the Library until its total rises.
+_Avoid_: Hidden, banned, removed
+
+**deleted user**:
+How the Library credits a published Game whose Creator deleted their account and chose to leave it up. Nobody can change such a Game.
+_Avoid_: Anonymous, orphaned
+
+## Trust and safety
+
+**Admin**:
+A club member who can unpublish any Game. The owner grants and revokes it.
+_Avoid_: Moderator, mod, staff
+
+**Game report**:
+A Player's note that a Game is broken or offensive; its **reason** says which.
+_Avoid_: Flag, complaint, kind
+
+**Site report**:
+A note to the owner about the site itself, sent with or without an account; its **topic** is broken, idea or other.
+_Avoid_: Feedback, ticket, kind

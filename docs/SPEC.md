@@ -1,263 +1,245 @@
-# BoilerGames: the spec
+# BoilerGames: the rewrite spec
 
-What BoilerGames is meant to be, what's built, and the decisions it rests on, as of 2026-10-28.
-Live at [boilergames.party](https://boilergames.party). Open work is in the issue tracker
-(`.scratch/boilergames/`); the step-by-step history of how each decision was made is in git (see
-[Further notes](#further-notes)).
+What the rewritten BoilerGames is, and the decisions it rests on, as of 2026-10-30. The rewrite
+replaces the site at [boilergames.party](https://boilergames.party), which keeps running from
+`main` until this is done. Words in bold are defined in [GLOSSARY.md](../GLOSSARY.md); lasting
+decisions are ADRs in [docs/adr/](adr/). Work is in the issue tracker (`.scratch/rewrite/`).
 
 ## Problem Statement
 
 A group in one room (a club meeting, a dorm, a party) wants to play something together on one
-screen. Party-game kits exist, but they cost money, need an app or a console, and only have the
-games someone else chose to make. People with an idea for a game of their own ("like charades,
-but everyone draws on their phone") have no way to make it without being a programmer and
-building the networking, the phone controllers and the hosting themselves.
+screen. Party-game kits cost money, need an app or a console, and only have the games someone else
+chose to make. People with an idea for a game of their own have no way to make it without being a
+programmer and building the networking, the phone controls and the hosting themselves.
+
+The first BoilerGames solved this, but it was built in plain JavaScript as decisions changed under
+it: its game model changed four times in five days, its security rested on an approval step that
+was later removed, no single place owned what a Version is, its schema changed with every feature,
+its three programs shared no types, and its games were free web pages that the AI often got wrong
+and that could leak what they saw. Its owner now wants a design they understand and can defend,
+built in TypeScript, keeping the decisions that proved right.
 
 ## Solution
 
-A website. One person opens a game on a TV or laptop (the **big screen**) and gets a 4-letter room
-code; everyone else joins from their phone's browser with the code and a name. No app, and no
-account to play.
+A website. A Host opens a **Room** on a **Screen** and gets a **Room Code**; everyone else joins
+from their phone's browser with the code and a name. No app, and no account to play.
 
-There are seven official games, and anyone with an account can make more:
-- **describe it** in a few sentences, and the site's AI writes a design to read and edit, then
-  builds the game, plays it with bot phones, reviews its own code and fixes what it finds;
-- **upload a game file** they wrote by hand or with any AI of their own;
-- **remix** someone else's public game into their own copy to change.
+Games are small TypeScript programs written against the platform's SDK: their logic runs walled
+off on the Screen with no network at all, and phones draw what the Game describes from the
+site's own **Kit** of controls. Anyone with a Purdue email can make a Game: describe it, approve
+the **Concept** the AI writes, and get a Game that has already been played to the end by simulated
+Players. Creators can also **Upload** a Game they wrote, or **Remix** someone else's. Published
+Games go into the **Library**, where Purdue-verified accounts **Vote** on them.
 
-Creators publish their own games for everyone. Every game, official or not, runs walled off in
-the players' browsers, and the server never runs game code.
+The first release has bare, working pages. The site's look is designed later, around the finished
+backend.
 
 ## User Stories
 
-✅ built · ⬜ not yet
+**Playing**
 
-**Playing (players and the big screen)**
+1. As a Host, I want to open a Room and get a Room Code, so that my friends have one code to join.
+2. As a Host, I want to pick a Game from the Library in the Lobby and start a Match, so that the Room can play several Games in one night.
+3. As a Player, I want to join from my phone's browser with a Room Code and a name, so that I don't install anything or make an account.
+4. As a Player, I want my Seat kept when my phone refreshes or sleeps, so that a dropped connection doesn't throw me out.
+5. As a Host, I want the Room and the Match to survive a Screen reload, resuming where they were, so that an accidental refresh doesn't end the night.
+6. As a latecomer, I want to join a Room during a Match and either play straight away (if the Game takes late joiners) or keep a Seat for the next Match, so that I'm never turned away.
+7. As a Host, I want up to 16 Players in a Room, with each Game able to set a lower limit, so that big groups can play.
+8. As a Host, I want to remove a Player, so that I can deal with a rude name or someone who wandered in.
+9. As a Host, I want to stop a Match at any time, and to be told why a Match ended (stopped, reloaded, not responding, broken), so that a bad Game never traps the Room.
+10. As a Player, I want what's secret to me (my role, my word) shown only on my phone, so that the Screen, which everyone can see, never gives it away.
+11. As a Player, I want Controllers that work well under a thumb (buttons, choices, text boxes, a drawing pad, a joystick, a timer), so that every Game is easy to play.
+12. As a Player, I want my phone to stay awake and the site's own controls out of the way during a Match, so that the Game has the whole screen.
+13. As a Host, I want to see the winner (or that everyone shares the win) when a Match ends, and start another, so that we can play several rounds.
+14. As a Host, I want Official games ready to play, so that the site is worth opening before anyone has made a Game.
 
-1. ✅ As a host, I want to pick a game and open a room for it, so that my friends have one code to join.
-2. ✅ As a player, I want to join from my phone's browser with a room code and a name, so that I don't install anything or make an account.
-3. ✅ As a player, I want to get my place back after a refresh or my phone sleeping, so that a dropped connection doesn't throw me out of the game.
-4. ✅ As a host, I want my room to survive a big-screen reload, and a game to resume where it was, so that an accidental refresh doesn't end the night.
-5. ✅ As a host, I want to kick a player, so that I can remove a rude name or someone who wandered in.
-6. ✅ As a host, I want to stop a game at any time, and to be told why a game stopped (stopped by me, a reload, not responding, broken), so that a bad game never traps the room.
-7. ✅ As a player, I want what's secret to me (my role, my word) shown only on my phone, so that the big screen, which everyone can see, never gives it away.
-8. ✅ As a player, I want phone controls that work for a thumb (a joystick that starts where I touch, a gamepad I can slide across, text boxes, a drawing pad), so that action and party games both play well.
-9. ✅ As a player, I want my phone to stay awake and the site's header out of the way during a game, so that the game has the whole screen.
-10. ✅ As a host, I want to see the winner (or "Everyone shares the win!") after a game, and start again, so that we can play several rounds.
-11. ⬜ As a latecomer, I want to join a game already in progress or watch it, so that I'm not left out. _(Shelved: rooms are closed once a game starts.)_
-12. ⬜ As a group, I want to save a game and finish it another night. _(Shelved.)_
+**The Library**
 
-**Finding games**
+15. As a visitor, I want a Library with search, tags, player counts and sorting (A–Z, newest, top voted, most played), so that I can find something for the group in front of me.
+16. As a visitor, I want a page for each Game, with its description, player count, length, who made it and how ("AI-made" or "Uploaded"), and how often it was played, so that I know what I'm starting.
+17. As a Purdue-verified member, I want to Vote Games up or down (not my own), so that good Games rise.
+18. As a Player, I want a Game whose Votes reach −5 to drop out of the Library until they recover, so that bad Games disappear without waiting for an Admin.
+19. As a Creator, I want a Profile with a description that lists my published Games, so that people can find what else I made.
 
-13. ✅ As a visitor, I want a games page with search, tags, player counts and sorting (A–Z, newest, top rated), so that I can find something for the group in front of me.
-14. ✅ As a visitor, I want a page for each game, with screenshots, its length, who made it and how ("AI-made" or "Uploaded"), so that I know what I'm starting.
-15. ✅ As a member, I want to vote games up or down (not my own), so that good games rise.
-16. ✅ As a member, I want a profile with a bio that lists my games, so that people can find what else I made.
-17. ✅ As a visitor, I want the home page to lead with making a game, and show top and newest games, so that I see what's special about the site.
-18. ✅ As someone searching the web, I want BoilerGames' pages to show up with real titles and descriptions, so that I can find the site.
-19. ✅ As a visitor, I want to sort by most played, so that I see what groups actually enjoy.
+**Accounts**
 
-**Making a game with the site's AI**
+20. As a visitor, I want to sign in by entering my email and clicking the link I'm sent, so that I never make or forget a password.
+21. As a member, I want to confirm a Purdue email address, so that I can Vote and start Generations.
+22. As a member, I want to stay signed in on my device until I sign out, so that I don't sign in every visit.
+23. As a member, I want to delete my account and everything tied to it, choosing whether my published Games stay up credited to "deleted user", so that I can leave cleanly without taking away Games people enjoy.
 
-20. ✅ As a member, I want to save my own Purdue GenAI Studio key (stored encrypted, shown only as its last 4 characters), so that I can make games without the site paying for the AI.
-21. ✅ As a maker, I want to type an idea and get a written design first, which I can read, edit or ask to redraft, so that no code is written for a game I don't want.
-22. ✅ As a maker, I want to follow my game on a track (Idea → Design → Build → Play) that says whether it's waiting on the AI, on me, or failed, so that I always know where it is.
-23. ✅ As a maker, I want each build checked (a static check, then a playtest in a real browser with bot phones that reloads screens and fast-forwards to the end), and failures fixed automatically, so that what I get usually works.
-24. ✅ As a maker, I want an AI code review after each build that fixes crashes and dead ends, and a "Review again" button, so that bugs the playtest can't see still get caught.
-25. ✅ As a maker, I want to ask for changes in plain words (a plan first, or "small fix: skip the plan"), so that I can improve my game without writing code.
-26. ✅ As a maker, I want every change to be a new version, with a changed-lines view and the option to go back, so that a bad change never breaks the game people play.
-27. ✅ As a maker, I want to play my game with real phones before publishing it, so that I can judge it myself.
-28. ✅ As a maker, I want several people's games made at once, with mine waiting its turn in line, so that the site stays usable when it's busy.
-29. ✅ As a maker, I want to be told when GenAI Studio is down, so that I know why making games doesn't work while playing still does.
-30. ✅ As a maker, I want the AI to add a score and a winner only when my idea asks for one, so that games about the moment don't get a pointless scoreboard.
+**Making a Game with the site's AI**
 
-**Uploads and remixes**
+24. As a Creator, I want to save my own Purdue GenAI Studio key, stored encrypted and shown only as its last 4 characters, so that I can make Games without the site paying for the AI.
+25. As a Purdue-verified Creator, I want to describe an idea and get a Concept first, which I can read, edit or ask to redraft, so that no code is written for a Game I don't want.
+26. As a Creator, I want the approved Concept built into a Game and Playtested to the end by simulated Players (fewest Players, most Players, and Players dropping out), with failures sent back to Build automatically, so that what I get works.
+27. As a Creator, I want to follow my Game on a Track that says whether it's waiting on the AI, on me, or failed, and why, so that I always know where it is.
+28. As a Creator, I want to ask for a Revision in plain words (with a Plan first, or as a small fix), checked the same way, so that I can improve my Game without writing code.
+29. As a Creator, I want every change to make a new Version, with a changed-lines view and the option to go back, so that a bad change never breaks the Game people play.
+30. As a Creator, I want to play my Game with real phones before publishing it, so that I can judge it myself.
+31. As a Creator, I want Generations to wait their turn in a queue when the site is busy, so that the site stays usable.
+32. As a Creator, I want to be told when GenAI Studio is down, so that I know why making Games doesn't work while playing still does.
+33. As a Creator, I want the AI to add a score and a winner only when my idea asks for one, so that Games about the moment don't get a pointless scoreboard.
+34. As a Creator, I want my Game to have its own look (colours, fonts, styles of the Kit's parts), so that it doesn't look like every other Game.
 
-31. ✅ As a maker with my own tools, I want to upload or paste a game file (up to 1 MB), checked the same way, with no AI or key needed, so that I can bring games made anywhere.
-32. ✅ As a maker using another AI, I want a ready-made prompt on `/kit` that contains the full rulebook, so that my AI writes a file that fits the site.
-33. ✅ As a maker, I want "Ask the AI to fix these" and "Ask the AI to review it" on an upload when I have a key, so that I can still use the site's AI if I want.
-34. ✅ As a player, I want to remix any public game into my own copy, credited to the original, so that I can change a game I like.
-35. ✅ As a remixer, I want to say what should be different and get a new design for my copy ("Make it your own"), so that a big rework starts from a plan, not piecemeal edits.
-36. ✅ As a creator, I want to turn off remixing of my game, so that I control copies of my work.
+**Uploads and Remixes**
+
+35. As a Creator with my own tools, I want to upload a Game's code (TypeScript against the SDK, up to a size limit), checked and Playtested the same way, with no AI or key needed, so that I can bring Games made anywhere.
+36. As a Creator using another AI, I want a page with a ready-made prompt and the SDK's types, so that my AI writes code that fits the site.
+37. As a Creator, I want to Remix any public Game into my own copy, credited to the original, so that I can change a Game I like.
+38. As a Remixer, I want to say what should be different and get a new Concept for my copy, so that a big rework starts from a plan.
+39. As a Creator, I want to turn off Remixing of my Game, so that I control copies of my work.
 
 **Publishing, trust and safety**
 
-37. ✅ As a creator, I want to publish and unpublish my own game, so that I don't wait for an admin.
-38. ✅ As the site owner, I want publishing to refuse names, descriptions and About text with blocked words (and show which ones), so that the public pages stay clean without a review queue.
-39. ✅ As a player, I want every game walled off in my browser (no network, no access to the site's page, cookies or my room token, no leaving its frame), so that a game made by a stranger can't take over my account.
-40. ✅ As a player, I want to report a game as broken or offensive, and members to vote and comment on bug reports, so that problems get seen and fixed.
-41. ✅ As anyone, I want to send a site-wide report (broken, idea, other) without an account, so that I can tell the owner something.
-42. ✅ As a member, I want to delete my account and everything tied to it, so that I can leave cleanly.
-43. ✅ As a visitor, I want a privacy page that says what's stored, what's sent to the AI, and that games aren't reviewed before going public, so that I can decide whether to play.
-44. ✅ As a player, I want to be reminded on my phone that BoilerGames never asks for my password in a game, so that a fake login box in a game doesn't fool me.
-45. ⬜ As a player, I want published games reviewed by a person first, so that a game built to misbehave can't reach me. _(Decided against for now; the accepted risk is under Implementation Decisions.)_
-46. ⬜ As a member who forgot their password, I want to reset it myself. _(No email on purpose; only an admin can reset one, on the server.)_
+40. As a Creator, I want to publish and unpublish my own Game, so that I don't wait for an Admin.
+41. As the owner, I want publishing to refuse names and descriptions with blocked words (and show which), so that the Library stays clean without a review queue.
+42. As a Player, I want every Game walled off in my browser with no network of any kind, no access to the site's page, cookies or my Seat's token, and no way to leave its frame, so that a Game made by a stranger can't take over my account or tell anyone what I did in it.
+43. As a Player, I want to send a Game report (broken or offensive), and members to vote and comment on reports of broken Games, so that problems get seen and fixed.
+44. As anyone, I want to send a Site report (broken, idea, other) without an account, so that I can tell the owner something.
+45. As a visitor, I want a privacy page that says what's stored, what's sent to the AI, and that Games aren't reviewed before going public, so that I can decide whether to play.
+46. As a Player, I want to be reminded on my phone that BoilerGames never asks for my password or email in a Game, so that a fake sign-in box in a Game doesn't fool me.
+47. As the owner, I want limits on abuse from the first day (message floods, Room Code guessing, filling the Generation queue, too many Uploads or sign-in emails), so that one person can't break the site for everyone.
 
-**Running the site (admin)**
+**Running the site**
 
-47. ✅ As an admin, I want an admin page with every game, the site-wide reports, and the power to unpublish any game, so that I can act on problems.
-48. ✅ As an admin, I want to update the live site with one script that tests the new version on a copy of the database, waits until nobody is playing, switches over and rolls back on failure, so that updates don't interrupt game nights.
-49. ✅ As an admin, I want nightly database backups kept for 14 days, so that a mistake can be undone.
-50. ⬜ As an admin, I want backups copied off the server, so that losing the server doesn't lose the data. _(This happened once, when the old AWS project was closed.)_
-51. ⬜ As the owner, I want real groups to play-test the games, so that difficulty, timers and balance are tuned on people, not bots.
+48. As an Admin, I want an admin page with every Game, Game reports and Site reports, and the power to unpublish any Game, so that I can act on problems.
+49. As the owner, I want to grant and revoke Admin from the server, so that only people I trust have it.
+50. As the owner, I want to update the live site with one script that builds and tests the new version on a copy of the database, waits until nobody is playing, switches over and rolls back on failure, so that updates don't interrupt game nights.
+51. As the owner, I want nightly database backups kept on the server and copied off it, so that losing the server doesn't lose the data.
+52. As the owner, I want the site's service to run as its own user with only what it needs, so that a bug in it can't reach the rest of the server.
+53. As the owner, I want an eval set I can run on demand that makes a fixed list of Games end to end and reports how many passed, how many Builds they took and how long, so that I know whether a change to the AI's instructions or the Kit helped.
+54. As the owner, I want real groups to play-test the Games, so that difficulty, timers and balance are tuned on people, not bots.
 
 ## Implementation Decisions
 
 **Shape of the system**
-- Three programs, plain JavaScript with JSDoc (no TypeScript, no ORM): the **server** (Node,
-  Express, `ws`, SQLite through better-sqlite3), the **client** (React, Vite, a small hand-written
-  router) and the **generator** (the AI side, which runs only inside a sandbox). New dependencies
-  need approval; the generator's one is Playwright's core, for the browser playtest.
-- One server process behind Caddy (HTTPS and `wss://`), under systemd. It serves the built client
-  itself. Scaling out isn't planned: it would first need rooms and the database moved off the one
-  server.
-- The server is layered so most logic is testable without a network: **transport** knows sockets
-  but not rooms; **rooms** (RoomManager) knows rooms but not sockets, with `send` and the clock
-  passed in; **protocol** validates messages; a router decides who may send what; all SQL stays
-  in the database layer; every tunable number lives in one config module.
+- One repository of npm workspaces: **shared** (types and schemas used by every other package),
+  **server**, **client**, **sdk** (what Games are written against, and the runtime that runs them),
+  **generator** (Generations and Playtests), and **e2e** (browser tests). TypeScript throughout,
+  compiled with `tsc`; the client is built by Vite (ADR 0001).
+- One server process on the existing EC2 instance (us-east-2), behind Caddy (HTTPS and `wss://`),
+  under systemd, running as its own user. It serves the built client and the API. Scaling out isn't
+  planned.
+- Stack: Express 5 for HTTP, `ws` for WebSockets, SQLite through Drizzle on better-sqlite3 (ADR
+  0002, proposed until the course has compared the options), Zod for every piece of data that comes
+  from outside (socket messages, request bodies, Uploads, the model's replies). React and Vite for
+  the client; Vitest for tests; Playwright for browser tests. New dependencies need the owner's
+  approval.
+- The server keeps its layers: transport (sockets, rate limits, checking messages against the
+  shared schemas), rooms (who may do what, given a `send` function and a clock, no sockets), and
+  the relay (passes Game messages between the Screen and phones, never reading what's inside).
+  Rooms live in memory; the database holds accounts, Games and everything else that lasts.
 
-**Rooms and the protocol**
-- Rooms, players and game state live only in memory; a restart loses them (deploys wait for an
-  empty server). SQLite holds accounts, sessions, games and their versions, pages, votes, reports and games played.
-- Room codes are 4 letters from 20 consonants. Up to 12 players; a game may set fewer. No joining
-  once a game has started.
-- Each player has a public `playerId` and a secret resume `token` (kept in the tab's
-  sessionStorage). A refresh uses the token to reclaim the same slot; the newest tab wins.
-  Grace periods: 30 s for the host, 30 s for a player in the lobby, and until the game ends for a
-  player in a game.
-- Messages are flat JSON `{type: "domain:action", ...}`. Every incoming message is checked in
-  order: size cap, no binary, safe parse, known type, then a hand-written checker per type that
-  copies only the expected fields. Too many bad messages close the socket. Each socket has a
-  rate limit (20/s, bursts of 40) and a cap on unsent data; each address has caps on connections
-  and failed joins.
-- The WebSocket upgrade checks the Origin header (the login cookie rides along on it).
+**Rooms**
+- Room Codes are short and easy to type; each Player's Seat has a secret token, and a dropped phone
+  has a grace period to come back to its Seat. Rooms close when the Screen has been gone too long.
+- The cap is 16 Players per Room; a Game may set a lower one.
+- A latecomer gets a Seat at once. If the running Game takes late joiners, it is told and the
+  Player plays; otherwise the Player waits in their Seat and plays from the next Match.
+- Messages between the Screen, phones and server are one discriminated union defined in shared,
+  checked by the server's transport and by the Screen, and sent as full snapshots of each phone's
+  view, never as small changes (snapshots are tiny at 16 Players and repair themselves after a
+  reconnect).
 
-**Frame games**
-- A game is **one HTML file**. It starts with a `game-info` JSON block (name, description, player
-  counts, optional tags and length), the only part the server reads, with `JSON.parse`, never
-  running it. The same file is both the big screen and the phones, told apart by its role.
-- **The big screen is the referee.** Phones send events only to the big screen; the big screen
-  answers with messages, per-phone state (kept and resent after a phone reloads) and a save
-  (restored after a big-screen reload), and finally ends the game with rankings and optional
-  scores. The server (FrameRelay) only relays and checks these, batched every 50 ms.
-- Games talk to the site only through the `party` SDK, which includes ready-made phone pieces
-  (joystick, gamepad, text input, timer, draw pad, countdown, sound). The site is dark only.
-- **The walls:** the game runs in `<iframe sandbox="allow-scripts">` with no `allow-same-origin`,
-  so it has its own "null" origin: no cookies, storage, or access to the site's page. Its code
-  arrives over the room's WebSocket into `srcdoc`. A Content-Security-Policy allows no network
-  at all (pictures only from the site's art library). The site's page checks every message from
-  the frame; the server checks again. A frame that navigates away is removed. A heartbeat every 2 s
-  catches a frozen game, which is stopped after 15 s of silence.
-- **Accepted risk:** two holes no browser setting closes. WebRTC ignores the CSP, so the frame
-  deletes WebRTC before the game runs and removes any child frame (which would bring its own)
-  before that child's script can run (tested both ways, 2026-10-28). And a game that loads
-  another page into its own frame gets one request out before the frame is removed. That request
-  can carry whatever the game knows (names, answers) and reveals players' IP addresses. The
-  static check flags both, the Privacy page states it, and a person reviewing games before
-  publishing is the real fix if that ever matters more than self-publishing.
+**Games (ADRs 0003 and 0004)**
+- The Screen is the referee: the Game's logic runs on the Screen, and the server only relays.
+- A Game is a TypeScript module written against the SDK: a manifest (name, player counts, length,
+  whether it takes late joiners), its logic as pure functions (set up a Match, react to a Player's
+  input or a timer), and its views as data: one view for the Screen and one per Controller.
+- The logic runs in a Web Worker inside a sandboxed frame (`allow-scripts` only, never
+  `allow-same-origin`) served from its own domain, boilergames-play.party, with a policy that blocks
+  all network access. The worker has no page to navigate and no WebRTC. The frame's page belongs to
+  the SDK runtime, which is platform code, not the Game's.
+- Controllers draw views from the Kit on the phone, with the site's own code; phones never run Game
+  code. The Screen draws the Kit plus canvas and SVG, which the Game draws through the runtime.
+  Each Game may theme the Kit (colours, fonts, part styles), sent as data. The Kit grows when real
+  Games show what's missing; an HTML-like view drawn through an allow-list is the next step if
+  theming isn't enough.
+- Every Version records the SDK version it was written for, and runs on that version's frozen
+  runtime, so a new SDK version never breaks a published Game.
+- Official games are ordinary Games published by the owner's account and marked official. The
+  first three come from the owner's serverless experiment (a drawing game, a bluffing game and a
+  trivia game, already written for this model); the seven Games of the first site are rewritten
+  for the SDK one at a time.
 
-**Making games**
-- Generation uses Purdue GenAI Studio (OpenAI-compatible), with the model `qwen3.8:27b` at medium
-  reasoning effort, on **each maker's own key**: the site pays only for the server. The key is
-  encrypted at rest (AES-256-GCM, bound to the user); the encryption secret is kept off the
-  server's backups.
-- Every AI step runs in an **OpenShell sandbox** (Docker) created per job and always deleted: 1
-  CPU, 1 GB, network only to GenAI Studio, and the real key swapped in by OpenShell's proxy so
-  the sandbox only sees a placeholder. The server calls the CLI without a shell, and the prompt
-  never goes in arguments. Uploads are checked in a sandbox with no network at all.
-- A game's history is a list of **versions**; a version's **kind** (new game, change, "Review
-  again", a remix's own design, a remix's copy, an upload) and status decide its next step, its
-  **track**, and whether it needs the AI. One place in the server owns this.
-- Each step a version takes is one **job**, made and checked by the generator's own job module.
-  The server passes facts (the idea, design, requests and history it walks); it writes no job
-  fields. Steps: design (a new game's design, a change's plan, a new draft), build, a "Review
-  again" round, an upload's check.
-- **Designs** come back as JSON with one field per heading (rules, screens, art, secrets,
-  length...); a design that copies the format's instructions is asked for again. A **build**
-  writes the whole file for a new game, then edits (all-or-nothing search and replace) for fixes
-  and changes, so games up to 100 KB can be changed. Each build is write → check → fix, up to 4
-  attempts, then one critical-only code review with a small fix (a fix that fails the checks is
-  dropped).
-- **Checks:** a static check (errors fail, warnings don't; up to 8 syntax errors at once), then a
-  playtest in headless Chromium with the real relay and bot phones: a phone reload, a big-screen
-  reload, CSP violations, leaving the frame, blank or frozen screens, games that never move on
-  (fast-forwarding past the game's whole length), players' names put in as HTML, and broken values
-  like "NaN" on screen, each with the line at fault and screenshots.
-- The rules the AI follows are one rulebook (also served on `/kit` and inside the upload prompt)
-  plus a design guide used only for designs. No example games are given to the AI; problems are
-  fixed by rewording rules.
-- Up to 4 jobs run at once and 4 more wait; one per person; the browser playtest takes turns
-  (one at a time) through a token handshake over the sandbox's stdin and stderr.
+**The SDK contract and the data model are designed by the owner first.** The two decisions the old
+project got wrong first each get a design session (sketch it, get grilled, write it down) before
+any code: the SDK's API and the room messages, and the database's tables and the life of a Version.
+Where the serverless experiment already has a design we adopt, its code is brought over with its
+tests, adapted to this repository.
 
-**Accounts and limits**
-- Usernames and scrypt password hashes; no email at all. Sessions are random ids in an HttpOnly,
-  SameSite=Lax cookie, stored only as hashes; POSTs are JSON-only. Admin is a database flag set
-  from the command line.
-- Limits per account and address: 50 games per account, 10 remixes an hour, 6 uploads an hour, 2
-  running jobs per address, sign-up/login and report rate limits (all in the config module).
-- Publishing checks names, descriptions and About text against a word filter (whole words, common
-  disguises, a short list of roots that count inside words).
+**Making Games**
+- A Generation is: Concept (written by the AI, checked against a schema, a few tries) → the
+  Creator's approval or edits → Build → Playtest, with a failed Playtest's problems going back to
+  Build, up to 4 Builds in all. A Revision is Plan (unless it's a small fix) → Build → Playtest.
+  There is no AI code review; one is added back only if the eval set shows bugs it would catch.
+- Build is given the Concept and the SDK's reference, and no example Games.
+- The Playtest runs strict `tsc` on the Game, bundles it so it can import only the SDK, then plays
+  three simulated Matches to the end (fewest Players, most Players, most with dropouts). Simulated
+  Players read every possible input from the Controller views, so they always make valid moves. A
+  Match must end. The same checks run on Uploads.
+- Generations run in the OpenShell (Docker) sandbox on the server: no network except the model,
+  no secrets but the Creator's key for that call, low privileges. The Playtest runs Game code in a
+  child process inside that sandbox (Node's `vm` module is not a wall on its own).
+- Creators use their own GenAI Studio key, encrypted at rest. A queue runs a few Generations at
+  once and holds the rest in line.
+- Every Version is made from an earlier one (except the first), records how it was made (a
+  Generation, a Revision, an Upload, or a Remix's copy) and its SDK version, and one module owns
+  what each kind of Version may do next.
 
-**Hosting**
-- One AWS EC2 `t3.small` (2 GB, measured enough for the site plus one browser playtest) in the
-  AWS project's selected Region, us-east-2, with an Elastic IP, a security group open only on 22
-  (key only), 80 and 443, IMDSv2 with hop limit 1, and a $25/month budget. About $21/month, paid
-  by the free plan's credits until it ends on 2027-04-25. The service runs with systemd hardening.
-- Database migrations are numbered, run at startup, and save a copy first.
+**Accounts**
+- Sign-in is passwordless: an emailed link, sent through SES from boilergames.party. Sessions are
+  kept in the database. A confirmed Purdue email makes an account Purdue-verified, which is needed
+  to Vote and to start a Generation; playing, Hosting, Uploads and Remixes are open.
+- Sending email sits behind a small interface, so tests (and local development) use a version that
+  records the link instead of sending it.
+
+**Running it**
+- `update.sh` builds (tsc, Vite), tests on a copy of the database, waits for an empty server,
+  switches and rolls back on failure. CI runs the type checks and tests on every push.
+- Nightly SQLite backups are kept on the server for 14 days and copied to an S3 bucket in us-east-2
+  that deletes them after 30, written with an instance role (no keys on the server).
+- The eval set runs only on the owner's request: it makes real GenAI Studio calls.
 
 ## Testing Decisions
 
-- A good test checks what a user or another module can see (messages sent, statuses, what a
-  maker sees, what reached the AI), not how the code inside got there. Tests that pinned a
-  module's internal fields were removed when they got in the way (the job's raw fields).
-- **Server:** Node's built-in test runner, no extra dependencies, an in-memory database.
-  RoomManager is tested with a fake `send` that records messages and mock timers; the lobby is
-  tested on the real server with real WebSocket clients (garbage, oversized frames, dead clients).
-  The generation module is tested against the **real generator** run in-process with a fake model,
-  driving every version kind through the module's own actions.
-- **Browser (Playwright):** the real client and server with a test admin and a fake AI, so no
-  Docker, key or network. Every official game has a test that plays it with phones. The test-only
-  **Probe** game tries every way out of its frame on both screens; every wall must say "blocked".
-- **The game checker** has its own fixtures: broken games that each hide one mistake from the
-  static check, so only the browser can catch it. A new playtest check starts as a warning and
-  becomes a failure only after it shows no false alarms on the whole collection of made games.
-- **Generation changes** (prompts, rules, model settings) are decided by experiments: the same
-  ideas built several times per option, the games read by hand, results written up in
-  [experiments/](experiments/README.md).
-- Tests run on every push (GitHub Actions) and again before every deploy.
+- Tests check what a module offers the rest of the system, never its insides: a test should
+  survive any rewrite of the module that keeps its behaviour. (The first project's generator tests
+  checked internal fields and were edited 60 times.)
+- The rooms layer is tested with a fake `send` and a fake clock, as before; the relay and transport
+  through their public functions; the whole server once, in one process, over real HTTP and
+  WebSockets.
+- Games are tested by playing them: the Playtest's simulator is also the test harness for Official
+  games (the serverless experiment's games each come with simulator tests).
+- The generator is tested against the real server code with a fake model that plays back recorded
+  replies, so the server and generator are never tested apart.
+- The walls are tested by attacking them in a real browser (network requests, WebRTC, navigation,
+  reaching the parent page), in Chromium, Firefox and WebKit.
+- The first project's tests are not ported, but their scenarios (reconnect races, Screen reloads,
+  removed Players, broken Games, the walls) are a checklist the new tests must cover.
+- Browser tests are written for the new pages and rewritten when the pages are designed.
 
 ## Out of Scope
 
-- A mobile app; accounts for players; email (so no password reset by email).
-- Long games, platformers and RPGs as a focus (allowed, not aimed for); the focus is short games
-  that fit a big screen and phones: drawing and guessing, writing and voting, bluffing and
-  secrets, trivia, short board games, loose real-time action.
-- Running game code on the server, or a second server; true zero-downtime deploys.
-- Real-time 3D and outside art packs (not yet approved as dependencies).
-- Training a model on the site's games (would need the terms to say so first).
+- The site's visual design: the first release's pages are bare and functional, and get designed
+  later, around the finished backend (with their own stories, including a home page and search
+  engine titles).
+- Saving a Match to finish another night.
+- A person reviewing Games before they go public.
+- Games as free web pages (HTML and CSS written by the Game).
+- Serverless hosting, Postgres, and moving the first site's data: the rewrite starts with an empty
+  database.
+- An AI code review step (unless the eval set calls for it).
 
 ## Further Notes
 
-**Open engineering items** (not user stories; tickets in `.scratch/boilergames/issues/`):
-- Confirm the live server runs the newest generator image and that one real game still
-  generates with the service's newer limits (ticket 07). Migrations 19 to 21 and the generator's
-  new build-attempt fields need this deploy too.
-- Run the service as a user of its own, outside the docker group (ticket 08; deploy/README.md
-  says why).
-- Read `npm run admin -- edit-stats` after a few weeks of real builds, to decide whether failed
-  edits or fix calls with no reply need work.
-- Later, if wanted: a length choice on the new-game form; judging AI games by how often they're
-  played to the end; a shape-drawing helper and an openly licensed art set; vibration on
-  phones; an automatic secret-leak check in the playtest.
-- Real-group play-tests to tune: Stowaways balance, Comet Crew's late waves, Doodle Drift and
-  Punchline timers.
-
-- **Where the reasons went.** Until 2026-10-28 every decision was recorded, with its reasoning, in
-  a long plan file, and code comments cite it as "plan §N". It was replaced by this spec; read
-  the last version with `git show baf3c04:docs/PLAN.md`.
-- Words like version, version kind, job, design, plan, upload, remix, track and "made by" have
-  fixed meanings in [GLOSSARY.md](../GLOSSARY.md).
-- Designs that were replaced are written up in [history/](history/README.md) (the earlier
-  "block games", where the server ran the games).
-- Setup guides: the root README (development), `generator/README.md` (AI generation) and
-  `deploy/README.md` (the server).
+- The first project's code and its decision log stay on `main` until the rewrite is merged; its
+  2,500-line plan is in git history (`git show baf3c04:docs/PLAN.md`). The old code is checked out
+  next to this one, in `../practice-old`, for reference.
+- The serverless experiment lives in `~/slopProjects/boilergamesretry`, with its own ADRs and
+  glossary; this spec adopts its game model and pipeline but not its hosting.
+- Redesign happens in passes: ideas found while building go on a "later" list, not into the
+  current milestone.
+- The owner writes the relay and the rooms layer by hand, after the TypeScript course
+  (`~/LaunchPadstufs/typescript-course/`) has covered what they need.
