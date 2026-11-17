@@ -1,4 +1,4 @@
-// The build: compiles src to dist (JavaScript and type declarations), leaving the tests out.
+// The build: compiles src to dist (JavaScript and type declarations), leaving the tests and their fixtures out.
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
@@ -8,5 +8,5 @@
     "outDir": "dist",
     "sourceMap": true
   },
-  "exclude": ["src/**/*.test.ts"]
+  "exclude": ["src/**/*.test.ts", "src/**/*.fixture.ts"]
 }

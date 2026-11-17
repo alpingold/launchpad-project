@@ -9,6 +9,11 @@
       "types": "./dist/v1/index.d.ts",
       "default": "./dist/v1/index.js"
     },
+    "./v1/engine": {
+      "@boilergames/source": "./src/v1/engine-entry.ts",
+      "types": "./dist/v1/engine-entry.d.ts",
+      "default": "./dist/v1/engine-entry.js"
+    },
     "./v1/check": {
       "@boilergames/source": "./src/v1/check.ts",
       "types": "./dist/v1/check.d.ts",

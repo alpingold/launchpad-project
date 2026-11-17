@@ -16,7 +16,8 @@ are outlined, and each begins with a design session with the owner that this pla
    - `sdk/src/v1/game.ts`: the shape of a Game.
    - `sdk/src/v1/kit.ts`: every Part a View can hold.
    - `protocol/src/messages.ts`: every message between the Screen, the server and the phones.
-   - `sdk/src/v1/game.test.ts` shows a whole Game written against the contract.
+   - `sdk/src/v1/best-word.fixture.ts` is a whole Game written against the contract ("Best Word",
+     the test Game); `sdk/src/v1/game.test.ts` tries the contract on it.
 
 ## Rules
 
@@ -116,6 +117,7 @@ Done when:
   with a problem that names it.
 - A type-level test proves the checker accepts exactly what `kit.ts` describes: every View in
   `game.test.ts` passes, and a value typed as `ControllerView<Action>` needs no cast to be checked.
+  (Built: `sdk/src/v1/validate.ts`, `offers.ts`, `look.ts`, exported from `@boilergames/sdk/v1/check`.)
 - `offers` is tested for each kind of input, including the refusals: an Action the View doesn't
   hold, a disabled button, text that is too long or blank, an empty drawing.
 
@@ -131,9 +133,13 @@ later the Playtest all use this same code, so the rules of a Match have one defi
 - `sdk/src/v1/engine.ts`. Suggested shape; adjust names if something reads better, but keep the
   behaviour:
 
+  As built, starting or resuming can be refused (wrong Player count, a damaged save) and its first
+  Step can set the timer or break, so both return `Begun` instead of a bare `Match`:
+
   ```ts
-  startMatch(game, { players, seed }): Match          // calls game.start
-  resumeMatch(game, snapshot): Match                  // from a saved Match
+  startMatch(game, { players, seed }): Begun          // calls game.start
+  resumeMatch(game, snapshot: unknown): Begun         // from a saved Match
+  type Begun = { ok: true; match: Match; outcome: Outcome } | { ok: false; why: string }
   interface Match {
     act(playerId: string, action: unknown): Outcome   // a Player used their Controller
     timerFired(): Outcome                             // the host's real timer ran out
@@ -173,7 +179,7 @@ later the Playtest all use this same code, so the rules of a Match have one defi
   point Games import. A Game must not be able to import the Engine.
 
 Done when:
-- The test Game from `game.test.ts` plays a whole Match through the Engine, including a timer
+- The test Game (Best Word, in `best-word.fixture.ts`) plays a whole Match through the Engine, including a timer
   running out, a Player leaving mid-phase, and a save and resume in the middle that continues
   exactly as an unsaved Match with the same seed would.
 - Each way of being broken has a test with a small deliberately bad Game, and the problem text
