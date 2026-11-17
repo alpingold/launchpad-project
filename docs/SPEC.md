@@ -81,7 +81,7 @@ from `main` until the owner decides the new one replaces it.
 
 24. As a Creator, I want to save my own Purdue GenAI Studio key, stored encrypted and shown only as its last 4 characters, so that I can make Games without the site paying for the AI.
 25. As a Purdue-verified Creator, I want to describe an idea and get a Concept first, which I can read, edit or ask to redraft, so that no code is written for a Game I don't want.
-26. As a Creator, I want the approved Concept built into a Game and Playtested to the end by simulated Players (fewest Players, most Players, and Players dropping out), with failures sent back to Build automatically, so that what I get works.
+26. As a Creator, I want the approved Concept built into a Game and Playtested to the end by simulated Players (fewest Players, most Players, Players dropping out, and Players arriving late), with failures sent back to Build automatically, so that what I get works.
 27. As a Creator, I want to follow my Game on a Track that says whether it's waiting on the AI, on me, or failed, and why, so that I always know where it is.
 28. As a Creator, I want to ask for a Revision in plain words, checked the same way, so that I can improve my Game without writing code.
 29. As a Creator, I want every change to make a new Version, with a changed-lines view and the option to go back, so that a bad change never breaks the Game people play.
@@ -149,8 +149,12 @@ from `main` until the owner decides the new one replaces it.
   winners, both or neither.
 - A Game's **Look** (colours, a typeface, corner style) is optional, and the site fills its gaps
   from one of two default Looks, light or dark, picked by how bright the Game's own background is
-  (light when it sets none). So a Game that only sets a dark background needs nothing more. The
-  filled-in Look must be readable, measured as the WCAG contrast ratio:
+  (light when it sets none). The default text is pure black or pure white, whichever reads better
+  on the background. The default accent is the chosen default's own, or the other default's if that
+  one can't be seen on the background, or else the default text colour: mid-bright backgrounds
+  (strong reds, blues, teals, mid greys) need that. So any single background colour passes on its
+  own, which matters because generated Games pick such colours often. The site never changes a
+  colour the Game sets. The filled-in Look must be readable, measured as the WCAG contrast ratio:
   text on the background and text on the surface at least 4.5 to 1, the accent (timer, highlights)
   on the background at least 3 to 1. A Look that isn't is refused, with a problem naming both
   colours, the ratio measured and the ratio needed. Button text is black or white, chosen by the
@@ -200,7 +204,7 @@ from `main` until the owner decides the new one replaces it.
   it finds, not the first.
 - Build starts from a typed skeleton and the SDK's reference, never from an example Game.
 - The Playtest runs strict `tsc`, bundles the Game so it can import only the SDK, then plays
-  simulated Matches to the end (fewest Players, most Players, most with dropouts). The same checks
+  simulated Matches to the end (fewest Players, most Players, most with dropouts, fewest with latecomers). The same checks
   run on Uploads.
 - Only the Playtest runs Game code on the server, in a locked-down child process with no network.
   The rest of the pipeline only exchanges text with the model and needs no sandbox.

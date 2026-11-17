@@ -39,9 +39,7 @@ export const DARK_LOOK: FullLook = {
  *
  * The default text colours are pure black and pure white on purpose. Whichever reads better on a
  * colour always reaches at least 4.58 to 1, so a Look that sets only its background always has
- * readable text. Its accent may still need setting: on a mid-bright background (greys from #767676
- * to #8f8f8f, a strong red like #e63946, a blue like #3a86ff: about 18% of all colours) neither
- * default accent reaches 3 to 1.
+ * readable text. The accent is filled in separately, by {@link defaultAccent}.
  */
 export function defaultsFor(background: Hex | undefined): FullLook {
   if (background === undefined) return LIGHT_LOOK;
@@ -57,11 +55,29 @@ export function withDefaults(look: Look | undefined): FullLook {
       background: colors?.background ?? defaults.colors.background,
       surface: colors?.surface ?? defaults.colors.surface,
       text: colors?.text ?? defaults.colors.text,
-      accent: colors?.accent ?? defaults.colors.accent,
+      accent: colors?.accent ?? defaultAccent(colors?.background ?? defaults.colors.background, defaults),
     },
     font: look?.font ?? defaults.font,
     corners: look?.corners ?? defaults.corners,
   };
+}
+
+/**
+ * The accent for a Game that sets none: the default accent for its background, or the other default
+ * accent if that one can't be seen on it, or else the default text colour (black or white).
+ *
+ * The last case is for mid-bright backgrounds (greys from #7a7a7a to #8f8f8f, a strong red like
+ * #e63946, a blue like #3a86ff, a teal like #2a9d8f: about 15% of all colours), where neither
+ * default accent reaches 3 to 1. A generated Game picks colours like those often, and its author shouldn't have to know
+ * contrast rules to get a Look that passes. Black or white always reaches 4.58 to 1 there, the same
+ * reason the default text does.
+ */
+function defaultAccent(background: Hex, defaults: FullLook): Hex {
+  const other = defaults === DARK_LOOK ? LIGHT_LOOK : DARK_LOOK;
+  for (const accent of [defaults.colors.accent, other.colors.accent]) {
+    if (contrastRatio(accent, background) >= MIN_ACCENT_CONTRAST) return accent;
+  }
+  return defaults.colors.text;
 }
 
 // ---------------------------------------------------------------------------------------------

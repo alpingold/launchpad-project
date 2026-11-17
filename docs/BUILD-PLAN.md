@@ -196,20 +196,25 @@ Plays a Game to its end with made-up Players, to find Games that crash or never 
 test harness for Official games now and the heart of the Playtest in milestone 2.
 
 - `sdk/src/v1/simulate.ts`, exported from `@boilergames/sdk/v1/engine`:
-  `simulate(game, { players: number, seed: number, leavers?: number }): { ok: boolean; problems: string[]; steps: number }`.
+  `simulate(game, { players: number, seed: number, leavers?: number, joiners?: number }): { ok: boolean; problems: string[]; steps: number }`.
 - Each simulated Player, when chosen, picks one of `availableActions(theirView)` at random (seeded,
   separately from the Match's own seed), typing short text into text boxes and scribbling on
   drawing pads. When no Player has anything to do, or at random now and then, the simulated clock
-  runs the timer out. With `leavers`, that many Players leave at random moments.
+  runs the timer out. With `leavers`, that many Players leave at random moments. With `joiners`,
+  that many more arrive during the Match: a Game with `onJoin` takes them in while it has room, and
+  they then count like any other Player; otherwise they wait, which is no problem.
 - Problems it reports: the Match is broken (with the Engine's problem); the Match doesn't end within
   5,000 events; nobody has anything to do and no timer is running (the Match is stuck); some Player
   was never offered an Action in the whole Match.
 - It reports every problem it can find in a run, not only the first.
-- As built: leavers leave at random moments within the first 2 × leavers events, and the simulated
-  clock runs the timer out at random only once they have all gone (it still does whenever nobody
-  else can act), so even a short Match sees them leave. A Match that ends because too few Players
-  are left skips the "never offered" check: those still there may not have had their turn yet.
-  Late joiners are not simulated; `onJoin` is exercised by the Engine tests and, later, Playwright.
+- As built: leavers leave and joiners arrive at random moments within the first 2 × (leavers +
+  joiners) events, and the simulated clock runs the timer out at random only once they have all come
+  and gone (it still does whenever nobody else can act), so even a short Match sees them. A leaver
+  is always a Player in the Match, never a joiner still waiting. A joiner left waiting gets in if a
+  later leaver makes room. A Match that ends because too few Players are left, or that breaks,
+  skips the "never offered" check: those still there may not have had their turn yet. A joiner taken
+  in is checked like everyone else, which flags a Game that lets newcomers sit out until the next
+  round and then has no next round. Whether that is a false alarm is open with the owner.
 
 Done when:
 - The test Game passes with its fewest Players, its most, and its most with leavers, for several
@@ -274,7 +279,8 @@ Add a fifth workspace package, `games`, that depends only on `sdk`.
   3. A board game played by tapping a `picture` on the phone, with the board shown as a `picture` on
      the Screen. It should take late joiners (`onJoin`), so that path is exercised.
 - Original names and rules. Don't copy commercial party games. Each has its own `look`.
-- Each Game has a test that runs `simulate` with its fewest Players, its most, and with leavers.
+- Each Game has a test that runs `simulate` with its fewest Players, its most, with leavers, and
+  with joiners.
 - A build script produces, for each Game, one self-contained classic-script bundle (the Game and the
   `sdk` code it imports, nothing else) plus a `games.json` listing `id`, `title`, `players`, `look`.
   Use Vite's library mode, which is already installed. If that can't make a single classic script,
@@ -315,12 +321,12 @@ The server keeps Rooms and Seats and passes messages. It never reads a View or a
     the Views and records `lastMatch`.
   - A phone's `action` is passed to the Screen with its Seat's id, only while a Match is running and
     the Screen is connected. Otherwise it is dropped silently.
-  - Limits from day one: each socket may send 20 messages a second (more gets `tooFast`, then the
-    socket is closed if it continues); each address may try `join` or `rejoin` 10 times a minute.
-    **Open, for the owner, before building this:** the Screen splits Views across `views` messages
-    (step 7), so one event with 16 large Views can be 16 messages, and a resume sends every View at
-    once. That collides with 20 messages a second. Either the Screen's socket gets its own, higher
-    limit (counted in bytes rather than messages, say), or the Screen paces its batches.
+  - Limits from day one: a phone's socket may send `PHONE_MESSAGES_PER_SECOND` (20) messages a
+    second, the Screen's `SCREEN_MESSAGES_PER_SECOND` (100); more gets `tooFast`, then the socket
+    is closed if it continues. Both are constants in the protocol package. The Screen's is higher
+    because it splits Views across `views` messages (step 7): one event with 16 large Views can be 16
+    messages, and a resume sends every View at once. The Screen does not space its messages out.
+    Each address may try `join` or `rejoin` 10 times a minute.
 - HTTP, with Express: serves the built client; `GET /api/games` returns `games.json`;
   `GET /api/games/:id/bundle.js` returns a bundle. On the second port (or the game domain) it serves
   only the frame's files, with the header from step 4.
@@ -366,11 +372,13 @@ Bare, working pages. No visual design yet beyond a Game's own Look.
   - After every result from the frame it draws the Screen's View, sends `views` with only the Views
     that changed since the last send, and saves `{ code, hostToken, gameId, snapshot, timerDeadline }`
     in `localStorage`.
-  - It splits Views across as many `views` messages as it takes to keep each one, measured as UTF-8
-    JSON, under `MAX_MESSAGE_BYTES` (256 KB). Each Controller View is at most `MAX_VIEW_BYTES`
-    (128 KB), so one View always fits in a message of its own; the protocol needs no change,
-    because `views` already carries only some Seats. Every message of a batch carries the same
-    `timerMs`.
+  - It packs as many Views into each `views` message as fit under `MAX_MESSAGE_BYTES` (256 KB),
+    measured as UTF-8 JSON, and starts another message only when the next View won't fit. So an
+    ordinary event is one message, and only large Views (drawings) take several. Each Controller
+    View is at most `MAX_VIEW_BYTES` (128 KB), so one View always fits in a message of its own; the
+    protocol needs no change, because `views` already carries only some Seats. Every message of a
+    batch carries the same `timerMs`, and they all go at once: the Screen's socket allows
+    `SCREEN_MESSAGES_PER_SECOND` (step 6).
   - On load, if a saved Room exists it sends `resumeRoom`; if a saved Match exists it fetches the
     bundle, resumes the frame from the snapshot, restarts the timer from the saved deadline (firing
     at once if it has passed) and sends every View again. If the server says `noSuchRoom` or
@@ -391,7 +399,8 @@ Done when:
   stop a Match.
 - A test of the Screen's sending, without a browser: Views for 16 Seats at nearly `MAX_VIEW_BYTES`
   each go out as several `views` messages, none over `MAX_MESSAGE_BYTES`, each Seat's View in
-  exactly one of them, and every message passes the `screenToServer` schema.
+  exactly one of them, and every message passes the `screenToServer` schema; 16 ordinary Views go
+  out as one message.
 
 ## Step 8: tidy
 
@@ -419,7 +428,8 @@ bullets are the direction the spec sets, not a design.
   Version may do next) and whether Drizzle stays (ADR 0002 is still "proposed").
 - Sign-in by emailed link, behind an interface so tests record the link. Purdue verification.
 - The Playtest: strict `tsc` on the uploaded file, a bundle that can import only the SDK, then
-  `simulate` with the fewest Players, the most, and the most with leavers, in a child process with
+  `simulate` with the fewest Players, the most, the most with leavers, and the fewest with joiners
+  (so a Game's `onJoin` runs before real people play it), in a child process with
   no network and tight time and memory limits. How to take the network away on the server (a
   network namespace, a systemd sandbox, Node's permission flags) must be tried and attacked before
   it is trusted.

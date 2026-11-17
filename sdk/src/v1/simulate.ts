@@ -11,7 +11,7 @@
  * Game frame's two-second rule, or the Playtest's child process with a time limit).
  */
 import type { Drawing, Hex, Player } from "./index.js";
-import { startMatch, type AnyGame, type Match, type Outcome } from "./engine.js";
+import { MAX_PLAYERS, startMatch, type AnyGame, type Match, type Outcome } from "./engine.js";
 import { availableActions, type AvailableAction } from "./offers.js";
 import { createRng, type SeededRng } from "./rng.js";
 
@@ -20,11 +20,12 @@ export const MAX_SIMULATED_EVENTS = 5_000;
 /** On each event, the chance the simulated clock runs the timer out even though someone could act. */
 const TIMER_CHANCE = 1 / 20;
 /**
- * Leavers leave at random moments within the first this-many-times-the-leavers events. Early, and
- * the simulated clock leaves the timer alone until they have all gone, so a short Match still sees
- * every one of them leave; only a Game that ends sooner on its own can cut one short.
+ * Leavers leave and joiners arrive at random moments within the first this-many-times-their-number
+ * events. Early, and the simulated clock leaves the timer alone until they have all come and gone,
+ * so a short Match still sees every one of them; only a Game that ends sooner on its own can cut one
+ * short.
  */
-const LEAVE_WINDOW_PER_LEAVER = 2;
+const WINDOW_PER_COMER = 2;
 
 export interface SimulateOptions {
   /** How many Players start the Match. */
@@ -33,6 +34,13 @@ export interface SimulateOptions {
   readonly seed: number;
   /** How many of them leave, at random moments early in the Match. */
   readonly leavers?: number;
+  /**
+   * How many more Players arrive, at random moments early in the Match. A Game with `onJoin` takes
+   * them in while it has room, and from then on they must be offered something like anyone else; a
+   * Game without `onJoin`, or one that is full, leaves them waiting for the next Match, which is no
+   * problem. A waiting one joins if a Player leaves later and makes room.
+   */
+  readonly joiners?: number;
 }
 
 export interface SimulateResult {
@@ -46,17 +54,24 @@ export interface SimulateResult {
 
 export function simulate(game: AnyGame, options: SimulateOptions): SimulateResult {
   const leavers = options.leavers ?? 0;
+  const joiners = options.joiners ?? 0;
   if (!Number.isInteger(options.players) || options.players < 1) return refused("players must be a whole number of at least 1");
   if (!Number.isInteger(leavers) || leavers < 0 || leavers >= options.players) return refused("leavers must be a whole number from 0 to one fewer than players");
+  // Everyone, joiners included, is a Seat in the same Room, and a Room holds at most 16.
+  if (!Number.isInteger(joiners) || joiners < 0 || options.players + joiners > MAX_PLAYERS) {
+    return refused(`joiners must be a whole number from 0 to ${MAX_PLAYERS} minus players`);
+  }
 
-  const everyone: Player[] = Array.from({ length: options.players }, (_, i) => ({ id: `p${i + 1}`, name: `Player ${i + 1}` }));
-  const begun = startMatch(game, { players: everyone, seed: options.seed });
+  const player = (i: number): Player => ({ id: `p${i + 1}`, name: `Player ${i + 1}` });
+  const starters = Array.from({ length: options.players }, (_, i) => player(i));
+  const latecomers = Array.from({ length: joiners }, (_, i) => player(options.players + i));
+  const begun = startMatch(game, { players: starters, seed: options.seed });
   if (!begun.ok) return refused(`the Match couldn't start with ${options.players} Players: ${begun.why}`);
 
   // The simulator's own generator: a different seed from the Match's, so its choices don't shift
   // the Game's own random numbers.
   const choices = createRng((options.seed ^ 0x5f3759df) >>> 0);
-  return new Run(begun.match, everyone, leavers, choices).play(begun.outcome);
+  return new Run(begun.match, starters, leavers, latecomers, choices).play(begun.outcome);
 }
 
 /** "1 event", "5 events". */
@@ -71,22 +86,25 @@ function refused(problem: string): SimulateResult {
 class Run {
   /** A Set, so a problem that happens on every event is listed once. */
   private readonly problems = new Set<string>();
+  /** Everyone in the Room: the Players in the Match, and joiners still waiting to get in. */
   private present: Player[];
   private readonly offered = new Set<string>();
-  private readonly left = new Set<string>();
-  /** The event numbers at which a Player leaves, soonest first. */
-  private readonly leaveAt: number[];
+  /** Players leave and joiners arrive at these event numbers, soonest first. */
+  private readonly comings: { readonly at: number; readonly who: "leaver" | Player }[];
   private steps = 0;
 
   constructor(
     private readonly match: Match,
-    everyone: readonly Player[],
+    starters: readonly Player[],
     leavers: number,
+    latecomers: readonly Player[],
     private readonly rng: SeededRng,
   ) {
-    this.present = [...everyone];
-    const window = LEAVE_WINDOW_PER_LEAVER * leavers;
-    this.leaveAt = Array.from({ length: leavers }, () => rng.int(0, window - 1)).sort((a, b) => a - b);
+    this.present = [...starters];
+    const window = WINDOW_PER_COMER * (leavers + latecomers.length);
+    const leaves = Array.from({ length: leavers }, () => ({ at: rng.int(0, window - 1), who: "leaver" as const }));
+    const joins = latecomers.map((who) => ({ at: rng.int(0, window - 1), who }));
+    this.comings = [...leaves, ...joins].sort((a, b) => a.at - b.at);
   }
 
   play(first: Outcome): SimulateResult {
@@ -94,8 +112,10 @@ class Run {
     let finished = false;
     for (;;) {
       if (outcome.status === "broken") {
+        // Cut short, like a Match ended by too few Players: whether everyone would have had a turn
+        // can't be known, so the "never offered" check would only add noise to the real problem.
         this.problems.add(`the Match broke after ${events(this.steps)}: ${outcome.problem}`);
-        break;
+        return this.result(false);
       }
       if (outcome.status === "ended") {
         finished = true;
@@ -149,11 +169,14 @@ class Run {
       }
     }
 
-    const nextLeave = this.leaveAt[0];
-    if (nextLeave !== undefined && this.steps >= nextLeave) return this.leave();
+    const coming = this.comings[0];
+    if (coming !== undefined && this.steps >= coming.at) {
+      this.comings.shift();
+      return coming.who === "leaver" ? this.leave() : this.join(coming.who);
+    }
 
     const timerRunning = this.match.snapshot().timerRunning;
-    const clockMayRunOut = this.leaveAt.length === 0 && this.rng.next() < TIMER_CHANCE;
+    const clockMayRunOut = this.comings.length === 0 && this.rng.next() < TIMER_CHANCE;
     if (timerRunning && (able.length === 0 || clockMayRunOut)) return this.match.timerFired();
     if (able.length === 0) return "stuck";
 
@@ -168,11 +191,16 @@ class Run {
     return outcome;
   }
 
+  /** One of the Players in the Match leaves (never a joiner still waiting: that would be no event). */
   private leave(): Outcome {
-    this.leaveAt.shift();
-    const gone = this.rng.pick(this.present);
-    this.left.add(gone.id);
+    const gone = this.rng.pick(this.match.snapshot().players);
     this.present = this.present.filter((p) => p.id !== gone.id);
+    return this.match.setPlayers(this.present);
+  }
+
+  /** A new Player arrives. The Engine takes them in, or leaves them waiting: "ignored", no problem. */
+  private join(newcomer: Player): Outcome {
+    this.present = [...this.present, newcomer];
     return this.match.setPlayers(this.present);
   }
 
@@ -206,10 +234,13 @@ class Run {
     return { strokes };
   }
 
-  /** Every Player who stayed to the end should have had something to do at least once. */
+  /**
+   * Every Player in the Match at its end, joiners taken in included, should have had something to do
+   * at least once. Players who left are not counted, nor joiners who were left waiting.
+   */
   private checkEveryoneWasOffered(): void {
-    for (const player of this.present) {
-      if (!this.left.has(player.id) && !this.offered.has(player.id)) {
+    for (const player of this.match.snapshot().players) {
+      if (!this.offered.has(player.id)) {
         this.problems.add(`${player.name} was never offered an Action in the whole Match (${events(this.steps)}). Give every Player something to do`);
       }
     }

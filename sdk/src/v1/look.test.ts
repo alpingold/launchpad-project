@@ -86,14 +86,36 @@ describe("the site's default Looks", () => {
     }
   });
 
-  test("only a mid-bright background also needs its own accent: greys from #767676 to #8f8f8f", () => {
-    const failing: string[] = [];
-    for (let v = 0; v < 256; v++) {
-      const grey = `#${v.toString(16).padStart(2, "0").repeat(3)}`;
-      if (!checkLook({ colors: { background: grey } }).ok) failing.push(grey);
-    }
-    expect([failing[0], failing.at(-1)]).toEqual(["#767676", "#8f8f8f"]);
-    expect(failing).toHaveLength(0x8f - 0x76 + 1);
+  test("any single background colour passes on its own, across a wide sweep of colours", () => {
+    // Every three-digit colour (16 steps per channel), every grey, and a finer six-digit grid.
+    const backgrounds = new Set<Hex>();
+    const hexOf = (r: number, g: number, b: number) => `#${[r, g, b].map((c) => c.toString(16).padStart(2, "0")).join("")}` as Hex;
+    for (let r = 0; r < 16; r++) for (let g = 0; g < 16; g++) for (let b = 0; b < 16; b++) backgrounds.add(`#${[r, g, b].map((c) => c.toString(16)).join("")}` as Hex);
+    for (let v = 0; v < 256; v++) backgrounds.add(hexOf(v, v, v));
+    for (let r = 0; r < 256; r += 15) for (let g = 0; g < 256; g += 15) for (let b = 0; b < 256; b += 15) backgrounds.add(hexOf(r, g, b));
+    const failing = [...backgrounds].filter((background) => !checkLook({ colors: { background } }).ok);
+    expect(failing).toEqual([]);
+    expect(backgrounds.size).toBeGreaterThan(9_000);
+  });
+
+  test("the accent a Game leaves out is the default one where it shows up, else the other default, else black or white", () => {
+    const accentFor = (background: Hex) => withDefaults({ colors: { background } }).colors.accent;
+    expect(accentFor("#ffffff")).toBe(LIGHT_LOOK.colors.accent);
+    expect(accentFor("#111111")).toBe(DARK_LOOK.colors.accent);
+    // Light defaults (black text), but their blue accent is too dark here; the dark defaults' yellow shows up.
+    expect(accentFor("#767676")).toBe(DARK_LOOK.colors.accent);
+    // Neither accent reaches 3 to 1 on these: the accent is the default text colour.
+    expect(accentFor("#e63946")).toBe("#000000");
+    expect(accentFor("#3a86ff")).toBe("#000000");
+    expect(accentFor("#2a9d8f")).toBe("#000000");
+    expect(accentFor("#808080")).toBe("#000000");
+  });
+
+  test("never changes an accent the Game sets, even one that can't be seen", () => {
+    expect(withDefaults({ colors: { background: "#e63946", accent: "#ff0000" } }).colors.accent).toBe("#ff0000");
+    expect(problems({ colors: { background: "#e63946", accent: "#ff0000" } })).toEqual([
+      "look.colors: accent #ff0000 on background #e63946 has a contrast of 1.04 to 1; accent on background needs at least 3 to 1. Make one of them lighter or darker",
+    ]);
   });
 });
 

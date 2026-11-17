@@ -19,6 +19,42 @@ function countingLeaves(): { game: typeof bestWord; left: () => number } {
   return { game, left: () => left };
 }
 
+/**
+ * Best Word, taking latecomers or not, and recording what happened to each Player: who joined, who
+ * left, who acted, and whose Controller was ever drawn. A latecomer simply joins in: during writing
+ * they write, during voting they vote.
+ */
+function watched(takesLatecomers: boolean) {
+  const joined: string[] = [];
+  const acted = new Set<string>();
+  const drawn = new Set<string>();
+  let left = 0;
+  const game: typeof bestWord = {
+    ...bestWord,
+    onAction(state, player, action, ctx) {
+      acted.add(player.id);
+      return bestWord.onAction(state, player, action, ctx);
+    },
+    onLeave(state, player, ctx) {
+      left += 1;
+      return bestWord.onLeave(state, player, ctx);
+    },
+    controller(state, player, players) {
+      drawn.add(player.id);
+      return bestWord.controller(state, player, players);
+    },
+    ...(takesLatecomers
+      ? {
+          onJoin(state: Parameters<typeof bestWord.onLeave>[0], player: { readonly id: string }) {
+            joined.push(player.id);
+            return { state };
+          },
+        }
+      : {}),
+  };
+  return { game, joined, acted, drawn, left: () => left };
+}
+
 describe("Best Word", () => {
   test.each(SEEDS)("plays to its end with its fewest Players (3), seed %i", (seed) => {
     expect(simulate(bestWord, { players: 3, seed })).toMatchObject({ ok: true, problems: [] });
@@ -52,6 +88,62 @@ describe("Best Word", () => {
     const run = (seed: number) => simulate(bestWord, { players: 8, seed, leavers: 3 });
     for (const seed of SEEDS) expect(run(seed)).toEqual(run(seed));
     expect(new Set(SEEDS.map((seed) => run(seed).steps)).size).toBeGreaterThan(1);
+  });
+});
+
+describe("late joiners", () => {
+  test("a Game with onJoin takes them in, and each is offered something and has their Actions accepted", () => {
+    const actedSomewhere = new Set<string>();
+    for (const seed of SEEDS) {
+      const { game, joined, acted } = watched(true);
+      // 3 start and 5 arrive: Best Word holds 8, so all 5 get in. `ok` means each was offered an
+      // Action and none of their Actions was ignored.
+      expect(simulate(game, { players: 3, seed, joiners: 5 })).toMatchObject({ ok: true, problems: [] });
+      expect([...joined].sort()).toEqual(["p4", "p5", "p6", "p7", "p8"]);
+      for (const id of acted) actedSomewhere.add(id);
+    }
+    // In a single run the clock may run out before a joiner is picked, as for any Player; over the
+    // seeds every one of them acts.
+    for (const id of ["p4", "p5", "p6", "p7", "p8"]) expect(actedSomewhere.has(id)).toBe(true);
+  });
+
+  test.each(SEEDS)("a Game with onJoin that is full lets in only as many as fit; the rest wait, with no problem, seed %i", (seed) => {
+    const { game, joined, drawn } = watched(true);
+    // 6 start and 4 arrive: only 2 fit under Best Word's 8. The other two never get a View.
+    expect(simulate(game, { players: 6, seed, joiners: 4 })).toMatchObject({ ok: true, problems: [] });
+    expect(joined).toHaveLength(2);
+    const waiting = ["p7", "p8", "p9", "p10"].filter((id) => !joined.includes(id));
+    expect(waiting).toHaveLength(2);
+    for (const id of waiting) expect(drawn.has(id)).toBe(false);
+  });
+
+  test.each(SEEDS)("a Game without onJoin leaves them all waiting, with no problem, seed %i", (seed) => {
+    const { game, joined, drawn } = watched(false);
+    expect(simulate(game, { players: 3, seed, joiners: 5 })).toMatchObject({ ok: true, problems: [] });
+    expect(joined).toEqual([]);
+    for (const id of ["p4", "p5", "p6", "p7", "p8"]) expect(drawn.has(id)).toBe(false);
+  });
+
+  test("leavers and joiners together: a full Match lets a waiting joiner in when someone leaves", () => {
+    let joinedAny = 0;
+    for (const seed of SEEDS) {
+      const { game, joined, acted, left } = watched(true);
+      // 8 start, so the Match is full: a joiner only gets in once a leaver has made room.
+      expect(simulate(game, { players: 8, seed, leavers: 3, joiners: 3 })).toMatchObject({ ok: true, problems: [] });
+      expect(left()).toBe(3);
+      joinedAny += joined.filter((id) => acted.has(id)).length;
+    }
+    expect(joinedAny).toBeGreaterThan(0);
+  });
+
+  test("the same seed always gives the same run with joiners too", () => {
+    const run = (seed: number) => simulate(watched(true).game, { players: 4, seed, leavers: 2, joiners: 3 });
+    for (const seed of SEEDS) expect(run(seed)).toEqual(run(seed));
+  });
+
+  test("refuses more Players in all than a Room holds", () => {
+    expect(simulate(bestWord, { players: 8, seed: 1, joiners: 9 })).toEqual({ ok: false, problems: ["joiners must be a whole number from 0 to 16 minus players"], steps: 0 });
+    expect(simulate(bestWord, { players: 8, seed: 1, joiners: 8 }).ok).toBe(true);
   });
 });
 
@@ -156,6 +248,44 @@ describe("catches a Game that", () => {
     expect(simulate(crashes, { players: 2, seed: 1 }).problems).toEqual([
       expect.stringMatching(/^the Match broke after 1 event: onAction \(for Player \d\) threw TypeError: n is not iterable$/),
     ]);
+  });
+
+  test("breaks when a latecomer joins, with the problem naming onJoin and the Player", () => {
+    const game: typeof bestWord = {
+      ...bestWord,
+      onJoin() {
+        throw new Error("no seat for you");
+      },
+    };
+    expect(simulate(game, { players: 3, seed: 1, joiners: 1 }).problems).toEqual([
+      expect.stringMatching(/^the Match broke after \d+ events?: onJoin \(for Player 4\) threw Error: no seat for you$/),
+    ]);
+  });
+
+  test("takes a latecomer in but leaves them with nothing to do for the rest of the Match", () => {
+    // Only the Players who started ever get a button; a newcomer is let in and then forgotten.
+    type State = { readonly starters: readonly string[]; readonly done: readonly string[] };
+    const forgetful = defineGame<State, { readonly type: "done" }>({
+      about: { title: "Forgets newcomers", players: { min: 2, max: 6 } },
+      start: (ctx) => ({ state: { starters: ctx.players.map((p) => p.id), done: [] } }),
+      onAction(state, player) {
+        const done = [...state.done, player.id];
+        return state.starters.every((id) => done.includes(id)) ? { state: { ...state, done }, end: {} } : { state: { ...state, done } };
+      },
+      onJoin: (state) => ({ state }),
+      onLeave: (state) => ({ state }),
+      screen: () => ({ parts: [] }),
+      controller: (state, player) =>
+        state.starters.includes(player.id) && !state.done.includes(player.id) ? { parts: [{ kind: "button", label: "Done", action: { type: "done" } }] } : { parts: [{ kind: "text", text: "Wait" }] },
+    });
+    // 3 start, and 1 arrives within the first 2 events, before the 3 starters have all tapped.
+    for (const seed of SEEDS) {
+      expect(simulate(forgetful, { players: 3, seed, joiners: 1 })).toEqual({
+        ok: false,
+        problems: ["Player 4 was never offered an Action in the whole Match (4 events). Give every Player something to do"],
+        steps: 4,
+      });
+    }
   });
 
   test("is wrong in two ways at once, and reports both", () => {

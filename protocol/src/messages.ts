@@ -29,6 +29,14 @@ export const MAX_SEATS = 16;
 export const MAX_NAME_LENGTH = 16;
 /** The largest message the server accepts, in bytes. A phone's drawing is the big one. */
 export const MAX_MESSAGE_BYTES = 256 * 1024;
+/** How many messages a phone's socket may send in one second. More gets `tooFast`. */
+export const PHONE_MESSAGES_PER_SECOND = 20;
+/**
+ * The same for the Screen's socket, higher because the Screen splits Views across `views` messages:
+ * one event with 16 large Views can be 16 messages, and a resume sends every View at once. The
+ * Screen sends them straight away rather than spacing them out, so a phone never waits on a queue.
+ */
+export const SCREEN_MESSAGES_PER_SECOND = 100;
 
 // ---------------------------------------------------------------------------------------------
 // Pieces
