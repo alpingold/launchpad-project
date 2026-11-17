@@ -111,6 +111,8 @@ const refusal = z.enum([
   "tooFast",
   /** openRoom: the site has as many Rooms open as it can hold. Try again in a few minutes. */
   "tooManyRooms",
+  /** openRoom: this network (address) already has as many Rooms open as one may. Close one, or wait. */
+  "tooManyRoomsHere",
 ]);
 
 /**

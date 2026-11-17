@@ -10,6 +10,8 @@ import {
   FAILED_TRIES_PER_MINUTE,
   FIRST_MESSAGE_MS,
   ROOMS_OPENED_PER_MINUTE,
+  EMPTY_ROOM_GRACE_MS,
+  MAX_OPEN_ROOMS_PER_ADDRESS,
   Rooms,
   SCREEN_GRACE_MS,
   SEAT_GRACE_MS,
@@ -280,6 +282,31 @@ describe("the Screen coming and going", () => {
     expect(h.join(code, "Late").seatId).toBeUndefined();
   });
 
+  test(`a Room with no Seats whose Screen drops closes after ${EMPTY_ROOM_GRACE_MS / 1000} seconds`, () => {
+    const h = harness();
+    const { screen, code } = h.openRoom();
+    h.rooms.disconnected(screen);
+    // Still open just before the minute is up...
+    h.clock.advance(EMPTY_ROOM_GRACE_MS - 1);
+    expect(h.messages(h.join(code, "Early", "10.7.0.1").phone)[0]?.type).toBe("seated");
+    // ...and another empty Room is closed once it is.
+    const other = h.openRoom("10.7.0.2");
+    h.rooms.disconnected(other.screen);
+    h.clock.advance(EMPTY_ROOM_GRACE_MS);
+    expect(h.messages(h.join(other.code, "Late", "10.7.0.3").phone)).toEqual([{ type: "refused", reason: "noSuchRoom" }]);
+  });
+
+  test("the last Seat leaving while the Screen is away shortens the wait to the empty Room's", () => {
+    const h = harness();
+    const { screen, code } = h.openRoom();
+    const ada = h.join(code, "Ada");
+    h.rooms.disconnected(screen);
+    h.clock.advance(10_000);
+    h.say(ada.phone, { type: "leave" });
+    h.clock.advance(EMPTY_ROOM_GRACE_MS);
+    expect(h.messages(h.join(code, "Late", "10.7.1.1").phone)).toEqual([{ type: "refused", reason: "noSuchRoom" }]);
+  });
+
   test("resumeRoom with the host token takes the Room back; a wrong one is refused with badToken", () => {
     const h = harness();
     const { screen, code, hostToken } = h.openRoom();
@@ -492,6 +519,21 @@ describe("limits", () => {
     expect(h.closed.has(screen)).toBe(true);
     h.clock.advance(60_000);
     expect(h.openRoom("198.51.100.1").code).toMatch(/^[A-Z]{4}$/);
+  });
+
+  test(`at most ${MAX_OPEN_ROOMS_PER_ADDRESS} Rooms opened from one address open at once: the next is refused with tooManyRoomsHere and closed`, () => {
+    const h = harness();
+    for (let i = 0; i < MAX_OPEN_ROOMS_PER_ADDRESS; i++) {
+      expect(h.openRoom("198.51.100.9").code).toMatch(/^[A-Z]{4}$/);
+      // Past the per-minute limit, which is tested on its own.
+      h.clock.advance(60_000 / ROOMS_OPENED_PER_MINUTE + 1);
+      for (let tick = 0; tick < 5; tick++) h.clock.advance(12_000);
+    }
+    const screen = h.connect("screen", "198.51.100.9");
+    h.say(screen, { type: "openRoom", v: 1 });
+    expect(h.messages(screen)).toEqual([{ type: "refused", reason: "tooManyRoomsHere" }]);
+    expect(h.closed.has(screen)).toBe(true);
+    expect(h.openRoom("198.51.100.10").code).toMatch(/^[A-Z]{4}$/);
   });
 
   test(`at most ${DEFAULT_MAX_ROOMS} Rooms open at once unless set: the next openRoom is refused with tooManyRooms and closed`, () => {

@@ -33,6 +33,11 @@ export const SEAT_GRACE_MS = 90_000;
 /** How long a Room stays open while its Screen is away (a reload, a laptop asleep). */
 export const SCREEN_GRACE_MS = 5 * 60_000;
 /**
+ * The same for a Room with no Seats: nobody is waiting in it, so it isn't kept as long. A Screen
+ * closed without closing its Room would otherwise hold one of the site's Rooms for 5 minutes.
+ */
+export const EMPTY_ROOM_GRACE_MS = 60_000;
+/**
  * How many wrong guesses one address may make in a minute: a `join`, `rejoin` or `resumeRoom`
  * refused with noSuchRoom or badToken. After that, every such try from the address is refused with
  * tooFast until the minute slides, a right one included. Only failures count: a Room's 16 phones
@@ -41,7 +46,9 @@ export const SCREEN_GRACE_MS = 5 * 60_000;
  */
 export const FAILED_TRIES_PER_MINUTE = 30;
 /** How many Rooms one address may open in a minute. */
-export const ROOMS_OPENED_PER_MINUTE = 20;
+export const ROOMS_OPENED_PER_MINUTE = 5;
+/** How many Rooms opened from one address may be open at once. */
+export const MAX_OPEN_ROOMS_PER_ADDRESS = 10;
 /**
  * How many Rooms may be open at once, unless the server is told otherwise (MAX_ROOMS). Chosen to fit
  * about 256 MB. The most one Room can make the server hold:
@@ -132,9 +139,13 @@ interface SeatState {
 
 interface RoomState {
   readonly code: string;
+  /** The address of the Screen that opened it, for the per-address limit. */
+  readonly openedBy: string;
   readonly hostToken: string;
   screen: Connection | undefined;
   cancelGrace: (() => void) | undefined;
+  /** While the Screen is away: when the Room closes, by this server's clock. */
+  graceEndsAt: number | null;
   /** In joining order. */
   seats: SeatState[];
   nextSeat: number;
@@ -290,9 +301,14 @@ export class Rooms {
   #openRoom(connection: Connection): void {
     if (this.#recent(this.#opened, connection.address) >= ROOMS_OPENED_PER_MINUTE) return this.#refuseAndClose(connection, "tooFast");
     if (this.#rooms.size >= this.#maxRooms) return this.#refuseAndClose(connection, "tooManyRooms");
+    let here = 0;
+    for (const open of this.#rooms.values()) if (open.openedBy === connection.address) here += 1;
+    if (here >= MAX_OPEN_ROOMS_PER_ADDRESS) return this.#refuseAndClose(connection, "tooManyRoomsHere");
     this.#note(this.#opened, connection.address);
     const room: RoomState = {
       code: this.#newCode(),
+      openedBy: connection.address,
+      graceEndsAt: null,
       hostToken: this.#token(),
       screen: connection,
       cancelGrace: undefined,
@@ -320,6 +336,7 @@ export class Rooms {
     if (older !== undefined) this.#replace(older);
     room.cancelGrace?.();
     room.cancelGrace = undefined;
+    room.graceEndsAt = null;
     connection.side = "screen";
     connection.room = room;
     this.#send(connection, { type: "roomOpened", hostToken: room.hostToken, room: this.#snapshot(room) });
@@ -455,7 +472,7 @@ export class Rooms {
     if (room === undefined || this.#rooms.get(room.code) !== room) return;
     if (connection.side === "screen" && room.screen === connection) {
       room.screen = undefined;
-      room.cancelGrace = this.#options.clock.setTimeout(() => this.#closeRoom(room, "screenGone"), SCREEN_GRACE_MS);
+      this.#startScreenGrace(room, room.seats.length === 0 ? EMPTY_ROOM_GRACE_MS : SCREEN_GRACE_MS);
       this.#broadcast(room);
     }
     const seat = connection.seat;
@@ -473,6 +490,10 @@ export class Rooms {
     seat.cancelGrace = undefined;
     room.seats = room.seats.filter((s) => s !== seat);
     room.views.delete(seat.id);
+    // The last Seat gone while the Screen is away: nobody is waiting any more, so the shorter wait.
+    if (room.seats.length === 0 && room.graceEndsAt !== null && room.graceEndsAt - this.#options.clock.now() > EMPTY_ROOM_GRACE_MS) {
+      this.#startScreenGrace(room, EMPTY_ROOM_GRACE_MS);
+    }
     const phone = seat.phone;
     seat.phone = undefined;
     if (phone !== undefined) {
@@ -497,6 +518,13 @@ export class Rooms {
     }
   }
 
+  /** Closes the Room with screenGone after `ms`, unless its Screen comes back. */
+  #startScreenGrace(room: RoomState, ms: number): void {
+    room.cancelGrace?.();
+    room.graceEndsAt = this.#options.clock.now() + ms;
+    room.cancelGrace = this.#options.clock.setTimeout(() => this.#closeRoom(room, "screenGone"), ms);
+  }
+
   #cancelTimers(room: RoomState): void {
     room.cancelGrace?.();
     room.cancelGrace = undefined;
@@ -506,7 +534,7 @@ export class Rooms {
     }
   }
 
-  #refuseAndClose(connection: Connection, reason: "badMessage" | "noSuchRoom" | "roomFull" | "badToken" | "tooFast" | "tooManyRooms"): void {
+  #refuseAndClose(connection: Connection, reason: "badMessage" | "noSuchRoom" | "roomFull" | "badToken" | "tooFast" | "tooManyRooms" | "tooManyRoomsHere"): void {
     this.#send(connection, { type: "refused", reason });
     this.#drop(connection);
   }

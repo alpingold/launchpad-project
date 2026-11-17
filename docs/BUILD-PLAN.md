@@ -409,8 +409,13 @@ The server keeps Rooms and Seats and passes messages. It never reads a View or a
       against its address. At `FAILED_TRIES_PER_MINUTE` (30) in a minute, every such try from the
       address gets `tooFast` and is closed, a right one too, until the minute slides. Successes
       aren't limited per address: a Room's phones share one Wi-Fi, and the 16-Seat cap bounds them.
-    - `ROOMS_OPENED_PER_MINUTE` (20) per address; `DEFAULT_MAX_ROOMS` (30) open at once, set by
-      `MAX_ROOMS`, refused with `tooManyRooms`. The 30 fits about 256 MB: worked out in rooms.ts.
+    - `ROOMS_OPENED_PER_MINUTE` (5) per address; `MAX_OPEN_ROOMS_PER_ADDRESS` (10) open at once
+      per address, refused with `tooManyRoomsHere`; `DEFAULT_MAX_ROOMS` (30) open at once in all,
+      set by `MAX_ROOMS`, refused with `tooManyRooms`. The 30 fits about 256 MB (worked out in
+      rooms.ts); step 9 sizes it for the real server.
+    - A Room with no Seats whose Screen is gone closes after `EMPTY_ROOM_GRACE_MS` (60 s); one with
+      Seats keeps `SCREEN_GRACE_MS` (5 min). If the last Seat leaves while the Screen is away, the
+      shorter wait applies from then.
     - A View is kept as JSON text and refused above the SDK's `MAX_VIEW_BYTES` (128 KB), so a Room
       can't hold more than that worked out for.
     - `FIRST_MESSAGE_MS` (10 s) for a socket's first message; a ping every `PING_INTERVAL_MS` (30 s),

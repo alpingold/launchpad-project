@@ -121,6 +121,7 @@ export class PhoneSeat {
       badMessage: "That name can't be used. Try another.",
       oldPage: "This page is out of date. Reload it.",
       tooManyRooms: "The site is full right now. Try again in a few minutes.",
+      tooManyRoomsHere: "Too many Rooms are open from this network.",
     };
     this.#stopAndForget();
     this.#set({ phase: "form", notice: words[reason], room: null, seatId: null, view: null });

@@ -162,6 +162,9 @@ export class ScreenRoom {
       case "tooManyRooms":
         this.#connection?.stop();
         return this.#set({ phase: "gone", gone: "The site has as many Rooms open as it can hold right now. Try again in a few minutes." });
+      case "tooManyRoomsHere":
+        this.#connection?.stop();
+        return this.#set({ phase: "gone", gone: "This network already has as many Rooms open as it may. Close one on its Screen, or wait a minute for an empty one to close." });
       case "oldPage":
         this.#connection?.stop();
         return this.#set({ phase: "gone", gone: "This page is out of date. Reload it." });
