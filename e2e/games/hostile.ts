@@ -9,7 +9,7 @@
  * exist in a worker, or "REACHED" if anything got through.
  */
 import { defineGame } from "../../sdk/src/v1/index.js";
-import { OUTSIDE, SITE } from "../origins.js";
+import { FRAME, OUTSIDE, SITE } from "../origins.js";
 
 /** A worker's global scope, loosely: this file is type-checked as a page, and probes what exists. */
 const scope = globalThis as unknown as Record<string, unknown> & {
@@ -80,6 +80,52 @@ function tryEverything(token: string): void {
     load(probe(OUTSIDE, "import.js"));
     return "REACHED: importScripts returned";
   });
+  // The frame's own origin: a script from there was once allowed ('self'), and reached its server.
+  const own = (what: string) => `${FRAME}/v1/?${token}-${what}`;
+  const ownMissing = (what: string) => `${FRAME}/v1/${token}-${what}.js`;
+  const ownQuery = (what: string) => `${FRAME}/v1/index.html?probe=${token}-${what}`;
+  for (const [name, url] of [
+    ["importScripts the frame's page", own("is")],
+    ["importScripts a missing frame file", ownMissing("is404")],
+    ["importScripts the frame with a query", ownQuery("isq")],
+  ] as const) {
+    attempt(name, () => {
+      (scope["importScripts"] as (url: string) => void)(url);
+      return "REACHED: importScripts returned";
+    });
+  }
+  for (const [name, url] of [
+    ["import() the frame's page", own("dyn")],
+    ["import() a missing frame file", ownMissing("dyn404")],
+    ["import() the frame with a query", ownQuery("dynq")],
+  ] as const) {
+    // The URL is a variable, so the bundler leaves this import() for the browser to run.
+    attempt(name, async () => {
+      await import(/* @vite-ignore */ url);
+      return "REACHED: import() resolved";
+    });
+  }
+  attempt("fetch the frame", async () => `REACHED: ${(await fetch(own("fetch"), { mode: "no-cors" })).type}`);
+  attempt("XMLHttpRequest the frame", () => {
+    const xhr = new XMLHttpRequest();
+    const done = events(xhr, "load", ["error", "abort"]);
+    xhr.open("GET", own("xhr"));
+    xhr.send();
+    return done;
+  });
+  attempt("WebSocket the frame", () => events(new (scope["WebSocket"] as Ctor)(own("ws").replace("http:", "ws:")), "open", ["error"]));
+  attempt("EventSource the frame", () => events(new (scope["EventSource"] as Ctor)(own("sse")), "message", ["error"]));
+  for (const [name, url] of [
+    ["FontFace from the frame", own("font")],
+    ["FontFace from outside", probe(OUTSIDE, "font")],
+  ] as const) {
+    attempt(name, async () => {
+      const Face = scope["FontFace"] as (new (family: string, source: string) => { load(): Promise<unknown> }) | undefined;
+      if (Face === undefined) return "missing: no FontFace in a worker";
+      await new Face("stolen", `url(${url})`).load();
+      return "REACHED: a font loaded";
+    });
+  }
   attempt("WebTransport", async () => {
     const why = missing("WebTransport");
     if (why !== undefined) return why;

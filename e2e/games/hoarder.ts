@@ -131,9 +131,9 @@ function leave(token: string): void {
     const container = get("navigator.serviceWorker");
     if (container === undefined) return missing("navigator.serviceWorker");
     if (typeof container["register"] !== "function") return "missing: no register() in a worker";
-    // The frame's own script by its full URL: a relative one would fail only because the worker's
+    // The frame's own page by its full URL: a relative one would fail only because the worker's
     // address is a blob: URL, which proves nothing.
-    await container["register"].call(container, `${FRAME}/v1/frame.js`);
+    await container["register"].call(container, `${FRAME}/v1/`);
     return "LEFT: registered a service worker";
   });
   attempt("nested Worker", () => {

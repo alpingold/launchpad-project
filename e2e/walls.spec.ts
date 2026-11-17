@@ -32,6 +32,18 @@ const ATTEMPTS = [
   "indexedDB",
   "caches",
   "cookies",
+  "importScripts the frame's page",
+  "importScripts a missing frame file",
+  "importScripts the frame with a query",
+  "import() the frame's page",
+  "import() a missing frame file",
+  "import() the frame with a query",
+  "fetch the frame",
+  "XMLHttpRequest the frame",
+  "WebSocket the frame",
+  "EventSource the frame",
+  "FontFace from the frame",
+  "FontFace from outside",
 ];
 
 /** Every feature the hoarding Game probes, by the name it reports it under. */
@@ -62,6 +74,14 @@ async function open(context: BrowserContext): Promise<Page> {
   await expect(page.locator("body[data-ready=yes]")).toBeAttached();
   return page;
 }
+
+/** Every request the frame server has answered so far, as "METHOD /path?query status". */
+async function frameHits(request: APIRequestContext): Promise<string[]> {
+  return (await (await request.get(`${SITE}/__frame-hits`)).json()) as string[];
+}
+
+/** The frame's own page, loaded or revalidated: the only request the frame server should ever see. */
+const PAGE_LOAD = /^GET \/v1\/ (200|304)$/;
 
 async function hits(request: APIRequestContext, origin: string, token: string): Promise<string[]> {
   const all = (await (await request.get(`${origin}/__hits`)).json()) as string[];
@@ -116,6 +136,7 @@ const print = (title: string, lines: Record<string, string>) =>
   );
 
 test("a hostile Game can't reach the network, storage or cookies, and its endless loop is caught", async ({ context, browserName, profile, request }) => {
+  const frameBefore = (await frameHits(request)).length;
   const page = await open(context);
   // The run's token is the Player's id: the Game puts it in every URL it tries.
   const token = `tok${Date.now().toString(36)}${browserName}${profile}`;
@@ -130,9 +151,13 @@ test("a hostile Game can't reach the network, storage or cookies, and its endles
   print(`[${browserName}, ${profile} profile] walls:`, lines);
   for (const name of ATTEMPTS) expect(lines[name], name).not.toMatch(/REACHED/);
 
-  // Proved on the servers: not one request from the worker arrived anywhere.
+  // Proved on the servers: not one request from the worker arrived anywhere, the game domain
+  // included. The frame server saw only the frame's page being loaded.
   expect(await hits(request, SITE, token)).toEqual([]);
   expect(await hits(request, OUTSIDE, token)).toEqual([]);
+  const atFrame = (await frameHits(request)).slice(frameBefore);
+  expect(atFrame.filter((hit) => !PAGE_LOAD.test(hit))).toEqual([]);
+  expect(atFrame.length).toBeGreaterThan(0);
 
   // The counting works: the same request from the Screen page itself does arrive.
   await page.evaluate(
@@ -273,7 +298,9 @@ test("the frame page carries its walls when opened on its own, and serves nothin
   expect(page.status()).toBe(200);
   const policy = page.headers()["content-security-policy"] ?? "";
   for (const wall of ["default-src 'none'", "connect-src 'none'", "worker-src blob:", "sandbox allow-scripts", `frame-ancestors ${SITE}`]) expect(policy).toContain(wall);
+  expect(policy).toMatch(/script-src 'sha256-[A-Za-z0-9+/]{43}='(;|$)/);
   expect(policy).not.toContain("allow-same-origin");
+  expect(policy).not.toContain("'self'");
   const missing = await request.get(`${FRAME}/api/games`);
   expect(missing.status()).toBe(404);
   expect(missing.headers()["content-security-policy"]).toBe(policy);

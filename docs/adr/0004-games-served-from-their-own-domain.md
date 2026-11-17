@@ -6,9 +6,10 @@ as the same site, so cookies can reach it. A frame with no `allow-same-origin` a
 origin, so the domain is a second wall: it still holds if someone adds `allow-same-origin` "to fix a
 bug". Never add `allow-same-origin` to the Game frame.
 
-That domain serves one small static page per SDK version, holding that version's frozen Engine. It
-serves no Game: the Screen fetches a Game's bundle from the site and hands it to the frame as text,
-and the frame starts it in a worker. So the game domain has no API, no database and nothing private.
+That domain serves one small static page per SDK version, holding that version's frozen Engine in
+one inline script. It serves nothing else, no Game either: the Screen fetches a Game's bundle from
+the site and hands it to the frame as text, and the frame starts it in a worker. So the game domain
+has no API, no database and nothing private.
 
 ## Which walls are the browser's, and which are ours
 
@@ -18,6 +19,13 @@ Added 2026-11-17, after the browser tests of step 4.
   removed, a Game's `fetch`, `XMLHttpRequest`, `WebSocket`, `EventSource` and `importScripts` all
   reached outside servers, in Chromium and Firefox, even where the browser reported them as failed.
   So nothing in front of the frame server (a proxy, a CDN, a cache) may drop or rewrite that header.
+- **A Game can make no request to any origin, the game domain included.** The CSP first allowed
+  scripts from `'self'`, the frame's own origin. Counting what reached the frame server showed a
+  Game's `importScripts` and `import()` getting there, with whatever the Game put in the URL
+  (Chromium and Firefox; WebKit refused them). So the frame's script is now inline in its page and
+  allowed by its hash, and no source in the CSP names `'self'`, a host or a wildcard. The server
+  takes the hash from the page it serves, when it starts, so the two can't disagree; the browser
+  tests check that a cached page and a new build each start a Match.
 - **The storage wall is partly our own code.** The frame's opaque origin makes the browsers refuse
   most storage: `indexedDB`, the origin private file system, locks, service workers, cookies. But
   WebKit gives a sandboxed worker a working cache store (`caches`), and in a saved profile every
@@ -38,3 +46,6 @@ Added 2026-11-17, after the browser tests of step 4.
   side, one after the other, or with a browser restart between them.
 - **Not tested: real Safari.** The tests use Playwright's WebKit on Linux. Step 9 checks Safari on
   an iPhone and a Mac with the owner.
+- **Not proven: which wall stops WebTransport in Firefox** (the only browser here that has it in a
+  worker). The attempt was rejected, but no HTTP/3 server was listening to count it, and Firefox
+  reported no CSP violation.

@@ -271,23 +271,32 @@ Runs the Engine and one Game in the Host's browser where the Game can reach noth
     against every Player sent, not only those still in the Match, because a Match that ends keeps
     its last Views, which can include a Player who just left.
   - A frame page script can't be a module: module scripts are fetched with CORS, which the frame's
-    opaque origin fails. `client/vite.frame.config.ts` builds `frame.js` as a classic script, with
-    the worker bootstrap and the Engine built into it as a string, into `client/dist/frame/v1/`.
+    opaque origin fails. `client/vite.frame.config.ts` builds the frame's script as a classic
+    script, with the worker bootstrap and the Engine built into it as a string, and writes it
+    inline into `client/dist/frame/v1/index.html`, the one file the game domain serves.
   - The frame forwards only the worker's first reply to each message and drops anything unasked.
     If the Game's code fails to load (a syntax error, a top-level throw, no Game on the global),
     the reply to `start` or `resume` is `couldNotStart`, not a two-second wait.
   - The GameFrame gives the frame page 15 seconds to load (it comes over the network) and 2 seconds
     per reply. A frame that fails either way, or sends a reply `readFrameReply` refuses, ends as
     `failed` and is removed. So is a frame whose Match ended or broke: it has nothing left to do.
-  - The frame server is plain `node:http` (`server/src/frame-origin.ts`): two files and no API need
+  - The frame server is plain `node:http` (`server/src/frame-origin.ts`): one page and no API need
     no framework. Every response, 404s included, carries the CSP. `main.ts` starts it on the next
     port up.
+  - The CSP allows the page's inline script by its hash (`script-src 'sha256-…'`), not `'self'`.
+    With `'self'`, a Game's `importScripts` and `import()` reached the frame server with whatever it
+    put in the URL, in Chromium and Firefox (WebKit blocked them). The server reads the page once
+    when it starts and takes the hash from that same copy, so the two can't drift; the page's ETag
+    lets a browser reuse its cached copy only while the server still serves that exact page. No
+    source in the CSP reaches a network: no `'self'`, no host, no wildcard (`frame-ancestors` names
+    the site, but only to say who may embed the frame). The walls test counts every request the
+    frame server answers: after the frame's own page loads, none.
   - The browser tests are in `e2e/` at the root (`npm run test:e2e`). They build the frame, a test
     Screen page and the test bundles, and serve them on three origins: the site
     (`localhost:4100`), the real frame server (`127.0.0.1:4101`), and an "outside address"
     (`127.0.0.1:4102`). Site and frame are on different hosts, so they are different sites, as in
-    production. The site and outside servers count every request, so "blocked" is proved on the
-    server, not taken from the browser's error.
+    production. The site, outside and frame servers count every request, so "blocked" is proved on
+    the server, not taken from the browser's error.
   - Every browser test runs in a fresh profile and in a saved one (`e2e/fixtures.ts`): six
     Playwright projects. In a saved profile only, WebKit gave the hostile Game a working cache store
     shared by every Game on the site. So the frame now empties that store before each Game loads,
@@ -478,8 +487,8 @@ skill before any AWS work. The old site stays on `main` until the owner decides 
 
 Done when:
 - The deployed game domain's responses carry the exact Content-Security-Policy of
-  `frameContentSecurityPolicy`, checked against the live site, for the frame page, its script and a
-  404. The CSP is the only wall between a Game and the network (ADR 0004): with it removed, a
+  `frameContentSecurityPolicy`, with the hash of the page actually served, checked against the live
+  site, for the frame page and a 404. The CSP is the only wall between a Game and the network (ADR 0004): with it removed, a
   Game's requests reached outside servers. So nothing in front of the frame server (Caddy, a CDN, a
   cache) may drop or rewrite it.
 

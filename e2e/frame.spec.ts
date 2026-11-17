@@ -192,3 +192,25 @@ for (const id of OFFICIAL) {
     expect(result).toMatchObject({ kind: "result", outcome: { status: "ended", reason: "finished" } });
   });
 }
+
+test("the frame page comes from the browser's cache while it is unchanged, and a new build arrives whole, with its own hash", async ({ page, request }) => {
+  const frameHits = async () => (await (await request.get(`${SITE}/__frame-hits`)).json()) as string[];
+  const startsAMatch = () =>
+    page.evaluate(async (players) => (await window.harness.create().start(await window.harness.bundle("best-word"), players, 1)).kind, PLAYERS);
+  await open(page);
+
+  // First load, then the same page again: the browser asks with the ETag it has, the server answers
+  // 304, and the browser runs its cached copy. The 304 carries the same header, so the hash matches.
+  let before = (await frameHits()).length;
+  expect(await startsAMatch()).toBe("result");
+  expect(await startsAMatch()).toBe("result");
+  expect((await frameHits()).slice(before)).toContain("GET /v1/ 304");
+
+  // A new build changes the script. The browser's copy no longer matches: the server sends the new
+  // page with 200, and its header allows the new script. Had the old page been paired with the new
+  // header, its script would be refused and the frame would never become ready.
+  expect((await request.post(`${SITE}/__new-build`)).status()).toBe(200);
+  before = (await frameHits()).length;
+  expect(await startsAMatch()).toBe("result");
+  expect((await frameHits()).slice(before)).toEqual(["GET /v1/ 200"]);
+});

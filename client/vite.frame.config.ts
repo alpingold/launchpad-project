@@ -1,10 +1,11 @@
 /**
- * Builds the Game frame into dist/frame/v1/: index.html and frame.js, the only files the game
- * domain serves.
+ * Builds the Game frame into dist/frame/v1/index.html: the one file the game domain serves.
  *
- * frame.js is a classic script (an IIFE), because the frame's opaque origin can't load module
- * scripts. It carries the worker bootstrap, already built with the Engine into one script, as a
- * string (the virtual module below), and joins the Game's bundle onto it in the browser.
+ * The frame's script is built as a classic script (an IIFE) and written into the page, inline. The
+ * frame server allows exactly that script by its hash (server/src/frame-origin.ts), so the page's
+ * CSP can allow no script URL at all. The script carries the worker bootstrap, already built with
+ * the Engine into one script, as a string (the virtual module below), and joins the Game's bundle
+ * onto it in the browser.
  */
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
@@ -40,15 +41,29 @@ function workerSource(): Plugin {
   };
 }
 
-/** Copies the frame's page next to its script. */
+/** The place in src/frame/index.html where the script goes. */
+const MARKER = "<!-- frame script -->";
+
+/** Writes the built script into the page, inline, and drops the separate script file. */
 function framePage(): Plugin {
   return {
     name: "frame-page",
-    async generateBundle() {
-      this.emitFile({ type: "asset", fileName: "index.html", source: await readFile(here("src/frame/index.html"), "utf8") });
+    async generateBundle(_options, bundle) {
+      const chunk = bundle[SCRIPT];
+      if (chunk === undefined || chunk.type !== "chunk") throw new Error(`the frame build made no ${SCRIPT}`);
+      // Inside <script>, the HTML parser ends the script at "</script" and treats "<!--" specially.
+      // The script is minified JavaScript with no reason to contain either; if it ever does, stop
+      // rather than ship a page the browser reads differently from the server's hash.
+      if (/<\/script|<!--/i.test(chunk.code)) throw new Error(`${SCRIPT} contains "</script" or "<!--", which can't go inside an inline script`);
+      const template = await readFile(here("src/frame/index.html"), "utf8");
+      if (template.split(MARKER).length !== 2) throw new Error(`src/frame/index.html must hold "${MARKER}" exactly once`);
+      this.emitFile({ type: "asset", fileName: "index.html", source: template.replace(MARKER, () => `<script>${chunk.code}</script>`) });
+      delete bundle[SCRIPT];
     },
   };
 }
+
+const SCRIPT = "frame.js";
 
 export default defineConfig({
   plugins: [workerSource(), framePage()],
@@ -57,6 +72,6 @@ export default defineConfig({
     outDir: "dist/frame/v1",
     emptyOutDir: true,
     minify: true,
-    lib: { entry: here("src/frame/frame.ts"), formats: ["iife"], name: "unused", fileName: () => "frame.js" },
+    lib: { entry: here("src/frame/frame.ts"), formats: ["iife"], name: "unused", fileName: () => SCRIPT },
   },
 });

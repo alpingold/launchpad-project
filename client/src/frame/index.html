@@ -3,9 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <title>BoilerGames Game frame</title>
-    <!-- A classic script, not a module: this page's origin is opaque, and a module script would be
-         fetched with CORS, which an opaque origin fails. -->
-    <script src="frame.js"></script>
+    <!-- The build puts the frame's script here, inline. The page's CSP allows exactly that script,
+         by its hash, and no script from any URL, so a Game can't use importScripts or import() to
+         send anything to this origin or another. -->
+    <!-- frame script -->
   </head>
   <body></body>
 </html>

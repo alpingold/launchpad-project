@@ -3,10 +3,11 @@
  * starts three servers on the origins in origins.ts. Returns the teardown that stops them.
  *
  * The frame is served by the real frame server with its real header, so the tests attack exactly
- * what production serves. The site and the outside server count every request to /probe/, so a
- * test can prove nothing left the browser, rather than trusting that an attempt "failed".
+ * what production serves. The site and the outside server count every request to /probe/, and the
+ * frame server every request it answers, so a test can prove nothing left the browser, rather than
+ * trusting that an attempt "failed".
  */
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -89,13 +90,58 @@ function countUpgrades(server: Server, hits: Hits): void {
   });
 }
 
+/**
+ * The real frame server, counted: every request it answers, as "METHOD /path?query status". The
+ * frame's own page loads are the only requests it should ever see.
+ */
+function countedFrameServer(root: string, hits: Hits): Server {
+  const server = createFrameServer({ root, siteOrigin: SITE });
+  server.prependListener("request", (request: IncomingMessage, response: ServerResponse) => {
+    response.on("finish", () => hits.push(`${request.method ?? "?"} ${request.url ?? "?"} ${response.statusCode}`));
+  });
+  server.on("upgrade", (request: IncomingMessage, socket) => {
+    hits.push(`upgrade ${request.url ?? "?"}`);
+    socket.destroy();
+  });
+  return server;
+}
+
 export default async function globalSetup(): Promise<() => Promise<void>> {
   await buildAll();
 
+  const frameHits: Hits = [];
+  let frame = countedFrameServer(join(out, "frame"), frameHits);
+  let builds = 1;
+
+  /**
+   * Stands in for deploying a new build: the same page with a changed script, served by a restarted
+   * frame server on the same port. A browser holding the old page must get the new one, with its own
+   * hash, never the old page with the new header.
+   */
+  async function newBuild(): Promise<void> {
+    builds += 1;
+    const page = await readFile(join(out, builds === 2 ? "frame" : `frame-${builds - 1}`, "v1/index.html"), "utf8");
+    const root = join(out, `frame-${builds}`);
+    await mkdir(join(root, "v1"), { recursive: true });
+    await writeFile(join(root, "v1/index.html"), page.replace("</script>", `;void "build ${builds}";</script>`));
+    frame.closeAllConnections();
+    await new Promise((resolve) => frame.close(resolve));
+    frame = countedFrameServer(root, frameHits);
+    await listen(frame, FRAME);
+  }
+
   const siteHits: Hits = [];
   const site = createServer((request, response) => {
-    if (counting(siteHits, request, response)) return;
     const path = new URL(request.url ?? "/", SITE).pathname;
+    // What the frame server has answered, for the tests; and a new build of the frame.
+    if (path === "/__frame-hits") return void response.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(frameHits));
+    if (path === "/__new-build" && request.method === "POST") {
+      return void newBuild().then(
+        () => response.writeHead(200).end("rebuilt"),
+        (error: unknown) => response.writeHead(500).end(String(error)),
+      );
+    }
+    if (counting(siteHits, request, response)) return;
     const file = normalize(join(out, "site", path === "/" ? "index.html" : path));
     if (!file.startsWith(join(out, "site"))) return void response.writeHead(404).end();
     readFile(file).then(
@@ -117,8 +163,6 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     if (!counting(outsideHits, request, response)) response.writeHead(404).end();
   });
   countUpgrades(outside, outsideHits);
-
-  const frame = createFrameServer({ root: join(out, "frame"), siteOrigin: SITE });
 
   await Promise.all([listen(site, SITE), listen(outside, OUTSIDE), listen(frame, FRAME)]);
   return async () => {
