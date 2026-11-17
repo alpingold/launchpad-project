@@ -63,21 +63,21 @@ export function withDefaults(look: Look | undefined): FullLook {
 }
 
 /**
- * The accent for a Game that sets none: the default accent for its background, or the other default
- * accent if that one can't be seen on it, or else the default text colour (black or white).
+ * The accent for a Game that sets none: the default accent for its background if it can be seen
+ * there, or else the default text colour (black or white).
  *
- * The last case is for mid-bright backgrounds (greys from #7a7a7a to #8f8f8f, a strong red like
- * #e63946, a blue like #3a86ff, a teal like #2a9d8f: about 15% of all colours), where neither
- * default accent reaches 3 to 1. A generated Game picks colours like those often, and its author shouldn't have to know
- * contrast rules to get a Look that passes. Black or white always reaches 4.58 to 1 there, the same
- * reason the default text does.
+ * The fallback is for mid-bright backgrounds (greys from #767676 to #8f8f8f, a strong red like
+ * #e63946, a blue like #3a86ff, a teal like #2a9d8f), where the default accent doesn't reach 3 to 1.
+ * A generated Game picks colours like those often, and its author shouldn't have to know contrast
+ * rules to get a Look that passes. Black or white always reaches 4.58 to 1 there, the same reason
+ * the default text does.
+ *
+ * It never borrows the other default's accent. That accent was chosen for the other default's
+ * surface: the dark defaults' yellow on the light defaults' white cards is 1.4 to 1. Black or white
+ * is the text colour of the same defaults, so it is readable on their surface too.
  */
 function defaultAccent(background: Hex, defaults: FullLook): Hex {
-  const other = defaults === DARK_LOOK ? LIGHT_LOOK : DARK_LOOK;
-  for (const accent of [defaults.colors.accent, other.colors.accent]) {
-    if (contrastRatio(accent, background) >= MIN_ACCENT_CONTRAST) return accent;
-  }
-  return defaults.colors.text;
+  return contrastRatio(defaults.colors.accent, background) >= MIN_ACCENT_CONTRAST ? defaults.colors.accent : defaults.colors.text;
 }
 
 // ---------------------------------------------------------------------------------------------

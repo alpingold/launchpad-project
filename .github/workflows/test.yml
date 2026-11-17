@@ -1,4 +1,4 @@
-# Type-checks, builds and tests every package on every push and pull request.
+# Type-checks, builds and tests every package, and runs the browser tests, on every push and pull request.
 name: Tests
 
 on:
@@ -19,3 +19,26 @@ jobs:
       - run: npm run typecheck
       - run: npm run build
       - run: npm test
+
+  # The browser tests, in Chromium, Firefox and WebKit, each in a fresh and a saved profile. The walls
+  # around a Game (nothing gets out of the Game frame, nothing passes between Games) differ from one
+  # browser to another, so they are checked on every push, not only on one person's machine.
+  browsers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      # The three browsers at the version package-lock.json pins, and the system libraries they need.
+      - run: npx playwright install --with-deps chromium firefox webkit
+      - run: npm run test:e2e
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-results
+          path: e2e/test-results/
+          retention-days: 7

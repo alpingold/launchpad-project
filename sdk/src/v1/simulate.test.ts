@@ -55,6 +55,33 @@ function watched(takesLatecomers: boolean) {
   return { game, joined, acted, drawn, left: () => left };
 }
 
+/**
+ * A Game of rounds: in each, everyone playing taps once. A newcomer is let in at once but sits out
+ * until the next round starts, as many real Games do.
+ */
+function rounds(count: number) {
+  type State = { readonly round: number; readonly playing: readonly string[]; readonly tapped: readonly string[] };
+  const here = (state: State, ids: readonly { readonly id: string }[]) => state.playing.filter((id) => ids.some((p) => p.id === id));
+  const next = (state: State, ids: readonly { readonly id: string }[]) =>
+    state.round >= count ? { state, end: {} } : { state: { round: state.round + 1, playing: ids.map((p) => p.id), tapped: [] } };
+  return defineGame<State, { readonly type: "tap" }>({
+    about: { title: `${count} rounds`, players: { min: 2, max: 8 } },
+    start: (ctx) => ({ state: { round: 1, playing: ctx.players.map((p) => p.id), tapped: [] } }),
+    onAction(state, player, _action, ctx) {
+      const tapped = [...state.tapped, player.id];
+      return here(state, ctx.players).every((id) => tapped.includes(id)) ? next(state, ctx.players) : { state: { ...state, tapped } };
+    },
+    onJoin: (state) => ({ state }),
+    onLeave(state, _player, ctx) {
+      const left = here(state, ctx.players);
+      return left.length > 0 && left.every((id) => state.tapped.includes(id)) ? next(state, ctx.players) : { state };
+    },
+    screen: () => ({ parts: [] }),
+    controller: (state, player) =>
+      state.playing.includes(player.id) && !state.tapped.includes(player.id) ? { parts: [{ kind: "button", label: "Tap", action: { type: "tap" } }] } : { parts: [{ kind: "text", text: "Wait" }] },
+  });
+}
+
 describe("Best Word", () => {
   test.each(SEEDS)("plays to its end with its fewest Players (3), seed %i", (seed) => {
     expect(simulate(bestWord, { players: 3, seed })).toMatchObject({ ok: true, problems: [] });
@@ -127,13 +154,55 @@ describe("late joiners", () => {
   test("leavers and joiners together: a full Match lets a waiting joiner in when someone leaves", () => {
     let joinedAny = 0;
     for (const seed of SEEDS) {
-      const { game, joined, acted, left } = watched(true);
+      const { game, joined, acted } = watched(true);
       // 8 start, so the Match is full: a joiner only gets in once a leaver has made room.
       expect(simulate(game, { players: 8, seed, leavers: 3, joiners: 3 })).toMatchObject({ ok: true, problems: [] });
-      expect(left()).toBe(3);
       joinedAny += joined.filter((id) => acted.has(id)).length;
     }
     expect(joinedAny).toBeGreaterThan(0);
+  });
+
+  test("joiners arrive early in the Match, so a Game that seats them at its next round passes", () => {
+    // Two rounds: a joiner arrives in the first third of the Match, so during round 1, and plays round 2.
+    for (let seed = 1; seed <= 50; seed++) {
+      for (const [players, leavers, joiners] of [[2, 0, 1], [2, 0, 6], [3, 2, 5], [8, 4, 4]] as const) {
+        expect(simulate(rounds(2), { players, seed, leavers, joiners }), `seed ${seed}, ${players}+${joiners}`).toMatchObject({ ok: true, problems: [] });
+      }
+    }
+  });
+
+  test("a one-round Game that takes in Players it can never give a turn is caught, saying when they joined", () => {
+    // Right to fail: it claims to take latecomers, then has nothing for them before it ends.
+    expect(simulate(rounds(1), { players: 2, seed: 1, joiners: 1 })).toEqual({
+      ok: false,
+      problems: ["Player 3 joined after 0 events and was never offered an Action (the Match took 3 events). Give a Player who joins something to do, or don't take them in"],
+      steps: 3,
+    });
+  });
+
+  test("if the Match has problems without joiners, those are reported and no joiner is brought in", () => {
+    let joins = 0;
+    const game = defineGame<{ readonly taps: number }, { readonly type: "tap" }>({
+      about: { title: "Breaks on the second tap", players: { min: 2, max: 8 } },
+      start: () => ({ state: { taps: 0 } }),
+      onAction(state) {
+        if (state.taps === 1) throw new Error("second tap");
+        return { state: { taps: state.taps + 1 } };
+      },
+      onJoin(state) {
+        joins += 1;
+        return { state };
+      },
+      onLeave: (state) => ({ state }),
+      screen: () => ({ parts: [] }),
+      controller: () => ({ parts: [{ kind: "button", label: "Tap", action: { type: "tap" } }] }),
+    });
+    expect(simulate(game, { players: 2, seed: 1, joiners: 3 })).toEqual({
+      ok: false,
+      problems: [expect.stringMatching(/^the Match broke after 2 events: onAction \(for Player \d\) threw Error: second tap$/)],
+      steps: 2,
+    });
+    expect(joins).toBe(0);
   });
 
   test("the same seed always gives the same run with joiners too", () => {
@@ -278,11 +347,11 @@ describe("catches a Game that", () => {
       controller: (state, player) =>
         state.starters.includes(player.id) && !state.done.includes(player.id) ? { parts: [{ kind: "button", label: "Done", action: { type: "done" } }] } : { parts: [{ kind: "text", text: "Wait" }] },
     });
-    // 3 start, and 1 arrives within the first 2 events, before the 3 starters have all tapped.
+    // 3 start and tap once each, so the Match is 3 events long; 1 arrives in its first third, at once.
     for (const seed of SEEDS) {
       expect(simulate(forgetful, { players: 3, seed, joiners: 1 })).toEqual({
         ok: false,
-        problems: ["Player 4 was never offered an Action in the whole Match (4 events). Give every Player something to do"],
+        problems: ["Player 4 joined after 0 events and was never offered an Action (the Match took 4 events). Give a Player who joins something to do, or don't take them in"],
         steps: 4,
       });
     }

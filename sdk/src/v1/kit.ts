@@ -28,8 +28,8 @@ export type Color = Hex | LookColor;
  * `background` and `text` on `surface` at least 4.5 to 1, and `accent` on `background` at least
  * 3 to 1. A look that isn't is refused when the Game is checked, with the colours and the ratios.
  * Setting only a `background` always passes, whatever the colour: the text default is black or
- * white, whichever reads better on it, and where neither default accent shows up on it (a strong red
- * like #e63946, a blue like #3a86ff, mid greys) the accent is that same black or white. A colour the
+ * white, whichever reads better on it, and where the default accent doesn't show up on it (a strong
+ * red like #e63946, a blue like #3a86ff, mid greys) the accent is that same black or white. A colour the
  * Game does set is never changed, so a Game that sets its own `accent` must make it readable itself.
  */
 export interface Look {

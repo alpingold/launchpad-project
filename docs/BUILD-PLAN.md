@@ -207,14 +207,20 @@ test harness for Official games now and the heart of the Playtest in milestone 2
   5,000 events; nobody has anything to do and no timer is running (the Match is stuck); some Player
   was never offered an Action in the whole Match.
 - It reports every problem it can find in a run, not only the first.
-- As built: leavers leave and joiners arrive at random moments within the first 2 × (leavers +
-  joiners) events, and the simulated clock runs the timer out at random only once they have all come
-  and gone (it still does whenever nobody else can act), so even a short Match sees them. A leaver
-  is always a Player in the Match, never a joiner still waiting. A joiner left waiting gets in if a
-  later leaver makes room. A Match that ends because too few Players are left, or that breaks,
-  skips the "never offered" check: those still there may not have had their turn yet. A joiner taken
-  in is checked like everyone else, which flags a Game that lets newcomers sit out until the next
-  round and then has no next round. Whether that is a false alarm is open with the owner.
+- As built: leavers leave at random moments within the first 2 × leavers events. Joiners arrive
+  within the first third of the Match: with joiners, the simulator first plays the Match once
+  without them (the same seed, so the same Match) to count its events, then plays it again with
+  every joiner arriving in the first third of that count; joiners due at the same moment arrive
+  together, as one event. If the measuring run has problems, those are reported and the joiner run
+  is skipped. The simulated clock runs the timer out at random only once everyone has come and gone
+  (it still does whenever nobody else can act), so even a short Match sees them. A leaver is always
+  a Player in the Match, never a joiner still waiting. A joiner left waiting gets in if a later
+  leaver makes room. A Match that ends because too few Players are left, or that breaks, skips the
+  "never offered" check: those still there may not have had their turn yet.
+- A joiner taken in is checked like everyone else, strictly: "Player 3 joined after 0 events and was
+  never offered an Action". The owner decided (2026-11-17) that this is right, not a false alarm: a
+  one-round Game that takes in latecomers it can never give a turn claims something it doesn't do.
+  With the window measured, Games of two or more rounds that seat newcomers at the next round pass.
 
 Done when:
 - The test Game passes with its fewest Players, its most, and its most with leavers, for several
@@ -450,6 +456,13 @@ Not to be done alone. With the owner present: a small EC2 instance in the AWS pr
 Caddy for HTTPS on the site's domain and the game domain, the server under systemd as its own user,
 and `update.sh` (build, test, switch, roll back on failure). Load the project's `aws-project-rules`
 skill before any AWS work. The old site stays on `main` until the owner decides otherwise.
+
+Done when:
+- The deployed game domain's responses carry the exact Content-Security-Policy of
+  `frameContentSecurityPolicy`, checked against the live site, for the frame page, its script and a
+  404. The CSP is the only wall between a Game and the network (ADR 0004): with it removed, a
+  Game's requests reached outside servers. So nothing in front of the frame server (Caddy, a CDN, a
+  cache) may drop or rewrite it.
 
 Checks with the owner:
 - Real Safari, on an iPhone and on a Mac: a Match plays through the frame, and the hostile and

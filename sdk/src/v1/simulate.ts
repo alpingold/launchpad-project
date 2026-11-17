@@ -20,12 +20,18 @@ export const MAX_SIMULATED_EVENTS = 5_000;
 /** On each event, the chance the simulated clock runs the timer out even though someone could act. */
 const TIMER_CHANCE = 1 / 20;
 /**
- * Leavers leave and joiners arrive at random moments within the first this-many-times-their-number
- * events. Early, and the simulated clock leaves the timer alone until they have all come and gone,
- * so a short Match still sees every one of them; only a Game that ends sooner on its own can cut one
- * short.
+ * Leavers leave at random moments within the first this-many-times-their-number events. Early, and
+ * the simulated clock leaves the timer alone until everyone has come and gone, so a short Match
+ * still sees every one of them; only a Game that ends sooner on its own can cut one short.
  */
-const WINDOW_PER_COMER = 2;
+const WINDOW_PER_LEAVER = 2;
+/**
+ * Joiners arrive at random moments within the first this-much of the Match, measured by playing it
+ * once without them. Measured, not guessed from the number of joiners: a window that ignores the
+ * Match's length lands joiners in its last round, where a Game that seats newcomers at the next
+ * round has nothing left to give them, and the run would blame the Game for the simulator's timing.
+ */
+const JOIN_WITHIN = 1 / 3;
 
 export interface SimulateOptions {
   /** How many Players start the Match. */
@@ -35,10 +41,14 @@ export interface SimulateOptions {
   /** How many of them leave, at random moments early in the Match. */
   readonly leavers?: number;
   /**
-   * How many more Players arrive, at random moments early in the Match. A Game with `onJoin` takes
-   * them in while it has room, and from then on they must be offered something like anyone else; a
-   * Game without `onJoin`, or one that is full, leaves them waiting for the next Match, which is no
-   * problem. A waiting one joins if a Player leaves later and makes room.
+   * How many more Players arrive, at random moments in the first third of the Match. A Game with
+   * `onJoin` takes them in while it has room, and from then on they must be offered something like
+   * anyone else; a Game without `onJoin`, or one that is full, leaves them waiting for the next
+   * Match, which is no problem. A waiting one joins if a Player leaves later and makes room.
+   *
+   * To know how long the Match is, the simulator first plays it once without joiners (the same seed,
+   * so the same Match). If that run already has problems, those are what it reports, and the run
+   * with joiners is skipped: its problems would only repeat them.
    */
   readonly joiners?: number;
 }
@@ -65,13 +75,29 @@ export function simulate(game: AnyGame, options: SimulateOptions): SimulateResul
   const player = (i: number): Player => ({ id: `p${i + 1}`, name: `Player ${i + 1}` });
   const starters = Array.from({ length: options.players }, (_, i) => player(i));
   const latecomers = Array.from({ length: joiners }, (_, i) => player(options.players + i));
-  const begun = startMatch(game, { players: starters, seed: options.seed });
-  if (!begun.ok) return refused(`the Match couldn't start with ${options.players} Players: ${begun.why}`);
+  const play = (joins: readonly Join[]): SimulateResult => {
+    const begun = startMatch(game, { players: starters, seed: options.seed });
+    if (!begun.ok) return refused(`the Match couldn't start with ${options.players} Players: ${begun.why}`);
+    // The simulator's own generator: a different seed from the Match's, so its choices don't shift
+    // the Game's own random numbers.
+    const choices = createRng((options.seed ^ 0x5f3759df) >>> 0);
+    return new Run(begun.match, starters, leavers, joins, choices).play(begun.outcome);
+  };
 
-  // The simulator's own generator: a different seed from the Match's, so its choices don't shift
-  // the Game's own random numbers.
-  const choices = createRng((options.seed ^ 0x5f3759df) >>> 0);
-  return new Run(begun.match, starters, leavers, latecomers, choices).play(begun.outcome);
+  const measured = play([]);
+  if (latecomers.length === 0 || !measured.ok) return measured;
+
+  // Join times come from a third generator, so the run with joiners is the measured run, event for
+  // event, until the first joiner arrives.
+  const joinTimes = createRng((options.seed ^ 0x2545f491) >>> 0);
+  const window = Math.max(1, Math.floor(measured.steps * JOIN_WITHIN));
+  return play(latecomers.map((who) => ({ at: joinTimes.int(0, window - 1), who })));
+}
+
+/** A Player who arrives after the start, and the number of events before they do. */
+interface Join {
+  readonly at: number;
+  readonly who: Player;
 }
 
 /** "1 event", "5 events". */
@@ -90,20 +116,24 @@ class Run {
   private present: Player[];
   private readonly offered = new Set<string>();
   /** Players leave and joiners arrive at these event numbers, soonest first. */
-  private readonly comings: { readonly at: number; readonly who: "leaver" | Player }[];
+  private comings: { readonly at: number; readonly who: "leaver" | Player }[];
+  /** How many events had happened when each joiner got into the Match, for the problem text. */
+  private readonly joinedAfter = new Map<string, number>();
+  private readonly latecomerIds: ReadonlySet<string>;
   private steps = 0;
 
   constructor(
     private readonly match: Match,
     starters: readonly Player[],
     leavers: number,
-    latecomers: readonly Player[],
+    joins: readonly Join[],
     private readonly rng: SeededRng,
   ) {
     this.present = [...starters];
-    const window = WINDOW_PER_COMER * (leavers + latecomers.length);
+    this.latecomerIds = new Set(joins.map((j) => j.who.id));
+    const window = WINDOW_PER_LEAVER * leavers;
     const leaves = Array.from({ length: leavers }, () => ({ at: rng.int(0, window - 1), who: "leaver" as const }));
-    const joins = latecomers.map((who) => ({ at: rng.int(0, window - 1), who }));
+    // Stable sort, leaves first: a leave and a join on the same event happen in that order.
     this.comings = [...leaves, ...joins].sort((a, b) => a.at - b.at);
   }
 
@@ -169,10 +199,18 @@ class Run {
       }
     }
 
-    const coming = this.comings[0];
-    if (coming !== undefined && this.steps >= coming.at) {
+    // Every joiner who is due arrives now, together, as one event: one at a time, they could queue
+    // up behind each other and land later than their moment, past the first third of the Match.
+    const due = this.comings.filter((c) => c.at <= this.steps);
+    const arriving = due.flatMap((c) => (c.who === "leaver" ? [] : [c.who]));
+    if (arriving.length > 0) {
+      this.comings = this.comings.filter((c) => c.who === "leaver" || !arriving.includes(c.who));
+      return this.join(arriving);
+    }
+    // Leavers go one per event, as before joiners existed.
+    if (due.length > 0) {
       this.comings.shift();
-      return coming.who === "leaver" ? this.leave() : this.join(coming.who);
+      return this.leave();
     }
 
     const timerRunning = this.match.snapshot().timerRunning;
@@ -195,13 +233,22 @@ class Run {
   private leave(): Outcome {
     const gone = this.rng.pick(this.match.snapshot().players);
     this.present = this.present.filter((p) => p.id !== gone.id);
-    return this.match.setPlayers(this.present);
+    // A leave can make room for a joiner who was waiting.
+    return this.noteArrivals(this.match.setPlayers(this.present));
   }
 
-  /** A new Player arrives. The Engine takes them in, or leaves them waiting: "ignored", no problem. */
-  private join(newcomer: Player): Outcome {
-    this.present = [...this.present, newcomer];
-    return this.match.setPlayers(this.present);
+  /** New Players arrive. The Engine takes them in, or leaves them waiting: "ignored", no problem. */
+  private join(newcomers: readonly Player[]): Outcome {
+    this.present = [...this.present, ...newcomers];
+    return this.noteArrivals(this.match.setPlayers(this.present));
+  }
+
+  /** Remembers when each joiner got into the Match. */
+  private noteArrivals(outcome: Outcome): Outcome {
+    for (const p of this.match.snapshot().players) {
+      if (this.latecomerIds.has(p.id) && !this.joinedAfter.has(p.id)) this.joinedAfter.set(p.id, this.steps);
+    }
+    return outcome;
   }
 
   /** Turns what a View offers into an Action a Player could really send. */
@@ -240,9 +287,13 @@ class Run {
    */
   private checkEveryoneWasOffered(): void {
     for (const player of this.match.snapshot().players) {
-      if (!this.offered.has(player.id)) {
-        this.problems.add(`${player.name} was never offered an Action in the whole Match (${events(this.steps)}). Give every Player something to do`);
-      }
+      if (this.offered.has(player.id)) continue;
+      const joined = this.joinedAfter.get(player.id);
+      this.problems.add(
+        joined === undefined
+          ? `${player.name} was never offered an Action in the whole Match (${events(this.steps)}). Give every Player something to do`
+          : `${player.name} joined after ${events(joined)} and was never offered an Action (the Match took ${events(this.steps)}). Give a Player who joins something to do, or don't take them in`,
+      );
     }
   }
 }

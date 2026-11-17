@@ -95,16 +95,24 @@ describe("the site's default Looks", () => {
     for (let r = 0; r < 256; r += 15) for (let g = 0; g < 256; g += 15) for (let b = 0; b < 256; b += 15) backgrounds.add(hexOf(r, g, b));
     const failing = [...backgrounds].filter((background) => !checkLook({ colors: { background } }).ok);
     expect(failing).toEqual([]);
+    // checkLook doesn't measure the accent on the surface, but the site draws accents on cards too:
+    // an accent the site fills in must show up there as well.
+    const unseenOnCards = [...backgrounds].filter((background) => {
+      const { surface, accent } = withDefaults({ colors: { background } }).colors;
+      return contrastRatio(accent, surface) < MIN_ACCENT_CONTRAST;
+    });
+    expect(unseenOnCards).toEqual([]);
     expect(backgrounds.size).toBeGreaterThan(9_000);
   });
 
-  test("the accent a Game leaves out is the default one where it shows up, else the other default, else black or white", () => {
+  test("the accent a Game leaves out is the default one where it shows up, else black or white", () => {
     const accentFor = (background: Hex) => withDefaults({ colors: { background } }).colors.accent;
     expect(accentFor("#ffffff")).toBe(LIGHT_LOOK.colors.accent);
     expect(accentFor("#111111")).toBe(DARK_LOOK.colors.accent);
-    // Light defaults (black text), but their blue accent is too dark here; the dark defaults' yellow shows up.
-    expect(accentFor("#767676")).toBe(DARK_LOOK.colors.accent);
-    // Neither accent reaches 3 to 1 on these: the accent is the default text colour.
+    // Light defaults (black text, white cards), and their blue is too dark here. The dark defaults'
+    // yellow would show up on the background but not on the white cards, so it isn't borrowed.
+    expect(accentFor("#767676")).toBe("#000000");
+    // The default accent doesn't reach 3 to 1 on these: the accent is the default text colour.
     expect(accentFor("#e63946")).toBe("#000000");
     expect(accentFor("#3a86ff")).toBe("#000000");
     expect(accentFor("#2a9d8f")).toBe("#000000");

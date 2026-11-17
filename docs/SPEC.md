@@ -150,9 +150,10 @@ from `main` until the owner decides the new one replaces it.
 - A Game's **Look** (colours, a typeface, corner style) is optional, and the site fills its gaps
   from one of two default Looks, light or dark, picked by how bright the Game's own background is
   (light when it sets none). The default text is pure black or pure white, whichever reads better
-  on the background. The default accent is the chosen default's own, or the other default's if that
-  one can't be seen on the background, or else the default text colour: mid-bright backgrounds
-  (strong reds, blues, teals, mid greys) need that. So any single background colour passes on its
+  on the background. The default accent is the chosen default's own, or the default text colour
+  where that accent can't be seen on the background: mid-bright backgrounds (strong reds, blues,
+  teals, mid greys) need that. It never borrows the other default's accent, which was chosen for the
+  other default's surface. So any single background colour passes on its
   own, which matters because generated Games pick such colours often. The site never changes a
   colour the Game sets. The filled-in Look must be readable, measured as the WCAG contrast ratio:
   text on the background and text on the surface at least 4.5 to 1, the accent (timer, highlights)
