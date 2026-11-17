@@ -6,6 +6,9 @@ import { maxRoomsFrom } from "./config.js";
 import { createFrameServer, createServer, forwardedAddress } from "./index.js";
 
 const port = Number(process.env.PORT ?? 3000);
+// Only this computer, unless told otherwise: `npm run dev -- --lan` sets HOST=0.0.0.0 so phones on
+// the same network can reach it. Behind Caddy in production, localhost is right too.
+const host = process.env.HOST ?? "localhost";
 const framePort = Number(process.env.FRAME_PORT ?? port + 1);
 const siteOrigin = process.env.SITE_ORIGIN ?? `http://localhost:${port}`;
 const here = (path: string) => fileURLToPath(new URL(path, import.meta.url));
@@ -21,9 +24,9 @@ const server = createServer({
   // Behind Caddy every request comes from 127.0.0.1; the phone's own address is in X-Forwarded-For.
   ...(process.env.TRUST_PROXY === "1" ? { addressOf: forwardedAddress } : {}),
 });
-server.http.listen(port, () => {
-  console.log(`Server listening on http://localhost:${port}`);
+server.http.listen(port, host, () => {
+  console.log(`Server listening on ${host}:${port}, for the site at ${siteOrigin}`);
 });
-createFrameServer({ root: here("../../client/dist-frame"), siteOrigin }).listen(framePort, () => {
-  console.log(`Game frame served on http://localhost:${framePort}/v1/`);
+createFrameServer({ root: here("../../client/dist-frame"), siteOrigin }).listen(framePort, host, () => {
+  console.log(`Game frame served on ${host}:${framePort}`);
 });

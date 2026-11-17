@@ -46,7 +46,8 @@ The browser tests need the browsers once: `npx playwright install chromium firef
 Linux their system libraries: `sudo npx playwright install-deps`. They build what they need
 themselves, into `e2e/.build/`.
 
-Settings, as environment variables: `PORT` (3000) and `FRAME_PORT` (the next one up); `SITE_ORIGIN`
+Settings, as environment variables: `HOST` (`localhost`: only this computer can reach the server),
+`PORT` (3000) and `FRAME_PORT` (the next one up); `SITE_ORIGIN`
 (`http://localhost:3000`), the only origin whose pages may open a WebSocket; `MAX_ROOMS` (30), how
 many Rooms may be open at once; `FRAME_URL`, where the Game frame's page is served (the next port
 up in development). Behind a proxy such as Caddy, set `TRUST_PROXY=1`, so the
@@ -63,3 +64,64 @@ the page on every change.
 The type check and the tests read the other packages' TypeScript source directly, so they never
 need a build first. CI (`.github/workflows/test.yml`) runs the type check, the build and the tests
 on every push and pull request.
+
+## Playing a Room with real phones
+
+The phones and the computer showing the Screen must be on the same Wi-Fi.
+
+1. `npm ci`, then `npm run build` (again whenever the client or the Games change).
+2. `npm run dev -- --lan`. It serves the site and the Game frame on this computer's network address
+   instead of only to itself, and prints the addresses to use, such as
+   `http://192.168.1.20:3000/screen` for the Screen and `http://192.168.1.20:3000/play` for phones.
+3. On the computer, open the printed Screen address: that address, not `localhost`, because the
+   server only accepts the pages of the site's own address (`SITE_ORIGIN`, which `--lan` sets).
+4. On each phone, open the printed `/play` address and type the Room Code from the Screen.
+
+`--lan` picks the first Wi-Fi or Ethernet address it finds and lists the others; name the right one
+with `--lan=192.168.1.20` if it picks wrong.
+
+What is different from the deployed site:
+- Plain http from a network address is not a secure context. Nothing breaks, but phones can't be
+  kept awake during a Match (the wake lock is unavailable): set their screen timeout longer.
+- The site and the Game frame differ only by port, so to the browser they are the same site; in
+  production the frame has its own domain (ADR 0004). The frame's sandbox and CSP still apply.
+- If a firewall on the computer blocks ports 3000 and 3001, phones get nothing. On Linux with ufw:
+  `sudo ufw allow 3000:3001/tcp`.
+
+### When the server runs in WSL2
+
+By default WSL2 sits behind a private network inside Windows: its address (`172.x.x.x`, what
+`hostname -I` shows) can't be reached from the Wi-Fi. On the Windows side, one of:
+
+**Mirrored networking** (Windows 11 22H2 or later). Then WSL2 has the Windows computer's own Wi-Fi
+address, and `npm run dev -- --lan` finds it.
+1. In `%UserProfile%\.wslconfig` (create it if needed):
+   ```ini
+   [wsl2]
+   networkingMode=mirrored
+   ```
+2. In PowerShell: `wsl --shutdown`, then open WSL again.
+3. Let the Wi-Fi in, in PowerShell as administrator:
+   ```powershell
+   Set-NetFirewallHyperVVMSetting -Name '{40E0AC32-46A5-438A-A0B2-2B479E8F2E90}' -DefaultInboundAction Allow
+   ```
+   (That GUID names WSL. To undo: the same with `-DefaultInboundAction Block`.)
+
+**Port forwarding** (any Windows), in PowerShell as administrator, with the WSL address from
+`hostname -I` in WSL:
+```powershell
+netsh interface portproxy add v4tov4 listenaddress=0.0.0.0 listenport=3000 connectaddress=172.28.125.110 connectport=3000
+netsh interface portproxy add v4tov4 listenaddress=0.0.0.0 listenport=3001 connectaddress=172.28.125.110 connectport=3001
+New-NetFirewallRule -DisplayName "BoilerGames dev" -Direction Inbound -Protocol TCP -LocalPort 3000,3001 -Action Allow -Profile Private
+```
+Then in WSL, with the Windows computer's Wi-Fi address (from `ipconfig` on Windows):
+`npm run dev -- --lan=192.168.1.20`. The WSL address changes when WSL restarts; then redo the two
+`portproxy` lines. To remove them: `netsh interface portproxy reset`.
+
+Either way, Windows must count the Wi-Fi as a Private network (Settings, Network, the Wi-Fi's
+properties), or its firewall turns the phones away.
+
+What was tested: `--lan` binds every interface and prints the addresses; the Screen and phones work
+in Chromium, Firefox and WebKit from the WSL2 network address on the same computer, where pages are
+not a secure context; without `--lan` the server answers only `localhost`. Not tested: a real phone,
+and every Windows-side step above (mirrored networking, the firewall commands, port forwarding).
