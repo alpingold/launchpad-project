@@ -7,12 +7,10 @@
     "node": ">=24"
   },
   "workspaces": [
-    "shared",
     "sdk",
+    "protocol",
     "server",
-    "generator",
-    "client",
-    "e2e"
+    "client"
   ],
   "scripts": {
     "build": "tsc -b tsconfig.build.json && npm run build -w @boilergames/client",

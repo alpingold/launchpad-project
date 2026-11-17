@@ -8,9 +8,8 @@ Decided 2026-10-30, for the rewrite (ADR 0001). The database stays SQLite, a sin
 one server: it suits a club-sized site, and a backup is a file copy. We talk to it through Drizzle
 on better-sqlite3. The tables are written once, in TypeScript, and the row types and the SQL
 migrations (written by `drizzle-kit`, a dev-only tool) come from them, so a table change can't
-silently miss its types. The queries still look like SQL. The owner chose it before comparing the
-options in practice, so it stays "proposed" until the TypeScript course has compared them on the
-same query.
+silently miss its types. The queries still look like SQL. It stays "proposed" until the
+data model is designed with the owner, before milestone 2.
 
 ## Considered options
 

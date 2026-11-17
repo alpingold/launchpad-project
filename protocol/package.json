@@ -1,6 +1,6 @@
 {
-  "name": "@boilergames/shared",
-  "description": "Types and schemas used by every other package.",
+  "name": "@boilergames/protocol",
+  "description": "The messages between the Screen, the server and the phones, with a schema for each.",
   "private": true,
   "type": "module",
   "exports": {
@@ -13,5 +13,9 @@
   "scripts": {
     "build": "tsc -b tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@boilergames/sdk": "*",
+    "zod": "^4.6.7"
   }
 }

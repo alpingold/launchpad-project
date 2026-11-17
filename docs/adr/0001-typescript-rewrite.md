@@ -13,11 +13,11 @@ knows the language well enough to want all of it.
 - **Run `.ts` directly with Node 24's type stripping (no build step):** simpler to deploy, but it
   allows only the TypeScript that can simply be deleted (no `enum`, `namespace` or parameter
   properties). Rejected because we want the whole language. `tsc` compiles to JavaScript for the
-  server and generator; Vite builds the client.
+  server; Vite builds the client.
 
 ## Consequences
 
-- Deploy (`update.sh`), CI and the generator's sandbox image all gain a build step.
+- Deploy (`update.sh`) and CI gain a build step.
 - Types are checked when the code is built, never while it runs. Data from outside (socket
   messages, uploads, the model's replies) still needs checking at runtime.
 - Games are TypeScript too, written against the SDK's types; strict `tsc` is the first Playtest

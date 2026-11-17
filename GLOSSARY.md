@@ -29,11 +29,11 @@ A person who has joined a Room from their phone.
 _Avoid_: User, participant, guest
 
 **Seat**:
-A Player's place in a Room, which keeps who they are and their score through disconnects and reconnects. Someone who arrives during a Match gets a Seat and plays from the next Match, unless the Game takes late joiners. A Player who stays away too long loses their Seat.
+A Player's place in a Room, which keeps who they are through disconnects and reconnects. Its phone holds a secret seat token that takes the Seat back. Someone who arrives during a Match gets a Seat and plays from the next Match, unless the Game takes late joiners. A Player who stays away too long loses their Seat.
 _Avoid_: Slot, session, spot, watcher
 
 **Controller**:
-The view on a Player's phone that they play through.
+The view on a Player's phone that they play through. The device itself is just "the phone".
 _Avoid_: Gamepad, client, remote
 
 ## Games
@@ -55,12 +55,44 @@ One state of a Game's code, and how it got there. A Generation, a Revision, an U
 _Avoid_: Revision (that's the change asked for), build (that's one step of making one)
 
 **SDK version**:
-Which edition of the platform's game toolkit a Version was written against. Always the two words, never "version" alone.
+Which edition of the platform's game toolkit a Version was checked against. A Version always runs on that edition's Engine. Always the two words, never "version" alone.
 _Avoid_: Version, runtime version
 
 **Kit**:
-The fixed set of parts (text, buttons, choices, text boxes, a drawing pad, a timer, a scoreboard...) that a Game's views are made of, drawn by the site rather than by the Game.
+The fixed set of Parts that every View is made of, drawn by the site and never by the Game.
 _Avoid_: Components, widgets, blocks
+
+**Part**:
+One piece of a View: text, a button, a text box, a drawing pad, a timer, a scoreboard, a player list, a drawing, a Picture, a row.
+_Avoid_: Component, widget, element
+
+**Picture**:
+The Part made of free-form shapes at any position, each of which a Player can tap on a phone. The way out when the other Parts aren't enough.
+_Avoid_: Canvas, SVG, image
+
+**View**:
+What the Screen or one Controller shows at one moment, as plain data: a list of Parts. A Game returns Views; it never draws.
+_Avoid_: Page, layout, UI
+
+**Action**:
+One thing a Player can do in a Game, as typed plain data. Each Part a Player can use carries the Action it sends.
+_Avoid_: Input, event, move, message
+
+**Step**:
+What a Game's logic returns each time it is called: the new state, and optionally a timer change or the end of the Match.
+_Avoid_: Update, result, tick
+
+**Look**:
+A Game's own colours, typeface and corner style, declared once and applied by the site to every Part.
+_Avoid_: Theme, skin, style
+
+**Engine**:
+The site's code that runs a Match: it calls the Game's functions and checks everything they return. The same Engine runs in the Host's browser, in the Playtest and in tests.
+_Avoid_: Runtime, runner, host
+
+**Game frame**:
+The hidden, walled-off frame in the Host's browser where the Engine and the Game run. It shows nothing.
+_Avoid_: Sandbox, iframe, game window
 
 ## Making games
 

@@ -1,7 +1,7 @@
 import { defineConfig } from "vitest/config";
 
 // The packages that run in Node. The client is its own project, set up in client/vite.config.ts.
-const nodePackages = ["shared", "sdk", "server", "generator", "e2e"];
+const nodePackages = ["sdk", "protocol", "server"];
 
 // Import the other packages' TypeScript source, never their built dist/ (see tsconfig.base.json).
 const conditions = ["@boilergames/source", "module", "node", "development|production"];

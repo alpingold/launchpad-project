@@ -16,6 +16,7 @@
     "start": "node dist/main.js"
   },
   "dependencies": {
-    "@boilergames/shared": "*"
+    "@boilergames/protocol": "*",
+    "@boilergames/sdk": "*"
   }
 }

@@ -1,11 +1,10 @@
 // `tsc -b tsconfig.build.json` compiles every package that runs in Node to its dist/, in
-// dependency order. The client is built by Vite instead, and e2e is never built.
+// dependency order. The client is built by Vite instead.
 {
   "files": [],
   "references": [
-    { "path": "shared/tsconfig.build.json" },
     { "path": "sdk/tsconfig.build.json" },
-    { "path": "server/tsconfig.build.json" },
-    { "path": "generator/tsconfig.build.json" }
+    { "path": "protocol/tsconfig.build.json" },
+    { "path": "server/tsconfig.build.json" }
   ]
 }

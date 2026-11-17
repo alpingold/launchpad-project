@@ -8,6 +8,5 @@
     "outDir": "dist",
     "sourceMap": true
   },
-  "exclude": ["src/**/*.test.ts"],
-  "references": [{ "path": "../shared/tsconfig.build.json" }]
+  "exclude": ["src/**/*.test.ts"]
 }

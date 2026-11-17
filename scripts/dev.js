@@ -1,4 +1,4 @@
-// `npm run dev`: after a first build, tsc recompiles shared, sdk, server and generator whenever
+// `npm run dev`: after a first build, tsc recompiles sdk, protocol and server whenever
 // their source changes, and Node restarts the server whenever its compiled files change.
 import { spawn } from "node:child_process";
 

@@ -1,20 +1,17 @@
 {
   "name": "@boilergames/sdk",
-  "description": "What Games are written against, and the runtime that runs them.",
+  "description": "What Games are written against. No dependencies: it is bundled into every Game.",
   "private": true,
   "type": "module",
   "exports": {
-    ".": {
-      "@boilergames/source": "./src/index.ts",
-      "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
+    "./v1": {
+      "@boilergames/source": "./src/v1/index.ts",
+      "types": "./dist/v1/index.d.ts",
+      "default": "./dist/v1/index.js"
     }
   },
   "scripts": {
     "build": "tsc -b tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json"
-  },
-  "dependencies": {
-    "@boilergames/shared": "*"
   }
 }
