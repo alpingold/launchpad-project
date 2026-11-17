@@ -100,7 +100,7 @@ until checked. Write the checks by hand (no Zod here: `sdk` has no dependencies)
   - Unknown `kind`s, unknown `shape`s and unknown fields are problems. Screen views may hold no Part
     that sends an Action, and no shape with an `action`.
   - Limits, exported as named constants: 100 Parts per View (a row's Parts count), 2,000 characters
-    per text, 2,000 shapes per Picture; 500 for a text box's `maxLength`; 200 strokes and 5,000 points per Drawing; numbers must be finite; a `path`'s
+    per text, 2,000 shapes per Picture; 500 for a text box's `maxLength`; 200 strokes and 2,000 points per Drawing, whole numbers from 0 to 1000 (changed from 5,000 any-number points so Drawings fit in messages); numbers must be finite; a `path`'s
     `d` may hold only path letters, digits, spaces and `.,-+eE`, at most 2,000 characters; colours
     must be `#rgb` or `#rrggbb` or one of the Look's four names.
 - `sdk/src/v1/offers.ts`:
@@ -170,7 +170,10 @@ later the Playtest all use this same code, so the rules of a Match have one defi
   - Broken means: a Game function throws; a Step isn't `{ state, timer?, end? }` with a valid timer
     (a finite number from 0 to 24 hours, or null) and a valid `end` (scores and winners keyed by
     Players in the Match); the state doesn't survive `JSON.parse(JSON.stringify(state))` unchanged,
-    or is over 256 KB as JSON; a View fails its check. The problem says which function and what was
+    or is over 1 MB as JSON (`MAX_STATE_BYTES`; first 256 KB, raised so a round of drawings fits);
+    a View fails its check, or a Controller View is over 128 KB as JSON (`MAX_VIEW_BYTES`: it must
+    fit in one message to a phone), or the Screen's View is over 1 MB. An object field set to
+    `undefined` in the state is not broken: JSON drops it, and the Engine keeps only its JSON copy. The problem says which function and what was
     wrong, in words a Game author can act on.
   - Once ended or broken, every call is ignored.
   - The Engine never reads a clock and never calls `Math.random`.
@@ -218,6 +221,9 @@ Runs the Engine and one Game in the Host's browser where the Game can reach noth
   bundle (a string of JavaScript), the script builds one Blob from bootstrap + Engine + bundle,
   starts a Worker from that Blob's URL, and from then on only passes messages between the Screen and
   the Worker. Nothing is ever evaluated with `eval` or `new Function`.
+- The worker's script runs in strict mode (`"use strict"` first in the Blob). The Engine freezes the
+  state it hands a Game, and only strict code throws when a Game changes it; sloppy code would
+  silently ignore the change, and the Game would go on believing it happened.
 - The Screen embeds it as `<iframe sandbox="allow-scripts" hidden>`. Never `allow-same-origin`.
 - It is served from a different origin than the site: in development a second port (the site on
   3000, the frame on 3001); in production the game domain (ADR 0004). The response carries a
@@ -228,8 +234,10 @@ Runs the Engine and one Game in the Host's browser where the Game can reach noth
 - Messages between the Screen page and the frame, as types in `sdk/src/v1/frame-messages.ts`:
   - To the frame: `start { bundle, players, seed }`, `resume { bundle, snapshot }`,
     `act { playerId, action }`, `timerFired`, `setPlayers { players }`.
-  - From the frame: `ready` (once, when the page has loaded), then exactly one `result` per message
-    received: `{ outcome, views, snapshot }`.
+  - From the frame: `ready` (once, when the page has loaded), then exactly one reply per message
+    received: `result { outcome, views, snapshot }`, or, for `start` and `resume`, `couldNotStart
+    { why }` carrying `Begun`'s `why` when the Engine refused to begin (a Player count the Game
+    doesn't allow, a damaged save). The Screen then stays in the Lobby and says why.
 - A Game bundle is one classic script that assigns the Game to a known global. Step 5 builds them.
 - `client/src/screen/game-frame.ts`: the Screen's side, a small class that owns the iframe.
   - It accepts a message only if `event.source` is its iframe's window, and treats everything in it
@@ -304,6 +312,10 @@ The server keeps Rooms and Seats and passes messages. It never reads a View or a
     the Screen is connected. Otherwise it is dropped silently.
   - Limits from day one: each socket may send 20 messages a second (more gets `tooFast`, then the
     socket is closed if it continues); each address may try `join` or `rejoin` 10 times a minute.
+    **Open, for the owner, before building this:** the Screen splits Views across `views` messages
+    (step 7), so one event with 16 large Views can be 16 messages, and a resume sends every View at
+    once. That collides with 20 messages a second. Either the Screen's socket gets its own, higher
+    limit (counted in bytes rather than messages, say), or the Screen paces its batches.
 - HTTP, with Express: serves the built client; `GET /api/games` returns `games.json`;
   `GET /api/games/:id/bundle.js` returns a bundle. On the second port (or the game domain) it serves
   only the frame's files, with the header from step 4.
@@ -329,7 +341,9 @@ Bare, working pages. No visual design yet beyond a Game's own Look.
   - `timer` counts down from a deadline the page keeps (milliseconds left, measured from when the
     message arrived).
   - `drawingPad` records strokes in the 1000-by-1000 square whatever the phone's size, and stays
-    within the Drawing limits from step 1.
+    within the Drawing limits from step 1: it rounds every point to a whole number, skips a point
+    that rounds to the same place as the one before, and when a Drawing nears 2,000 points it thins
+    the strokes (keeping every other point) rather than refusing more ink.
   - `playerList` and `scoreboard` get names from the Room's Seats, by id.
   - Parts that send an Action call one `onAction(action)` callback. On the Screen it is absent.
 - Pages:
@@ -347,6 +361,11 @@ Bare, working pages. No visual design yet beyond a Game's own Look.
   - After every result from the frame it draws the Screen's View, sends `views` with only the Views
     that changed since the last send, and saves `{ code, hostToken, gameId, snapshot, timerDeadline }`
     in `localStorage`.
+  - It splits Views across as many `views` messages as it takes to keep each one, measured as UTF-8
+    JSON, under `MAX_MESSAGE_BYTES` (256 KB). Each Controller View is at most `MAX_VIEW_BYTES`
+    (128 KB), so one View always fits in a message of its own; the protocol needs no change,
+    because `views` already carries only some Seats. Every message of a batch carries the same
+    `timerMs`.
   - On load, if a saved Room exists it sends `resumeRoom`; if a saved Match exists it fetches the
     bundle, resumes the frame from the snapshot, restarts the timer from the saved deadline (firing
     at once if it has passed) and sends every View again. If the server says `noSuchRoom` or
@@ -365,6 +384,9 @@ Done when:
   to its end; reload the Screen mid-Match and carry on; reload a phone and keep its Seat and View;
   remove a Player; a latecomer joins the late-join Game and plays, and joins another and waits;
   stop a Match.
+- A test of the Screen's sending, without a browser: Views for 16 Seats at nearly `MAX_VIEW_BYTES`
+  each go out as several `views` messages, none over `MAX_MESSAGE_BYTES`, each Seat's View in
+  exactly one of them, and every message passes the `screenToServer` schema.
 
 ## Step 8: tidy
 

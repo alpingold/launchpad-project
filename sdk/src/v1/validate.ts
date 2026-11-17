@@ -22,7 +22,7 @@ import type {
   Stroke,
   TextPart,
 } from "./kit.js";
-import { contrastRatio, READABLE_PAIRS, withDefaults } from "./look.js";
+import { contrastRatio, DARK_LOOK, defaultsFor, READABLE_PAIRS, withDefaults } from "./look.js";
 
 // ---------------------------------------------------------------------------------------------
 // Limits. Each is named so the docs, the error messages and the tests all use the same number.
@@ -39,8 +39,11 @@ export const MAX_TEXT_INPUT_LENGTH = 500;
 export const DEFAULT_TEXT_INPUT_LENGTH = 80;
 /** Strokes in one Drawing. */
 export const MAX_STROKES = 200;
-/** Points in one Drawing, all strokes together. A point is an x and a y: two numbers. */
-export const MAX_DRAWING_POINTS = 5_000;
+/**
+ * Points in one Drawing, all strokes together. A point is an x and a y: two whole numbers from 0
+ * to 1000. So a Drawing is at most about 32 KB as JSON, and a View can show a few of them.
+ */
+export const MAX_DRAWING_POINTS = 2_000;
 /** The side of the square a Drawing's points live in: 0 to 1000 on both axes. */
 export const DRAWING_SIZE = 1_000;
 /** Characters in a path's `d`. */
@@ -201,7 +204,7 @@ function list(v: unknown, at: string, p: Problems, max: number, what: string, ea
 }
 
 /** A flat `[x0, y0, x1, y1, ...]` list of at least `minPoints` points and at most `maxPoints`. */
-function points(v: unknown, at: string, p: Problems, minPoints: number, maxPoints: number, range?: { min: number; max: number }): number {
+function points(v: unknown, at: string, p: Problems, minPoints: number, maxPoints: number, drawing?: "drawing"): number {
   if (!Array.isArray(v)) {
     p.add(at, "must be a flat list of numbers: [x0, y0, x1, y1, ...]");
     return 0;
@@ -213,7 +216,11 @@ function points(v: unknown, at: string, p: Problems, minPoints: number, maxPoint
     p.add(at, `holds ${count} points; the most is ${maxPoints}`);
     return count;
   }
-  for (let i = 0; i < v.length; i++) num(v[i], `${at}[${i}]`, p, range ?? {});
+  for (let i = 0; i < v.length; i++) {
+    if (drawing === undefined) num(v[i], `${at}[${i}]`, p);
+    else if (!Number.isInteger(v[i])) p.add(`${at}[${i}]`, "must be a whole number: a drawing's points are rounded to the 1000 by 1000 square");
+    else num(v[i], `${at}[${i}]`, p, { min: 0, max: DRAWING_SIZE });
+  }
   return count;
 }
 
@@ -298,7 +305,7 @@ function checkDrawingAt(v: unknown, at: string, p: Problems): void {
     if (!fields(stroke, sat, p, "a stroke", STROKE_FIELDS)) return;
     if (has(stroke, "color")) hex(stroke["color"], `${sat}.color`, p);
     if (has(stroke, "width")) num(stroke["width"], `${sat}.width`, p, { above: 0, max: DRAWING_SIZE });
-    if (has(stroke, "points")) total += points(stroke["points"], `${sat}.points`, p, 1, MAX_DRAWING_POINTS, { min: 0, max: DRAWING_SIZE });
+    if (has(stroke, "points")) total += points(stroke["points"], `${sat}.points`, p, 1, MAX_DRAWING_POINTS, "drawing");
   });
   if (total > MAX_DRAWING_POINTS) p.add(`${at}.strokes`, `holds ${total} points in all; the most is ${MAX_DRAWING_POINTS}`);
 }
@@ -325,18 +332,19 @@ function checkLookAt(v: unknown, at: string, p: Problems): void {
 
 /**
  * Refuses a Look whose text or accent can't be read. The gaps are filled from the site's defaults
- * first: a Look that sets only a dark background would otherwise pass, then be drawn with the
- * default dark text on it. Each problem names both colours, says which came from the defaults,
+ * first (light or dark, to suit the Game's background), because those are the colours it will be
+ * drawn with. Each problem names both colours, says which came from the defaults,
  * and gives the ratio measured and the one needed, so whoever fixes it (a person or the AI) knows
  * which colour to change and by how much.
  */
 function checkReadable(look: Look, at: string, p: Problems): void {
   const full = withDefaults(look).colors;
+  const which = defaultsFor(look.colors?.background) === DARK_LOOK ? "dark" : "light";
   for (const { front, back, min } of READABLE_PAIRS) {
     const ratio = contrastRatio(full[front], full[back]);
     if (ratio >= min) continue;
     const name = (key: keyof typeof full): string =>
-      look.colors?.[key] === undefined ? `${key} ${full[key]} (the site's default: the look sets no ${key} colour)` : `${key} ${full[key]}`;
+      look.colors?.[key] === undefined ? `${key} ${full[key]} (the site's ${which} default: the look sets no ${key} colour)` : `${key} ${full[key]}`;
     p.add(
       `${at}.colors`,
       `${name(front)} on ${name(back)} has a contrast of ${shown(ratio)} to 1; ${front} on ${back} needs at least ${min} to 1. Make one of them lighter or darker`,

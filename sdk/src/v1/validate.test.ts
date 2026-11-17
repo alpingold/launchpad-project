@@ -236,12 +236,12 @@ describe("limits", () => {
     expect(controllerProblems(picture({ shape: "path", d: "M".repeat(MAX_PATH_LENGTH + 1) }))[0]).toMatch(/the most is 2000/);
   });
 
-  test(`a Drawing holds at most ${MAX_STROKES} strokes and ${MAX_DRAWING_POINTS} points, inside the 1000 square`, () => {
+  test(`a Drawing holds at most ${MAX_STROKES} strokes and ${MAX_DRAWING_POINTS} points, as whole numbers inside the 1000 square`, () => {
     const stroke = { color: "#000", width: 4, points: [0, 0, 1000, 1000] };
     expect(checkDrawing({ strokes: Array(MAX_STROKES).fill(stroke) }).ok).toBe(true);
     expect(checkDrawing({ strokes: Array(MAX_STROKES + 1).fill(stroke) }).ok).toBe(false);
 
-    const half = Array(MAX_DRAWING_POINTS).fill(500); // 2,500 points
+    const half = Array(MAX_DRAWING_POINTS).fill(500); // half the points: 2 numbers each
     expect(checkDrawing({ strokes: [{ ...stroke, points: half }, { ...stroke, points: half }] }).ok).toBe(true);
     expect(checkDrawing({ strokes: [{ ...stroke, points: half }, { ...stroke, points: [...half, 1, 1] }] })).toEqual({
       ok: false,
@@ -250,6 +250,10 @@ describe("limits", () => {
 
     expect(checkDrawing({ strokes: [{ ...stroke, points: [0, 1001] }] })).toEqual({ ok: false, problems: ["drawing.strokes[0].points[1]: must be at most 1000, not 1001"] });
     expect(checkDrawing({ strokes: [{ ...stroke, points: [] }] }).ok).toBe(false);
+    expect(checkDrawing({ strokes: [{ ...stroke, points: [10.5, 20] }] })).toEqual({
+      ok: false,
+      problems: ["drawing.strokes[0].points[0]: must be a whole number: a drawing's points are rounded to the 1000 by 1000 square"],
+    });
     expect(checkDrawing({ strokes: [] }).ok).toBe(true);
   });
 });

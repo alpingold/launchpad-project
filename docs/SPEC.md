@@ -148,12 +148,19 @@ from `main` until the owner decides the new one replaces it.
 - A Game with `onJoin` takes late joiners; one without doesn't. A Match may end with scores,
   winners, both or neither.
 - A Game's **Look** (colours, a typeface, corner style) is optional, and the site fills its gaps
-  from one default Look. The filled-in Look must be readable, measured as the WCAG contrast ratio:
+  from one of two default Looks, light or dark, picked by how bright the Game's own background is
+  (light when it sets none). So a Game that only sets a dark background needs nothing more. The
+  filled-in Look must be readable, measured as the WCAG contrast ratio:
   text on the background and text on the surface at least 4.5 to 1, the accent (timer, highlights)
   on the background at least 3 to 1. A Look that isn't is refused, with a problem naming both
   colours, the ratio measured and the ratio needed. Button text is black or white, chosen by the
-  site, so it needs no rule. The default Look and the check live in the SDK
+  site, so it needs no rule. The default Looks and the check live in the SDK
   (`sdk/src/v1/look.ts`), so the checker and the renderer use the same colours.
+- Sizes fit together end to end. A Drawing is at most 2,000 whole-number points (about 32 KB as
+  JSON). A Game's state is at most 1 MB, saved only in the Host's browser. Each Controller View is
+  at most 128 KB, so it fits in one message to a phone; the Screen splits Views across `views`
+  messages so none passes the server's 256 KB limit. The Screen's own View never leaves the Host's
+  browser and may be as big as the state.
 - Views are plain data made of Kit Parts (`sdk/src/v1/kit.ts`), written as object literals. The
   **Picture** Part (shapes at any position, tappable on a phone) is the way out when the ready-made
   Parts aren't enough. There is no Canvas and no Game-written HTML.

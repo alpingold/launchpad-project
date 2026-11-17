@@ -15,32 +15,52 @@ export interface FullLook {
 }
 
 /**
- * What the site uses for anything a Game's Look leaves out. Plain on purpose: the site's own design
- * comes later. These colours pass the readability rules below, with room to spare (a test checks).
+ * What the site uses for anything a Game's Look leaves out, when the Game's background is light or
+ * not set. Plain on purpose: the site's own design comes later. Both default Looks pass the
+ * readability rules below, with room to spare (a test checks).
  */
-export const DEFAULT_LOOK: FullLook = {
-  colors: {
-    background: "#f4f4f1",
-    surface: "#ffffff",
-    text: "#1c1c1e",
-    accent: "#2b59c3",
-  },
+export const LIGHT_LOOK: FullLook = {
+  colors: { background: "#f4f4f1", surface: "#ffffff", text: "#000000", accent: "#1d3f91" },
   font: "plain",
   corners: "soft",
 };
 
-/** The Game's Look with every gap filled from {@link DEFAULT_LOOK}. A field set to `undefined` is a gap. */
+/** The same, for a Game that sets a dark background: light text, a dark surface, a bright accent. */
+export const DARK_LOOK: FullLook = {
+  colors: { background: "#141418", surface: "#222229", text: "#ffffff", accent: "#ffd166" },
+  font: "plain",
+  corners: "soft",
+};
+
+/**
+ * Which default Look fills the gaps around a Game's background: the one whose text reads better on
+ * it (light when the Game sets no background). In effect a switch on how bright the background is:
+ * greys up to #757575 get the dark defaults.
+ *
+ * The default text colours are pure black and pure white on purpose. Whichever reads better on a
+ * colour always reaches at least 4.58 to 1, so a Look that sets only its background always has
+ * readable text. Its accent may still need setting: on a mid-bright background (greys from #767676
+ * to #8f8f8f, a strong red like #e63946, a blue like #3a86ff: about 18% of all colours) neither
+ * default accent reaches 3 to 1.
+ */
+export function defaultsFor(background: Hex | undefined): FullLook {
+  if (background === undefined) return LIGHT_LOOK;
+  return contrastRatio(background, DARK_LOOK.colors.text) > contrastRatio(background, LIGHT_LOOK.colors.text) ? DARK_LOOK : LIGHT_LOOK;
+}
+
+/** The Game's Look with every gap filled from {@link defaultsFor} its background. A field set to `undefined` is a gap. */
 export function withDefaults(look: Look | undefined): FullLook {
   const colors = look?.colors;
+  const defaults = defaultsFor(colors?.background);
   return {
     colors: {
-      background: colors?.background ?? DEFAULT_LOOK.colors.background,
-      surface: colors?.surface ?? DEFAULT_LOOK.colors.surface,
-      text: colors?.text ?? DEFAULT_LOOK.colors.text,
-      accent: colors?.accent ?? DEFAULT_LOOK.colors.accent,
+      background: colors?.background ?? defaults.colors.background,
+      surface: colors?.surface ?? defaults.colors.surface,
+      text: colors?.text ?? defaults.colors.text,
+      accent: colors?.accent ?? defaults.colors.accent,
     },
-    font: look?.font ?? DEFAULT_LOOK.font,
-    corners: look?.corners ?? DEFAULT_LOOK.corners,
+    font: look?.font ?? defaults.font,
+    corners: look?.corners ?? defaults.corners,
   };
 }
 

@@ -1,7 +1,7 @@
 // The Engine, from the outside: Matches played through its public functions only.
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { bestWord } from "./best-word.fixture.js";
-import { MAX_STATE_BYTES, MAX_TIMER_MS, resumeMatch, startMatch, type AnyGame, type Match, type Outcome } from "./engine-entry.js";
+import { MAX_SCREEN_VIEW_BYTES, MAX_STATE_BYTES, MAX_TIMER_MS, MAX_VIEW_BYTES, resumeMatch, startMatch, type AnyGame, type Match, type Outcome } from "./engine-entry.js";
 import { defineGame, type Game, type Player } from "./index.js";
 
 const ada: Player = { id: "a", name: "Ada" };
@@ -24,10 +24,12 @@ function buttons(match: Match, id: string): string[] {
 // ---------------------------------------------------------------------------------------------
 // A small Game for the rules Best Word doesn't reach: it takes latecomers and uses randomness.
 // Everyone taps "Roll"; each roll adds a die to their total; the first to reach `target` wins.
+// `leader` is set to undefined on most rolls, as ordinary TypeScript does: the Engine must cope.
 
 interface DiceState {
   readonly totals: Readonly<Record<string, number>>;
   readonly target: number;
+  readonly leader?: string;
 }
 type DiceAction = { readonly type: "roll" };
 
@@ -39,7 +41,7 @@ function dice(overrides: Partial<Game<DiceState, DiceAction>> = {}, players = { 
       const total = (state.totals[player.id] ?? 0) + ctx.rng.int(1, 6);
       const totals = { ...state.totals, [player.id]: total };
       if (total >= state.target) return { state: { ...state, totals }, end: { scores: totals, winners: [player.id] } };
-      return { state: { ...state, totals } };
+      return { state: { ...state, totals, leader: total >= 6 ? player.id : undefined } };
     },
     onTimer: (state) => ({ state, end: { scores: state.totals } }),
     onLeave(state, player) {
@@ -122,6 +124,21 @@ function expectResumeToMatch(game: AnyGame, players: Player[], events: ((m: Matc
     expect(resumed.snapshot()).toEqual(straight.snapshot());
   });
 }
+
+describe("a state with a field set to undefined", () => {
+  test("plays on: JSON drops the field, and the Engine keeps only its JSON copy", () => {
+    const { match } = start(dice({ onAction: (state) => ({ state: { ...state, leader: undefined } }) }), [ada, ben]);
+    expect(match.act("a", { type: "roll" })).toEqual({ status: "running" });
+    expect(match.snapshot().state).toEqual({ totals: { a: 0, b: 0 }, target: 12 });
+    expect(Object.keys(match.snapshot().state as object)).toEqual(["totals", "target"]);
+  });
+
+  test("saves and resumes the same as a Match that never stopped", () => {
+    // Dice sets `leader: undefined` on every roll under 6, so this Match is full of them.
+    const roll = (id: string) => (m: Match) => m.act(id, { type: "roll" });
+    expectResumeToMatch(dice(), [ada, ben], [roll("a"), roll("b"), roll("a"), roll("b"), roll("a"), roll("b")], 3);
+  });
+});
 
 describe("randomness", () => {
   const rolls = (seed: number) => {
@@ -343,8 +360,19 @@ describe("a broken Game", () => {
   test("state that doesn't survive JSON unchanged", () => {
     expect(problem(rollWith(() => ({ state: { seen: new Set(["a"]) } })))).toBe("onAction (for Ada)'s state must be plain data that JSON keeps whole, but state.seen is a Set, not a plain object");
     expect(problem(rollWith(() => ({ state: { at: new Date(0) } })))).toMatch(/state\.at is a Date/);
-    expect(problem(rollWith(() => ({ state: { note: undefined } })))).toMatch(/state\.note is undefined, which JSON leaves out/);
+    expect(problem(rollWith(() => ({ state: { list: [1, undefined] } })))).toMatch(/state\.list\[1\] is undefined; use null instead$/);
+    // eslint-disable-next-line no-sparse-arrays
+    expect(problem(rollWith(() => ({ state: { list: [1, , 3] } })))).toMatch(/state\.list\[1\] is an empty slot, which JSON turns into null/);
+    expect(problem(rollWith(() => ({ state: { big: 10n } })))).toMatch(/state\.big is a bigint/);
+    expect(problem(rollWith(() => ({ state: { m: new Map() } })))).toMatch(/state\.m is a Map/);
+    class Card {
+      suit = "hearts";
+    }
+    expect(problem(rollWith(() => ({ state: { card: new Card() } })))).toMatch(/state\.card is a Card, not a plain object/);
     expect(problem(rollWith(() => ({ state: { n: NaN } })))).toMatch(/state\.n is NaN, which JSON turns into null/);
+    expect(problem(rollWith(() => ({ state: { n: -Infinity } })))).toMatch(/state\.n is -Infinity, which JSON turns into null/);
+    expect(problem(rollWith(() => ({ state: { s: Symbol("x") } })))).toMatch(/state\.s is a symbol/);
+    expect(problem(rollWith(() => ({ state: [Symbol("x")] })))).toMatch(/state\[0\] is a symbol/);
     expect(problem(rollWith(() => ({ state: { f: () => 1 } })))).toMatch(/state\.f is a function/);
     const cycle: Record<string, unknown> = {};
     cycle["self"] = cycle;
@@ -355,9 +383,9 @@ describe("a broken Game", () => {
   });
 
   test(`state over ${MAX_STATE_BYTES / 1024} KB as JSON`, () => {
-    expect(problem(rollWith(() => ({ state: "x".repeat(MAX_STATE_BYTES) })))).toBe("onAction (for Ada)'s state is 257 KB as JSON; the most is 256 KB. Keep less in the state");
+    expect(problem(rollWith(() => ({ state: "x".repeat(MAX_STATE_BYTES) })))).toBe("onAction (for Ada)'s state is 1025 KB as JSON; the most is 1024 KB. Keep less in the state");
     // Counted in UTF-8 bytes: "é" is two of them.
-    expect(problem(rollWith(() => ({ state: "é".repeat(MAX_STATE_BYTES / 2) })))).toMatch(/is 257 KB as JSON/);
+    expect(problem(rollWith(() => ({ state: "é".repeat(MAX_STATE_BYTES / 2) })))).toMatch(/is 1025 KB as JSON/);
     // Exactly at the limit is fine: the 2 quote marks bring it to MAX_STATE_BYTES.
     const atLimit = dice({
       onAction: () => ({ state: "x".repeat(MAX_STATE_BYTES - 2) }) as never,
@@ -365,6 +393,25 @@ describe("a broken Game", () => {
       controller: () => ({ parts: [{ kind: "button", label: "Roll", action: { type: "roll" } }] }),
     });
     expect(start(atLimit, [ada, ben]).match.act("a", { type: "roll" })).toEqual({ status: "running" });
+  });
+
+  test(`a Controller View over ${MAX_VIEW_BYTES / 1024} KB as JSON, the most one message to a phone can carry`, () => {
+    const label = (bytes: number) => ({ kind: "text" as const, text: "x".repeat(bytes) });
+    // 100 texts of 1,400 characters: about 140 KB.
+    const big = { parts: Array.from({ length: 100 }, () => label(1_400)) };
+    expect(problem(startWith({ controller: (_s, p) => (p.id === "b" ? big : { parts: [] }) }))).toBe(
+      "controller (for Ben) returned a View of 140 KB as JSON; the most is 128 KB. Show less at once",
+    );
+    const fits = { parts: Array.from({ length: 100 }, () => label(1_200)) };
+    expect(startWith({ controller: () => fits }).status).toBe("running");
+  });
+
+  test(`a Screen View may be bigger, up to ${MAX_SCREEN_VIEW_BYTES / 1024} KB: it never leaves the Host's browser`, () => {
+    const drawing = { strokes: Array.from({ length: 200 }, () => ({ color: "#aabbcc" as const, width: 3, points: Array<number>(20).fill(1000) })) };
+    const gallery = { parts: Array.from({ length: 16 }, () => ({ kind: "drawing" as const, drawing })) };
+    expect(startWith({ screen: () => gallery }).status).toBe("running");
+    const huge = { parts: Array.from({ length: 100 }, () => ({ kind: "drawing" as const, drawing })) };
+    expect(problem(startWith({ screen: () => huge }))).toMatch(/^screen returned a View of \d+ KB as JSON; the most is 1024 KB/);
   });
 
   test("a View the site can't show", () => {

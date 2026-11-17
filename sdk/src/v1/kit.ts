@@ -20,13 +20,15 @@ export type LookColor = "background" | "surface" | "text" | "accent";
 export type Color = Hex | LookColor;
 
 /**
- * How a Game looks, declared once in `about`. Everything is optional; the site fills the gaps from
- * its own default look, and always picks black or white for the text on buttons.
+ * How a Game looks, declared once in `about`. Everything is optional. The site fills the gaps from
+ * one of its two default looks, light or dark, whichever suits the Game's `background` (light if it
+ * sets none), and always picks black or white for the text on buttons.
  *
  * A look must be readable once its gaps are filled, measured as the WCAG contrast ratio: `text` on
  * `background` and `text` on `surface` at least 4.5 to 1, and `accent` on `background` at least
  * 3 to 1. A look that isn't is refused when the Game is checked, with the colours and the ratios.
- * So a Game that sets a dark `background` must also set a light `text` and a `surface` it reads on.
+ * Setting only a `background` always gives readable text. On a strong mid-bright background (a red
+ * like #e63946, a blue like #3a86ff, greys from #767676 to #8f8f8f) set the `accent` too.
  */
 export interface Look {
   readonly colors?: {
@@ -79,7 +81,10 @@ export interface PlayerListPart {
   }[];
 }
 
-/** One line of a drawing: flat `[x0, y0, x1, y1, ...]` points in a 1000 by 1000 square. */
+/**
+ * One line of a drawing: flat `[x0, y0, x1, y1, ...]` points in a 1000 by 1000 square, as whole
+ * numbers. A Drawing holds at most 200 strokes and 2,000 points in all.
+ */
 export interface Stroke {
   readonly color: Hex;
   readonly width: number;

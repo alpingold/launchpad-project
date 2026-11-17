@@ -43,7 +43,7 @@ export const bestWord = defineGame<State, Action>({
   about: {
     title: "Best Word",
     players: { min: 3, max: 8 },
-    look: { colors: { background: "#14213d", surface: "#22335c", text: "#f5f5f5", accent: "#fca311" }, font: "poster", corners: "round" },
+    look: { colors: { background: "#14213d", accent: "#fca311" }, font: "poster", corners: "round" },
   },
 
   start: () => ({ state: { phase: { kind: "writing" }, words: {}, votes: {} }, timer: WRITING_MS }),

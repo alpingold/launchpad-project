@@ -20,8 +20,25 @@ import { checkControllerView, checkScreenView, isRecord } from "./validate.js";
 export const MAX_PLAYERS = 16;
 /** The longest the timer may be set for: 24 hours, in milliseconds. */
 export const MAX_TIMER_MS = 24 * 60 * 60 * 1000;
-/** The largest a Game's state may be, measured as UTF-8 bytes of its JSON. It is saved after every event. */
-export const MAX_STATE_BYTES = 256 * 1024;
+/**
+ * The largest a Game's state may be, measured as UTF-8 bytes of its JSON. It is saved in the
+ * Host's browser after every event, never sent over the network. 1 MB holds a round of 16 of the
+ * largest Drawings (about 32 KB each) with room to spare.
+ */
+export const MAX_STATE_BYTES = 1024 * 1024;
+/**
+ * The largest one Controller View may be, as UTF-8 bytes of its JSON. Each is sent through the
+ * server to one phone, and the server takes no message over 256 KB (`MAX_MESSAGE_BYTES` in
+ * protocol), so a View must fit in one message with room for its envelope. 128 KB holds three of
+ * the largest Drawings, or seven or so ordinary ones.
+ */
+export const MAX_VIEW_BYTES = 128 * 1024;
+/**
+ * The largest the Screen's View may be. It is drawn in the Host's browser and never sent anywhere,
+ * so it is capped like the state it is drawn from, not like a message: a Screen showing all 16
+ * Players' drawings at once can need 500 KB.
+ */
+export const MAX_SCREEN_VIEW_BYTES = MAX_STATE_BYTES;
 /** The version of the snapshot's own shape, so an old saved Match can be told apart later. */
 export const SNAPSHOT_VERSION = 1;
 
@@ -354,6 +371,8 @@ class EngineMatch implements Match {
     }
     const screenCheck = checkScreenView(screen);
     if (!screenCheck.ok) return `screen returned a View the site can't show: ${screenCheck.problems.join("; ")}`;
+    const screenCopy = sizedCopy(screenCheck.view, MAX_SCREEN_VIEW_BYTES, "screen returned a View", "screen");
+    if (typeof screenCopy === "string") return screenCopy;
 
     const controllers: Record<string, ControllerView<unknown>> = {};
     for (const player of players) {
@@ -365,9 +384,11 @@ class EngineMatch implements Match {
       }
       const check = checkControllerView(view);
       if (!check.ok) return `controller (for ${player.name}) returned a View the site can't show: ${check.problems.join("; ")}`;
-      controllers[player.id] = detached(check.view);
+      const copy = sizedCopy(check.view, MAX_VIEW_BYTES, `controller (for ${player.name}) returned a View`, `controller (for ${player.name})`);
+      if (typeof copy === "string") return copy;
+      controllers[player.id] = copy;
     }
-    return { screen: detached(screenCheck.view), controllers };
+    return { screen: screenCopy, controllers };
   }
 
   #break(problem: string): Stop {
@@ -426,7 +447,8 @@ function checkPlayers(value: unknown): Player[] | string {
 }
 
 /**
- * A frozen copy of `value` made through JSON, if JSON keeps it whole and it fits within
+ * A frozen copy of `value` made through JSON, if JSON keeps it whole (an object field set to
+ * `undefined` is simply dropped, as JSON drops it) and it fits within
  * {@link MAX_STATE_BYTES}; otherwise what's wrong with it, starting with `what`. Keeping the copy,
  * not the original, means a live Match and one resumed from a save run on exactly the same data.
  */
@@ -435,7 +457,14 @@ function plainCopy(value: unknown, what: string): { value: unknown } | string {
   try {
     json = JSON.stringify(value);
   } catch (error) {
-    // JSON.stringify throws a TypeError on a cycle and a RangeError when nesting overflows the stack.
+    // JSON.stringify throws a TypeError on a bigint or a cycle, and a RangeError when nesting
+    // overflows the stack. Look for something nameable first (the walk itself overflows on a cycle).
+    try {
+      const problem = jsonProblem(value, "state");
+      if (problem !== null) return `${what} must be plain data that JSON keeps whole, but ${problem}`;
+    } catch {
+      // A cycle or deep nesting: said below.
+    }
     if (error instanceof TypeError) return `${what} refers to itself (an object inside it contains it), which JSON can't save`;
     if (error instanceof RangeError) return `${what} is nested too deeply to save as JSON`;
     return `${what} could not be saved as JSON: ${describeError(error)}`;
@@ -463,7 +492,9 @@ function jsonProblem(value: unknown, path: string): string | null {
     case "number":
       return Number.isFinite(value) ? null : `${path} is ${String(value)}, which JSON turns into null`;
     case "undefined":
-      return `${path} is undefined, which JSON leaves out. Use null, or leave the field out`;
+      // An object's field set to undefined never reaches here (see below). This is the state
+      // itself, or an item in a list, which JSON would turn into null.
+      return `${path} is undefined; use null instead`;
     case "function":
       return `${path} is a function`;
     case "bigint":
@@ -482,15 +513,20 @@ function jsonProblem(value: unknown, path: string): string | null {
   // Every primitive returned above; TypeScript can't follow the switch on typeof, hence the cast.
   if (!isRecord(value)) return `${path} is a ${kindOf(value as object)}, not a plain object`;
   for (const key of Object.keys(value)) {
+    // `{ ...state, winner: undefined }` is ordinary TypeScript. JSON drops the field, and the Engine
+    // keeps only its JSON copy, so a live Match and a resumed one both see it gone: nothing to refuse.
+    if (value[key] === undefined) continue;
     const problem = jsonProblem(value[key], `${path}.${key}`);
     if (problem !== null) return problem;
   }
   return null;
 }
 
-/** "Set", "Map", "Date": what kind of object something is, for a problem message. */
+/** "Set", "Map", "Date", or a class's own name: what kind of object something is, for a problem message. */
 function kindOf(value: object): string {
   try {
+    const name: unknown = (Object.getPrototypeOf(value) as { constructor?: { name?: unknown } } | null)?.constructor?.name;
+    if (typeof name === "string" && name !== "" && name !== "Object") return name;
     return Object.prototype.toString.call(value).slice(8, -1);
   } catch {
     return "special object";
@@ -512,9 +548,20 @@ function utf8Length(text: string): number {
   return bytes;
 }
 
-/** A frozen plain copy of a checked View, so the Game can't change it after it was checked. */
-function detached<T>(view: T): T {
-  return deepFreeze(JSON.parse(JSON.stringify(view)) as T);
+/**
+ * A frozen plain copy of a checked View, so the Game can't change it after it was checked, or why
+ * it is too big: `what` starts the problem, which names the function and the Player.
+ */
+function sizedCopy<T>(view: T, limit: number, what: string, fn: string): T | string {
+  try {
+    const json = JSON.stringify(view);
+    const bytes = utf8Length(json);
+    if (bytes > limit) return `${what} of ${Math.ceil(bytes / 1024)} KB as JSON; the most is ${limit / 1024} KB. Show less at once`;
+    return deepFreeze(JSON.parse(json) as T);
+  } catch (error) {
+    // Only a View that reads differently the second time (a getter) can get here: it passed the check.
+    return `${fn} returned a View that changed while it was being read: ${describeError(error)}. Return plain objects`;
+  }
 }
 
 function deepFreeze<T>(value: T): T {
