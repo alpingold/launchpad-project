@@ -14,6 +14,9 @@ export default defineConfig<{ profile: Profile }>({
   forbidOnly: !!process.env["CI"],
   reporter: [["list"]],
   timeout: 60_000,
+  // A failed test keeps its trace (every step, console message and network request) and a
+  // screenshot, in e2e/test-results/, which CI uploads when a run fails.
+  use: { trace: "retain-on-failure", screenshot: "only-on-failure" },
   // Each browser twice: a fresh profile, and a saved one, as a real visitor's browser is (see fixtures.ts).
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },

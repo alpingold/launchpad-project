@@ -17,6 +17,17 @@ export const GAME_GLOBAL = "BoilerGamesGame";
 /** How long the frame has to answer a message before the Screen gives up on it and the Match is broken. */
 export const FRAME_REPLY_MS = 2_000;
 
+/**
+ * How long the frame may take, before `start` or `resume`, to empty the storage the last Game could
+ * have left (the cache store WebKit gives a sandboxed worker). Its own budget, apart from the Game's
+ * two seconds: it is the browser's work, not the Game's. The frame says `emptied` when it is done.
+ */
+export const EMPTY_STORAGE_MS = 5_000;
+
+/** What the frame says when emptying the storage took too long: a Host reads it in the Lobby. */
+export const STORAGE_TOO_SLOW =
+  "This browser took more than 5 seconds to clear what the last Game left behind, so the Game wasn't started. Reload the page and start it again; if it keeps happening, try another browser.";
+
 /** What the Screen sends the frame. */
 export type ToFrame =
   | { readonly type: "start"; readonly bundle: string; readonly players: readonly Player[]; readonly seed: number }
@@ -31,8 +42,11 @@ export type FrameReply =
   /** Only to `start` or `resume`: the Engine wouldn't begin, or the Game's code didn't load. */
   | { readonly type: "couldNotStart"; readonly why: string };
 
-/** What the frame sends: `ready` once, when its page has loaded, then the replies. */
-export type FromFrame = { readonly type: "ready" } | FrameReply;
+/**
+ * What the frame sends: `ready` once, when its page has loaded; `emptied` before each reply to
+ * `start` or `resume`, once the storage is empty and the Game is loading; then the replies.
+ */
+export type FromFrame = { readonly type: "ready" } | { readonly type: "emptied" } | FrameReply;
 
 /** The longest `why` or `problem` the Screen keeps; longer text is cut, since it is only shown. */
 export const MAX_REASON_LENGTH = 5_000;

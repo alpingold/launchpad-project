@@ -8,10 +8,16 @@ import { createSite, type SiteOptions } from "./site.js";
 import { attachRooms } from "./transport.js";
 
 export interface ServerOptions extends SiteOptions {
+  /** The site's own origin, such as https://boilergames.party. Only its pages may open a socket. */
+  readonly siteOrigin: string;
+  /** How many Rooms may be open at once (DEFAULT_MAX_ROOMS unless set). */
+  readonly maxRooms?: number;
   /** The real clock unless a test passes its own. */
   readonly clock?: Clock;
-  /** Where a socket came from, for the join limit. The socket's own address unless set. */
+  /** Where a socket came from, for the per-address limits. The socket's own address unless set. */
   readonly addressOf?: (request: IncomingMessage) => string;
+  /** How often sockets are pinged (PING_INTERVAL_MS unless a test wants it shorter). */
+  readonly pingIntervalMs?: number;
 }
 
 export interface RunningServer {
@@ -35,6 +41,9 @@ export function createServer(options: ServerOptions): RunningServer {
   const { stop } = attachRooms(http, {
     clock: options.clock ?? realClock,
     addressOf: options.addressOf ?? ((request) => request.socket.remoteAddress ?? "unknown"),
+    siteOrigin: options.siteOrigin,
+    ...(options.maxRooms === undefined ? {} : { maxRooms: options.maxRooms }),
+    ...(options.pingIntervalMs === undefined ? {} : { pingIntervalMs: options.pingIntervalMs }),
   });
   return {
     http,
@@ -48,8 +57,9 @@ export function createServer(options: ServerOptions): RunningServer {
 
 /**
  * The address a request came from when the server runs behind a proxy (Caddy) that appends it to
- * X-Forwarded-For: the last entry, the one the proxy added. Only for that setup: without a proxy,
- * anyone could write the header and dodge the join limit.
+ * X-Forwarded-For: the rightmost entry, the one the proxy added. Never the leftmost: a client can
+ * send the header itself, with whatever it likes at the start. Only for that setup: without a
+ * proxy, anyone could write the header and dodge the per-address limits.
  */
 export function forwardedAddress(request: IncomingMessage): string {
   const header = request.headers["x-forwarded-for"];
@@ -58,5 +68,5 @@ export function forwardedAddress(request: IncomingMessage): string {
 }
 
 export { createFrameServer, frameContentSecurityPolicy, inlineScriptHash, type FrameServerOptions } from "./frame-origin.js";
-export { Rooms, type Clock } from "./rooms.js";
-export { WEBSOCKET_PATH } from "./transport.js";
+export { DEFAULT_MAX_ROOMS, Rooms, type Clock } from "./rooms.js";
+export { MAX_SOCKETS_PER_ADDRESS, WEBSOCKET_PATH } from "./transport.js";

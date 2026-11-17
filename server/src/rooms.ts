@@ -11,6 +11,7 @@
  * and when the Match's timer runs out.
  */
 import { randomBytes as cryptoRandomBytes, timingSafeEqual } from "node:crypto";
+import { MAX_VIEW_BYTES } from "@boilergames/sdk/v1/engine";
 import {
   MAX_SEATS,
   PHONE_MESSAGES_PER_SECOND,
@@ -31,8 +32,31 @@ import {
 export const SEAT_GRACE_MS = 90_000;
 /** How long a Room stays open while its Screen is away (a reload, a laptop asleep). */
 export const SCREEN_GRACE_MS = 5 * 60_000;
-/** How many times one address may try `join` or `rejoin` in a minute. Slows down guessing Room Codes and tokens. */
-export const JOIN_ATTEMPTS_PER_MINUTE = 10;
+/**
+ * How many wrong guesses one address may make in a minute: a `join`, `rejoin` or `resumeRoom`
+ * refused with noSuchRoom or badToken. After that, every such try from the address is refused with
+ * tooFast until the minute slides, a right one included. Only failures count: a Room's 16 phones
+ * share one address on one Wi-Fi, and a campus shares a few, so successes can't be limited this way
+ * (the 16-Seat cap bounds them). The limit is there to stop guessing Room Codes and tokens.
+ */
+export const FAILED_TRIES_PER_MINUTE = 30;
+/** How many Rooms one address may open in a minute. */
+export const ROOMS_OPENED_PER_MINUTE = 20;
+/**
+ * How many Rooms may be open at once, unless the server is told otherwise (MAX_ROOMS). Chosen to fit
+ * about 256 MB. The most one Room can make the server hold:
+ *
+ * - each Seat's latest View, kept as JSON text and refused above MAX_VIEW_BYTES (128 KB), held as a
+ *   string of up to 2 bytes a character: 16 Seats x 256 KB = 4 MB;
+ * - each of its 17 sockets' unsent messages, up to MAX_UNSENT_BYTES (256 KB) before the socket is
+ *   dropped (transport.ts): about 4.25 MB;
+ * - the Room itself (codes, names, the Match's title and Look, the last result): a few KB.
+ *
+ * About 8.3 MB, so 30 Rooms is about 250 MB at the very worst; a real Room holds far less.
+ */
+export const DEFAULT_MAX_ROOMS = 30;
+/** How long a new socket has to send its first message, which says what it is. */
+export const FIRST_MESSAGE_MS = 10_000;
 /**
  * A socket over its messages-per-second limit is sent `tooFast` once, and its extra messages are
  * dropped. One that keeps going until it has sent this many times its limit in the same second is
@@ -68,6 +92,8 @@ export interface RoomsOptions {
   readonly clock: Clock;
   /** Random bytes for Room Codes and tokens. `crypto.randomBytes` unless a test wants to choose. */
   readonly randomBytes?: (size: number) => Buffer;
+  /** How many Rooms may be open at once. DEFAULT_MAX_ROOMS unless set. */
+  readonly maxRooms?: number;
 }
 
 /** A message as the transport hands it over: checked against its schema, or the reason it failed. */
@@ -91,6 +117,8 @@ interface Connection {
   second: number;
   sent: number;
   warned: boolean;
+  /** Cancels the wait for its first message. */
+  cancelFirst: (() => void) | undefined;
 }
 
 interface SeatState {
@@ -112,8 +140,11 @@ interface RoomState {
   nextSeat: number;
   match: MatchInfo | null;
   lastMatch: MatchResult | null;
-  /** The latest View of each Seat during a Match, by Seat id. */
-  views: Map<string, unknown>;
+  /**
+   * The latest View of each Seat during a Match, by Seat id, as JSON text: the server never reads a
+   * View, and text is the smallest way to hold one.
+   */
+  views: Map<string, string>;
   /** When the Match's timer runs out, by this server's clock, or null when it isn't running. */
   timerEndsAt: number | null;
 }
@@ -123,18 +154,26 @@ export class Rooms {
   readonly #random: (size: number) => Buffer;
   readonly #connections = new Map<ConnectionId, Connection>();
   readonly #rooms = new Map<string, RoomState>();
-  /** When each address tried to join, within the last minute. */
-  readonly #joinAttempts = new Map<string, number[]>();
+  /** By address, when each wrong guess and each Room opened happened, within the last minute. */
+  readonly #failures = new Map<string, number[]>();
+  readonly #opened = new Map<string, number[]>();
   #lastSweep = 0;
+  readonly #maxRooms: number;
 
   constructor(options: RoomsOptions) {
     this.#options = options;
     this.#random = options.randomBytes ?? cryptoRandomBytes;
+    this.#maxRooms = options.maxRooms ?? DEFAULT_MAX_ROOMS;
   }
 
   /** A socket opened. Its id must be new: the transport never reuses one. */
   connected(id: ConnectionId, address: string): void {
-    this.#connections.set(id, { id, address, side: undefined, room: undefined, seat: undefined, second: -1, sent: 0, warned: false });
+    const connection: Connection = { id, address, side: undefined, room: undefined, seat: undefined, second: -1, sent: 0, warned: false, cancelFirst: undefined };
+    this.#connections.set(id, connection);
+    // A socket that never says what it is holds a connection open for nothing.
+    connection.cancelFirst = this.#options.clock.setTimeout(() => {
+      if (this.#connections.get(id) === connection && connection.side === undefined) this.#forget(connection);
+    }, FIRST_MESSAGE_MS);
   }
 
   /** A socket closed, on its own or because this layer closed it. Unknown or forgotten ids change nothing. */
@@ -142,6 +181,7 @@ export class Rooms {
     const connection = this.#connections.get(id);
     if (connection === undefined) return;
     this.#connections.delete(id);
+    connection.cancelFirst?.();
     this.#lose(connection);
   }
 
@@ -171,6 +211,7 @@ export class Rooms {
   /** Cancels every timer and forgets everything: for shutting the server down. */
   stop(): void {
     for (const room of this.#rooms.values()) this.#cancelTimers(room);
+    for (const connection of this.#connections.values()) connection.cancelFirst?.();
     this.#rooms.clear();
     this.#connections.clear();
   }
@@ -198,43 +239,58 @@ export class Rooms {
     return false;
   }
 
-  /** True if this address may try to join now, and counts the try. */
-  #mayTryToJoin(address: string): boolean {
+  /** How many times `address` appears in `log` within the last minute (forgetting older entries). */
+  #recent(log: Map<string, number[]>, address: string): number {
     const now = this.#options.clock.now();
-    // Now and then, forget addresses whose tries are all over a minute old, so the map can't grow forever.
+    // Now and then, forget addresses whose entries are all over a minute old, so the maps can't grow forever.
     if (now - this.#lastSweep >= MINUTE_MS) {
       this.#lastSweep = now;
-      for (const [key, tries] of this.#joinAttempts) if (tries.every((at) => now - at >= MINUTE_MS)) this.#joinAttempts.delete(key);
+      for (const map of [this.#failures, this.#opened]) for (const [key, times] of map) if (times.every((at) => now - at >= MINUTE_MS)) map.delete(key);
     }
-    const recent = (this.#joinAttempts.get(address) ?? []).filter((at) => now - at < MINUTE_MS);
-    if (recent.length >= JOIN_ATTEMPTS_PER_MINUTE) {
-      this.#joinAttempts.set(address, recent);
-      return false;
-    }
-    recent.push(now);
-    this.#joinAttempts.set(address, recent);
-    return true;
+    const times = (log.get(address) ?? []).filter((at) => now - at < MINUTE_MS);
+    if (times.length === 0) log.delete(address);
+    else log.set(address, times);
+    return times.length;
+  }
+
+  #note(log: Map<string, number[]>, address: string): void {
+    log.set(address, [...(log.get(address) ?? []), this.#options.clock.now()]);
+  }
+
+  /** Refuses a wrong guess, and counts it against the address. */
+  #wrongGuess(connection: Connection, reason: "noSuchRoom" | "badToken"): void {
+    this.#note(this.#failures, connection.address);
+    this.#refuseAndClose(connection, reason);
   }
 
   // -------------------------------------------------------------------------------------------
   // The first message: what a socket is
 
   #first(connection: Connection, message: ScreenToServer | PhoneToServer): void {
+    connection.cancelFirst?.();
+    connection.cancelFirst = undefined;
+    if (message.type === "resumeRoom" || message.type === "join" || message.type === "rejoin") {
+      // Too many wrong guesses from this address: no more tries until the minute slides.
+      if (this.#recent(this.#failures, connection.address) >= FAILED_TRIES_PER_MINUTE) return this.#refuseAndClose(connection, "tooFast");
+    }
     switch (message.type) {
       case "openRoom":
         return this.#openRoom(connection);
       case "resumeRoom":
         return this.#resumeRoom(connection, message.code, message.hostToken);
       case "join":
+        return this.#join(connection, message.code, message.name);
       case "rejoin":
-        if (!this.#mayTryToJoin(connection.address)) return this.#refuseAndClose(connection, "tooFast");
-        return message.type === "join" ? this.#join(connection, message.code, message.name) : this.#rejoin(connection, message.code, message.seatToken);
+        return this.#rejoin(connection, message.code, message.seatToken);
       default:
         return this.#refuseAndClose(connection, "badMessage");
     }
   }
 
   #openRoom(connection: Connection): void {
+    if (this.#recent(this.#opened, connection.address) >= ROOMS_OPENED_PER_MINUTE) return this.#refuseAndClose(connection, "tooFast");
+    if (this.#rooms.size >= this.#maxRooms) return this.#refuseAndClose(connection, "tooManyRooms");
+    this.#note(this.#opened, connection.address);
     const room: RoomState = {
       code: this.#newCode(),
       hostToken: this.#token(),
@@ -255,13 +311,13 @@ export class Rooms {
 
   #resumeRoom(connection: Connection, code: string, hostToken: string): void {
     const room = this.#rooms.get(code);
-    if (room === undefined) return this.#refuseAndClose(connection, "noSuchRoom");
-    if (!sameToken(room.hostToken, hostToken)) return this.#refuseAndClose(connection, "badToken");
+    if (room === undefined) return this.#wrongGuess(connection, "noSuchRoom");
+    if (!sameToken(room.hostToken, hostToken)) return this.#wrongGuess(connection, "badToken");
     // An older socket for this Screen (another tab, or one the network hasn't noticed is dead) is
     // replaced, not kept: one Room has one Screen.
     const older = room.screen;
     room.screen = connection;
-    if (older !== undefined) this.#forget(older);
+    if (older !== undefined) this.#replace(older);
     room.cancelGrace?.();
     room.cancelGrace = undefined;
     connection.side = "screen";
@@ -272,7 +328,7 @@ export class Rooms {
 
   #join(connection: Connection, code: string, typed: string): void {
     const room = this.#rooms.get(code);
-    if (room === undefined) return this.#refuseAndClose(connection, "noSuchRoom");
+    if (room === undefined) return this.#wrongGuess(connection, "noSuchRoom");
     if (room.seats.length >= MAX_SEATS) return this.#refuseAndClose(connection, "roomFull");
     const seat: SeatState = { id: `s${room.nextSeat++}`, name: uniqueName(typed, room.seats), token: this.#token(), phone: connection, cancelGrace: undefined };
     room.seats.push(seat);
@@ -285,15 +341,15 @@ export class Rooms {
 
   #rejoin(connection: Connection, code: string, seatToken: string): void {
     const room = this.#rooms.get(code);
-    if (room === undefined) return this.#refuseAndClose(connection, "noSuchRoom");
+    if (room === undefined) return this.#wrongGuess(connection, "noSuchRoom");
     // Every Seat is compared, without stopping at a match, so the time taken says nothing about
     // which Seat (if any) the token belongs to.
     let seat: SeatState | undefined;
     for (const candidate of room.seats) if (sameToken(candidate.token, seatToken) && seat === undefined) seat = candidate;
-    if (seat === undefined) return this.#refuseAndClose(connection, "badToken");
+    if (seat === undefined) return this.#wrongGuess(connection, "badToken");
     const older = seat.phone;
     seat.phone = connection;
-    if (older !== undefined) this.#forget(older);
+    if (older !== undefined) this.#replace(older);
     seat.cancelGrace?.();
     seat.cancelGrace = undefined;
     connection.side = "phone";
@@ -320,13 +376,22 @@ export class Rooms {
         if (room.match === null) return;
         const now = this.#options.clock.now();
         room.timerEndsAt = message.timerMs === null ? null : now + message.timerMs;
+        let tooBig = false;
         for (const [seatId, view] of Object.entries(message.views)) {
           // A View for a Seat that has just gone (left, removed, timed out) is for nobody: dropped.
           const seat = room.seats.find((s) => s.id === seatId);
           if (seat === undefined) continue;
-          room.views.set(seat.id, view);
+          // Measured, never read: a View bigger than any Game may draw is refused, so a Room can't
+          // make the server hold more than DEFAULT_MAX_ROOMS was worked out for.
+          const text = JSON.stringify(view) ?? "null";
+          if (Buffer.byteLength(text, "utf8") > MAX_VIEW_BYTES) {
+            tooBig = true;
+            continue;
+          }
+          room.views.set(seat.id, text);
           if (seat.phone !== undefined) this.#send(seat.phone, { type: "view", view, timerMs: this.#timeLeft(room) });
         }
+        if (tooBig) this.#send(connection, { type: "refused", reason: "badMessage" });
         return;
       }
       case "endMatch":
@@ -434,7 +499,7 @@ export class Rooms {
     }
   }
 
-  #refuseAndClose(connection: Connection, reason: "badMessage" | "noSuchRoom" | "roomFull" | "badToken" | "tooFast"): void {
+  #refuseAndClose(connection: Connection, reason: "badMessage" | "noSuchRoom" | "roomFull" | "badToken" | "tooFast" | "tooManyRooms"): void {
     this.#send(connection, { type: "refused", reason });
     this.#drop(connection);
   }
@@ -442,13 +507,21 @@ export class Rooms {
   /** Closes a socket as if it had dropped: its Screen or Seat waits for it to come back. */
   #drop(connection: Connection): void {
     this.#connections.delete(connection.id);
+    connection.cancelFirst?.();
     this.#lose(connection);
     this.#options.close(connection.id);
+  }
+
+  /** Tells a socket its Seat or Room was taken up elsewhere, and closes it. */
+  #replace(connection: Connection): void {
+    this.#send(connection, { type: "closed", reason: "replaced" });
+    this.#forget(connection);
   }
 
   /** Closes a socket that no longer holds anything: replaced, removed, or its Room closed. */
   #forget(connection: Connection): void {
     this.#connections.delete(connection.id);
+    connection.cancelFirst?.();
     this.#options.close(connection.id);
   }
 
@@ -469,7 +542,7 @@ export class Rooms {
   /** During a Match, a phone that comes back gets its latest View at once, without asking the Screen. */
   #sendCachedView(room: RoomState, seat: SeatState): void {
     if (room.match === null || seat.phone === undefined || !room.views.has(seat.id)) return;
-    this.#send(seat.phone, { type: "view", view: room.views.get(seat.id), timerMs: this.#timeLeft(room) });
+    this.#send(seat.phone, { type: "view", view: JSON.parse(room.views.get(seat.id) ?? "null") as unknown, timerMs: this.#timeLeft(room) });
   }
 
   #timeLeft(room: RoomState): number | null {

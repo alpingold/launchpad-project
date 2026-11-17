@@ -42,8 +42,11 @@ The browser tests need the browsers once: `npx playwright install chromium firef
 Linux their system libraries: `sudo npx playwright install-deps`. They build what they need
 themselves, into `e2e/.build/`.
 
-Behind a proxy such as Caddy, start the server with `TRUST_PROXY=1`, so the join limit sees each
-phone's own address (from X-Forwarded-For) rather than the proxy's.
+Settings, as environment variables: `PORT` (3000) and `FRAME_PORT` (the next one up); `SITE_ORIGIN`
+(`http://localhost:3000`), the only origin whose pages may open a WebSocket; `MAX_ROOMS` (30), how
+many Rooms may be open at once. Behind a proxy such as Caddy, set `TRUST_PROXY=1`, so the
+per-address limits see each phone's own address (the one the proxy appended to X-Forwarded-For)
+rather than the proxy's.
 
 The server also serves the Game frame on the next port up (http://localhost:3001/v1/), from
 `client/dist-frame`, which `npm run build` makes. It is built outside `client/dist` on purpose:

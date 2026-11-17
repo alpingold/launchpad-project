@@ -3,7 +3,19 @@
 // but its owner.
 import { MAX_SEATS, PHONE_MESSAGES_PER_SECOND, SCREEN_MESSAGES_PER_SECOND, serverToPhone, serverToScreen, type PhoneToServer, type Room, type ScreenToServer } from "@boilergames/protocol";
 import { describe, expect, test } from "vitest";
-import { CLOSE_AT_TIMES_THE_LIMIT, JOIN_ATTEMPTS_PER_MINUTE, Rooms, SCREEN_GRACE_MS, SEAT_GRACE_MS, type Clock, type Incoming } from "./rooms.js";
+import { MAX_VIEW_BYTES } from "@boilergames/sdk/v1/engine";
+import {
+  CLOSE_AT_TIMES_THE_LIMIT,
+  DEFAULT_MAX_ROOMS,
+  FAILED_TRIES_PER_MINUTE,
+  FIRST_MESSAGE_MS,
+  ROOMS_OPENED_PER_MINUTE,
+  Rooms,
+  SCREEN_GRACE_MS,
+  SEAT_GRACE_MS,
+  type Clock,
+  type Incoming,
+} from "./rooms.js";
 
 class FakeClock implements Clock {
   time = 1_000_000;
@@ -34,7 +46,7 @@ class FakeClock implements Clock {
 type Sent = { type: string; [key: string]: unknown };
 
 /** A Rooms layer with a fake clock, recording what it sends to and closes on each connection. */
-function harness(randomBytes?: (size: number) => Buffer) {
+function harness(randomBytes?: (size: number) => Buffer, maxRooms?: number) {
   const clock = new FakeClock();
   const inbox = new Map<string, Sent[]>();
   const closed = new Set<string>();
@@ -46,6 +58,7 @@ function harness(randomBytes?: (size: number) => Buffer) {
   const rooms = new Rooms({
     clock,
     ...(randomBytes === undefined ? {} : { randomBytes }),
+    ...(maxRooms === undefined ? {} : { maxRooms }),
     send(connection, message) {
       expect(closed.has(connection), `sent ${message.type} to a closed connection`).toBe(false);
       const schema = side.get(connection) === "screen" ? serverToScreen : serverToPhone;
@@ -89,8 +102,8 @@ function harness(randomBytes?: (size: number) => Buffer) {
     return found["room"] as Room;
   };
 
-  const openRoom = () => {
-    const screen = connect("screen");
+  const openRoom = (address?: string) => {
+    const screen = connect("screen", address);
     say(screen, { type: "openRoom", v: 1 });
     const opened = last(screen)!;
     return { screen, code: (opened["room"] as Room).code, hostToken: opened["hostToken"] as string };
@@ -423,30 +436,91 @@ describe("limits", () => {
     expect(h.lastRoom(ada.phone).screenConnected).toBe(false);
   });
 
-  test(`one address may try join or rejoin ${JOIN_ATTEMPTS_PER_MINUTE} times a minute; the next is refused with tooFast and closed`, () => {
+  test("16 phones from one address (one Wi-Fi) all join within a second, and all rejoin at once after a blip", () => {
     const h = harness();
-    const { code } = h.openRoom();
-    for (let i = 0; i < JOIN_ATTEMPTS_PER_MINUTE; i++) {
-      if (i % 2 === 0) expect(h.join(code, `P${i}`, "203.0.113.5").seatId).toBeDefined();
-      else expect(h.messages(h.rejoin(code, "1".repeat(32), "203.0.113.5"))).toEqual([{ type: "refused", reason: "badToken" }]);
-    }
-    const blocked = h.join(code, "Eleventh", "203.0.113.5");
-    expect(h.messages(blocked.phone)).toEqual([{ type: "refused", reason: "tooFast" }]);
-    expect(h.closed.has(blocked.phone)).toBe(true);
-    // Another address isn't affected. A refused try doesn't count: a minute after the first ten,
-    // this address may try again, however often it was refused in between.
-    expect(h.join(code, "Elsewhere", "203.0.113.6").seatId).toBeDefined();
-    h.clock.advance(30_000);
-    expect(h.messages(h.join(code, "Still blocked", "203.0.113.5").phone)).toEqual([{ type: "refused", reason: "tooFast" }]);
-    h.clock.advance(30_000);
-    expect(h.join(code, "Later", "203.0.113.5").seatId).toBeDefined();
+    const { screen, code } = h.openRoom();
+    const phones = Array.from({ length: 16 }, (_, i) => h.join(code, `P${i}`, "192.168.1.1"));
+    expect(phones.every((p) => p.seatId !== undefined)).toBe(true);
+    for (const p of phones) h.rooms.disconnected(p.phone);
+    const back = phones.map((p) => h.rejoin(code, p.seatToken, "192.168.1.1"));
+    expect(back.every((b) => h.messages(b)[0]?.type === "seated")).toBe(true);
+    expect(h.lastRoom(screen).seats.every((s) => s.connected)).toBe(true);
   });
 
-  test("so 16 phones on one Wi-Fi (one address) can't all join in the same minute: the 11th is refused", () => {
+  test(`${FAILED_TRIES_PER_MINUTE} wrong guesses a minute per address; then every try is refused with tooFast, a right one too, until the minute slides`, () => {
     const h = harness();
     const { code } = h.openRoom();
-    const results = Array.from({ length: 16 }, (_, i) => h.join(code, `P${i}`, "192.168.1.1"));
-    expect(results.filter((r) => r.seatId !== undefined)).toHaveLength(JOIN_ATTEMPTS_PER_MINUTE);
+    const ada = h.join(code, "Ada", "10.9.9.9");
+    const guesser = "203.0.113.5";
+    // Wrong codes, wrong Seat tokens and wrong host tokens all count.
+    for (let i = 0; i < FAILED_TRIES_PER_MINUTE; i++) {
+      if (i % 3 === 0) expect(h.messages(h.join("ZZZZ", "G", guesser).phone)).toEqual([{ type: "refused", reason: "noSuchRoom" }]);
+      else if (i % 3 === 1) expect(h.messages(h.rejoin(code, "1".repeat(32), guesser))).toEqual([{ type: "refused", reason: "badToken" }]);
+      else {
+        const screen = h.connect("screen", guesser);
+        h.say(screen, { type: "resumeRoom", v: 1, code, hostToken: "2".repeat(32) });
+        expect(h.messages(screen)).toEqual([{ type: "refused", reason: "badToken" }]);
+      }
+      h.clock.advance(1_000);
+    }
+    const thirtyFirst = h.join("ZZZZ", "G", guesser).phone;
+    expect(h.messages(thirtyFirst)).toEqual([{ type: "refused", reason: "tooFast" }]);
+    expect(h.closed.has(thirtyFirst)).toBe(true);
+    // A right code from the same address is refused too, until the first guess is a minute old.
+    expect(h.messages(h.join(code, "Real", guesser).phone)).toEqual([{ type: "refused", reason: "tooFast" }]);
+    expect(h.messages(h.rejoin(code, ada.seatToken, guesser))).toEqual([{ type: "refused", reason: "tooFast" }]);
+    h.clock.advance(60_000 - FAILED_TRIES_PER_MINUTE * 1_000);
+    expect(h.join(code, "Real", guesser).seatId).toBeDefined();
+    // Another address was never affected.
+    expect(h.join(code, "Elsewhere", "203.0.113.6").seatId).toBeDefined();
+  });
+
+  test(`one address may open ${ROOMS_OPENED_PER_MINUTE} Rooms a minute; the next is refused with tooFast and closed`, () => {
+    const h = harness();
+    for (let i = 0; i < ROOMS_OPENED_PER_MINUTE; i++) expect(h.openRoom("198.51.100.1").code).toMatch(/^[A-Z]{4}$/);
+    const screen = h.connect("screen", "198.51.100.1");
+    h.say(screen, { type: "openRoom", v: 1 });
+    expect(h.messages(screen)).toEqual([{ type: "refused", reason: "tooFast" }]);
+    expect(h.closed.has(screen)).toBe(true);
+    h.clock.advance(60_000);
+    expect(h.openRoom("198.51.100.1").code).toMatch(/^[A-Z]{4}$/);
+  });
+
+  test(`at most ${DEFAULT_MAX_ROOMS} Rooms open at once unless set: the next openRoom is refused with tooManyRooms and closed`, () => {
+    const h = harness(undefined, 3);
+    const rooms = [h.openRoom("10.0.0.1"), h.openRoom("10.0.0.2"), h.openRoom("10.0.0.3")];
+    const screen = h.connect("screen", "10.0.0.4");
+    h.say(screen, { type: "openRoom", v: 1 });
+    expect(h.messages(screen)).toEqual([{ type: "refused", reason: "tooManyRooms" }]);
+    expect(h.closed.has(screen)).toBe(true);
+    h.say(rooms[0]!.screen, { type: "closeRoom" });
+    expect(h.openRoom("10.0.0.4").code).toMatch(/^[A-Z]{4}$/);
+  });
+
+  test(`a socket that sends no first message within ${FIRST_MESSAGE_MS / 1000} seconds is closed`, () => {
+    const h = harness();
+    const idle = h.connect("phone");
+    const slow = h.connect("screen");
+    h.clock.advance(FIRST_MESSAGE_MS - 1);
+    h.say(slow, { type: "openRoom", v: 1 });
+    h.clock.advance(1);
+    expect(h.closed.has(idle)).toBe(true);
+    expect(h.messages(idle)).toEqual([]);
+    expect(h.closed.has(slow)).toBe(false);
+  });
+
+  test(`a View over ${MAX_VIEW_BYTES / 1024} KB is refused with badMessage to the Screen, and neither sent nor kept; the others in the message go through`, () => {
+    const h = harness();
+    const { screen, code } = h.openRoom();
+    const ada = h.join(code, "Ada");
+    const ben = h.join(code, "Ben");
+    h.say(screen, { type: "startMatch", match: MATCH });
+    h.say(screen, { type: "views", views: { [ada.seatId]: { pad: "x".repeat(MAX_VIEW_BYTES) }, [ben.seatId]: { ok: true } }, timerMs: null });
+    expect(h.last(screen)).toEqual({ type: "refused", reason: "badMessage" });
+    expect(h.messages(ada.phone).some((m) => m.type === "view")).toBe(false);
+    expect(h.last(ben.phone)).toEqual({ type: "view", view: { ok: true }, timerMs: null });
+    h.rooms.disconnected(ada.phone);
+    expect(h.messages(h.rejoin(code, ada.seatToken)).some((m) => m.type === "view")).toBe(false);
   });
 });
 
@@ -456,6 +530,7 @@ describe("races", () => {
     const { screen, code } = h.openRoom();
     const ada = h.join(code, "Ada");
     const fresh = h.rejoin(code, ada.seatToken);
+    expect(h.last(ada.phone)).toEqual({ type: "closed", reason: "replaced" });
     expect(h.closed.has(ada.phone)).toBe(true);
     expect(h.messages(fresh)[0]).toMatchObject({ type: "seated", seatId: ada.seatId });
     h.rooms.disconnected(ada.phone);
@@ -515,6 +590,7 @@ describe("races", () => {
     const ada = h.join(code, "Ada");
     const newer = h.connect("screen");
     h.say(newer, { type: "resumeRoom", v: 1, code, hostToken });
+    expect(h.last(screen)).toEqual({ type: "closed", reason: "replaced" });
     expect(h.closed.has(screen)).toBe(true);
     h.rooms.disconnected(screen);
     expect(h.lastRoom(ada.phone).screenConnected).toBe(true);

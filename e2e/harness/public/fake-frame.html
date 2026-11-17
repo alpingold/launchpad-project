@@ -1,0 +1,25 @@
+<!doctype html>
+<!-- A stand-in for the Game frame, to test the Screen's time limits around starting a Game. The test
+     moves the Screen's clock on (3 s, 5 s...); this page answers a moment later in real time, so the
+     Screen has already waited that long by its own clock. It does what ?mode= says on `start`:
+     slow      empties its storage, then answers at once
+     tooSlow   says that emptying took too long, as the real frame does
+     never     never answers
+     quiet     empties at once, then the Game never answers -->
+<meta charset="utf-8" />
+<script>
+  const mode = new URLSearchParams(location.search).get("mode");
+  const screen = window.parent;
+  window.addEventListener("message", (event) => {
+    if (event.source !== screen || event.data?.type !== "start") return;
+    if (mode === "slow") {
+      setTimeout(() => {
+        screen.postMessage({ type: "emptied" }, "*");
+        screen.postMessage({ type: "couldNotStart", why: "answered after a slow emptying" }, "*");
+      }, 50);
+    }
+    if (mode === "tooSlow") setTimeout(() => screen.postMessage({ type: "couldNotStart", why: "too slow (the frame's own words)" }, "*"), 50);
+    if (mode === "quiet") screen.postMessage({ type: "emptied" }, "*");
+  });
+  screen.postMessage({ type: "ready" }, "*");
+</script>

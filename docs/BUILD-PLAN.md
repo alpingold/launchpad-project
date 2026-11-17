@@ -403,27 +403,33 @@ The server keeps Rooms and Seats and passes messages. It never reads a View or a
 
 - As built:
   - `server/src/rooms.ts` holds every rule; `transport.ts` the `ws` side (path `/ws`); `site.ts` the
-    Express side; `index.ts` joins them in `createServer`. The numbers are named in `rooms.ts`:
-    `SEAT_GRACE_MS` (90 s), `SCREEN_GRACE_MS` (5 min), `JOIN_ATTEMPTS_PER_MINUTE` (10),
-    `CLOSE_AT_TIMES_THE_LIMIT` (2), `TOKEN_BYTES` (16), `CODE_LENGTH` (4).
-  - "Closed if it continues": a socket over its limit gets `tooFast` once and its extra messages are
-    dropped; at twice its limit within the same second it is closed. A closed phone or Screen is
-    treated like one that dropped: its Seat or Room waits for it. Messages that fail to parse count.
-  - The join limit counts every `join` and `rejoin` per address. Phones on one Wi-Fi share one
-    address, so at most 10 of them can join in the same minute (a test shows it). Behind a proxy,
-    `TRUST_PROXY=1` takes the address from the last X-Forwarded-For entry; without it every phone
-    would be the proxy's address.
+    Express side; `index.ts` joins them in `createServer`. Every number is a named constant.
+  - Limits (owner's decisions of 2026-11-17, replacing the plan's "10 joins a minute"):
+    - Wrong guesses: a `join`, `rejoin` or `resumeRoom` refused with noSuchRoom or badToken counts
+      against its address. At `FAILED_TRIES_PER_MINUTE` (30) in a minute, every such try from the
+      address gets `tooFast` and is closed, a right one too, until the minute slides. Successes
+      aren't limited per address: a Room's phones share one Wi-Fi, and the 16-Seat cap bounds them.
+    - `ROOMS_OPENED_PER_MINUTE` (20) per address; `DEFAULT_MAX_ROOMS` (30) open at once, set by
+      `MAX_ROOMS`, refused with `tooManyRooms`. The 30 fits about 256 MB: worked out in rooms.ts.
+    - A View is kept as JSON text and refused above the SDK's `MAX_VIEW_BYTES` (128 KB), so a Room
+      can't hold more than that worked out for.
+    - `FIRST_MESSAGE_MS` (10 s) for a socket's first message; a ping every `PING_INTERVAL_MS` (30 s),
+      and a socket silent for a whole round is dropped (its Seat shows `connected: false`);
+      `MAX_SOCKETS_PER_ADDRESS` (200); `MAX_UNSENT_BYTES` (256 KB) waiting unsent on a socket.
+    - The upgrade is refused (403) unless its Origin is the site's own (`SITE_ORIGIN`).
+    - Over its messages-per-second limit, a socket gets `tooFast` once and its extra messages are
+      dropped; at `CLOSE_AT_TIMES_THE_LIMIT` (2) times the limit in one second it is closed, and its
+      Seat or Room waits as for a dropped socket.
+    - `TRUST_PROXY=1` takes the address from the rightmost X-Forwarded-For entry, the one the proxy
+      appended, never the leftmost, which the client writes.
+  - `rejoin` and `resumeRoom` send `closed: replaced` to the socket they take over from (protocol).
   - Names are compared without case ("ada" after "Ada" becomes "ada (2)").
-  - A socket replaced by `rejoin` or `resumeRoom` is closed without a `closed` message: the
-    protocol has no reason for it. `nameNotAllowed` is never sent: a blank or too-long name fails the
-    schema, so it is `badMessage`. `oldPage` is sent for a first message with another `v`.
   - The frame's build moved to `client/dist-frame/`, outside the `client/dist/` the site serves: on
     the site's origin the frame's page would have no CSP and no sandbox.
-  - Not limited: how many Rooms are open, sockets per address, a socket that never sends its first
-    message, and a phone that vanishes without closing (it stays `connected` until the operating
-    system notices; there is no ping).
   - Packages: `ws` 8.22.1 (8.22.2 and 8.23.0 were under two weeks old), `express` 5.3.0; npm
-    `overrides` hold Express's `router` at 2.2.0 and `encodeurl` at 2.0.1 for the same reason.
+    `overrides` hold Express's `router` at 2.2.0 and `encodeurl` at 2.0.1 for the same reason. ws
+    8.23.0 fixes a memory exhaustion by ping flooding; until it is installed, the server runs with
+    `autoPong: false`, which leaves nothing to flood (browsers never ping).
 
 Done when:
 - The `rooms` layer has tests, using a fake `send` and a fake clock, for every rule above, including
@@ -434,6 +440,10 @@ Done when:
   WebSockets and real HTTP.
 
 ## Step 7: the Kit renderer and the pages (`client`)
+
+- From step 6: a page told `closed: replaced` must not reconnect. It says the Seat (or, on the
+  Screen, the Room) is open in another tab or on another device. Reconnecting would take the Seat
+  back, the other page would do the same, and the two would trade it forever.
 
 Bare, working pages. No visual design yet beyond a Game's own Look.
 
@@ -515,6 +525,8 @@ Done when:
   site, for the frame page and a 404. The CSP is the only wall between a Game and the network (ADR 0004): with it removed, a
   Game's requests reached outside servers. So nothing in front of the frame server (Caddy, a CDN, a
   cache) may drop or rewrite it.
+
+- `package.json` has no `overrides` left, and `npm audit --omit=dev` is clean (what the server runs).
 
 Checks with the owner:
 - Real Safari, on an iPhone and on a Mac: a Match plays through the frame, and the hostile and

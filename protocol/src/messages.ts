@@ -107,13 +107,19 @@ const refusal = z.enum([
   "oldPage",
   "noSuchRoom",
   "roomFull",
-  "nameNotAllowed",
   "badToken",
   "tooFast",
+  /** openRoom: the site has as many Rooms open as it can hold. Try again in a few minutes. */
+  "tooManyRooms",
 ]);
 
-/** Why a socket's part in the Room is over. */
-const closure = z.enum(["hostClosed", "screenGone", "removed", "left"]);
+/**
+ * Why a socket's part in the Room is over. `replaced`: the same Seat (a `rejoin`) or the same Room
+ * (a `resumeRoom`) was taken up on another socket, such as another tab. A page told this must not
+ * reconnect, or two tabs would take the Seat from each other forever: it says the Seat or Room is
+ * open elsewhere.
+ */
+const closure = z.enum(["hostClosed", "screenGone", "removed", "left", "replaced"]);
 
 // ---------------------------------------------------------------------------------------------
 // Screen → server

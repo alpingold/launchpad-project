@@ -214,3 +214,30 @@ test("the frame page comes from the browser's cache while it is unchanged, and a
   expect(await startsAMatch()).toBe("result");
   expect((await frameHits()).slice(before)).toEqual(["GET /v1/ 200"]);
 });
+
+test("emptying the storage has its own time, apart from the Game's two seconds, and the Host is told if it runs out", async ({ page }) => {
+  await page.clock.install();
+  await open(page);
+  const start = (mode: string) => page.evaluate((m) => window.harness.createFake(m).start("unused", [{ id: "a", name: "A" }], 1), mode);
+
+  // Emptying takes 3 s: past the Game's two seconds, but the frame's answer is still taken.
+  let pending = start("slow");
+  await page.clock.runFor(3_100);
+  expect(await pending).toEqual({ kind: "couldNotStart", why: "answered after a slow emptying" });
+
+  // The frame says emptying took too long: the Host gets the frame's words.
+  pending = start("tooSlow");
+  await page.clock.runFor(5_100);
+  expect(await pending).toEqual({ kind: "couldNotStart", why: "too slow (the frame's own words)" });
+
+  // Emptied, then the Game says nothing: the usual two seconds.
+  pending = start("quiet");
+  await page.clock.runFor(2_100);
+  expect(await pending).toEqual({ kind: "failed", problem: "the Game stopped responding" });
+
+  // The frame says nothing at all: after its 5 s and the Game's 2 s.
+  pending = start("never");
+  await page.clock.runFor(6_900);
+  await page.clock.runFor(200);
+  expect(await pending).toEqual({ kind: "failed", problem: "the Game frame stopped responding while getting ready" });
+});

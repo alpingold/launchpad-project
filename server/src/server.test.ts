@@ -8,12 +8,16 @@ import { join } from "node:path";
 import { MAX_MESSAGE_BYTES } from "@boilergames/protocol";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { WebSocket } from "ws";
-import { createServer, WEBSOCKET_PATH, type RunningServer } from "./index.js";
+import { createServer, forwardedAddress, MAX_SOCKETS_PER_ADDRESS, WEBSOCKET_PATH, type RunningServer } from "./index.js";
 
 let server: RunningServer;
 let base: string;
 let root: string;
 const GAME = { id: "demo", title: "Demo", players: { min: 1, max: 4 } };
+/** The site's own origin, which a socket must come from. */
+const SITE = "https://boilergames.test";
+/** Pings every 150 ms here, so a test can watch a silent socket being dropped. */
+const PING_MS = 150;
 
 beforeAll(async () => {
   root = await mkdtemp(join(tmpdir(), "site-"));
@@ -22,7 +26,7 @@ beforeAll(async () => {
   await writeFile(join(root, "client/index.html"), "<!doctype html><title>BoilerGames</title>");
   await writeFile(join(root, "games/games.json"), JSON.stringify([GAME]));
   await writeFile(join(root, "games/demo.js"), "var BoilerGamesGame = {};");
-  server = createServer({ clientDist: join(root, "client"), gamesDist: join(root, "games") });
+  server = createServer({ clientDist: join(root, "client"), gamesDist: join(root, "games"), siteOrigin: SITE, pingIntervalMs: PING_MS });
   await new Promise<void>((resolve) => server.http.listen(0, "127.0.0.1", resolve));
   base = `127.0.0.1:${(server.http.address() as AddressInfo).port}`;
 });
@@ -44,8 +48,8 @@ class Client {
     this.closed = new Promise((resolve) => ws.on("close", (code) => resolve(code)));
   }
 
-  static async open(): Promise<Client> {
-    const ws = new WebSocket(`ws://${base}${WEBSOCKET_PATH}`);
+  static async open(options: { origin?: string; headers?: Record<string, string>; autoPong?: boolean; at?: string } = {}): Promise<Client> {
+    const ws = new WebSocket(`ws://${options.at ?? base}${WEBSOCKET_PATH}`, { origin: options.origin ?? SITE, headers: options.headers ?? {}, autoPong: options.autoPong ?? true });
     ws.on("error", () => undefined);
     await new Promise((resolve, reject) => {
       ws.once("open", resolve);
@@ -161,11 +165,66 @@ describe("what the transport does with messages that aren't messages", () => {
   });
 
   test("a WebSocket on any other path is turned away", async () => {
-    const ws = new WebSocket(`ws://${base}/elsewhere`);
+    const ws = new WebSocket(`ws://${base}/elsewhere`, { origin: SITE });
     const failed = await new Promise<string>((resolve) => {
       ws.on("error", (error) => resolve(error.message));
       ws.on("open", () => resolve("opened"));
     });
     expect(failed).toContain("404");
   });
+});
+
+/** Tries to open a socket and says how it was refused: the HTTP status, or "opened". */
+function upgradeStatus(url: string, options: { origin?: string; headers?: Record<string, string> }): Promise<string> {
+  return new Promise((resolve) => {
+    const ws = new WebSocket(url, options);
+    ws.on("unexpected-response", (_request, response) => resolve(String(response.statusCode)));
+    ws.on("error", (error) => resolve(`error: ${error.message}`));
+    ws.on("open", () => {
+      resolve("opened");
+      ws.close();
+    });
+  });
+}
+
+describe("who may open a socket", () => {
+  test("only a page of the site's own origin: any other Origin, or none, is refused with 403 before a message is read", async () => {
+    expect(await upgradeStatus(`ws://${base}${WEBSOCKET_PATH}`, { origin: "https://evil.example" })).toBe("403");
+    expect(await upgradeStatus(`ws://${base}${WEBSOCKET_PATH}`, {})).toBe("403");
+    expect(await upgradeStatus(`ws://${base}${WEBSOCKET_PATH}`, { origin: SITE })).toBe("opened");
+  });
+
+  test(`at most ${MAX_SOCKETS_PER_ADDRESS} sockets per address, which behind a proxy is the rightmost X-Forwarded-For entry`, async () => {
+    // A second server, as main.ts runs it with TRUST_PROXY=1.
+    const proxied = createServer({ clientDist: join(root, "client"), gamesDist: join(root, "games"), siteOrigin: SITE, addressOf: forwardedAddress });
+    await new Promise<void>((resolve) => proxied.http.listen(0, "127.0.0.1", resolve));
+    const at = `127.0.0.1:${(proxied.http.address() as AddressInfo).port}`;
+    try {
+      // Each socket writes a different address at the start of the header, as a client can; the
+      // proxy's own entry, on the right, is the same: they all count as one address.
+      const open = await Promise.all(
+        Array.from({ length: MAX_SOCKETS_PER_ADDRESS }, (_, i) => Client.open({ at, headers: { "x-forwarded-for": `10.0.${i >> 8}.${i & 255}, 203.0.113.7` } })),
+      );
+      expect(open).toHaveLength(MAX_SOCKETS_PER_ADDRESS);
+      expect(await upgradeStatus(`ws://${at}${WEBSOCKET_PATH}`, { origin: SITE, headers: { "x-forwarded-for": "1.2.3.4, 203.0.113.7" } })).toBe("429");
+      // Another address still gets in.
+      expect(await upgradeStatus(`ws://${at}${WEBSOCKET_PATH}`, { origin: SITE, headers: { "x-forwarded-for": "203.0.113.8" } })).toBe("opened");
+    } finally {
+      await proxied.close();
+    }
+  });
+});
+
+test("a phone that stops answering pings is dropped: its Seat shows connected: false and waits for it", async () => {
+  const screen = await Client.open();
+  screen.send({ type: "openRoom", v: 1 });
+  const code = ((await screen.next("roomOpened"))["room"] as { code: string }).code;
+  const phone = await Client.open({ autoPong: false });
+  phone.send({ type: "join", v: 1, code, name: "Ada" });
+  await phone.next("seated");
+  const before = screen.messages.length;
+  // Silent through one ping round, dropped on the next.
+  expect(await phone.closed).toBe(1006);
+  const room = (await screen.next("room", before))["room"] as { seats: { name: string; connected: boolean }[] };
+  expect(room.seats).toEqual([expect.objectContaining({ name: "Ada", connected: false })]);
 });

@@ -6,7 +6,7 @@
  * `readFrameReply`, and a frame that answers late, or with something that isn't a valid reply, is
  * the Game failing. The Match is then broken and the iframe removed, which kills its worker.
  */
-import { FRAME_REPLY_MS, readFrameReply, type FrameReply, type MatchSnapshot, type Outcome, type ToFrame, type Views } from "@boilergames/sdk/v1/engine";
+import { EMPTY_STORAGE_MS, FRAME_REPLY_MS, readFrameReply, type FrameReply, type MatchSnapshot, type Outcome, type ToFrame, type Views } from "@boilergames/sdk/v1/engine";
 import type { Player } from "@boilergames/sdk/v1";
 
 /** How long the frame's page has to load before the Screen gives up. Longer than a reply: it comes over the network. */
@@ -42,6 +42,8 @@ export class GameFrame {
   #deadline: number | null = null;
   /** Ended, broken, failed or couldn't start: nothing more is sent. */
   #over = false;
+  /** Whether the frame has said `emptied` for the start or resume being waited on. */
+  #emptied = false;
 
   constructor(options: GameFrameOptions) {
     this.#options = options;
@@ -81,7 +83,9 @@ export class GameFrame {
     const sent = this.#send({ type: "resume", bundle, snapshot });
     void sent.then((result) => {
       if (result.kind === "result" && result.outcome.status === "running" && result.snapshot.timerRunning && timerDeadline !== null) {
-        this.#setTimer(Math.max(0, timerDeadline - Date.now()));
+        // The saved deadline is kept exactly: turned into "ms left" and back, it would drift by
+        // a millisecond whenever the clock ticked in between.
+        this.#setDeadline(timerDeadline);
       }
     });
     return sent;
@@ -119,7 +123,13 @@ export class GameFrame {
     const item = this.#queue.shift();
     if (item === undefined) return;
     this.#waiting = item;
-    this.#replyTimeout = setTimeout(() => this.#fail("the Game stopped responding"), FRAME_REPLY_MS);
+    this.#emptied = false;
+    // Before a start or resume, the frame first empties its storage, on its own budget; the frame
+    // ends that itself after EMPTY_STORAGE_MS, so the Screen waits a little longer than that.
+    const starting = item.message.type === "start" || item.message.type === "resume";
+    this.#replyTimeout = starting
+      ? setTimeout(() => this.#fail("the Game frame stopped responding while getting ready"), EMPTY_STORAGE_MS + FRAME_REPLY_MS)
+      : setTimeout(() => this.#fail("the Game stopped responding"), FRAME_REPLY_MS);
     this.#iframe.contentWindow?.postMessage(item.message, "*");
   }
 
@@ -137,6 +147,16 @@ export class GameFrame {
     }
     const waiting = this.#waiting;
     if (waiting === undefined) return;
+    // The storage is empty and the Game is loading: from now on, the Game's own two seconds.
+    if (typeof data === "object" && data !== null && (data as { type?: unknown }).type === "emptied") {
+      if ((waiting.message.type !== "start" && waiting.message.type !== "resume") || this.#emptied) {
+        return this.#fail("the Game frame sent emptied when it shouldn't have", waiting.done);
+      }
+      this.#emptied = true;
+      clearTimeout(this.#replyTimeout);
+      this.#replyTimeout = setTimeout(() => this.#fail("the Game stopped responding"), FRAME_REPLY_MS);
+      return;
+    }
     clearTimeout(this.#replyTimeout);
     this.#waiting = undefined;
 
@@ -166,13 +186,18 @@ export class GameFrame {
   }
 
   #setTimer(ms: number): void {
+    this.#setDeadline(Date.now() + ms);
+  }
+
+  /** Runs the timer until `deadline` (`Date.now()` time), at once if it has passed. */
+  #setDeadline(deadline: number): void {
     this.#clearTimer();
-    this.#deadline = Date.now() + ms;
+    this.#deadline = deadline;
     this.#timer = setTimeout(() => {
       this.#timer = undefined;
       this.#deadline = null;
       void this.#send({ type: "timerFired" });
-    }, ms);
+    }, Math.max(0, deadline - Date.now()));
   }
 
   #clearTimer(): void {

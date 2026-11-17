@@ -16,6 +16,8 @@ export interface Harness {
    * Games run side by side on the page, as two Rooms' Screens could in two tabs.
    */
   create(alongside?: boolean): GameFrame;
+  /** A GameFrame on the stand-in frame page (public/fake-frame.html), doing what `mode` says. */
+  createFake(mode: string): GameFrame;
   /** Removes every frame. */
   destroyAll(): void;
   /** How many iframes the page holds now. */
@@ -37,6 +39,12 @@ const harness: Harness = {
     harness.results = [];
     const results = harness.results;
     harness.frame = new GameFrame({ frameUrl, container: document.body, onResult: (result) => results.push(result) });
+    frames.push(harness.frame);
+    return harness.frame;
+  },
+  createFake(mode) {
+    harness.destroyAll();
+    harness.frame = new GameFrame({ frameUrl: `/fake-frame.html?mode=${mode}`, container: document.body, onResult: () => undefined });
     frames.push(harness.frame);
     return harness.frame;
   },

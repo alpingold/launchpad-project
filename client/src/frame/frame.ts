@@ -13,6 +13,7 @@
  * shared by every Game on the site. So before each Game loads, this file empties that store, and
  * the worker's bootstrap takes `caches` (and `Worker`) out of the Game's reach.
  */
+import { EMPTY_STORAGE_MS, STORAGE_TOO_SLOW } from "@boilergames/sdk/v1/engine";
 import workerSource from "virtual:frame-worker-source";
 
 /** The Screen page that embeds this frame. */
@@ -24,8 +25,6 @@ let waiting: string | undefined;
 /** True from the first `start` or `resume` on: a frame runs one Match. */
 let begun = false;
 
-/** How long emptying the cache store may take. It is part of the start, which has two seconds in all. */
-const EMPTY_CACHES_MS = 1_000;
 
 /**
  * Run in a worker of its own, because WebKit gives the store to workers but not to this page. Where
@@ -57,7 +56,9 @@ window.addEventListener("message", (event) => {
     // Nothing a Game left behind may be there when the next one loads, even if it found a way
     // around the bootstrap's removals.
     void emptyCacheStore().then((emptied) => {
-      if (!emptied) return reply({ type: "couldNotStart", why: "the frame couldn't empty its storage in time" });
+      if (!emptied) return reply({ type: "couldNotStart", why: STORAGE_TOO_SLOW });
+      // The Game's own two seconds start now.
+      screen.postMessage({ type: "emptied" }, "*");
       worker = start(bundle);
       // The worker already holds the bundle as part of its script; it needs the rest.
       worker.postMessage({ ...message, bundle: undefined });
@@ -79,7 +80,7 @@ function emptyCacheStore(): Promise<boolean> {
       URL.revokeObjectURL(url);
       resolve(emptied);
     };
-    const limit = setTimeout(() => done(false), EMPTY_CACHES_MS);
+    const limit = setTimeout(() => done(false), EMPTY_STORAGE_MS);
     cleaner.addEventListener("message", () => done(true));
     cleaner.addEventListener("error", (event) => {
       event.preventDefault();
