@@ -2,3 +2,4 @@
 // Kept apart from `@boilergames/sdk/v1` so a Game can't import the Engine that referees it.
 export * from "./engine.js";
 export * from "./rng.js";
+export * from "./simulate.js";

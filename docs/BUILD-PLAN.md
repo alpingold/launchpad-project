@@ -205,6 +205,11 @@ test harness for Official games now and the heart of the Playtest in milestone 2
   5,000 events; nobody has anything to do and no timer is running (the Match is stuck); some Player
   was never offered an Action in the whole Match.
 - It reports every problem it can find in a run, not only the first.
+- As built: leavers leave at random moments within the first 2 × leavers events, and the simulated
+  clock runs the timer out at random only once they have all gone (it still does whenever nobody
+  else can act), so even a short Match sees them leave. A Match that ends because too few Players
+  are left skips the "never offered" check: those still there may not have had their turn yet.
+  Late joiners are not simulated; `onJoin` is exercised by the Engine tests and, later, Playwright.
 
 Done when:
 - The test Game passes with its fewest Players, its most, and its most with leavers, for several
