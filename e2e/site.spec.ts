@@ -18,6 +18,8 @@ for (const [id, title] of [
     await playToTheEnd(screen, phones);
     await expect(screen.locator(".page-notice")).toHaveText([]);
     await expect(screen.locator(".screen-result")).toContainText(`${title}: It finished.`);
+    // The Official games end with scores only: the top score wins.
+    await expect(screen.locator(".screen-result")).toContainText("Won by");
     for (const phone of phones) await expect(phone.getByText("Waiting for the Host to start a Game.")).toBeVisible();
   });
 }

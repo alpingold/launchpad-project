@@ -131,12 +131,15 @@ const ENDED = { finished: "It finished.", stopped: "The Host stopped it.", broke
 function LastMatch({ result, names }: { result: MatchResult; names: ReadonlyMap<string, string> }) {
   const name = (id: string) => names.get(id) ?? "a Player who left";
   const scores = Object.entries(result.scores ?? {}).sort((a, b) => b[1] - a[1]);
+  // The Game's own winners; left out, the top score wins (the SDK's MatchEnd promises this).
+  const top = scores[0]?.[1];
+  const winners = result.winners ?? scores.filter(([, score]) => score === top).map(([id]) => id);
   return (
     <section className="screen-result">
       <h2>
         {result.title}: {ENDED[result.reason]}
       </h2>
-      {result.winners === undefined || result.winners.length === 0 ? null : <p>Won by {result.winners.map(name).join(" and ")}</p>}
+      {winners.length === 0 ? null : <p>Won by {winners.map(name).join(" and ")}</p>}
       {scores.length === 0 ? null : (
         <ol>
           {scores.map(([id, score]) => (

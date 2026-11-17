@@ -118,7 +118,7 @@ export class PhoneSeat {
       badToken: "Your Seat in that Room is gone. Join again.",
       roomFull: "That Room is full.",
       tooFast: "Too many tries from here. Wait a minute and try again.",
-      badMessage: "That name can't be used. Try another.",
+      badMessage: "The server didn't understand this phone. Reload the page and try again.",
       oldPage: "This page is out of date. Reload it.",
       tooManyRooms: "The site is full right now. Try again in a few minutes.",
       tooManyRoomsHere: "Too many Rooms are open from this network.",

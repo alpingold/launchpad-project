@@ -47,14 +47,16 @@ are outlined, and each begins with a design session with the owner that this pla
 
 ## Where things stand
 
-Branch `rewrite`. Four npm workspace packages, each a folder at the root:
+Branch `rewrite`. Five npm workspace packages, each a folder at the root, and the browser tests:
 
-| Package    | Holds                                                    | State                              |
-| ---------- | -------------------------------------------------------- | ---------------------------------- |
-| `sdk`      | The Game contract, the Kit, and (to build) the Engine    | Types and one test Game            |
-| `protocol` | The room messages and their Zod schemas                  | Complete for milestone 1, tested   |
-| `server`   | The one server process                                   | Placeholder that answers over HTTP |
-| `client`   | The site's pages (React, Vite)                           | Placeholder page                   |
+| Folder     | Holds                                                                 | State (after step 8)      |
+| ---------- | --------------------------------------------------------------------- | ------------------------- |
+| `sdk`      | The Game contract, the Kit, the Engine, the checkers, the simulator   | Built and tested          |
+| `protocol` | The room messages and their Zod schemas                               | Built and tested          |
+| `server`   | The one server process: Rooms, the site's HTTP, the game domain       | Built and tested          |
+| `client`   | The site's pages (React, Vite), the Kit renderer, the Game frame      | Built and tested          |
+| `games`    | The three Official games and their build                              | Built and tested          |
+| `e2e`      | Playwright tests: the walls, the frame, the real site                 | Six projects, all passing |
 
 Packages import each other's TypeScript source through the `@boilergames/source` export condition
 (see `tsconfig.base.json`), so nothing needs building before a type check or a test. Relative

@@ -36,6 +36,7 @@ npm run typecheck  # type-check every package, tests included
 npm test           # run every package's tests (Vitest)
 npm run test:e2e   # the browser tests (Playwright): Chromium, Firefox and WebKit, fresh and saved profiles
 npm run dev        # recompile on every change and restart the server (http://localhost:3000)
+npm run dev -- --lan  # the same, reachable from phones on the same Wi-Fi (see "Playing a Room with real phones")
 ```
 
 `SCREENSHOTS=1 npx playwright test -c e2e/playwright.config.ts screenshots --project=chromium` takes
@@ -62,8 +63,9 @@ the site serves `client/dist`, and must never serve the frame's page from its ow
 the page on every change.
 
 The type check and the tests read the other packages' TypeScript source directly, so they never
-need a build first. CI (`.github/workflows/test.yml`) runs the type check, the build and the tests
-on every push and pull request.
+need a build first. CI (`.github/workflows/test.yml`) runs on every push and pull request: one job
+runs the type check, the build and the tests; another installs the three browsers and runs the
+browser tests, keeping each failed test's trace and screenshot.
 
 ## Playing a Room with real phones
 
