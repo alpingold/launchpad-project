@@ -1,6 +1,7 @@
 // Tries the contract on a small Game, the way a Creator would write one, and checks that the
 // mistakes it is meant to catch really fail the type check (`npm run typecheck` reads this file).
 import { expect, test } from "vitest";
+import { checkControllerView, checkScreenView } from "./check.js";
 import { defineGame, type Context, type ControllerView, type Drawing, type Game, type ScreenView, type Player, type Rng, type Step } from "./index.js";
 
 // Best Word: everyone writes a word, then votes for someone else's. Most votes wins.
@@ -140,6 +141,54 @@ test("a Player leaving never leaves the Match waiting", () => {
   expect(step.state.phase.kind).toBe("voting");
 });
 
+test("every View the Game draws passes the site's checks", () => {
+  const views: unknown[] = [board];
+  let step = bestWord.start(ctx);
+  const look = (s: State): void => {
+    expect(checkScreenView(bestWord.screen(s, players))).toEqual({ ok: true, view: bestWord.screen(s, players) });
+    for (const p of players) views.push(bestWord.controller(s, p, players));
+  };
+  look(step.state);
+  for (const p of players) {
+    step = bestWord.onAction(step.state, p, { type: "write", text: p.name }, ctx);
+    look(step.state);
+  }
+  step = bestWord.onAction(step.state, ada, { type: "vote", for: "b" }, ctx);
+  look(step.state);
+  for (const view of views) expect(checkControllerView(view)).toMatchObject({ ok: true });
+
+  // A View typed with the Game's own Action is checked as it is: no cast needed.
+  const typed: ReturnType<typeof bestWord.controller> = bestWord.controller(step.state, ben, players);
+  const result = checkControllerView(typed);
+  expect(result.ok).toBe(true);
+});
+
+// The Kit's other parts, on a Game that draws and has a board to tap.
+type BoardAction =
+  | { readonly type: "sketch"; readonly drawing: Drawing }
+  | { readonly type: "claim"; readonly cell: number };
+const board: ControllerView<BoardAction> = {
+  parts: [
+    { kind: "drawingPad", action: { type: "sketch" }, colors: ["#000", "#e63946"] },
+    {
+      kind: "picture",
+      width: 300,
+      height: 100,
+      shapes: [0, 1, 2].map((cell) => ({
+        shape: "rect" as const,
+        x: cell * 100,
+        y: 0,
+        width: 100,
+        height: 100,
+        fill: "surface" as const,
+        stroke: "accent" as const,
+        action: { type: "claim" as const, cell },
+      })),
+    },
+    { kind: "row", parts: [{ kind: "button", label: "Left", action: { type: "claim", cell: 0 } }, { kind: "timer" }] },
+  ],
+};
+
 // What the type check must refuse. Each `@ts-expect-error` fails the check if its line compiles.
 export function mistakesTheContractCatches(): void {
   type G = typeof bestWord;
@@ -177,31 +226,6 @@ export function mistakesTheContractCatches(): void {
   // @ts-expect-error neither is a function
   defineGame(withFunction);
 
-  // The Kit's other parts, on a Game that draws and has a board to tap.
-  type BoardAction =
-    | { readonly type: "sketch"; readonly drawing: Drawing }
-    | { readonly type: "claim"; readonly cell: number };
-  const board: ControllerView<BoardAction> = {
-    parts: [
-      { kind: "drawingPad", action: { type: "sketch" }, colors: ["#000", "#e63946"] },
-      {
-        kind: "picture",
-        width: 300,
-        height: 100,
-        shapes: [0, 1, 2].map((cell) => ({
-          shape: "rect" as const,
-          x: cell * 100,
-          y: 0,
-          width: 100,
-          height: 100,
-          fill: "surface" as const,
-          stroke: "accent" as const,
-          action: { type: "claim" as const, cell },
-        })),
-      },
-      { kind: "row", parts: [{ kind: "button", label: "Left", action: { type: "claim", cell: 0 } }, { kind: "timer" }] },
-    ],
-  };
   const badPad: ControllerView<BoardAction> = {
     // @ts-expect-error "claim" has no `drawing` field
     parts: [{ kind: "drawingPad", action: { type: "claim", cell: 1 } }],
@@ -219,6 +243,6 @@ export function mistakesTheContractCatches(): void {
     parts: [{ kind: "picture", width: 10, height: 10, shapes: [{ shape: "circle", x: 5, y: 5, r: 2, fill: "red" }] }],
   };
 
-  void [board, badPad, tappableScreen, nestedRows, badColor];
+  void [badPad, tappableScreen, nestedRows, badColor];
   void [state, misspelled, incomplete, noText, onScreen];
 }

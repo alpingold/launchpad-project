@@ -8,6 +8,11 @@
       "@boilergames/source": "./src/v1/index.ts",
       "types": "./dist/v1/index.d.ts",
       "default": "./dist/v1/index.js"
+    },
+    "./v1/check": {
+      "@boilergames/source": "./src/v1/check.ts",
+      "types": "./dist/v1/check.d.ts",
+      "default": "./dist/v1/check.js"
     }
   },
   "scripts": {
