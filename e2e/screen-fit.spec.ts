@@ -4,7 +4,7 @@ import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures.js";
 import { actOnce, fitReport, joinPhone, LONG_NAMES, openScreen, scribble } from "./site-helpers.js";
 
-/** At each size, the smallest text allowed, in real pixels: the busiest View measured 14.8 and 22.7 when this was written. */
+/** At each size, the smallest text allowed, in real pixels: the busiest View (Scribble Pick's reveal) measured 14.4 to 16 at 720p and 22 to 24.4 at 1080p across the three browsers when this was written. */
 const SIZES = [
   { name: "720p", width: 1280, height: 720, smallestTextPx: 14 },
   { name: "1080p", width: 1920, height: 1080, smallestTextPx: 21 },

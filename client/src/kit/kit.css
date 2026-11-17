@@ -85,7 +85,7 @@
 .kit-players li[data-mark="out"] { opacity: 0.5; }
 .kit-players li[data-mark="done"] .kit-player-mark::before { content: "✓ "; }
 .kit-player-name { font-weight: 700; }
-.kit-player-mark, .kit-player-note { font-size: 0.8em; }
+.kit-player-detail { font-size: 0.8em; }
 
 .kit-drawing { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 0.3em; }
 .kit-drawing svg { width: min(100%, 440px); aspect-ratio: 1; border-radius: var(--kit-radius); }
@@ -153,14 +153,13 @@
 /* On the Screen, centred like everything else, and Parts that would stretch keep their own width. */
 .kit-view[data-kind="screen"] .kit-timer { align-self: center; }
 /* Player tiles in equal columns, as many as fit, centred: two beside a picture, three or more across. */
-.kit-view[data-kind="screen"] .kit-players { display: grid; grid-template-columns: repeat(auto-fill, 12em); justify-content: center; width: 100%; }
+.kit-view[data-kind="screen"] .kit-players { display: grid; grid-template-columns: repeat(auto-fit, 12em); justify-content: center; width: 100%; }
 /* Long lists spread into columns rather than running down: on a TV the View is scaled to fit its
    height, so every line saved makes all the text bigger. */
 .kit-view[data-kind="screen"] .kit-scoreboard { width: 100%; max-width: none; }
 .kit-view[data-kind="screen"] .kit-scoreboard ol { display: grid; grid-template-columns: repeat(auto-fill, minmax(13em, 1fr)); column-gap: 1.5em; }
 .kit-view[data-kind="screen"] .kit-players li { padding: 0.3em 0.7em; min-width: 0; }
-.kit-view[data-kind="screen"] .kit-player-mark,
-.kit-view[data-kind="screen"] .kit-player-note { font-size: 0.9em; }
+.kit-view[data-kind="screen"] .kit-player-detail { font-size: 0.9em; }
 .kit-view[data-kind="screen"] .kit-row { width: 100%; align-items: center; }
 /* Beside other Parts, a picture takes a little under half: what's next to it (often a list of
    Players) gets room for two columns, and a shorter picture lets the whole View be bigger. */
