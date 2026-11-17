@@ -273,7 +273,7 @@ Runs the Engine and one Game in the Host's browser where the Game can reach noth
   - A frame page script can't be a module: module scripts are fetched with CORS, which the frame's
     opaque origin fails. `client/vite.frame.config.ts` builds the frame's script as a classic
     script, with the worker bootstrap and the Engine built into it as a string, and writes it
-    inline into `client/dist/frame/v1/index.html`, the one file the game domain serves.
+    inline into `client/dist-frame/v1/index.html`, the one file the game domain serves.
   - The frame forwards only the worker's first reply to each message and drops anything unasked.
     If the Game's code fails to load (a syntax error, a top-level throw, no Game on the global),
     the reply to `start` or `resume` is `couldNotStart`, not a two-second wait.
@@ -400,6 +400,30 @@ The server keeps Rooms and Seats and passes messages. It never reads a View or a
 - HTTP, with Express: serves the built client; `GET /api/games` returns `games.json`;
   `GET /api/games/:id/bundle.js` returns a bundle. On the second port (or the game domain) it serves
   only the frame's files, with the header from step 4.
+
+- As built:
+  - `server/src/rooms.ts` holds every rule; `transport.ts` the `ws` side (path `/ws`); `site.ts` the
+    Express side; `index.ts` joins them in `createServer`. The numbers are named in `rooms.ts`:
+    `SEAT_GRACE_MS` (90 s), `SCREEN_GRACE_MS` (5 min), `JOIN_ATTEMPTS_PER_MINUTE` (10),
+    `CLOSE_AT_TIMES_THE_LIMIT` (2), `TOKEN_BYTES` (16), `CODE_LENGTH` (4).
+  - "Closed if it continues": a socket over its limit gets `tooFast` once and its extra messages are
+    dropped; at twice its limit within the same second it is closed. A closed phone or Screen is
+    treated like one that dropped: its Seat or Room waits for it. Messages that fail to parse count.
+  - The join limit counts every `join` and `rejoin` per address. Phones on one Wi-Fi share one
+    address, so at most 10 of them can join in the same minute (a test shows it). Behind a proxy,
+    `TRUST_PROXY=1` takes the address from the last X-Forwarded-For entry; without it every phone
+    would be the proxy's address.
+  - Names are compared without case ("ada" after "Ada" becomes "ada (2)").
+  - A socket replaced by `rejoin` or `resumeRoom` is closed without a `closed` message: the
+    protocol has no reason for it. `nameNotAllowed` is never sent: a blank or too-long name fails the
+    schema, so it is `badMessage`. `oldPage` is sent for a first message with another `v`.
+  - The frame's build moved to `client/dist-frame/`, outside the `client/dist/` the site serves: on
+    the site's origin the frame's page would have no CSP and no sandbox.
+  - Not limited: how many Rooms are open, sockets per address, a socket that never sends its first
+    message, and a phone that vanishes without closing (it stays `connected` until the operating
+    system notices; there is no ping).
+  - Packages: `ws` 8.22.1 (8.22.2 and 8.23.0 were under two weeks old), `express` 5.3.0; npm
+    `overrides` hold Express's `router` at 2.2.0 and `encodeurl` at 2.0.1 for the same reason.
 
 Done when:
 - The `rooms` layer has tests, using a fake `send` and a fake clock, for every rule above, including

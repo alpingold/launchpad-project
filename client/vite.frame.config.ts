@@ -1,5 +1,7 @@
 /**
- * Builds the Game frame into dist/frame/v1/index.html: the one file the game domain serves.
+ * Builds the Game frame into dist-frame/v1/index.html: the one file the game domain serves. It goes
+ * outside dist/ on purpose: the site serves dist/, and on the site's origin the frame's page would
+ * have no CSP and no sandbox.
  *
  * The frame's script is built as a classic script (an IIFE) and written into the page, inline. The
  * frame server allows exactly that script by its hash (server/src/frame-origin.ts), so the page's
@@ -69,7 +71,7 @@ export default defineConfig({
   plugins: [workerSource(), framePage()],
   resolve: { conditions },
   build: {
-    outDir: "dist/frame/v1",
+    outDir: "dist-frame/v1",
     emptyOutDir: true,
     minify: true,
     lib: { entry: here("src/frame/frame.ts"), formats: ["iife"], name: "unused", fileName: () => SCRIPT },

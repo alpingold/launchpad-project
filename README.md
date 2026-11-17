@@ -42,8 +42,12 @@ The browser tests need the browsers once: `npx playwright install chromium firef
 Linux their system libraries: `sudo npx playwright install-deps`. They build what they need
 themselves, into `e2e/.build/`.
 
+Behind a proxy such as Caddy, start the server with `TRUST_PROXY=1`, so the join limit sees each
+phone's own address (from X-Forwarded-For) rather than the proxy's.
+
 The server also serves the Game frame on the next port up (http://localhost:3001/v1/), from
-`client/dist/frame`, which `npm run build` makes.
+`client/dist-frame`, which `npm run build` makes. It is built outside `client/dist` on purpose:
+the site serves `client/dist`, and must never serve the frame's page from its own origin.
 
 `npm run dev -w @boilergames/client` serves the client with Vite's own dev server, which reloads
 the page on every change.

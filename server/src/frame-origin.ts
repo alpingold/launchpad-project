@@ -82,7 +82,7 @@ export function inlineScriptHash(html: string): string {
 }
 
 export interface FrameServerOptions {
-  /** The folder holding v1/index.html: client/dist/frame. */
+  /** The folder holding v1/index.html: client/dist-frame. */
   readonly root: string;
   /** The site's origin, the only page allowed to embed the frame. */
   readonly siteOrigin: string;

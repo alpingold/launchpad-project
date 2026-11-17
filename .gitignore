@@ -1,6 +1,7 @@
 node_modules/
 # What tsc and Vite build: never committed, always rebuilt.
 dist/
+dist-frame/
 *.tsbuildinfo
 *.db
 *.db-journal
