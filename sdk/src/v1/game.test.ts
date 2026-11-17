@@ -1,7 +1,7 @@
 // Tries the contract on a small Game, the way a Creator would write one, and checks that the
 // mistakes it is meant to catch really fail the type check (`npm run typecheck` reads this file).
 import { expect, test } from "vitest";
-import { checkControllerView, checkScreenView } from "./check.js";
+import { checkControllerView, checkLook, checkScreenView } from "./check.js";
 import { defineGame, type Context, type ControllerView, type Drawing, type Game, type ScreenView, type Player, type Rng, type Step } from "./index.js";
 
 // Best Word: everyone writes a word, then votes for someone else's. Most votes wins.
@@ -44,7 +44,7 @@ const bestWord = defineGame<State, Action>({
   about: {
     title: "Best Word",
     players: { min: 3, max: 8 },
-    look: { colors: { background: "#14213d", accent: "#fca311" }, font: "poster", corners: "round" },
+    look: { colors: { background: "#14213d", surface: "#22335c", text: "#f5f5f5", accent: "#fca311" }, font: "poster", corners: "round" },
   },
 
   start: () => ({ state: { phase: { kind: "writing" }, words: {}, votes: {} }, timer: WRITING_MS }),
@@ -156,6 +156,7 @@ test("every View the Game draws passes the site's checks", () => {
   step = bestWord.onAction(step.state, ada, { type: "vote", for: "b" }, ctx);
   look(step.state);
   for (const view of views) expect(checkControllerView(view)).toMatchObject({ ok: true });
+  expect(checkLook(bestWord.about.look)).toMatchObject({ ok: true });
 
   // A View typed with the Game's own Action is checked as it is: no cast needed.
   const typed: ReturnType<typeof bestWord.controller> = bestWord.controller(step.state, ben, players);

@@ -9,7 +9,7 @@
  * `view` must already have passed `checkControllerView`. `action` may be anything at all; these
  * functions never throw on it.
  */
-import type { ControllerView } from "./kit.js";
+import type { ControllerPart, ControllerView } from "./kit.js";
 import { checkDrawing, DEFAULT_TEXT_INPUT_LENGTH, isRecord, MAX_ACTION_DEPTH } from "./validate.js";
 
 /** An Action a View offers, as the simulator (and later the Playtest) needs it. */
@@ -33,35 +33,23 @@ export function offers(view: ControllerView<unknown>, action: unknown): boolean 
 /** Every Action the View offers, in the order its Parts are drawn. Disabled buttons are left out. */
 export function availableActions(view: ControllerView<unknown>): AvailableAction[] {
   const found: AvailableAction[] = [];
-  const visit = (part: unknown): void => {
-    // Read every Part as plain data: the checker has already vouched for its shape, and the static
-    // type of a text box's action under `ControllerView<unknown>` is `never` (see kit.ts `Unfilled`).
-    if (!isRecord(part)) return;
-    switch (part["kind"]) {
+  const visit = (part: ControllerPart<unknown>): void => {
+    switch (part.kind) {
       case "row":
-        if (Array.isArray(part["parts"])) part["parts"].forEach(visit);
+        part.parts.forEach(visit);
         break;
       case "button":
-        if (part["disabled"] !== true) found.push({ kind: "exact", action: part["action"] });
+        if (part.disabled !== true) found.push({ kind: "exact", action: part.action });
         break;
       case "picture":
-        if (Array.isArray(part["shapes"])) {
-          for (const shape of part["shapes"]) {
-            if (isRecord(shape) && shape["action"] !== undefined) found.push({ kind: "exact", action: shape["action"] });
-          }
-        }
+        for (const shape of part.shapes) if (shape.action !== undefined) found.push({ kind: "exact", action: shape.action });
         break;
-      case "textInput": {
-        const max = part["maxLength"];
-        const template = part["action"];
-        if (isRecord(template)) found.push({ kind: "text", template, maxLength: typeof max === "number" ? max : DEFAULT_TEXT_INPUT_LENGTH });
+      case "textInput":
+        found.push({ kind: "text", template: part.action, maxLength: part.maxLength ?? DEFAULT_TEXT_INPUT_LENGTH });
         break;
-      }
-      case "drawingPad": {
-        const template = part["action"];
-        if (isRecord(template)) found.push({ kind: "drawing", template });
+      case "drawingPad":
+        found.push({ kind: "drawing", template: part.action });
         break;
-      }
     }
   };
   view.parts.forEach(visit);

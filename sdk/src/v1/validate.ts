@@ -22,6 +22,7 @@ import type {
   Stroke,
   TextPart,
 } from "./kit.js";
+import { contrastRatio, READABLE_PAIRS, withDefaults } from "./look.js";
 
 // ---------------------------------------------------------------------------------------------
 // Limits. Each is named so the docs, the error messages and the tests all use the same number.
@@ -311,12 +312,41 @@ const LOOK_COLOR_FIELDS: Fields<LookColors> = { background: "optional", surface:
 
 function checkLookAt(v: unknown, at: string, p: Problems): void {
   if (!fields(v, at, p, "a look", LOOK_FIELDS)) return;
+  const before = p.count;
   if (has(v, "colors") && fields(v["colors"], `${at}.colors`, p, "a look's colours", LOOK_COLOR_FIELDS)) {
     const colors = v["colors"] as Data;
     for (const key of Object.keys(LOOK_COLOR_FIELDS)) if (has(colors, key)) hex(colors[key], `${at}.colors.${key}`, p);
   }
   if (has(v, "font")) oneOf(v["font"], `${at}.font`, p, FONTS);
   if (has(v, "corners")) oneOf(v["corners"], `${at}.corners`, p, CORNERS);
+  // Readability can only be measured once every colour is a real colour.
+  if (p.count === before) checkReadable(v as Look, at, p);
+}
+
+/**
+ * Refuses a Look whose text or accent can't be read. The gaps are filled from the site's defaults
+ * first: a Look that sets only a dark background would otherwise pass, then be drawn with the
+ * default dark text on it. Each problem names both colours, says which came from the defaults,
+ * and gives the ratio measured and the one needed, so whoever fixes it (a person or the AI) knows
+ * which colour to change and by how much.
+ */
+function checkReadable(look: Look, at: string, p: Problems): void {
+  const full = withDefaults(look).colors;
+  for (const { front, back, min } of READABLE_PAIRS) {
+    const ratio = contrastRatio(full[front], full[back]);
+    if (ratio >= min) continue;
+    const name = (key: keyof typeof full): string =>
+      look.colors?.[key] === undefined ? `${key} ${full[key]} (the site's default: the look sets no ${key} colour)` : `${key} ${full[key]}`;
+    p.add(
+      `${at}.colors`,
+      `${name(front)} on ${name(back)} has a contrast of ${shown(ratio)} to 1; ${front} on ${back} needs at least ${min} to 1. Make one of them lighter or darker`,
+    );
+  }
+}
+
+/** A ratio to two decimals, rounded down so a failing ratio is never shown as the one needed. */
+function shown(ratio: number): string {
+  return (Math.floor(ratio * 100) / 100).toFixed(2);
 }
 
 // ---------------------------------------------------------------------------------------------

@@ -256,12 +256,12 @@ describe("limits", () => {
 
 describe("the Look", () => {
   test("a full Look and an empty one pass", () => {
-    const look: Look = { colors: { background: "#14213d", surface: "#fff", text: "#000000", accent: "#fca311" }, font: "poster", corners: "round" };
+    const look: Look = { colors: { background: "#14213d", surface: "#22335c", text: "#f5f5f5", accent: "#fca311" }, font: "poster", corners: "round" };
     expect(checkLook(look)).toEqual({ ok: true, look });
     expect(checkLook({}).ok).toBe(true);
   });
 
-  test("a broken Look is refused, saying where", () => {
+  test("a broken Look is refused, saying where (readability has its own tests in look.test.ts)", () => {
     expect(checkLook({ colors: { accent: "accent" } })).toEqual({ ok: false, problems: ['look.colors.accent: must be a colour written "#rgb" or "#rrggbb"'] });
     expect(checkLook({ font: "comic" })).toMatchObject({ ok: false, problems: [expect.stringMatching(/^look\.font: must be one of "plain"/)] });
     expect(checkLook({ corners: "pointy" }).ok).toBe(false);

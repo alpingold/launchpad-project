@@ -315,8 +315,9 @@ Done when:
 Bare, working pages. No visual design yet beyond a Game's own Look.
 
 - `client/src/kit/`: one React component per Part, and `<View>` that draws a checked View.
-  - The Look becomes CSS variables on the View's root. The site picks the text colour for buttons
-    from the accent's brightness, so a Game can't make an unreadable button.
+  - The Look, filled in with `withDefaults` from `@boilergames/sdk/v1/check`, becomes CSS variables
+    on the View's root. Button text is black or white, whichever has the higher `contrastRatio`
+    with the accent (always at least 4.58 to 1), so a Game can't make an unreadable button.
   - `picture` is drawn as SVG built with React elements, one fixed element per shape with only the
     fields `kit.ts` lists. Never `dangerouslySetInnerHTML`, and never a prop spread from Game data.
   - `timer` counts down from a deadline the page keeps (milliseconds left, measured from when the

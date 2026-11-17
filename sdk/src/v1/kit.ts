@@ -20,9 +20,13 @@ export type LookColor = "background" | "surface" | "text" | "accent";
 export type Color = Hex | LookColor;
 
 /**
- * How a Game looks, declared once in `about`. Everything is optional; the site fills the gaps and
- * always picks a readable text colour for buttons. A look whose text can't be read on its
- * background is refused when the Game is checked.
+ * How a Game looks, declared once in `about`. Everything is optional; the site fills the gaps from
+ * its own default look, and always picks black or white for the text on buttons.
+ *
+ * A look must be readable once its gaps are filled, measured as the WCAG contrast ratio: `text` on
+ * `background` and `text` on `surface` at least 4.5 to 1, and `accent` on `background` at least
+ * 3 to 1. A look that isn't is refused when the Game is checked, with the colours and the ratios.
+ * So a Game that sets a dark `background` must also set a light `text` and a `surface` it reads on.
  */
 export interface Look {
   readonly colors?: {
@@ -137,8 +141,16 @@ export interface PicturePart<Action> {
 /**
  * For a part where the Player supplies a value: the action it sends, minus the field the Player
  * fills in. Only actions that have that field, with that type of value, qualify.
+ *
+ * The site reads Views without knowing a Game's Action type (`ControllerView<unknown>`). There the
+ * action is any plain object: without this first branch it would be `never`, a type no value has.
+ * A Game's own Action type never reaches that branch, so it is checked exactly as strictly.
  */
-export type Unfilled<Action, Field extends string, Value> = Action extends Record<Field, Value> ? Omit<Action, Field> : never;
+export type Unfilled<Action, Field extends string, Value> = unknown extends Action
+  ? Readonly<Record<string, unknown>>
+  : Action extends Record<Field, Value>
+    ? Omit<Action, Field>
+    : never;
 
 /** A button. Tapping it sends `action`, exactly as written here. */
 export interface ButtonPart<Action> {

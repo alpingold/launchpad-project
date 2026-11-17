@@ -147,6 +147,13 @@ from `main` until the owner decides the new one replaces it.
   from a seeded generator; every function is handed the Players currently in the Match.
 - A Game with `onJoin` takes late joiners; one without doesn't. A Match may end with scores,
   winners, both or neither.
+- A Game's **Look** (colours, a typeface, corner style) is optional, and the site fills its gaps
+  from one default Look. The filled-in Look must be readable, measured as the WCAG contrast ratio:
+  text on the background and text on the surface at least 4.5 to 1, the accent (timer, highlights)
+  on the background at least 3 to 1. A Look that isn't is refused, with a problem naming both
+  colours, the ratio measured and the ratio needed. Button text is black or white, chosen by the
+  site, so it needs no rule. The default Look and the check live in the SDK
+  (`sdk/src/v1/look.ts`), so the checker and the renderer use the same colours.
 - Views are plain data made of Kit Parts (`sdk/src/v1/kit.ts`), written as object literals. The
   **Picture** Part (shapes at any position, tappable on a phone) is the way out when the ready-made
   Parts aren't enough. There is no Canvas and no Game-written HTML.

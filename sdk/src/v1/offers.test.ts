@@ -112,9 +112,9 @@ describe("whatever a phone sends", () => {
   });
 
   test("an Action that went through JSON matches one whose View had an undefined field", () => {
-    const withUndefined = { parts: [{ kind: "button", label: "Go", action: { type: "vote", for: "a", note: undefined } }] } as const;
+    const withUndefined: ControllerView<unknown> = { parts: [{ kind: "button", label: "Go", action: { type: "vote", for: "a", note: undefined } }] };
     const fromPhone: unknown = JSON.parse(JSON.stringify({ type: "vote", for: "a", note: undefined }));
-    expect(offers(withUndefined as ControllerView<unknown>, fromPhone)).toBe(true);
+    expect(offers(withUndefined, fromPhone)).toBe(true);
   });
 });
 
@@ -126,4 +126,16 @@ test("availableActions lists what the View offers, with text boxes and drawing p
     { kind: "drawing", template: { type: "sketch" } },
   ]);
   expect(availableActions({ parts: [{ kind: "text", text: "Waiting..." }] })).toEqual([]);
+});
+
+test("site code reading a View without the Game's Action type sees each input's action as plain data", () => {
+  // Before Unfilled had its `unknown` branch, these actions had type `never` and this didn't compile.
+  const read: ControllerView<unknown> = {
+    parts: [
+      { kind: "textInput", action: { type: "write", round: 1 } },
+      { kind: "drawingPad", action: { type: "sketch" } },
+    ],
+  };
+  const templates = read.parts.flatMap((part) => (part.kind === "textInput" || part.kind === "drawingPad" ? [part.action.type] : []));
+  expect(templates).toEqual(["write", "sketch"]);
 });
