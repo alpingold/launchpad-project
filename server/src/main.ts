@@ -16,6 +16,7 @@ const server = createServer({
   clientDist: here("../../client/dist"),
   gamesDist: here("../../games/dist"),
   siteOrigin,
+  frameUrl: process.env.FRAME_URL ?? `http://localhost:${framePort}/v1/`,
   ...(maxRooms === undefined ? {} : { maxRooms }),
   // Behind Caddy every request comes from 127.0.0.1; the phone's own address is in X-Forwarded-For.
   ...(process.env.TRUST_PROXY === "1" ? { addressOf: forwardedAddress } : {}),

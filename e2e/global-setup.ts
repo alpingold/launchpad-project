@@ -14,7 +14,8 @@ import { fileURLToPath } from "node:url";
 import { build, defaultClientConditions } from "vite";
 import { buildOfficialGames } from "../games/scripts/build.js";
 import { createFrameServer } from "../server/src/frame-origin.js";
-import { FRAME, OUTSIDE, SITE } from "./origins.js";
+import { createServer as createSiteServer } from "../server/src/index.js";
+import { APP, APP_FRAME, FRAME, OUTSIDE, SITE } from "./origins.js";
 
 const here = (path: string) => fileURLToPath(new URL(path, import.meta.url));
 const out = here(".build");
@@ -55,6 +56,8 @@ async function buildAll(): Promise<void> {
   }
   // The Official games, built by their own build script, exactly as `npm run build` builds them.
   await buildOfficialGames(join(out, "site/games/official"));
+  // The client, with its own config, as `npm run build` builds it.
+  await build({ configFile: here("../client/vite.config.ts"), root: here("../client"), logLevel: "warn", build: { outDir: join(out, "client"), emptyOutDir: true } });
 }
 
 /** Every /probe/ request a counting server has had: method and path, or "upgrade" for a WebSocket. */
@@ -164,9 +167,27 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   });
   countUpgrades(outside, outsideHits);
 
-  await Promise.all([listen(site, SITE), listen(outside, OUTSIDE), listen(frame, FRAME)]);
+  // The real site, as main.ts runs it, and the frame server it embeds.
+  // Every test's browsers come from 127.0.0.1, and a run opens far more than 20 Rooms a minute; here
+  // each socket counts as its own address, so the per-address limits (tested exactly in the
+  // server's own tests) don't trip the browser tests.
+  let sockets = 0;
+  const app = createSiteServer({
+    clientDist: join(out, "client"),
+    gamesDist: join(out, "site/games/official"),
+    siteOrigin: APP,
+    frameUrl: `${APP_FRAME}/v1/`,
+    addressOf: () => `test-${++sockets}`,
+    // A test's Room stays open for 5 minutes after its Screen goes, and a run opens far more than
+    // the default 30 in that time.
+    maxRooms: 1_000,
+  });
+  const appFrame = createFrameServer({ root: join(out, "frame"), siteOrigin: APP });
+
+  await Promise.all([listen(site, SITE), listen(outside, OUTSIDE), listen(frame, FRAME), listen(app.http, APP), listen(appFrame, APP_FRAME)]);
   return async () => {
-    for (const server of [site, outside, frame]) {
+    await app.close();
+    for (const server of [site, outside, frame, appFrame]) {
       server.closeAllConnections();
       await new Promise((resolve) => server.close(resolve));
     }

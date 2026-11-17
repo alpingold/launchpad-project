@@ -8,3 +8,7 @@ export const SITE = "http://localhost:4100";
 export const FRAME = "http://127.0.0.1:4101";
 /** An "outside address" the Game would like to send things to. Counts every request it gets. */
 export const OUTSIDE = "http://127.0.0.1:4102";
+
+/** The real site (createServer: the client, the Games, Rooms over WebSockets), and its own frame server. */
+export const APP = "http://localhost:4200";
+export const APP_FRAME = "http://127.0.0.1:4201";

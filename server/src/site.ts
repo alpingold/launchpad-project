@@ -11,7 +11,12 @@ export interface SiteOptions {
   readonly clientDist: string;
   /** The built Official games: games/dist, with games.json and one <id>.js per Game. */
   readonly gamesDist: string;
+  /** The Game frame's page on the game domain, such as https://boilergames-play.party/v1/. */
+  readonly frameUrl: string;
 }
+
+/** The client's pages. Each is the same index.html; the client draws the page its path names. */
+const PAGES = ["/screen", "/play"];
 
 /**
  * The listing and every bundle, read once at start, together: a bundle is served only if the
@@ -44,6 +49,10 @@ export function createSite(options: SiteOptions): Express {
     next();
   });
 
+  // What the pages need to know about this deployment: where the Game frame is served.
+  app.get("/api/config", (_request, response) => {
+    response.json({ frameUrl: options.frameUrl });
+  });
   app.get("/api/games", (_request, response) => {
     response.json(listing);
   });
@@ -54,6 +63,9 @@ export function createSite(options: SiteOptions): Express {
   });
 
   app.use(express.static(options.clientDist, { index: "index.html", dotfiles: "deny" }));
+  app.get(PAGES, (_request, response) => {
+    response.sendFile("index.html", { root: options.clientDist });
+  });
   app.use((_request, response) => {
     response.status(404).type("text/plain").send("Not found");
   });

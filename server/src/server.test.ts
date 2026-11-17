@@ -16,6 +16,7 @@ let root: string;
 const GAME = { id: "demo", title: "Demo", players: { min: 1, max: 4 } };
 /** The site's own origin, which a socket must come from. */
 const SITE = "https://boilergames.test";
+const FRAME_URL = "https://play.boilergames.test/v1/";
 /** Pings every 150 ms here, so a test can watch a silent socket being dropped. */
 const PING_MS = 150;
 
@@ -26,7 +27,7 @@ beforeAll(async () => {
   await writeFile(join(root, "client/index.html"), "<!doctype html><title>BoilerGames</title>");
   await writeFile(join(root, "games/games.json"), JSON.stringify([GAME]));
   await writeFile(join(root, "games/demo.js"), "var BoilerGamesGame = {};");
-  server = createServer({ clientDist: join(root, "client"), gamesDist: join(root, "games"), siteOrigin: SITE, pingIntervalMs: PING_MS });
+  server = createServer({ clientDist: join(root, "client"), gamesDist: join(root, "games"), siteOrigin: SITE, frameUrl: FRAME_URL, pingIntervalMs: PING_MS });
   await new Promise<void>((resolve) => server.http.listen(0, "127.0.0.1", resolve));
   base = `127.0.0.1:${(server.http.address() as AddressInfo).port}`;
 });
@@ -84,6 +85,11 @@ describe("HTTP", () => {
     const bundle = await fetch(`http://${base}/api/games/demo/bundle.js`);
     expect(bundle.headers.get("content-type")).toContain("text/javascript");
     expect(await bundle.text()).toBe("var BoilerGamesGame = {};");
+  });
+
+  test("serves the client's page at /screen and /play too, and tells the pages where the Game frame is", async () => {
+    for (const path of ["/screen", "/play"]) expect(await (await fetch(`http://${base}${path}`)).text(), path).toContain("BoilerGames");
+    expect(await (await fetch(`http://${base}/api/config`)).json()).toEqual({ frameUrl: FRAME_URL });
   });
 
   test("serves no bundle the list doesn't name, and never the frame's page", async () => {
@@ -196,7 +202,7 @@ describe("who may open a socket", () => {
 
   test(`at most ${MAX_SOCKETS_PER_ADDRESS} sockets per address, which behind a proxy is the rightmost X-Forwarded-For entry`, async () => {
     // A second server, as main.ts runs it with TRUST_PROXY=1.
-    const proxied = createServer({ clientDist: join(root, "client"), gamesDist: join(root, "games"), siteOrigin: SITE, addressOf: forwardedAddress });
+    const proxied = createServer({ clientDist: join(root, "client"), gamesDist: join(root, "games"), siteOrigin: SITE, frameUrl: FRAME_URL, addressOf: forwardedAddress });
     await new Promise<void>((resolve) => proxied.http.listen(0, "127.0.0.1", resolve));
     const at = `127.0.0.1:${(proxied.http.address() as AddressInfo).port}`;
     try {

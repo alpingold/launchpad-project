@@ -494,6 +494,23 @@ Bare, working pages. No visual design yet beyond a Game's own Look.
 - Both pages check every message from the server against `serverToScreen` or `serverToPhone`, and
   the phone checks every View with step 1's checker before drawing it.
 
+- As built:
+  - `client/src/kit/`: `View.tsx`, `parts.tsx` (one component per Part), `look-style.ts` (the Look
+    as CSS variables; button text black or white by `contrastRatio`), `ink.ts` (the drawing pad's
+    rounding and thinning, tested on its own) and `kit.css`. Typefaces are system font stacks, so
+    they differ by device; see the step 7 report.
+  - `client/src/net/`: `connection.ts` (reconnects, 0.5 s doubling to 8 s; checks every message
+    against the schema), `pack-views.ts` (the Views packing, tested without a browser), `saved.ts`.
+  - `client/src/screen/screen-room.ts` and `client/src/play/phone-seat.ts` hold each page's logic
+    without React; `client/src/pages/` draws their state. The Screen sends `views` when a View or the
+    timer changed; a timer change alone is a `views` message with no Views.
+  - The server serves `/screen` and `/play` (the same page), and `GET /api/config` tells the Screen
+    where the Game frame is (`FRAME_URL`; the next port up in development).
+  - `e2e/site.spec.ts` runs the real server, its frame server and the built client and Games, with
+    phones in their own browsers. That server counts each socket as its own address and allows 1,000
+    Rooms: a run opens far more Rooms a minute, from one address, than the real limits allow.
+  - `e2e/screenshots.spec.ts` takes the screenshots for the owner when run with `SCREENSHOTS=1`.
+
 Done when:
 - Each Part has a render test, and `picture` has one proving that a shape carrying unexpected fields
   renders none of them.

@@ -1,0 +1,143 @@
+/* The Kit's drawing of every Part. Plain on purpose: the site's own design comes later. Every
+   colour, the typeface and the corners come from the Game's Look, as CSS variables on .kit-view. */
+
+.kit-view {
+  background: var(--kit-background);
+  color: var(--kit-text);
+  font-family: var(--kit-font);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  box-sizing: border-box;
+  min-height: 100%;
+}
+.kit-view[data-kind="screen"] {
+  font-size: clamp(16px, 2.2vw, 28px);
+  gap: 1.2vw;
+  padding: 2vw;
+}
+.kit-view * {
+  box-sizing: border-box;
+}
+
+.kit-text {
+  margin: 0;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+.kit-text[data-size="small"] { font-size: 0.85em; }
+.kit-text[data-size="big"] { font-size: 1.5em; font-weight: 700; }
+.kit-text[data-size="huge"] { font-size: 2.4em; font-weight: 800; }
+.kit-text[data-tone="quiet"] { opacity: 0.75; }
+.kit-text[data-tone="accent"] { color: var(--kit-accent); }
+.kit-text[data-tone="good"]::before { content: "✓ "; }
+.kit-text[data-tone="bad"]::before { content: "✗ "; }
+
+.kit-timer {
+  margin: 0;
+  align-self: flex-start;
+  min-width: 3em;
+  text-align: center;
+  font-size: 1.6em;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--kit-on-accent);
+  background: var(--kit-accent);
+  border-radius: var(--kit-radius);
+  padding: 0.1em 0.5em;
+}
+
+.kit-scoreboard {
+  max-width: 32em;
+  background: var(--kit-surface);
+  border-radius: var(--kit-radius);
+  padding: 0.6em 1em;
+}
+.kit-scoreboard h2 { margin: 0 0 0.4em; font-size: 1.1em; }
+.kit-scoreboard ol { margin: 0; padding: 0; list-style: none; }
+.kit-scoreboard li { display: flex; justify-content: space-between; gap: 1em; padding: 0.2em 0; }
+.kit-scoreboard li:first-child strong { color: var(--kit-accent); }
+
+.kit-players {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5em;
+}
+.kit-players li {
+  background: var(--kit-surface);
+  border-radius: var(--kit-radius);
+  padding: 0.4em 0.8em;
+  display: flex;
+  flex-direction: column;
+  min-width: 6em;
+  border: 3px solid transparent;
+}
+.kit-players li[data-mark="active"] { border-color: var(--kit-accent); }
+.kit-players li[data-mark="out"] { opacity: 0.5; }
+.kit-players li[data-mark="done"] .kit-player-mark::before { content: "✓ "; }
+.kit-player-name { font-weight: 700; }
+.kit-player-mark, .kit-player-note { font-size: 0.8em; }
+
+.kit-drawing { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 0.3em; }
+.kit-drawing svg { width: min(100%, 60vh); aspect-ratio: 1; border-radius: var(--kit-radius); }
+.kit-view[data-kind="controller"] .kit-drawing svg { width: 100%; }
+
+.kit-picture { width: 100%; max-height: 70vh; }
+.kit-view[data-kind="controller"] .kit-picture { max-height: none; }
+
+.kit-button {
+  font: inherit;
+  font-weight: 700;
+  color: var(--kit-on-accent);
+  background: var(--kit-accent);
+  border: none;
+  border-radius: var(--kit-radius);
+  padding: 0.75em 1em;
+  min-height: 48px;
+  width: 100%;
+  cursor: pointer;
+}
+.kit-button:disabled { opacity: 0.45; cursor: default; }
+.kit-button-quiet { background: var(--kit-surface); color: var(--kit-text); }
+
+.kit-text-input { display: flex; gap: 8px; }
+.kit-text-input input {
+  font: inherit;
+  flex: 1;
+  min-width: 0;
+  padding: 0.6em 0.8em;
+  color: var(--kit-text);
+  background: var(--kit-surface);
+  border: 2px solid var(--kit-accent);
+  border-radius: var(--kit-radius);
+}
+.kit-text-input .kit-button { width: auto; }
+
+.kit-pad { display: flex; flex-direction: column; gap: 8px; }
+.kit-pad-surface {
+  width: 100%;
+  aspect-ratio: 1;
+  touch-action: none;
+  border-radius: var(--kit-radius);
+  border: 2px solid var(--kit-accent);
+}
+.kit-pad-pens { display: flex; gap: 8px; flex-wrap: wrap; }
+.kit-pen {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 3px solid var(--kit-surface);
+  cursor: pointer;
+}
+.kit-pen[aria-checked="true"] { outline: 3px solid var(--kit-text); }
+.kit-pad-actions { display: flex; gap: 8px; }
+
+/* Side by side, each Part its own height: a list next to a picture shouldn't stretch to the picture's height. */
+.kit-row { display: flex; gap: 8px; align-items: flex-start; }
+.kit-row > * { flex: 1; min-width: 0; }
+.kit-row > .kit-button { align-self: stretch; }
+.kit-row > .kit-picture { max-height: 60vh; }

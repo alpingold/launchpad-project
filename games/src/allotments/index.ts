@@ -147,7 +147,7 @@ export default defineGame<State, Action>({
               players: state.order.map((id) => ({
                 id,
                 mark: id === gardener?.id ? ("active" as const) : ("waiting" as const),
-                note: `${COLOURS[state.colours[id] ?? 0]?.name ?? ""}, ${state.plots.filter((owner) => owner === id).length} plots`,
+                note: plots(COLOURS[state.colours[id] ?? 0]?.name ?? "", state.plots.filter((owner) => owner === id).length),
               })),
             },
           ],
@@ -172,6 +172,11 @@ export default defineGame<State, Action>({
     };
   },
 });
+
+/** "red, no plots", "red, 1 plot", "red, 5 plots". */
+function plots(colour: string, count: number): string {
+  return `${colour}, ${count === 0 ? "no plots" : count === 1 ? "1 plot" : `${count} plots`}`;
+}
 
 /**
  * The board as a picture. With `tap`, for the gardener whose turn it is, each empty plot sends the

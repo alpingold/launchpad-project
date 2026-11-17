@@ -38,13 +38,18 @@ npm run test:e2e   # the browser tests (Playwright): Chromium, Firefox and WebKi
 npm run dev        # recompile on every change and restart the server (http://localhost:3000)
 ```
 
+`SCREENSHOTS=1 npx playwright test -c e2e/playwright.config.ts screenshots --project=chromium` takes
+screenshots of the Lobby and each Official game, on the Screen and a phone, into
+`.scratch/rewrite/screenshots/`.
+
 The browser tests need the browsers once: `npx playwright install chromium firefox webkit`, and on
 Linux their system libraries: `sudo npx playwright install-deps`. They build what they need
 themselves, into `e2e/.build/`.
 
 Settings, as environment variables: `PORT` (3000) and `FRAME_PORT` (the next one up); `SITE_ORIGIN`
 (`http://localhost:3000`), the only origin whose pages may open a WebSocket; `MAX_ROOMS` (30), how
-many Rooms may be open at once. Behind a proxy such as Caddy, set `TRUST_PROXY=1`, so the
+many Rooms may be open at once; `FRAME_URL`, where the Game frame's page is served (the next port
+up in development). Behind a proxy such as Caddy, set `TRUST_PROXY=1`, so the
 per-address limits see each phone's own address (the one the proxy appended to X-Forwarded-For)
 rather than the proxy's.
 

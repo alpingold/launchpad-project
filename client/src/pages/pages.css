@@ -1,0 +1,40 @@
+/* The site's own pages: bare on purpose. The site's design comes later; only a Game's View is styled, by its Look. */
+html, body, #root { height: 100%; margin: 0; }
+body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: #f4f4f1; color: #000; }
+
+.page { max-width: 720px; margin: 0 auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.page h1 { margin: 0; }
+.page h2 { margin: 0 0 6px; font-size: 1.1em; }
+.page-notice { background: #fff3cd; border-radius: 8px; padding: 8px 12px; margin: 0; }
+.page-button {
+  font: inherit; font-weight: 700; text-decoration: none; text-align: center;
+  color: #fff; background: #1d3f91; border: none; border-radius: 8px;
+  padding: 12px 16px; min-height: 48px; cursor: pointer;
+}
+.page-button:disabled { opacity: 0.45; cursor: default; }
+.page-button-quiet { background: #fff; color: #1d3f91; border: 2px solid #1d3f91; }
+.page-button-small { min-height: 32px; padding: 4px 12px; }
+.page-link { font: inherit; background: none; border: none; color: #1d3f91; text-decoration: underline; cursor: pointer; }
+
+.home-choices { display: flex; flex-direction: column; gap: 12px; }
+
+.screen-lobby { max-width: 1100px; }
+.screen-code { text-align: center; }
+.screen-code p { margin: 0; }
+.screen-code-letters { font-size: clamp(64px, 14vw, 180px); font-weight: 800; letter-spacing: 0.15em; }
+.screen-seats, .screen-games { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.screen-seats li { background: #fff; border-radius: 8px; padding: 6px 12px; display: flex; gap: 8px; align-items: baseline; }
+.screen-seats li[data-connected="false"] { opacity: 0.6; }
+.screen-games li { display: flex; flex-direction: column; gap: 4px; }
+.screen-result { background: #fff; border-radius: 8px; padding: 12px; }
+.screen-result ol { margin: 0; }
+
+.screen-match { min-height: 100%; display: flex; flex-direction: column; }
+.screen-match > .kit-view { flex: 1; }
+.screen-match-bar { display: flex; gap: 16px; align-items: center; justify-content: flex-end; padding: 6px 12px; background: #000; color: #fff; }
+
+.play-match { min-height: 100%; display: flex; flex-direction: column; }
+.play-match > .kit-view { flex: 1; }
+.play-join { display: flex; flex-direction: column; gap: 12px; }
+.play-join label { display: flex; flex-direction: column; gap: 4px; font-weight: 600; }
+.play-join input { font: inherit; font-size: 1.3em; padding: 10px; border: 2px solid #1d3f91; border-radius: 8px; }
