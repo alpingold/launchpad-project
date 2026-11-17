@@ -15,6 +15,7 @@
  * not ANSWERED.
  */
 import { defineGame } from "../../sdk/src/v1/index.js";
+import { FRAME } from "../origins.js";
 
 /** A worker's global scope, loosely: this file is type-checked as a page, and probes what exists. */
 const scope = globalThis as unknown as Record<string, unknown>;
@@ -130,7 +131,9 @@ function leave(token: string): void {
     const container = get("navigator.serviceWorker");
     if (container === undefined) return missing("navigator.serviceWorker");
     if (typeof container["register"] !== "function") return "missing: no register() in a worker";
-    await container["register"].call(container, "./frame.js");
+    // The frame's own script by its full URL: a relative one would fail only because the worker's
+    // address is a blob: URL, which proves nothing.
+    await container["register"].call(container, `${FRAME}/v1/frame.js`);
     return "LEFT: registered a service worker";
   });
   attempt("nested Worker", () => {

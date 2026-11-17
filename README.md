@@ -20,6 +20,7 @@ One repository of npm workspaces, each a folder at the root:
 | `protocol` | The messages between the Screen, the server and the phones (Zod)     |
 | `server` | The one server process                                                 |
 | `client` | The site's pages (React, built by Vite)                                |
+| `games`  | The Official games, each built into one bundle the Game frame runs     |
 
 Packages import each other by name (`import { defineGame } from "@boilergames/sdk/v1"`). Every
 package's `tsconfig.json` extends the strict `tsconfig.base.json`.
@@ -30,7 +31,7 @@ You need Node 24. Everything runs from the root folder.
 
 ```sh
 npm ci             # install every package's dependencies (npm install to add or update one)
-npm run build      # tsc compiles sdk, protocol and server to dist/; Vite builds the client
+npm run build      # tsc compiles sdk, protocol and server to dist/; Vite builds the client and the games
 npm run typecheck  # type-check every package, tests included
 npm test           # run every package's tests (Vitest)
 npm run test:e2e   # the browser tests (Playwright): Chromium, Firefox and WebKit, fresh and saved profiles

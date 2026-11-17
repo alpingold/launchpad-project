@@ -328,6 +328,25 @@ Add a fifth workspace package, `games`, that depends only on `sdk`.
   Use Vite's library mode, which is already installed. If that can't make a single classic script,
   stop and ask the owner about adding `esbuild`.
 
+- As built:
+  - The three Games: **Sum It Up** (`games/src/sum-it-up`, 3 to 8: sum up an everyday thing in
+    one word, vote for the best; three rounds; takes joiners, who join in at once), **Scribble
+    Pick** (`scribble-pick`, 3 to 8: draw your own secret word, then pick each drawing's word from
+    four; the Screen never shows a word before its reveal), and **Allotments** (`allotments`, 2 to
+    6: take turns tapping a plot on a 6 by 6 board; your biggest connected patch scores; takes
+    joiners, who join the end of the turn order; a turn that runs out of time gets a random plot, so
+    a Match always ends after 36 turns). `games/src/official.test.ts` checks that between them they
+    draw every Part (rows included) and that each Look passes `checkLook`.
+  - `games/scripts/build.ts` (`npm run build -w @boilergames/games`, part of the root build) builds
+    `games/dist/<id>.js` and `games/dist/games.json`, with Vite's library mode. The bundle's entry
+    is only the Game's default export (built from index.ts directly, the global would be an object
+    of all its exports). The build refuses a Game that imports anything but its own files and
+    `@boilergames/sdk/v1`, then runs each bundle in an empty `node:vm` context: it must load with
+    nothing else there and set exactly one global, `BoilerGamesGame`. `games.json` is read from
+    the bundles themselves, so it can't disagree with them.
+  - The browser tests build the Official games with the same function and play each to its end
+    through the real frame, in every browser and profile.
+
 Done when: all three pass their simulator tests, and each bundle plays in the real frame (extend
 step 4's Playwright test to load each built bundle).
 

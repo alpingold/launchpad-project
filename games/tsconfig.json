@@ -1,0 +1,6 @@
+// The type check of the Games and their tests. No Node or DOM types: a Game runs in the Game
+// frame's worker and may use only what the SDK gives it.
+{
+  "extends": "../tsconfig.base.json",
+  "include": ["src"]
+}

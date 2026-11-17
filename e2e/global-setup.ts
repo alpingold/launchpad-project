@@ -11,6 +11,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build, defaultClientConditions } from "vite";
+import { buildOfficialGames } from "../games/scripts/build.js";
 import { createFrameServer } from "../server/src/frame-origin.js";
 import { FRAME, OUTSIDE, SITE } from "./origins.js";
 
@@ -20,7 +21,11 @@ const conditions = ["@boilergames/source", ...defaultClientConditions];
 const GAME_GLOBAL = "BoilerGamesGame";
 const BUNDLES = ["best-word", "hostile", "hoarder"];
 
-const TYPES: Readonly<Record<string, string>> = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8" };
+const TYPES: Readonly<Record<string, string>> = {
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+};
 
 async function buildAll(): Promise<void> {
   // The frame, with the client's own frame config, into .build/frame/v1.
@@ -47,6 +52,8 @@ async function buildAll(): Promise<void> {
       },
     });
   }
+  // The Official games, built by their own build script, exactly as `npm run build` builds them.
+  await buildOfficialGames(join(out, "site/games/official"));
 }
 
 /** Every /probe/ request a counting server has had: method and path, or "upgrade" for a WebSocket. */

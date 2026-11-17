@@ -1,6 +1,8 @@
 // The Game frame in a real browser: Best Word played through the real frame, served from the game
 // domain by the real frame server, driven by the real GameFrame on a page of the site's origin.
 import type { Page } from "@playwright/test";
+import type { FrameResult } from "../client/src/screen/game-frame.js";
+import { availableActions, type AvailableAction } from "../sdk/src/v1/offers.js";
 import { expect, test } from "./fixtures.js";
 import type { Harness } from "./harness/harness.js";
 import { FRAME, SITE } from "./origins.js";
@@ -135,3 +137,58 @@ test("ignores messages that don't come from its own frame", async ({ page }) => 
   }, PLAYERS);
   expect(result).toMatchObject({ kind: "result", outcome: { status: "running" } });
 });
+
+/** The Official games, by the id their bundle is named after. */
+const OFFICIAL = ["allotments", "scribble-pick", "sum-it-up"];
+
+/** What a Player would send for something their phone offers. */
+function fill(offer: AvailableAction): unknown {
+  switch (offer.kind) {
+    case "exact":
+      return offer.action;
+    case "text":
+      return { ...offer.template, text: "lanterns" };
+    case "drawing":
+      return { ...offer.template, drawing: { strokes: [{ color: "#ffffff", width: 8, points: [100, 100, 500, 900, 900, 100] }] } };
+  }
+}
+
+test("the Official games are built and listed in games.json", async ({ request }) => {
+  const listing = (await (await request.get(`${SITE}/games/official/games.json`)).json()) as { id: string }[];
+  expect(listing.map((game) => game.id)).toEqual(OFFICIAL);
+});
+
+for (const id of OFFICIAL) {
+  test(`the Official game ${id} plays to its end through the frame, from its built bundle`, async ({ page, request }) => {
+    const listing = (await (await request.get(`${SITE}/games/official/games.json`)).json()) as { id: string; players: { min: number } }[];
+    const min = listing.find((game) => game.id === id)?.players.min ?? 0;
+    const players = Array.from({ length: min }, (_, i) => ({ id: `p${i + 1}`, name: `Player ${i + 1}` }));
+    await page.clock.install();
+    await open(page);
+
+    let result: FrameResult = await page.evaluate(
+      async ([name, list]) => window.harness.create().start(await window.harness.bundle(name), list, 1),
+      [`official/${id}`, players] as const,
+    );
+    // Each event: the first Player who has something to do does the first thing offered. When
+    // nobody has, the Screen's clock runs until the Game's timer runs out.
+    for (let events = 0; events < 300; events++) {
+      if (result.kind !== "result") throw new Error(`the Match didn't go on: ${JSON.stringify(result)}`);
+      if (result.outcome.status === "ended") break;
+      const { views } = result;
+      const able = players.map((p) => ({ p, offers: availableActions(views.controllers[p.id] ?? { parts: [] }) })).find((c) => c.offers.length > 0);
+      if (able !== undefined) {
+        const action = fill(able.offers[0]!);
+        result = await page.evaluate(([playerId, sent]) => window.harness.frame!.act(playerId, sent), [able.p.id, action] as const);
+        continue;
+      }
+      const before = await page.evaluate(() => window.harness.results.length);
+      const wait = await page.evaluate(() => (window.harness.frame!.timerDeadline ?? Date.now()) - Date.now());
+      expect(wait, "nobody can act, so the timer must be running").toBeGreaterThan(0);
+      await page.clock.runFor(wait);
+      await expect.poll(() => page.evaluate(() => window.harness.results.length)).toBeGreaterThan(before);
+      result = await page.evaluate(() => window.harness.results.at(-1)!);
+    }
+    expect(result).toMatchObject({ kind: "result", outcome: { status: "ended", reason: "finished" } });
+  });
+}
