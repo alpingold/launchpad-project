@@ -348,6 +348,14 @@ describe("a Match", () => {
     expect(room.lastMatch).toEqual({ title: "Sum It Up", reason: "finished", scores: { [ada.seatId]: 3 } });
   });
 
+  test("the result keeps scores and winners only for Seats in the Room, so it can't grow past 16 entries", () => {
+    const { h, screen, ada, ben } = playing();
+    const scores: Record<string, number> = { [ada.seatId]: 2, [ben.seatId]: 1 };
+    for (let i = 0; i < 5_000; i++) scores[`x${i}`] = i;
+    h.say(screen, { type: "endMatch", reason: "finished", scores, winners: [ada.seatId, "x1"] });
+    expect(h.lastRoom(screen).lastMatch).toEqual({ title: "Sum It Up", reason: "finished", scores: { [ada.seatId]: 2, [ben.seatId]: 1 }, winners: [ada.seatId] });
+  });
+
   test("views and endMatch with no Match running change nothing", () => {
     const h = harness();
     const { screen, code } = h.openRoom();

@@ -201,3 +201,56 @@ test("a second tab taking a phone's Seat: the first says so and doesn't take it 
   await ada.waitForTimeout(1_500);
   await expect(second.getByRole("heading", { name: "You're in, Ada" })).toBeVisible();
 });
+
+test("the Screen's socket drops mid-Match and comes back: phones catch up, newcomers are seen, and a Match stopped meanwhile ends for everyone", async ({ context, another }) => {
+  // The Screen's socket goes through here, so the test can cut it and keep it cut.
+  let cut = false;
+  const routes: { close(): Promise<void> }[] = [];
+  const screenPage = context.pages()[0] ?? (await context.newPage());
+  await screenPage.routeWebSocket(/\/ws$/, async (ws) => {
+    if (cut) return void (await ws.close());
+    const server = ws.connectToServer();
+    routes.push({ close: async () => (await ws.close(), await server.close()) });
+  });
+  const { screen, code, phones } = await startWith(context, another, ["Ada", "Ben", "Cy"], "Sum It Up");
+  expect(screen).toBe(screenPage);
+  const cutTheScreen = async () => {
+    cut = true;
+    for (const route of routes.splice(0)) await route.close();
+    await expect(screen.getByText("Reconnecting…")).toBeVisible();
+  };
+
+  // Two words in, then down while the writing time runs out: the voting Views are made but can't be sent.
+  await actOnce(phones[0]!);
+  await actOnce(phones[1]!);
+  await expect(phones[1]!.getByText('You wrote "lanterns". Waiting for the others.')).toBeVisible();
+  await cutTheScreen();
+  for (let s = 0; s < 46; s++) await waitOnTheScreen(screen);
+  // A newcomer while the Screen is away: Sum It Up takes latecomers.
+  const dee = await joinLate(another, code, "Dee");
+  cut = false;
+  await expect(screen.getByText("Reconnecting…")).toHaveCount(0, { timeout: 15_000 });
+  for (const phone of phones) await expect(phone.locator(".kit-row").first()).toBeVisible();
+  await expect(dee.locator(".kit-view")).toBeVisible();
+
+  // Down when the Host stops the Match: the end reaches the server once the socket is back.
+  await cutTheScreen();
+  await screen.getByRole("button", { name: "Stop" }).click();
+  cut = false;
+  for (const phone of [...phones, dee]) await expect(phone.getByText("Waiting for the Host to start a Game.")).toBeVisible({ timeout: 15_000 });
+});
+
+test("a phone that sends too much at once is told to slow down, and keeps its Seat and its View", async ({ context, another }) => {
+  const { phones } = await startWith(context, another, ["Ada", "Ben", "Cy"], "Sum It Up");
+  const ada = phones[0]!;
+  // Ada's page, sending 25 actions in one go through its own socket.
+  const server: { send(message: string): void }[] = [];
+  await ada.routeWebSocket(/\/ws$/, (ws) => void server.push(ws.connectToServer()));
+  await ada.reload();
+  await expect(ada.locator(".kit-text-input")).toBeVisible();
+  for (let i = 0; i < 25; i++) server[0]!.send(JSON.stringify({ type: "action", action: { type: "nothing" } }));
+  await expect(ada.getByText("Slow down: that was too much at once. Your Seat is kept.")).toBeVisible();
+  await expect(ada.locator(".kit-text-input")).toBeVisible();
+  await ada.reload();
+  await expect(ada.locator(".kit-text-input")).toBeVisible();
+});

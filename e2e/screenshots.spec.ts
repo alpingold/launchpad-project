@@ -126,3 +126,68 @@ for (const look of ["own", "default"] as const) {
     if (look === "own") await shoot(screen, "lobby-screen-after-a-match");
   });
 }
+
+/** Sixteen characters each, the longest a name may be; the first comes twice, so one gets " (2)". */
+const LONG_NAMES = ["Alexandria Jones", "Bartholomew Ross", "Christopherson B", "Dorothea Marquez", "Evangeline Pratt", "Fitzgerald Moore", "Guinevere Holmes", "Alexandria Jones"];
+const NARROW = { viewport: { width: 320, height: 640 }, hasTouch: true, deviceScaleFactor: 2 };
+
+test("screenshots, crowded: the most Players, the longest names and words, a narrow phone", async ({ another }) => {
+  test.setTimeout(240_000);
+  const { screen, code } = await openScreen(another, "own");
+  const phones: Page[] = [];
+  for (const [i, name] of LONG_NAMES.entries()) {
+    const context = await another(`crowded-${i}`, NARROW);
+    const phone = context.pages()[0] ?? (await context.newPage());
+    await phone.goto(`${APP}/play`);
+    await phone.getByLabel("Room Code").fill(code);
+    await phone.getByLabel("Your name").fill(name);
+    await phone.getByRole("button", { name: "Join" }).click();
+    await expect(phone.getByRole("heading", { name: /You're in/ })).toBeVisible();
+    phones.push(phone);
+  }
+  await shoot(screen, "crowded-lobby-screen");
+
+  // Sum It Up, 8 Players, every word 24 characters: the vote has 7 long buttons.
+  await screen.getByRole("button", { name: "Start Sum It Up" }).click();
+  for (const [i, phone] of phones.entries()) {
+    await phone.locator(".kit-text-input input").fill(`${"abcdefgh"[i]}${"extraordinarilywordy"}xyz`.slice(0, 24));
+    await phone.locator(".kit-text-input button").click();
+  }
+  await expect(phones[0]!.locator(".kit-row").first()).toBeVisible();
+  await shoot(screen, "crowded-sum-it-up-screen-voting");
+  await shoot(phones[0]!, "crowded-sum-it-up-phone-voting");
+  await screen.getByRole("button", { name: "Stop" }).click();
+
+  // Scribble Pick, 8 Players: the picking Screen and a narrow phone's four choices.
+  await screen.getByRole("button", { name: "Start Scribble Pick" }).click();
+  for (const phone of phones) {
+    await expect(phone.locator(".kit-pad")).toBeVisible();
+    await scribble(phone);
+    await phone.getByRole("button", { name: "Send" }).click();
+  }
+  await expect(screen.locator(".kit-drawing")).toBeVisible();
+  await shoot(screen, "crowded-scribble-pick-screen-picking");
+  for (const phone of phones) {
+    if ((await phone.locator(".kit-row").count()) > 0) {
+      await shoot(phone, "crowded-scribble-pick-phone-picking");
+      break;
+    }
+  }
+  await screen.getByRole("button", { name: "Stop" }).click();
+
+  // Allotments holds 6: two phones leave the Room first.
+  for (const phone of phones.slice(6)) await phone.getByRole("button", { name: "Leave the Room" }).click();
+  await screen.getByRole("button", { name: "Start Allotments" }).click();
+  for (let turn = 0; turn < 12; turn++) {
+    for (const phone of phones.slice(0, 6)) {
+      const plot = phone.locator('.kit-picture [role="button"]');
+      if ((await plot.count()) > 0) {
+        await plot.nth((turn * 7) % (await plot.count())).click();
+        await screen.waitForTimeout(150);
+        break;
+      }
+    }
+  }
+  await shoot(screen, "crowded-allotments-screen");
+  await shoot(phones[0]!, "crowded-allotments-phone");
+});

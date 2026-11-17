@@ -88,7 +88,7 @@ export class PhoneSeat {
         // A View from the Screen is a Game's data: checked before it is drawn, like any Game's.
         const checked = checkControllerView(message.view);
         if (!checked.ok) return;
-        return this.#set({ view: checked.view, timerEndsAt: message.timerMs === null ? null : Date.now() + message.timerMs });
+        return this.#set({ view: checked.view, notice: null, timerEndsAt: message.timerMs === null ? null : Date.now() + message.timerMs });
       }
       case "refused":
         return this.#refused(message.reason);
@@ -105,6 +105,14 @@ export class PhoneSeat {
   }
 
   #refused(reason: Extract<ServerToPhone, { type: "refused" }>["reason"]): void {
+    // Too fast: the server keeps the Seat (and if it closed the socket, the page comes back with
+    // rejoin). Only a refusal that means the Seat is gone, or was never had, ends it.
+    if (reason === "tooFast" && this.#saved !== undefined) {
+      return this.#set({ notice: "Slow down: that was too much at once. Your Seat is kept." });
+    }
+    if (reason === "badMessage" && this.state.phase === "seated") {
+      return this.#set({ notice: "The server didn't understand something this phone sent." });
+    }
     const words: Record<typeof reason, string> = {
       noSuchRoom: "There's no Room with that code. Check the code on the Screen.",
       badToken: "Your Seat in that Room is gone. Join again.",

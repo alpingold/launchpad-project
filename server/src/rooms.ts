@@ -396,12 +396,19 @@ export class Rooms {
       }
       case "endMatch":
         if (room.match === null) return;
-        room.lastMatch = {
-          title: room.match.title,
-          reason: message.reason,
-          ...(message.scores === undefined ? {} : { scores: message.scores }),
-          ...(message.winners === undefined ? {} : { winners: message.winners }),
-        };
+        {
+          // Kept and repeated in every `room` message, so only for Seats in the Room: at most 16
+          // entries, however many a Screen sends.
+          const here = new Set(room.seats.map((s) => s.id));
+          const scores = message.scores === undefined ? undefined : Object.fromEntries(Object.entries(message.scores).filter(([id]) => here.has(id)));
+          const winners = message.winners?.filter((id) => here.has(id));
+          room.lastMatch = {
+            title: room.match.title,
+            reason: message.reason,
+            ...(scores === undefined ? {} : { scores }),
+            ...(winners === undefined ? {} : { winners }),
+          };
+        }
         room.match = null;
         room.views.clear();
         room.timerEndsAt = null;

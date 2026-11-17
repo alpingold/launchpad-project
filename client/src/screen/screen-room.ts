@@ -58,6 +58,10 @@ export class ScreenRoom {
   #sentDeadline: number | null = null;
   /** The Player ids the frame was last given. */
   #players = "";
+  /** Each phone's latest View, to send again after the Screen's socket comes back. */
+  #latestViews: Readonly<Record<string, unknown>> = {};
+  /** How the last Match ended, to send again if the socket was down when it did. */
+  #lastEnd: EndMatch | undefined;
 
   constructor(frameContainer: HTMLElement) {
     this.#frameContainer = frameContainer;
@@ -121,10 +125,14 @@ export class ScreenRoom {
         this.#saved = { ...this.#saved, code: message.room.code, hostToken: message.hostToken };
         save(SAVED, this.#saved);
         this.#set({ room: message.room, phase: this.#frame === undefined ? "lobby" : "match" });
+        if (this.#frame !== undefined) return this.#catchUp(message.room);
         // Back after a reload, with a Match the server still has: carry on with it.
-        if (this.#frame === undefined && this.#saved.match !== undefined) {
+        if (this.#saved.match !== undefined) {
           if (message.room.match !== null) void this.#resumeMatch(this.#saved.match);
           else this.#forgetMatch();
+        } else if (message.room.match !== null) {
+          // The server still has a Match this Screen ended while its socket was down.
+          this.#connection?.send(this.#lastEnd ?? { type: "endMatch", reason: "broken" });
         }
         return;
       }
@@ -178,6 +186,25 @@ export class ScreenRoom {
     this.#set({ phase: "gone", gone: why, match: null });
   }
 
+  /**
+   * The socket came back while a Match runs in the frame: anything sent while it was down was lost.
+   * Announce the Match again if the server doesn't have it, send every phone its latest View, and
+   * give the frame the Room's Seats (some may have come or gone meanwhile).
+   */
+  #catchUp(room: Room): void {
+    if (!this.#announced) return;
+    if (room.match === null) this.#announce();
+    this.#sent.clear();
+    this.#sentDeadline = null;
+    this.#sendViews(this.#latestViews, this.#frame?.timerDeadline ?? null, true);
+    this.#tellFramePlayers(room);
+  }
+
+  #announce(): void {
+    const game = this.state.games.find((g) => g.id === this.#gameId);
+    this.#connection?.send({ type: "startMatch", match: { gameId: this.#gameId ?? "", title: game?.title ?? "", look: game?.look ?? {} } });
+  }
+
   #newFrame(): GameFrame {
     return new GameFrame({ frameUrl: this.#frameUrl, container: this.#frameContainer, onResult: (result) => this.#result(result) });
   }
@@ -220,7 +247,7 @@ export class ScreenRoom {
       this.#announced = true;
       this.#sent.clear();
       this.#sentDeadline = null;
-      this.#connection?.send({ type: "startMatch", match: { gameId: this.#gameId ?? "", title: game?.title ?? "", look: game?.look ?? {} } });
+      this.#announce();
     }
     const outcome = result.outcome;
     if (outcome.status === "ended") {
@@ -233,13 +260,14 @@ export class ScreenRoom {
     const deadline = this.#frame?.timerDeadline ?? null;
     this.#set({ phase: "match", match: { title: game?.title ?? "", look: game?.look, view: result.views.screen, timerEndsAt: deadline } });
     if (outcome.status === "ignored") return;
+    this.#latestViews = result.views.controllers;
     this.#sendViews(result.views.controllers, deadline);
     this.#saved = { ...this.#saved!, match: { gameId: this.#gameId ?? "", snapshot: result.snapshot, timerDeadline: deadline } };
     save(SAVED, this.#saved);
   }
 
   /** Sends each phone whose View changed its new View, in as few messages as fit; and the timer if it changed. */
-  #sendViews(views: Readonly<Record<string, unknown>>, deadline: number | null): void {
+  #sendViews(views: Readonly<Record<string, unknown>>, deadline: number | null, always = false): void {
     const changed = new Map<string, unknown>();
     for (const [seatId, view] of Object.entries(views)) {
       const text = JSON.stringify(view);
@@ -247,13 +275,15 @@ export class ScreenRoom {
       this.#sent.set(seatId, text);
       changed.set(seatId, view);
     }
-    if (changed.size === 0 && deadline === this.#sentDeadline) return;
+    if (!always && changed.size === 0 && deadline === this.#sentDeadline) return;
     this.#sentDeadline = deadline;
     const timerMs = deadline === null ? null : Math.max(0, deadline - Date.now());
     for (const message of packViews(changed, timerMs)) this.#connection?.send(message);
   }
 
-  #endMatch(message: { type: "endMatch"; reason: "finished" | "stopped" | "broken" | "tooFewPlayers"; scores?: Readonly<Record<string, number>>; winners?: readonly string[] }): void {
+  #endMatch(message: EndMatch): void {
+    this.#lastEnd = message;
+    this.#latestViews = {};
     this.#connection?.send(message);
     this.#frame?.destroy();
     this.#frame = undefined;
@@ -275,3 +305,5 @@ export class ScreenRoom {
 }
 
 const toPlayer = (seat: Room["seats"][number]): Player => ({ id: seat.id, name: seat.name });
+
+type EndMatch = { type: "endMatch"; reason: "finished" | "stopped" | "broken" | "tooFewPlayers"; scores?: Readonly<Record<string, number>>; winners?: readonly string[] };

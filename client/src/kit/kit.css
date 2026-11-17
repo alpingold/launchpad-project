@@ -100,6 +100,9 @@
   min-height: 48px;
   width: 100%;
   cursor: pointer;
+  /* A long word (a Player's answer can be 24 letters) wraps inside the button instead of running out of it. */
+  overflow-wrap: anywhere;
+  line-height: 1.2;
 }
 .kit-button:disabled { opacity: 0.45; cursor: default; }
 .kit-button-quiet { background: var(--kit-surface); color: var(--kit-text); }

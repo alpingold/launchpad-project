@@ -26,12 +26,14 @@ export function PlayPage() {
   const me = room.seats.find((s) => s.id === state.seatId);
   const away = room.screenConnected ? null : <p className="page-notice">Waiting for the Screen…</p>;
   const offline = state.online ? null : <p className="page-notice">Reconnecting…</p>;
+  const notice = state.notice === null ? null : <p className="page-notice">{state.notice}</p>;
 
   if (room.match !== null && state.view !== null) {
     return (
       <main className="play-match">
         {offline}
         {away}
+        {notice}
         <View kind="controller" view={state.view} look={room.match.look} names={names} timerEndsAt={state.timerEndsAt} onAction={(action) => seat.act(action)} />
       </main>
     );
@@ -40,6 +42,7 @@ export function PlayPage() {
     <main className="page">
       {offline}
       {away}
+      {notice}
       <h1>You're in{me === undefined ? "" : `, ${me.name}`}</h1>
       <p>Room {room.code}</p>
       {room.match === null ? <p>Waiting for the Host to start a Game.</p> : <p>You're in from the next Match. {room.match.title} is on now.</p>}
