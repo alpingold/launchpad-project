@@ -258,6 +258,42 @@ Runs the Engine and one Game in the Host's browser where the Game can reach noth
     it removes the iframe, which kills the worker.
   - It sends one message at a time and queues the rest, so replies can't be mismatched.
 
+- As built:
+  - `frame-messages.ts` also holds `readFrameReply`, which the Screen uses to read every reply as
+    untrusted: the outcome, the snapshot (Players must be ones the Screen sent; at most 2 MB as
+    JSON) and the Views (checked, sized, and only for Players the Screen sent). Views are checked
+    against every Player sent, not only those still in the Match, because a Match that ends keeps
+    its last Views, which can include a Player who just left.
+  - A frame page script can't be a module: module scripts are fetched with CORS, which the frame's
+    opaque origin fails. `client/vite.frame.config.ts` builds `frame.js` as a classic script, with
+    the worker bootstrap and the Engine built into it as a string, into `client/dist/frame/v1/`.
+  - The frame forwards only the worker's first reply to each message and drops anything unasked.
+    If the Game's code fails to load (a syntax error, a top-level throw, no Game on the global),
+    the reply to `start` or `resume` is `couldNotStart`, not a two-second wait.
+  - The GameFrame gives the frame page 15 seconds to load (it comes over the network) and 2 seconds
+    per reply. A frame that fails either way, or sends a reply `readFrameReply` refuses, ends as
+    `failed` and is removed. So is a frame whose Match ended or broke: it has nothing left to do.
+  - The frame server is plain `node:http` (`server/src/frame-origin.ts`): two files and no API need
+    no framework. Every response, 404s included, carries the CSP. `main.ts` starts it on the next
+    port up.
+  - The browser tests are in `e2e/` at the root (`npm run test:e2e`). They build the frame, a test
+    Screen page and the test bundles, and serve them on three origins: the site
+    (`localhost:4100`), the real frame server (`127.0.0.1:4101`), and an "outside address"
+    (`127.0.0.1:4102`). Site and frame are on different hosts, so they are different sites, as in
+    production. The site and outside servers count every request, so "blocked" is proved on the
+    server, not taken from the browser's error.
+  - Every browser test runs in a fresh profile and in a saved one (`e2e/fixtures.ts`): six
+    Playwright projects. In a saved profile only, WebKit gave the hostile Game a working cache store
+    shared by every Game on the site. So the frame now empties that store before each Game loads,
+    and the worker's bootstrap removes `caches`, `CacheStorage`, `Cache`, `Worker` and
+    `BroadcastChannel` before the Game's code runs. ADR 0004 says which walls are the browser's and
+    which are ours, and why each of these is removed.
+  - A second test Game, `e2e/games/hoarder.ts`, tries to leave data in every store and channel a
+    worker has, and to find it from another Game: side by side, one after the other, and after a
+    browser restart. Nothing may be left, and nothing found.
+  - In Firefox, `navigator.storage.estimate()` and `persisted()` never return in the frame's worker:
+    the worker freezes and the 2-second rule ends the Match. Only the Game that asked is hurt.
+
 Done when:
 - A Playwright test (Chromium, Firefox and WebKit) plays the test Game through a real frame.
 - A Playwright test in the same three browsers loads a hostile bundle that tries, from inside the
@@ -414,6 +450,11 @@ Not to be done alone. With the owner present: a small EC2 instance in the AWS pr
 Caddy for HTTPS on the site's domain and the game domain, the server under systemd as its own user,
 and `update.sh` (build, test, switch, roll back on failure). Load the project's `aws-project-rules`
 skill before any AWS work. The old site stays on `main` until the owner decides otherwise.
+
+Checks with the owner:
+- Real Safari, on an iPhone and on a Mac: a Match plays through the frame, and the hostile and
+  hoarding test Games find every wall in place (ADR 0004). The browser tests only ever ran
+  Playwright's WebKit on Linux, and WebKit is where the storage walls differed.
 
 ---
 

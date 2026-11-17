@@ -305,7 +305,7 @@ class EngineMatch implements Match {
 
     const end = step["end"];
     if (end !== undefined) {
-      const problem = this.#endProblem(end);
+      const problem = endProblem(end, new Set(this.#players.map((p) => p.id)));
       if (problem !== null) return stop(this.#break(`${label} returned an end that isn't valid: ${problem}`));
     }
 
@@ -317,32 +317,6 @@ class EngineMatch implements Match {
       return stop({ status: "ended", reason: "finished", end: copy });
     }
     return { kind: "ok", timer: timer as number | null | undefined };
-  }
-
-  /** Why `end` isn't a valid MatchEnd, or null if it is. Scores and winners name Players in the Match. */
-  #endProblem(end: unknown): string | null {
-    if (!isRecord(end)) return "it must be an object: { scores?, winners? }";
-    const ids = new Set(this.#players.map((p) => p.id));
-    for (const key of Object.keys(end)) if (key !== "scores" && key !== "winners") return `it has an unknown field "${key}"; an end is { scores?, winners? }`;
-    const scores = end["scores"];
-    if (scores !== undefined) {
-      if (!isRecord(scores)) return "scores must be an object of numbers by Player id";
-      for (const [id, score] of Object.entries(scores)) {
-        if (!ids.has(id)) return `scores has "${id}", which isn't a Player in the Match`;
-        if (typeof score !== "number" || !Number.isFinite(score)) return `the score for "${id}" must be a finite number`;
-      }
-    }
-    const winners = end["winners"];
-    if (winners !== undefined) {
-      if (!Array.isArray(winners)) return "winners must be a list of Player ids";
-      const seen = new Set<unknown>();
-      for (const id of winners) {
-        if (typeof id !== "string" || !ids.has(id)) return `winners has ${describeValue(id)}, which isn't a Player in the Match`;
-        if (seen.has(id)) return `winners has "${id}" twice`;
-        seen.add(id);
-      }
-    }
-    return null;
   }
 
   /**
@@ -429,8 +403,36 @@ function playerRange(game: AnyGame): { min: number; max: number } | string {
   return { min: min as number, max: Math.min(max as number, MAX_PLAYERS) };
 }
 
+/**
+ * Why `end` isn't a valid MatchEnd, or null if it is. Scores and winners must name Players in the
+ * Match. Also used by the Screen, which can't trust an end that comes out of the Game frame.
+ */
+export function endProblem(end: unknown, ids: ReadonlySet<string>): string | null {
+  if (!isRecord(end)) return "it must be an object: { scores?, winners? }";
+  for (const key of Object.keys(end)) if (key !== "scores" && key !== "winners") return `it has an unknown field "${key}"; an end is { scores?, winners? }`;
+  const scores = end["scores"];
+  if (scores !== undefined) {
+    if (!isRecord(scores)) return "scores must be an object of numbers by Player id";
+    for (const [id, score] of Object.entries(scores)) {
+      if (!ids.has(id)) return `scores has "${id}", which isn't a Player in the Match`;
+      if (typeof score !== "number" || !Number.isFinite(score)) return `the score for "${id}" must be a finite number`;
+    }
+  }
+  const winners = end["winners"];
+  if (winners !== undefined) {
+    if (!Array.isArray(winners)) return "winners must be a list of Player ids";
+    const seen = new Set<unknown>();
+    for (const id of winners) {
+      if (typeof id !== "string" || !ids.has(id)) return `winners has ${describeValue(id)}, which isn't a Player in the Match`;
+      if (seen.has(id)) return `winners has "${id}" twice`;
+      seen.add(id);
+    }
+  }
+  return null;
+}
+
 /** A list of Players as the host sends it: `{ id, name }` each, ids unique. Returns why not, if not. */
-function checkPlayers(value: unknown): Player[] | string {
+export function checkPlayers(value: unknown): Player[] | string {
   if (!Array.isArray(value)) return "the Players must be a list";
   if (value.length > MAX_PLAYERS) return `a Match holds at most ${MAX_PLAYERS} Players`;
   const players: Player[] = [];
@@ -534,7 +536,7 @@ function kindOf(value: object): string {
 }
 
 /** UTF-8 bytes of a string, counted by hand: the SDK has no TextEncoder (it targets no platform). */
-function utf8Length(text: string): number {
+export function utf8Length(text: string): number {
   let bytes = 0;
   for (let i = 0; i < text.length; i++) {
     const code = text.charCodeAt(i);

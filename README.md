@@ -33,8 +33,16 @@ npm ci             # install every package's dependencies (npm install to add or
 npm run build      # tsc compiles sdk, protocol and server to dist/; Vite builds the client
 npm run typecheck  # type-check every package, tests included
 npm test           # run every package's tests (Vitest)
+npm run test:e2e   # the browser tests (Playwright): Chromium, Firefox and WebKit, fresh and saved profiles
 npm run dev        # recompile on every change and restart the server (http://localhost:3000)
 ```
+
+The browser tests need the browsers once: `npx playwright install chromium firefox webkit`, and on
+Linux their system libraries: `sudo npx playwright install-deps`. They build what they need
+themselves, into `e2e/.build/`.
+
+The server also serves the Game frame on the next port up (http://localhost:3001/v1/), from
+`client/dist/frame`, which `npm run build` makes.
 
 `npm run dev -w @boilergames/client` serves the client with Vite's own dev server, which reloads
 the page on every change.

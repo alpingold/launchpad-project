@@ -14,11 +14,13 @@
   ],
   "scripts": {
     "build": "tsc -b tsconfig.build.json && npm run build -w @boilergames/client",
-    "typecheck": "npm run typecheck --workspaces",
+    "typecheck": "npm run typecheck --workspaces && tsc -p e2e/tsconfig.json",
     "test": "vitest run",
-    "dev": "tsc -b tsconfig.build.json && node scripts/dev.js"
+    "dev": "tsc -b tsconfig.build.json && node scripts/dev.js",
+    "test:e2e": "playwright test -c e2e/playwright.config.ts"
   },
   "devDependencies": {
+    "@playwright/test": "1.64.1",
     "@types/node": "^24.19.2",
     "typescript": "^7.0.2",
     "vitest": "^5.0.5"

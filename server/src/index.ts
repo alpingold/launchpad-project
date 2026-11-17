@@ -7,3 +7,4 @@ export function createServer(): Server {
     response.end("BoilerGames server");
   });
 }
+export { createFrameServer, frameContentSecurityPolicy, type FrameServerOptions } from "./frame-origin.js";

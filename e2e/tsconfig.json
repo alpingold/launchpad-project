@@ -1,0 +1,12 @@
+// The type check for the browser tests: Node for the runner and servers, DOM for the pages.
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "types": ["node"]
+  },
+  "include": [".", "../client/src/frame/virtual-modules.d.ts"],
+  "exclude": [".build", "test-results"]
+}

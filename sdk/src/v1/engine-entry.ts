@@ -3,3 +3,4 @@
 export * from "./engine.js";
 export * from "./rng.js";
 export * from "./simulate.js";
+export * from "./frame-messages.js";
