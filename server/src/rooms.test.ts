@@ -382,7 +382,11 @@ describe("limits", () => {
     // A bad message counts too.
     h.rooms.received(ada.phone, { ok: false, refusal: "badMessage" });
     expect(h.messages(ada.phone).filter((m) => m.type === "refused")).toHaveLength(1);
-    while (!h.closed.has(ada.phone)) h.say(ada.phone, { type: "action", action: {} });
+    // 22 sent so far this second; the socket closes on exactly the 40th.
+    for (let sent = 22; sent < PHONE_MESSAGES_PER_SECOND * CLOSE_AT_TIMES_THE_LIMIT - 1; sent++) h.say(ada.phone, { type: "action", action: {} });
+    expect(h.closed.has(ada.phone)).toBe(false);
+    h.say(ada.phone, { type: "action", action: {} });
+    expect(h.closed.has(ada.phone)).toBe(true);
     // Closed like a dropped phone: the Seat waits for it to come back.
     expect(h.lastRoom(screen).seats[0]).toMatchObject({ connected: false });
   });
@@ -411,7 +415,10 @@ describe("limits", () => {
     h.say(screen, { type: "views", views: { [ada.seatId]: { n: "too many" } }, timerMs: null });
     expect(h.last(screen)).toEqual({ type: "refused", reason: "tooFast" });
     expect(h.last(ada.phone)).toMatchObject({ view: { n: SCREEN_MESSAGES_PER_SECOND - 1 } });
-    for (let i = 0; i < SCREEN_MESSAGES_PER_SECOND; i++) h.say(screen, { type: "views", views: {}, timerMs: null });
+    // 101 sent so far this second; the socket closes on exactly the 200th.
+    for (let sent = 101; sent < SCREEN_MESSAGES_PER_SECOND * CLOSE_AT_TIMES_THE_LIMIT - 1; sent++) h.say(screen, { type: "views", views: {}, timerMs: null });
+    expect(h.closed.has(screen)).toBe(false);
+    h.say(screen, { type: "views", views: {}, timerMs: null });
     expect(h.closed.has(screen)).toBe(true);
     expect(h.lastRoom(ada.phone).screenConnected).toBe(false);
   });
@@ -426,9 +433,12 @@ describe("limits", () => {
     const blocked = h.join(code, "Eleventh", "203.0.113.5");
     expect(h.messages(blocked.phone)).toEqual([{ type: "refused", reason: "tooFast" }]);
     expect(h.closed.has(blocked.phone)).toBe(true);
-    // Another address isn't affected; and a minute later this one may try again.
+    // Another address isn't affected. A refused try doesn't count: a minute after the first ten,
+    // this address may try again, however often it was refused in between.
     expect(h.join(code, "Elsewhere", "203.0.113.6").seatId).toBeDefined();
-    h.clock.advance(60_000);
+    h.clock.advance(30_000);
+    expect(h.messages(h.join(code, "Still blocked", "203.0.113.5").phone)).toEqual([{ type: "refused", reason: "tooFast" }]);
+    h.clock.advance(30_000);
     expect(h.join(code, "Later", "203.0.113.5").seatId).toBeDefined();
   });
 

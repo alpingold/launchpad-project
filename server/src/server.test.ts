@@ -141,6 +141,25 @@ describe("what the transport does with messages that aren't messages", () => {
     expect((await next.next("roomOpened"))["type"]).toBe("roomOpened");
   });
 
+  test("a seated phone or a Screen sending more than that is closed (1009) like a dropped socket: its Seat or Room waits", async () => {
+    const screen = await Client.open();
+    screen.send({ type: "openRoom", v: 1 });
+    const { room, hostToken } = (await screen.next("roomOpened")) as unknown as { room: { code: string }; hostToken: string };
+    const phone = await Client.open();
+    phone.send({ type: "join", v: 1, code: room.code, name: "Ada" });
+    await phone.next("seated");
+    const before = screen.messages.length;
+    phone.raw(JSON.stringify({ type: "action", action: { pad: "x".repeat(MAX_MESSAGE_BYTES) } }));
+    expect(await phone.closed).toBe(1009);
+    expect(((await screen.next("room", before))["room"] as { seats: { connected: boolean }[] }).seats).toEqual([expect.objectContaining({ connected: false })]);
+
+    screen.raw(JSON.stringify({ type: "views", views: { s1: { pad: "x".repeat(MAX_MESSAGE_BYTES) } }, timerMs: null }));
+    expect(await screen.closed).toBe(1009);
+    const back = await Client.open();
+    back.send({ type: "resumeRoom", v: 1, code: room.code, hostToken });
+    expect((await back.next("roomOpened"))["type"]).toBe("roomOpened");
+  });
+
   test("a WebSocket on any other path is turned away", async () => {
     const ws = new WebSocket(`ws://${base}/elsewhere`);
     const failed = await new Promise<string>((resolve) => {
