@@ -1,89 +1,9 @@
 // The real site, end to end: one Screen and phones in separate browsers, over the real server,
 // the real Game frame and the built Official games.
-import type { BrowserContext, Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures.js";
 import { APP } from "./origins.js";
-
-const PHONE = { viewport: { width: 390, height: 844 }, hasTouch: true };
-
-/** Opens the Screen and returns it with its Room Code. Its clock is ours to move on when everyone waits. */
-async function openScreen(context: BrowserContext): Promise<{ screen: Page; code: string }> {
-  const screen = context.pages()[0] ?? (await context.newPage());
-  await screen.clock.install();
-  await screen.goto(`${APP}/screen`);
-  const code = (await screen.getByLabel("Room Code").textContent())?.trim() ?? "";
-  expect(code).toMatch(/^[A-HJ-NP-Z]{4}$/);
-  return { screen, code };
-}
-
-/** A phone that joins the Room as `name`. */
-async function joinPhone(another: (name: string, options?: object) => Promise<BrowserContext>, code: string, name: string): Promise<Page> {
-  const context = await another(name, PHONE);
-  const phone = context.pages()[0] ?? (await context.newPage());
-  await phone.goto(`${APP}/play`);
-  await phone.getByLabel("Room Code").fill(code);
-  await phone.getByLabel("Your name").fill(name);
-  await phone.getByRole("button", { name: "Join" }).click();
-  await expect(phone.getByRole("heading", { name: `You're in, ${name}` })).toBeVisible();
-  return phone;
-}
-
-/**
- * Has `phone` do the first thing its Controller offers: type a word, draw a line, tap a picture's
- * shape, or press a button. False if it offers nothing.
- */
-async function actOnce(phone: Page): Promise<boolean> {
-  const view = phone.locator(".kit-view");
-  if ((await view.count()) === 0) return false;
-  const input = view.locator(".kit-text-input input");
-  if ((await input.count()) > 0) {
-    await input.fill("lanterns");
-    await view.locator(".kit-text-input button").click();
-    return true;
-  }
-  const pad = view.locator(".kit-pad-surface");
-  if ((await pad.count()) > 0) {
-    const box = (await pad.boundingBox())!;
-    await phone.mouse.move(box.x + box.width * 0.2, box.y + box.height * 0.2);
-    await phone.mouse.down();
-    await phone.mouse.move(box.x + box.width * 0.8, box.y + box.height * 0.7, { steps: 8 });
-    await phone.mouse.up();
-    await view.getByRole("button", { name: "Send" }).click();
-    return true;
-  }
-  const shape = view.locator('svg [role="button"]');
-  if ((await shape.count()) > 0) {
-    await shape.first().click();
-    return true;
-  }
-  const button = view.locator("button.kit-button:not([disabled])");
-  if ((await button.count()) > 0) {
-    await button.first().click();
-    return true;
-  }
-  return false;
-}
-
-/**
- * When nobody can act, the Screen's clock runs on, a second at a time with a real pause between: a
- * jump of several seconds would also run out the two seconds the frame has to answer the timer.
- */
-async function waitOnTheScreen(screen: Page): Promise<void> {
-  await screen.clock.runFor(1_000);
-  await screen.waitForTimeout(60);
-}
-
-/** Plays until the Screen is back in the Lobby with a result. */
-async function playToTheEnd(screen: Page, phones: readonly Page[]): Promise<void> {
-  for (let round = 0; round < 400; round++) {
-    if ((await screen.locator(".screen-result").count()) > 0) return;
-    let acted = false;
-    for (const phone of phones) if (await actOnce(phone)) acted = true;
-    await screen.waitForTimeout(150);
-    if (!acted) await waitOnTheScreen(screen);
-  }
-  throw new Error("the Match didn't end");
-}
+import { actOnce, joinLate, joinPhone, openScreen, playToTheEnd, scribble, startWith, waitOnTheScreen } from "./site-helpers.js";
 
 for (const [id, title] of [
   ["sum-it-up", "Sum It Up"],
@@ -100,17 +20,6 @@ for (const [id, title] of [
     await expect(screen.locator(".screen-result")).toContainText(`${title}: It finished.`);
     for (const phone of phones) await expect(phone.getByText("Waiting for the Host to start a Game.")).toBeVisible();
   });
-}
-
-/** Opens the Screen, seats these phones, and starts `title`. */
-async function startWith(context: BrowserContext, another: (name: string, options?: object) => Promise<BrowserContext>, names: readonly string[], title: string) {
-  const { screen, code } = await openScreen(context);
-  const phones: Page[] = [];
-  for (const name of names) phones.push(await joinPhone(another, code, name));
-  await screen.getByRole("button", { name: `Start ${title}` }).click();
-  await expect(screen.locator(".screen-match .kit-view")).toBeVisible();
-  for (const phone of phones) await expect(phone.locator(".kit-view")).toBeVisible();
-  return { screen, code, phones };
 }
 
 test("the Screen reloads mid-Match and the Match carries on", async ({ context, another }) => {
@@ -147,17 +56,6 @@ test("the Host removes a Player: their phone is told, and the Seat is gone", asy
   await expect(ben.getByText("The Host removed you from the Room.")).toBeVisible();
   await expect(screen.locator(".screen-seats li")).toHaveCount(1);
 });
-
-/** A phone that joins during a Match: it may get a View at once, so no "You're in" check. */
-async function joinLate(another: (name: string, options?: object) => Promise<BrowserContext>, code: string, name: string): Promise<Page> {
-  const context = await another(name, PHONE);
-  const phone = context.pages()[0] ?? (await context.newPage());
-  await phone.goto(`${APP}/play`);
-  await phone.getByLabel("Room Code").fill(code);
-  await phone.getByLabel("Your name").fill(name);
-  await phone.getByRole("button", { name: "Join" }).click();
-  return phone;
-}
 
 test("a latecomer plays at once in a Game that takes them, and waits for the next Match in one that doesn't", async ({ context, another }) => {
   const { screen, code, phones } = await startWith(context, another, ["Ada", "Ben"], "Allotments");
@@ -253,4 +151,45 @@ test("a phone that sends too much at once is told to slow down, and keeps its Se
   await expect(ada.locator(".kit-text-input")).toBeVisible();
   await ada.reload();
   await expect(ada.locator(".kit-text-input")).toBeVisible();
+});
+
+test("on a phone, a short View sits in the middle and a tall one scrolls from its top", async ({ context, another }) => {
+  const { phones } = await startWith(context, another, ["Ada", "Ben", "Cy"], "Scribble Pick");
+  const [ada, ben] = [phones[0]!, phones[1]!];
+  const gaps = (page: Page) =>
+    page.evaluate(() => {
+      const view = document.querySelector(".kit-view")!.getBoundingClientRect();
+      const parts = [...document.querySelectorAll(".kit-view > *")].map((p) => p.getBoundingClientRect());
+      return { above: parts[0]!.top - view.top, below: view.bottom - parts.at(-1)!.bottom, pageTaller: document.documentElement.scrollHeight > innerHeight + 1 };
+    });
+
+  // The drawing pad is taller than a 390x560 phone: the page scrolls, and its top is still reachable.
+  await ada.setViewportSize({ width: 390, height: 560 });
+  await expect(ada.locator(".kit-pad")).toBeVisible();
+  expect((await gaps(ada)).pageTaller).toBe(true);
+  expect((await gaps(ada)).above).toBeGreaterThanOrEqual(0);
+  expect(await ada.evaluate(() => document.querySelector(".kit-view > *")!.getBoundingClientRect().top)).toBeGreaterThanOrEqual(0);
+
+  // After drawing, Ben's View is a line of text: it sits in the middle of the page.
+  await scribble(ben);
+  await ben.getByRole("button", { name: "Send" }).click();
+  await expect(ben.getByText("Sent. Waiting for the others to finish.")).toBeVisible();
+  const short = await gaps(ben);
+  expect(short.pageTaller).toBe(false);
+  expect(Math.abs(short.above - short.below)).toBeLessThan(4);
+});
+
+test("a text box's send button stays on screen when the keyboard takes half the page", async ({ context, another }) => {
+  const { phones } = await startWith(context, another, ["Ada", "Ben", "Cy"], "Sum It Up");
+  const ada = phones[0]!;
+  // The keyboard open: with interactive-widget=resizes-content, the page gets this much shorter,
+  // shorter than the View, so the box starts below the fold. (A test browser has no keyboard.)
+  await ada.setViewportSize({ width: 390, height: 90 });
+  await ada.evaluate(() => scrollTo(0, 0));
+  expect(await ada.evaluate(() => document.documentElement.scrollHeight)).toBeGreaterThan(90);
+  await ada.locator(".kit-text-input input").focus();
+  await ada.waitForTimeout(400);
+  const send = (await ada.locator(".kit-text-input button").boundingBox())!;
+  expect(send.y).toBeGreaterThanOrEqual(0);
+  expect(send.y + send.height).toBeLessThanOrEqual(90);
 });

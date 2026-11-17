@@ -189,7 +189,14 @@ export function TextInput({ part, context }: { part: TextInputPart<unknown>; con
   };
   return (
     <form className="kit-text-input" onSubmit={send}>
-      <input value={text} onChange={(event) => setText(event.target.value)} maxLength={part.maxLength ?? DEFAULT_TEXT_INPUT_LENGTH} placeholder={part.placeholder} enterKeyHint="send" />
+      <input
+        // When the keyboard opens, keep the whole box (with its send button) in view.
+        onFocus={(event) => {
+          const form = event.currentTarget.form;
+          setTimeout(() => form?.scrollIntoView({ block: "nearest" }), 300);
+        }}
+        value={text}
+        onChange={(event) => setText(event.target.value)} maxLength={part.maxLength ?? DEFAULT_TEXT_INPUT_LENGTH} placeholder={part.placeholder} enterKeyHint="send" />
       <button className="kit-button" type="submit" disabled={text.trim() === ""}>
         Send
       </button>

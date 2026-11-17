@@ -12,10 +12,15 @@
   box-sizing: border-box;
   min-height: 100%;
 }
+/* The Screen's View is laid out on the site's stage, 1280 stage pixels wide, and scaled to fit the
+   TV (client/src/screen/ScreenStage.tsx): sizes here are in stage pixels, never vw or vh. Every
+   Part on the Screen is centred, one alignment for all. */
 .kit-view[data-kind="screen"] {
-  font-size: clamp(16px, 2.2vw, 28px);
-  gap: 1.2vw;
-  padding: 2vw;
+  font-size: 28px;
+  gap: 18px;
+  padding: 28px;
+  align-items: center;
+  text-align: center;
 }
 .kit-view * {
   box-sizing: border-box;
@@ -83,10 +88,10 @@
 .kit-player-mark, .kit-player-note { font-size: 0.8em; }
 
 .kit-drawing { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 0.3em; }
-.kit-drawing svg { width: min(100%, 60vh); aspect-ratio: 1; border-radius: var(--kit-radius); }
+.kit-drawing svg { width: min(100%, 440px); aspect-ratio: 1; border-radius: var(--kit-radius); }
 .kit-view[data-kind="controller"] .kit-drawing svg { width: 100%; }
 
-.kit-picture { width: 100%; max-height: 70vh; }
+.kit-picture { width: 100%; max-height: 640px; }
 .kit-view[data-kind="controller"] .kit-picture { max-height: none; }
 
 .kit-button {
@@ -143,4 +148,28 @@
 .kit-row { display: flex; gap: 8px; align-items: flex-start; }
 .kit-row > * { flex: 1; min-width: 0; }
 .kit-row > .kit-button { align-self: stretch; }
-.kit-row > .kit-picture { max-height: 60vh; }
+.kit-row > .kit-picture { max-height: 560px; }
+
+/* On the Screen, centred like everything else, and Parts that would stretch keep their own width. */
+.kit-view[data-kind="screen"] .kit-timer { align-self: center; }
+/* Player tiles in equal columns, as many as fit, centred: two beside a picture, three or more across. */
+.kit-view[data-kind="screen"] .kit-players { display: grid; grid-template-columns: repeat(auto-fill, 12em); justify-content: center; width: 100%; }
+/* Long lists spread into columns rather than running down: on a TV the View is scaled to fit its
+   height, so every line saved makes all the text bigger. */
+.kit-view[data-kind="screen"] .kit-scoreboard { width: 100%; max-width: none; }
+.kit-view[data-kind="screen"] .kit-scoreboard ol { display: grid; grid-template-columns: repeat(auto-fill, minmax(13em, 1fr)); column-gap: 1.5em; }
+.kit-view[data-kind="screen"] .kit-players li { padding: 0.3em 0.7em; min-width: 0; }
+.kit-view[data-kind="screen"] .kit-player-mark,
+.kit-view[data-kind="screen"] .kit-player-note { font-size: 0.9em; }
+.kit-view[data-kind="screen"] .kit-row { width: 100%; align-items: center; }
+/* Beside other Parts, a picture takes a little under half: what's next to it (often a list of
+   Players) gets room for two columns, and a shorter picture lets the whole View be bigger. */
+.kit-view[data-kind="screen"] .kit-row > .kit-picture { flex: 0 0 42%; }
+
+/* On a phone, a View shorter than the page sits in the middle, not at the top. Auto margins, not
+   justify-content: a View taller than the page then starts at its top and scrolls, rather than
+   overflowing upwards where it couldn't be reached. Phone Views are never scaled. */
+.kit-view[data-kind="controller"] > :first-child { margin-top: auto; }
+.kit-view[data-kind="controller"] > :last-child { margin-bottom: auto; }
+/* A text box scrolled into view brings its send button with it, clear of the keyboard. */
+.kit-text-input { scroll-margin-bottom: 24px; }

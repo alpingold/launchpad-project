@@ -2,7 +2,9 @@
 // filling the page), and the last Match's result. ScreenRoom does the work; this draws its state.
 import type { MatchResult, Room } from "@boilergames/protocol";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { withDefaults } from "@boilergames/sdk/v1/check";
 import { View } from "../kit/View.js";
+import { ScreenStage } from "../screen/ScreenStage.js";
 import { ScreenRoom, type GameListing } from "../screen/screen-room.js";
 
 export function ScreenPage() {
@@ -52,7 +54,13 @@ function ScreenContent({ screen }: { screen: ScreenRoom }) {
   if (state.phase === "match" && state.match !== null) {
     return (
       <main className="screen-match">
-        {state.match.view === null ? <p className="page">Starting {state.match.title}…</p> : <View kind="screen" view={state.match.view} look={state.match.look} names={names} timerEndsAt={state.match.timerEndsAt} />}
+        {state.match.view === null ? (
+          <p className="page">Starting {state.match.title}…</p>
+        ) : (
+          <ScreenStage background={withDefaults(state.match.look).colors.background}>
+            <View kind="screen" view={state.match.view} look={state.match.look} names={names} timerEndsAt={state.match.timerEndsAt} />
+          </ScreenStage>
+        )}
         <div className="screen-match-bar">
           <span>
             Room <strong>{state.room.code}</strong>
