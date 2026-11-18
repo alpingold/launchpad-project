@@ -35,8 +35,11 @@ export const SESSION_MS = 90 * DAY_MS;
 export const SESSION_TOUCH_MS = HOUR_MS;
 /** Sign-in emails to one address in SIGN_IN_LINK_MS. */
 export const EMAILS_PER_ADDRESS = 3;
-/** Sign-in emails asked for from one visitor's network address in an hour. */
-export const EMAILS_PER_VISITOR_PER_HOUR = 10;
+/**
+ * Sign-in emails asked for from one visitor's network address in an hour. A campus shares a few
+ * addresses, so this must let a club meeting of 30 people on one address all sign in.
+ */
+export const EMAILS_PER_VISITOR_PER_HOUR = 50;
 /**
  * Sign-in emails in a day, from the whole site. The site must never be a way to flood Purdue inboxes,
  * and SES judges the sender by its complaints.
@@ -91,15 +94,18 @@ export function purdueEmail(typed: string): { readonly ok: true; readonly email:
 
 /**
  * A display name as it is kept, and its key (what must be unique), or why it can't be one. Trimmed;
- * 2 to 30 characters; nothing invisible (control characters, and the format characters that can
- * hide text or turn it backwards). The key folds case and look-alike forms (NFKC), so "Ada",
- * "ADA" and a full-width "Ａｄａ" are one name.
+ * 2 to 30 characters; nothing invisible (control characters, the format characters that can hide
+ * text or turn it backwards, and the characters Unicode says to draw as nothing, such as the
+ * Hangul filler U+3164, which counts as a letter); and at least one letter or digit, so a name of
+ * blank-looking symbols (U+2800, the blank Braille pattern) can't pass for no name. The key folds
+ * case and look-alike forms (NFKC), so "Ada", "ADA" and a full-width "Ａｄａ" are one name.
  */
 export function displayName(typed: string): { readonly ok: true; readonly name: string; readonly key: string } | { readonly ok: false; readonly error: string } {
   const name = typed.normalize("NFC").trim();
-  if (/\p{C}/u.test(name)) return { ok: false, error: "A display name can't hold invisible or control characters." };
+  if (/[\p{C}\p{Default_Ignorable_Code_Point}]/u.test(name)) return { ok: false, error: "A display name can't hold invisible or control characters." };
   const length = [...name].length;
   if (length < DISPLAY_NAME_MIN || length > DISPLAY_NAME_MAX) return { ok: false, error: `A display name is ${DISPLAY_NAME_MIN} to ${DISPLAY_NAME_MAX} characters.` };
+  if (!/[\p{L}\p{N}]/u.test(name)) return { ok: false, error: "A display name needs at least one letter or digit." };
   return { ok: true, name, key: name.normalize("NFKC").toLowerCase() };
 }
 

@@ -687,7 +687,8 @@ The flow:
    last use. In development over plain http the cookie can't be `Secure` or `__Host-`; make that
    the one difference and name it in a comment.
 4. A new account has no display name. Until it picks one (2 to 30 characters, unique ignoring
-   case, trimmed, no control characters) the pages send it to a page that asks. The display name
+   case, trimmed, no control characters or characters drawn as nothing, and at least one letter
+   or digit, so it can't look blank) the pages send it to a page that asks. The display name
    is what other people will see; the email address is never shown to anyone else and never
    appears in a response about another account.
 5. `POST /api/sign-out` deletes the session. `GET /api/me` says who is signed in, or nobody.
@@ -705,7 +706,8 @@ and say so. The email is plain text: what it is, the link, that it runs out in 1
 that it can be ignored if they didn't ask for it.
 
 Limits, each a named constant, each tested with a fake clock: 3 sign-in emails to one address in
-15 minutes; 10 from one visitor's address in an hour; 300 a day in all (the site must never be a
+15 minutes; 50 from one visitor's address in an hour (a campus shares a few addresses, and a club
+meeting of 30 on one of them must all be able to sign in); 300 a day in all (the site must never be a
 way to flood Purdue inboxes, and SES judges the sender by complaints). 10 wrong tokens a minute
 from one address. A refusal says to wait and how long. Old links and sessions are deleted
 when they run out.

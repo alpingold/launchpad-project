@@ -301,7 +301,18 @@ describe("display names", () => {
     expect(displayName("  Ada  ")).toEqual({ ok: true, name: "Ada", key: "ada" });
     expect(displayName("Zoë")).toEqual({ ok: true, name: "Zoë", key: "zoë" });
     expect(displayName("x".repeat(30)).ok).toBe(true);
-    for (const bad of ["A", " A ", "x".repeat(31), "", "Ada\u0000", "Ada\nLovelace", "Ada​", "‮adA", "Ad\u0007a"]) expect(displayName(bad).ok, JSON.stringify(bad)).toBe(false);
+    for (const bad of ["A", " A ", "x".repeat(31), "", "Ada\u0000", "Ada\nLovelace", "Ada\u200b", "\u202eadA", "Ad\u0007a"]) expect(displayName(bad).ok, JSON.stringify(bad)).toBe(false);
+  });
+
+  test("a name that looks blank is refused: it needs a letter or digit, and blank letters don't count", () => {
+    // U+2800 is a blank Braille pattern (a symbol); U+3164 and U+FFA0 are Hangul fillers, which
+    // Unicode counts as letters but draws as nothing.
+    for (const blank of ["\u2800\u2800", "\u3164\u3164", "\uffa0\uffa0", "..", "!?", "\u2800\u2800\u2800 \u2800"]) {
+      expect(displayName(blank).ok, JSON.stringify(blank)).toBe(false);
+    }
+    expect(displayName("\u2800\u2800")).toEqual({ ok: false, error: "A display name needs at least one letter or digit." });
+    expect(displayName("\u3164\u3164")).toEqual({ ok: false, error: "A display name can't hold invisible or control characters." });
+    for (const fine of ["42", "Ω!", "李明", "Ada 🎲", "x.y"]) expect(displayName(fine).ok, fine).toBe(true);
   });
 
   test("a new account picks one; it is unique ignoring case and look-alike forms", async () => {
