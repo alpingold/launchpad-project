@@ -1,0 +1,9 @@
+# One check for a new release, run by boilergames-release.timer. See check-release.sh.
+[Unit]
+Description=Install the newest BoilerGames release, if it is not the one running
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/boilergames-check-release

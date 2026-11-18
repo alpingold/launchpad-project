@@ -1,0 +1,11 @@
+# Checks for a new release once a minute. A check that is still running is never started twice.
+[Unit]
+Description=Check for a new BoilerGames release every minute
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=60s
+AccuracySec=5s
+
+[Install]
+WantedBy=timers.target

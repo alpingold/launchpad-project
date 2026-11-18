@@ -1,0 +1,35 @@
+# The site and the Game frame: one Node process, started at boot and restarted if it stops.
+# It runs as its own user with no login, sees the system's files read-only, and cannot gain
+# privileges. Settings come from /etc/boilergames.env.
+[Unit]
+Description=BoilerGames site and Game frame
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=boilergames
+Group=boilergames
+WorkingDirectory=/opt/boilergames/current
+EnvironmentFile=/etc/boilergames.env
+# The memory cap sits under the server's 2 GB; MAX_ROOMS in the settings is sized to fit inside it.
+ExecStart=/usr/local/bin/node --max-old-space-size=1280 server/dist/main.js
+Restart=always
+RestartSec=2
+MemoryMax=1500M
+LimitNOFILE=65536
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+CapabilityBoundingSet=
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

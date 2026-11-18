@@ -25,7 +25,7 @@ jobs:
   # browser to another, so they are checked on every push, not only on one person's machine.
   browsers:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -42,3 +42,45 @@ jobs:
           name: playwright-results
           path: e2e/test-results/
           retention-days: 7
+
+  # Publishes what was just tested, for the server to fetch. Only for the branch the site runs from,
+  # and only once both jobs above are green. The server checks for a new release every minute,
+  # installs it, and goes back to the one before if the site doesn't come up (deploy/).
+  # Nothing here can reach the server, and GitHub holds no AWS credentials: the server fetches.
+  release:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/rewrite'
+    needs: [test, browsers]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    concurrency:
+      group: release
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build
+      - run: RELEASE_ID=${{ github.sha }} ./deploy/package-release.sh
+      # Skip if a newer commit was released while this one was being tested: never step backwards.
+      - name: Publish the release
+        run: |
+          git fetch --quiet origin rewrite
+          if [ "$(git rev-parse origin/rewrite)" != "${{ github.sha }}" ]; then
+            echo "A newer commit is on rewrite; leaving the release to its run."
+            exit 0
+          fi
+          gh release create "r-${{ github.sha }}" release.tar.gz release.tar.gz.sha256 RELEASE \
+            --target "${{ github.sha }}" --title "Release ${GITHUB_SHA::7}" \
+            --notes "Built and tested by CI from ${{ github.sha }}. The server installs it within a minute." --latest
+      # Twenty releases are plenty to go back to.
+      - name: Remove old releases
+        run: |
+          gh release list --limit 100 --json tagName,createdAt --jq 'sort_by(.createdAt) | reverse | .[20:] | .[].tagName' |
+            while read -r tag; do gh release delete "$tag" --yes --cleanup-tag; done

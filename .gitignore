@@ -17,3 +17,8 @@ generator/out/
 .claude/
 CLAUDE.md
 CLAUDE.local.md
+
+# What deploy/package-release.sh writes.
+release.tar.gz
+release.tar.gz.sha256
+/RELEASE

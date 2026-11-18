@@ -1,0 +1,20 @@
+# Caddy on the server: HTTPS for both domains, passing requests to the one Node process.
+# Caddy gets and renews the certificates itself, which needs ports 80 and 443 open and each name's
+# DNS record pointing straight at this server ("DNS only" at Cloudflare, not proxied).
+
+# The site.
+boilergames.party {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:3000
+}
+
+# Visitors who type www get the site.
+www.boilergames.party {
+	redir https://boilergames.party{uri} permanent
+}
+
+# The game domain: only the Game frame. Nothing here may add, drop or change a response header:
+# the frame page's Content-Security-Policy is the wall between a Game and the network (ADR 0004).
+boilergames-play.party {
+	reverse_proxy 127.0.0.1:3001
+}

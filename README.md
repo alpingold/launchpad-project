@@ -127,3 +127,32 @@ What was tested: `--lan` binds every interface and prints the addresses; the Scr
 in Chromium, Firefox and WebKit from the WSL2 network address on the same computer, where pages are
 not a secure context; without `--lan` the server answers only `localhost`. Not tested: a real phone,
 and every Windows-side step above (mirrored networking, the firewall commands, port forwarding).
+
+## How the site is deployed
+
+One small server (an EC2 `t4g.small` in us-east-2) runs the Node process behind Caddy, which
+handles HTTPS for both domains. Everything the server needs is in [`deploy/`](deploy).
+
+A push to `rewrite` deploys itself, without anyone logging in to the server:
+
+1. CI type-checks, builds, and runs the unit and browser tests.
+2. If all are green, CI packs the build (`deploy/package-release.sh`) and publishes it as a GitHub
+   Release named after the commit.
+3. Once a minute the server asks GitHub for the newest release (`deploy/check-release.sh`). If it
+   isn't the one running, it downloads it, checks its checksum, switches to it, and checks that the
+   site and the Game frame answer. If they don't, it switches back (`deploy/install-release.sh`).
+
+The server fetches; nothing reaches in. GitHub holds no AWS credentials, the server has no SSH
+port open, and the site's own user can read its code but not change it.
+
+Worth knowing:
+- A deploy restarts the site, which closes every open Room: Rooms live in the server's memory.
+- To go back to an earlier release, run `boilergames-install-release <commit id>` on the server.
+  From a signed-in AWS CLI:
+  `aws ssm send-command --document-name boilergames-deploy --instance-ids <server> --parameters releaseId=<commit id>`.
+- A release that fails to install is not retried every minute; fix it with a new commit.
+- The server's settings are `deploy/boilergames.env`, installed as `/etc/boilergames.env`. A changed
+  setting, service file or Caddyfile is not deployed by a push: run `deploy/setup-server.sh` again.
+- Both domains' DNS records must point straight at the server (at Cloudflare: "DNS only"). Caddy
+  needs that to get certificates, and nothing may sit in front of the game domain that could change
+  its Content-Security-Policy header (ADR 0004).
