@@ -8,6 +8,7 @@ import {
   publishVersion,
   saveDescription,
   STAGE_NAMES,
+  TAKEN_DOWN,
   titleOf,
   unpublishGame,
   uploadVersion,
@@ -76,6 +77,11 @@ export function MyGamePage({ id }: { id: string }) {
         <a href="/my/games">My Games</a>
       </p>
       <h1>{titleOf(game) ?? "Untitled Game"}</h1>
+      {game.takenDownAt === null ? null : (
+        <p className="page-notice" role="status">
+          {TAKEN_DOWN} You can still upload Versions and play them yourself.
+        </p>
+      )}
       {error === null ? null : (
         <p className="page-notice" role="alert">
           {error}
@@ -90,6 +96,7 @@ export function MyGamePage({ id }: { id: string }) {
               key={version.id}
               version={version}
               published={version.id === game.publishedVersionId}
+              mayPublish={game.takenDownAt === null}
               publish={() => void change(publishVersion(game.id, version.id))}
               unpublish={() => void change(unpublishGame(game.id))}
             />
@@ -128,7 +135,19 @@ function Description({ game, save }: { game: Game; save: (description: string) =
 
 const STATE_WORDS = { checking: "Being checked…", ready: "Ready", failed: "Failed its check" } as const;
 
-function VersionLine({ version, published, publish, unpublish }: { version: Version; published: boolean; publish: () => void; unpublish: () => void }) {
+function VersionLine({
+  version,
+  published,
+  mayPublish,
+  publish,
+  unpublish,
+}: {
+  version: Version;
+  published: boolean;
+  mayPublish: boolean;
+  publish: () => void;
+  unpublish: () => void;
+}) {
   return (
     <li className="my-version" data-state={version.state} aria-label={`Version ${version.number}`}>
       <p>
@@ -155,11 +174,11 @@ function VersionLine({ version, published, publish, unpublish }: { version: Vers
             <button type="button" className="page-button page-button-small page-button-quiet" onClick={unpublish}>
               Unpublish
             </button>
-          ) : (
+          ) : mayPublish ? (
             <button type="button" className="page-button page-button-small page-button-quiet" onClick={publish}>
               Publish
             </button>
-          )}
+          ) : null}
         </p>
       ) : null}
     </li>

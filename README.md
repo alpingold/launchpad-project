@@ -201,9 +201,17 @@ on the server, as the site's user, with the account's email address:
     sudo -u boilergames /usr/local/bin/node -e 'const db = new (require("node:sqlite").DatabaseSync)("/var/lib/boilergames/boilergames.db"); console.log(db.prepare("UPDATE accounts SET admin = 1 WHERE email = ?").run(process.argv[1]).changes, "account(s) made an admin")' someone@purdue.edu
 
 (`admin = 0` undoes it.) Then, signed in on the site as that account, in the browser's console on
-any of the site's pages, with the `id` that `/api/games` lists for the Game (or the Game's own id):
+any of the site's pages, with the `id` that `/api/games` lists for the Game (or the Game's own id),
+to take it down:
 
-    fetch("/api/admin/games/<id>/unpublish", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }).then((r) => r.json()).then(console.log)
+    fetch("/api/admin/games/<id>/take-down", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }).then((r) => r.json()).then(console.log)
 
-The Game leaves the list at once, and its code is refused to everyone but its Creator. The server's
-log names the admin and the Game.
+The Game leaves the list at once, and its code is refused to everyone but its Creator. The takedown
+sticks: its Creator can't publish it again (their page for it says an admin took it down), though
+they can still upload Versions and play them privately. To lift it, so the Creator may publish
+again (nothing is published by lifting it):
+
+    fetch("/api/admin/games/<id>/lift-takedown", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }).then((r) => r.json()).then(console.log)
+
+Either id works for both; once the Game is down the list no longer shows it, so use the Game's own
+id, which the first command answers with. The server's log names the admin and the Game each time.

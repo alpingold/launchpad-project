@@ -392,7 +392,8 @@ describe("only the site's own pages can change anything", () => {
     "/api/my/games/x/versions",
     "/api/my/games/x/publish",
     "/api/my/games/x/unpublish",
-    "/api/admin/games/x/unpublish",
+    "/api/admin/games/x/take-down",
+    "/api/admin/games/x/lift-takedown",
     "/api/not-a-route-yet",
   ];
 

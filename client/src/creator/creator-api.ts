@@ -24,6 +24,8 @@ export interface Game {
   readonly id: string;
   readonly description: string;
   readonly publishedVersionId: string | null;
+  /** When an admin took it down, or null. While set, it can't be published. */
+  readonly takenDownAt: number | null;
   readonly versions: readonly Version[];
 }
 
@@ -39,6 +41,9 @@ export interface GameLine {
 export const MAX_SOURCE_BYTES = 256 * 1024;
 /** The longest description, in characters. */
 export const DESCRIPTION_MAX = 300;
+
+/** What the Creator's page says while an admin's takedown stands (the server's own words for it). */
+export const TAKEN_DOWN = "An admin took this Game down. Write to the site's owner if you think that was a mistake.";
 
 /** What each stage of the check is called on the page. */
 export const STAGE_NAMES: Readonly<Record<Problem["stage"], string>> = { source: "The code", types: "Type check", bundle: "Bundling", play: "Playing it" };

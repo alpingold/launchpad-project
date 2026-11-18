@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { childProcessRunner, type PlaytestRunner, type RunResult } from "@boilergames/playtest/client";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 import { MAX_CHECKS_AT_ONCE, MAX_WAITING } from "./checks.js";
-import { DESCRIPTION_MAX, GAMES_PER_ACCOUNT, MAX_UPLOAD_BODY_BYTES, UPLOADS_PER_DAY, UPLOADS_PER_HOUR, VERSIONS_PER_GAME } from "./games.js";
+import { DESCRIPTION_MAX, GAMES_PER_ACCOUNT, MAX_LISTED_GAMES, MAX_UPLOAD_BODY_BYTES, TAKEN_DOWN, UPLOADS_PER_DAY, UPLOADS_PER_HOUR, VERSIONS_PER_GAME } from "./games.js";
 import { createServer, IN_MEMORY, openDatabase, RecordedMail, type Database, type RunningServer } from "./index.js";
 import type { Clock } from "./rooms.js";
 
@@ -168,6 +168,7 @@ interface GameSeen {
   id: string;
   description: string;
   publishedVersionId: string | null;
+  takenDownAt: number | null;
   versions: VersionSeen[];
 }
 
@@ -410,24 +411,85 @@ describe("publishing", () => {
     expect(JSON.parse((await call("GET", "/api/games")).text).map((listing: { id: string }) => listing.id)).toEqual(["demo", third.id]);
   });
 
-  test("an admin can take any Game down, by the id the list shows; anyone else finds no such route", async () => {
+  test("an admin takes a Game down, by the id the list shows, and it sticks: the Creator can't publish it again until an admin lifts it", async () => {
+    const ada = await signIn("ada@purdue.edu");
+    const bo = await signIn("bo@purdue.edu");
+    const game = await readyGame(ada, "rude");
+    const versionId = game.versions[0]?.id ?? "";
+    await call("POST", `/api/my/games/${game.id}/publish`, { body: { versionId }, cookie: ada });
+    // Set by hand in the database, as README.md says.
+    db.prepare("UPDATE accounts SET admin = 1 WHERE email = ?").run("bo@purdue.edu");
+    expect((await call("POST", `/api/admin/games/${versionId}/take-down`, { body: {}, cookie: bo })).body).toEqual({ takenDown: game.id });
+    const takenDown = await gameSeen(ada, game.id);
+    expect(takenDown.publishedVersionId).toBeNull();
+    expect(takenDown.takenDownAt).toBe(Math.floor(clock.now() / 1000));
+    expect((await call("GET", `/api/games/${versionId}/bundle.js`)).status).toBe(404);
+    expect(JSON.parse((await call("GET", "/api/games")).text)).toHaveLength(1);
+
+    // Publishing again is refused, plainly; uploading a Version and playing it privately are not.
+    const refused = await call("POST", `/api/my/games/${game.id}/publish`, { body: { versionId }, cookie: ada });
+    expect(refused).toEqual(expect.objectContaining({ status: 409, body: { error: TAKEN_DOWN } }));
+    expect((await gameSeen(ada, game.id)).publishedVersionId).toBeNull();
+    const second = await uploadVersion(ada, game.id, "rude, again");
+    await asked("rude, again");
+    playtest.finish("rude, again", READY("Again"));
+    await settled(ada, game.id);
+    expect((await call("GET", `/api/games/${second.id}/bundle.js`, { cookie: ada })).status).toBe(200);
+    expect((await call("POST", `/api/my/games/${game.id}/publish`, { body: { versionId: second.id }, cookie: ada })).status).toBe(409);
+
+    // Lifted: nothing is published by that, but the Creator may publish again.
+    expect((await call("POST", `/api/admin/games/${game.id}/lift-takedown`, { body: {}, cookie: bo })).body).toEqual({ liftedTakedown: game.id });
+    expect(await gameSeen(ada, game.id)).toEqual(expect.objectContaining({ takenDownAt: null, publishedVersionId: null }));
+    expect((await call("POST", `/api/my/games/${game.id}/publish`, { body: { versionId: second.id }, cookie: ada })).status).toBe(200);
+    expect((await call("GET", `/api/games/${second.id}/bundle.js`)).status).toBe(200);
+    expect(logged).toEqual(expect.arrayContaining([expect.stringMatching(/^Admin \S+ took down the Game /), expect.stringMatching(/^Admin \S+ lifted the takedown of the Game /)]));
+  });
+
+  test("a Creator's own unpublish is not a takedown: they may publish again at once", async () => {
+    const ada = await signIn("ada@purdue.edu");
+    const game = await readyGame(ada, "mine");
+    const versionId = game.versions[0]?.id ?? "";
+    await call("POST", `/api/my/games/${game.id}/publish`, { body: { versionId }, cookie: ada });
+    await call("POST", `/api/my/games/${game.id}/unpublish`, { body: {}, cookie: ada });
+    expect((await gameSeen(ada, game.id)).takenDownAt).toBeNull();
+    expect((await call("POST", `/api/my/games/${game.id}/publish`, { body: { versionId }, cookie: ada })).status).toBe(200);
+  });
+
+  test("anyone but an admin gets the same \"not found\" from both admin routes as from a route that doesn't exist, and nothing changes", async () => {
     const ada = await signIn("ada@purdue.edu");
     const bo = await signIn("bo@purdue.edu");
     const game = await readyGame(ada, "rude");
     const versionId = game.versions[0]?.id ?? "";
     await call("POST", `/api/my/games/${game.id}/publish`, { body: { versionId }, cookie: ada });
     const nowhere = await call("POST", "/api/admin/no-such-route", { body: {}, cookie: bo });
-    for (const cookie of [bo, undefined]) {
-      const refused = await call("POST", `/api/admin/games/${versionId}/unpublish`, { body: {}, cookie });
-      expect(refused.status).toBe(404);
-      expect(refused.text).toBe(nowhere.text);
+    for (const route of ["take-down", "lift-takedown"]) {
+      for (const cookie of [bo, ada, undefined]) {
+        for (const id of [versionId, game.id]) {
+          const refused = await call("POST", `/api/admin/games/${id}/${route}`, { body: {}, cookie });
+          expect(refused.status, `${route} ${id}`).toBe(404);
+          expect(refused.text, `${route} ${id}`).toBe(nowhere.text);
+        }
+      }
     }
-    expect((await gameSeen(ada, game.id)).publishedVersionId).toBe(versionId);
-    // Set by hand in the database, as README.md says.
-    db.prepare("UPDATE accounts SET admin = 1 WHERE email = ?").run("bo@purdue.edu");
-    expect((await call("POST", `/api/admin/games/${versionId}/unpublish`, { body: {}, cookie: bo })).body).toEqual({ unpublished: game.id });
-    expect((await gameSeen(ada, game.id)).publishedVersionId).toBeNull();
-    expect((await call("GET", `/api/games/${versionId}/bundle.js`)).status).toBe(404);
+    expect(await gameSeen(ada, game.id)).toEqual(expect.objectContaining({ takenDownAt: null, publishedVersionId: versionId }));
+  });
+});
+
+describe("the list of Games", () => {
+  test(`lists at most ${MAX_LISTED_GAMES} published Games, the newest`, async () => {
+    // Made in the database directly: as many Uploads through the routes would meet the Upload limits first.
+    const owner = await signIn("ada@purdue.edu");
+    const ownerId = String(db.prepare("SELECT id FROM accounts WHERE email = ?").get("ada@purdue.edu")?.["id"]);
+    const about = JSON.stringify({ title: "G", players: { min: 1, max: 2 } });
+    for (let n = 0; n < MAX_LISTED_GAMES + 5; n++) {
+      db.prepare("INSERT INTO games (id, owner_id, created_at) VALUES (?, ?, ?)").run(`g${n}`, ownerId, n);
+      db.prepare("INSERT INTO versions (id, game_id, number, made_by, source, state, bundle, about, sdk_version, created_at, checked_at) VALUES (?, ?, 1, 'upload', 'x', 'ready', 'x', ?, 'v1', ?, ?)").run(`v${n}`, `g${n}`, about, n, n);
+      db.prepare("UPDATE games SET published_version_id = ? WHERE id = ?").run(`v${n}`, `g${n}`);
+    }
+    const listed = (JSON.parse((await call("GET", "/api/games", { cookie: owner })).text) as { id: string }[]).map((listing) => listing.id);
+    expect(listed).toHaveLength(1 + MAX_LISTED_GAMES);
+    expect(listed.slice(0, 3)).toEqual(["demo", `v${MAX_LISTED_GAMES + 4}`, `v${MAX_LISTED_GAMES + 3}`]);
+    expect(listed.at(-1)).toBe("v5");
   });
 });
 

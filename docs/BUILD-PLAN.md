@@ -842,7 +842,10 @@ The API, all of it for a signed-in account with a display name unless it says ot
   for a Screen playing a Version the list doesn't name (Play it, or after a newer one is published).
 - An admin may unpublish any Game. `admin` is set by hand in the database (a command for it goes
   in the README); there is no page for it until milestone 4. Games are public without review, so
-  this must exist before the first Game is published.
+  this must exist before the first Game is published. Added with the owner (2026-11-18): a
+  takedown sticks. It is recorded on the Game (migration 0003), and while it stands the Creator
+  can't publish the Game again, though they can still upload Versions and play them privately;
+  another admin route lifts it. `/api/games` lists at most 200 published Games, the newest.
 
 The queue: a `checking` Version waits its turn; Playtests run two at a time at most, one per
 account at a time. The Version's row is the truth: at start the server queues every Version still

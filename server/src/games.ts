@@ -31,7 +31,9 @@ import {
   playableVersion,
   publish,
   publishedGames,
+  liftTakedown,
   setDescription,
+  takeDown,
   unpublish,
   uploadTimesSince,
   versionsOf,
@@ -62,6 +64,13 @@ export const DESCRIPTION_MAX = 300;
  * below, with the same message.
  */
 export const MAX_UPLOAD_BODY_BYTES = MAX_SOURCE_BYTES + 64 * 1024;
+/**
+ * The most published Games /api/games lists, newest first: the list can't grow without bound before
+ * the Library (milestone 2b) gives Games pages of their own.
+ */
+export const MAX_LISTED_GAMES = 200;
+/** What a Creator is told, on publishing and on the Game's page, while an admin's takedown stands. */
+export const TAKEN_DOWN = "An admin took this Game down. Write to the site's owner if you think that was a mistake.";
 /** The routes that take a Game's source. */
 export const UPLOAD_PATHS = ["/api/my/games", "/api/my/games/:id/versions"];
 
@@ -109,7 +118,7 @@ function listingOf(playable: { readonly versionId: string; readonly about: About
 
 /** A Game as its owner sees it: every Version, newest first. */
 function detail(game: Game, versions: readonly Version[]): object {
-  return { id: game.id, description: game.description, publishedVersionId: game.publishedVersionId, createdAt: game.createdAt, versions };
+  return { id: game.id, description: game.description, publishedVersionId: game.publishedVersionId, createdAt: game.createdAt, takenDownAt: game.takenDownAt, versions };
 }
 
 const newId = () => randomBytes(16).toString("base64url");
@@ -187,7 +196,7 @@ export function gameRoutes(options: GameRoutesOptions): GameRoutes {
     if (countGames(database, account.id) >= GAMES_PER_ACCOUNT) {
       return void response.status(409).json({ error: `You have ${GAMES_PER_ACCOUNT} Games, the most one account may have. Upload a new Version of one of them instead.` });
     }
-    const game: Game = { id: newId(), ownerId: account.id, description: "", publishedVersionId: null, createdAt: seconds() };
+    const game: Game = { id: newId(), ownerId: account.id, description: "", publishedVersionId: null, createdAt: seconds(), takenDownAt: null };
     const version = transaction(database, () => {
       createGame(database, game);
       return createVersion(database, { id: newId(), gameId: game.id, source, createdAt: game.createdAt });
@@ -257,6 +266,7 @@ export function gameRoutes(options: GameRoutesOptions): GameRoutes {
     if (game === undefined) return;
     const body = z.object({ versionId: z.string() }).safeParse(request.body);
     if (!body.success) return void response.status(400).json({ error: "Say which Version to publish." });
+    if (game.takenDownAt !== null) return void response.status(409).json({ error: TAKEN_DOWN });
     if (!publish(database, game.id, body.data.versionId)) {
       return void response.status(409).json({ error: "Only a Version of this Game that passed its check can be published." });
     }
@@ -273,25 +283,42 @@ export function gameRoutes(options: GameRoutesOptions): GameRoutes {
   });
 
   // An admin takes any Game down, by its Game id or by the id the list of Games shows (its published
-  // Version's). Games are public without review, so this exists before the first one is published.
-  // There is no page for it until milestone 4: README.md says how.
-  router.post("/api/admin/games/:id/unpublish", (request, response) => {
+  // Version's), and the takedown sticks: the Creator can't publish it again until an admin lifts it.
+  // The Creator can still upload Versions and play them privately. Games are public without review,
+  // so this exists before the first one is published. There is no page for it until milestone 4:
+  // README.md says how.
+  /** The Game an admin names; otherwise answers (a non-admin: as if there were no such route) and returns undefined. */
+  function adminsGame(request: Request, response: Response): { readonly admin: Account; readonly game: Game } | undefined {
     const account = options.signedIn(request, response);
-    const id = String(request.params["id"]);
-    const game = account?.admin === true ? (gameById(database, id) ?? gameOfVersion(database, id)) : undefined;
     // Not an admin: as if there were no such route, so nobody learns which accounts are admins.
     if (account?.admin !== true) return void response.status(404).type("text/plain").send("Not found");
+    const id = String(request.params["id"]);
+    const game = gameById(database, id) ?? gameOfVersion(database, id);
     if (game === undefined) return void response.status(404).json({ error: "There's no such Game." });
-    unpublish(database, game.id);
-    console.log(`Admin ${account.id} unpublished the Game ${game.id}`);
-    response.json({ unpublished: game.id });
+    return { admin: account, game };
+  }
+
+  router.post("/api/admin/games/:id/take-down", (request, response) => {
+    const found = adminsGame(request, response);
+    if (found === undefined) return;
+    takeDown(database, found.game.id, seconds());
+    console.log(`Admin ${found.admin.id} took down the Game ${found.game.id}`);
+    response.json({ takenDown: found.game.id });
+  });
+
+  router.post("/api/admin/games/:id/lift-takedown", (request, response) => {
+    const found = adminsGame(request, response);
+    if (found === undefined) return;
+    liftTakedown(database, found.game.id);
+    console.log(`Admin ${found.admin.id} lifted the takedown of the Game ${found.game.id}`);
+    response.json({ liftedTakedown: found.game.id });
   });
 
   // The Lobby's list: the Official games, then every published Game, newest first. It changes when a
   // Game is published or taken down, so a browser asks again every time.
   router.get("/api/games", (_request, response) => {
     response.setHeader("Cache-Control", "no-cache");
-    response.json([...official.listing, ...publishedGames(database).map(listingOf)]);
+    response.json([...official.listing, ...publishedGames(database, MAX_LISTED_GAMES).map(listingOf)]);
   });
 
   /**

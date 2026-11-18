@@ -7,6 +7,8 @@ import { afterEach, beforeEach, expect, test } from "vitest";
 import { IN_MEMORY, KEPT_COPIES, MIGRATIONS, openDatabase, transaction, type Database } from "./database.js";
 
 const TABLES = ["accounts", "games", "migrations", "sessions", "sign_in_links", "versions"];
+/** Every migration in server/migrations, in order. A test's own extra ones are numbered 0099 and up, after them all. */
+const ALL_MIGRATIONS = ["0001-accounts.sql", "0002-games.sql", "0003-takedowns.sql"];
 const quiet = () => undefined;
 
 let folder: string;
@@ -47,7 +49,7 @@ function copies(file: string): string[] {
 test("a new database gets every table, each STRICT, and records each migration", () => {
   const db = openDatabase({ file: IN_MEMORY, log: quiet });
   expect(tables(db)).toEqual(Object.fromEntries(TABLES.map((name) => [name, true])));
-  expect(applied(db)).toEqual(["0001-accounts.sql", "0002-games.sql"]);
+  expect(applied(db)).toEqual(ALL_MIGRATIONS);
   expect(db.prepare("PRAGMA foreign_keys").get()).toEqual(expect.objectContaining({ foreign_keys: 1 }));
   db.close();
 });
@@ -56,12 +58,12 @@ test("a database file uses write-ahead logging, and opening it again changes not
   const file = join(folder, "site.db");
   const lines: string[] = [];
   openDatabase({ file, log: (line) => lines.push(line) }).close();
-  expect(lines).toEqual(["Database: applied 0001-accounts.sql", "Database: applied 0002-games.sql"]);
+  expect(lines).toEqual(ALL_MIGRATIONS.map((name) => `Database: applied ${name}`));
 
   lines.length = 0;
   const again = openDatabase({ file, log: (line) => lines.push(line) });
   expect(lines).toEqual([]);
-  expect(applied(again)).toEqual(["0001-accounts.sql", "0002-games.sql"]);
+  expect(applied(again)).toEqual(ALL_MIGRATIONS);
   expect(again.prepare("PRAGMA journal_mode").get()).toEqual(expect.objectContaining({ journal_mode: "wal" }));
   again.close();
   expect(copies(file)).toEqual([]);
@@ -75,7 +77,7 @@ test("a database one migration behind gets only the missing one, and a copy of t
 
   const lines: string[] = [];
   const db = openDatabase({ file, now: () => 1_800_000_000_000, log: (line) => lines.push(line) });
-  expect(lines.filter((line) => line.startsWith("Database: applied"))).toEqual(["Database: applied 0002-games.sql"]);
+  expect(lines.filter((line) => line.startsWith("Database: applied"))).toEqual(["Database: applied 0002-games.sql", "Database: applied 0003-takedowns.sql"]);
   expect(Object.keys(tables(db))).toEqual(TABLES);
   expect(db.prepare("SELECT email FROM accounts").all()).toEqual([expect.objectContaining({ email: "ada@purdue.edu" })]);
   db.close();
@@ -92,10 +94,10 @@ test(`only the last ${KEPT_COPIES} copies are kept`, () => {
   openDatabase({ file, log: quiet }).close();
   const extra: Record<string, string> = {};
   for (let n = 3; n <= 7; n++) {
-    extra[`000${n}-extra-${n}.sql`] = `CREATE TABLE extra_${n} (x INTEGER) STRICT;`;
+    extra[`009${n}-extra-${n}.sql`] = `CREATE TABLE extra_${n} (x INTEGER) STRICT;`;
     openDatabase({ file, migrations: migrations(undefined, extra), now: () => n * 1000, log: quiet }).close();
   }
-  expect(copies(file)).toEqual(["site.db.backup-5-before-0005-extra-5", "site.db.backup-6-before-0006-extra-6", "site.db.backup-7-before-0007-extra-7"]);
+  expect(copies(file)).toEqual(["site.db.backup-5-before-0095-extra-5", "site.db.backup-6-before-0096-extra-6", "site.db.backup-7-before-0097-extra-7"]);
 });
 
 test("a migration that fails leaves the database exactly as it was, and opening it throws", () => {
@@ -103,20 +105,20 @@ test("a migration that fails leaves the database exactly as it was, and opening 
   openDatabase({ file, log: quiet }).close();
   // It makes a table and changes a row, then fails part way.
   const broken = migrations(undefined, {
-    "0003-broken.sql": "CREATE TABLE half_done (x INTEGER) STRICT;\nINSERT INTO accounts (id, email, created_at) VALUES ('b', 'b@purdue.edu', 2);\nTHIS IS NOT SQL;",
+    "0099-broken.sql": "CREATE TABLE half_done (x INTEGER) STRICT;\nINSERT INTO accounts (id, email, created_at) VALUES ('b', 'b@purdue.edu', 2);\nTHIS IS NOT SQL;",
   });
-  expect(() => openDatabase({ file, migrations: broken, log: quiet })).toThrow(/migration 0003-broken.sql failed, and the database is as it was before it/);
+  expect(() => openDatabase({ file, migrations: broken, log: quiet })).toThrow(/migration 0099-broken.sql failed, and the database is as it was before it/);
 
   const db = openDatabase({ file, log: quiet });
   expect(Object.keys(tables(db))).toEqual(TABLES);
-  expect(applied(db)).toEqual(["0001-accounts.sql", "0002-games.sql"]);
+  expect(applied(db)).toEqual(ALL_MIGRATIONS);
   expect(db.prepare("SELECT count(*) AS n FROM accounts").get()).toEqual(expect.objectContaining({ n: 0 }));
   db.close();
 });
 
 test("a migration that leaves a row pointing at nothing fails too", () => {
-  const broken = migrations(undefined, { "0003-orphans.sql": "PRAGMA defer_foreign_keys = ON; INSERT INTO sessions VALUES ('h', 'nobody', 1, 1, 2);" });
-  expect(() => openDatabase({ file: IN_MEMORY, migrations: broken, log: quiet })).toThrow(/0003-orphans.sql failed.*point at nothing/);
+  const broken = migrations(undefined, { "0099-orphans.sql": "PRAGMA defer_foreign_keys = ON; INSERT INTO sessions VALUES ('h', 'nobody', 1, 1, 2);" });
+  expect(() => openDatabase({ file: IN_MEMORY, migrations: broken, log: quiet })).toThrow(/0099-orphans.sql failed.*point at nothing/);
 });
 
 test("a migration changed after it was applied stops the database opening", () => {
@@ -129,9 +131,9 @@ test("a migration changed after it was applied stops the database opening", () =
 
 test("a database with a migration this release doesn't know still opens, as after rolling a release back", () => {
   const file = join(folder, "site.db");
-  openDatabase({ file, migrations: migrations(undefined, { "0003-newer.sql": "CREATE TABLE newer (x INTEGER) STRICT;" }), log: quiet }).close();
+  openDatabase({ file, migrations: migrations(undefined, { "0099-newer.sql": "CREATE TABLE newer (x INTEGER) STRICT;" }), log: quiet }).close();
   const db = openDatabase({ file, log: quiet });
-  expect(applied(db)).toEqual(["0001-accounts.sql", "0002-games.sql", "0003-newer.sql"]);
+  expect(applied(db)).toEqual([...ALL_MIGRATIONS, "0099-newer.sql"]);
   db.close();
 });
 

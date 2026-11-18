@@ -42,6 +42,8 @@ export interface Game {
   readonly description: string;
   readonly publishedVersionId: string | null;
   readonly createdAt: number;
+  /** When an admin took it down, or null. While set, it can't be published. */
+  readonly takenDownAt: number | null;
 }
 
 const aboutJson = z
@@ -54,8 +56,26 @@ const problemsJson = z
   .pipe(z.array(z.object({ stage: z.string(), message: z.string(), line: z.number().optional() })));
 
 const gameRow = z
-  .object({ id: z.string(), owner_id: z.string(), description: z.string(), published_version_id: z.string().nullable(), created_at: z.number().int() })
-  .transform((row): Game => ({ id: row.id, ownerId: row.owner_id, description: row.description, publishedVersionId: row.published_version_id, createdAt: row.created_at }));
+  .object({
+    id: z.string(),
+    owner_id: z.string(),
+    description: z.string(),
+    published_version_id: z.string().nullable(),
+    created_at: z.number().int(),
+    taken_down_at: z.number().int().nullable(),
+  })
+  .transform(
+    (row): Game => ({
+      id: row.id,
+      ownerId: row.owner_id,
+      description: row.description,
+      publishedVersionId: row.published_version_id,
+      createdAt: row.created_at,
+      takenDownAt: row.taken_down_at,
+    }),
+  );
+
+const GAME_COLUMNS = "games.id, games.owner_id, games.description, games.published_version_id, games.created_at, games.taken_down_at";
 
 const versionRow = z
   .object({
@@ -94,12 +114,12 @@ export function createVersion(db: Database, version: { readonly id: string; read
 }
 
 export function gameById(db: Database, gameId: string): Game | undefined {
-  return one(gameRow, db.prepare("SELECT id, owner_id, description, published_version_id, created_at FROM games WHERE id = ?").get(gameId));
+  return one(gameRow, db.prepare(`SELECT ${GAME_COLUMNS} FROM games WHERE id = ?`).get(gameId));
 }
 
 /** An account's Games, newest first. */
 export function gamesOwnedBy(db: Database, ownerId: string): Game[] {
-  return all(gameRow, db.prepare("SELECT id, owner_id, description, published_version_id, created_at FROM games WHERE owner_id = ? ORDER BY created_at DESC, id").all(ownerId));
+  return all(gameRow, db.prepare(`SELECT ${GAME_COLUMNS} FROM games WHERE owner_id = ? ORDER BY created_at DESC, id`).all(ownerId));
 }
 
 /** A Game's Versions, newest first. */
@@ -160,10 +180,15 @@ export function setDescription(db: Database, gameId: string, description: string
   db.prepare("UPDATE games SET description = ? WHERE id = ?").run(description, gameId);
 }
 
-/** Points a Game at one of its own `ready` Versions. Returns whether it did: not for any other Version. */
+/**
+ * Points a Game at one of its own `ready` Versions. Returns whether it did: not for any other
+ * Version, and never while an admin's takedown stands.
+ */
 export function publish(db: Database, gameId: string, versionId: string): boolean {
   const changed = db
-    .prepare("UPDATE games SET published_version_id = ? WHERE id = ? AND EXISTS (SELECT 1 FROM versions WHERE id = ? AND game_id = ? AND state = 'ready')")
+    .prepare(
+      "UPDATE games SET published_version_id = ? WHERE id = ? AND taken_down_at IS NULL AND EXISTS (SELECT 1 FROM versions WHERE id = ? AND game_id = ? AND state = 'ready')",
+    )
     .run(versionId, gameId, versionId, gameId);
   return changed.changes === 1;
 }
@@ -172,11 +197,21 @@ export function unpublish(db: Database, gameId: string): void {
   db.prepare("UPDATE games SET published_version_id = NULL WHERE id = ?").run(gameId);
 }
 
+/** An admin takes a Game down: unpublished, and kept from being published again, in one statement. */
+export function takeDown(db: Database, gameId: string, at: number): void {
+  db.prepare("UPDATE games SET published_version_id = NULL, taken_down_at = ? WHERE id = ?").run(at, gameId);
+}
+
+/** An admin lifts a takedown: the Creator may publish the Game again (nothing is published by this). */
+export function liftTakedown(db: Database, gameId: string): void {
+  db.prepare("UPDATE games SET taken_down_at = NULL WHERE id = ?").run(gameId);
+}
+
 /** The Game a Version belongs to, by the Version's id. */
 export function gameOfVersion(db: Database, versionId: string): Game | undefined {
   return one(
     gameRow,
-    db.prepare("SELECT games.id, games.owner_id, games.description, games.published_version_id, games.created_at FROM games JOIN versions ON versions.game_id = games.id WHERE versions.id = ?").get(versionId),
+    db.prepare(`SELECT ${GAME_COLUMNS} FROM games JOIN versions ON versions.game_id = games.id WHERE versions.id = ?`).get(versionId),
   );
 }
 
@@ -210,14 +245,14 @@ export function playableVersion(db: Database, versionId: string): Playable | und
   );
 }
 
-/** Every published Game, as the Lobby lists it: its published Version's id and `about`, and its Creator's name. Newest first. */
-export function publishedGames(db: Database): { readonly versionId: string; readonly about: About; readonly creator: string }[] {
+/** The newest `most` published Games, as the Lobby lists them: the published Version's id and `about`, and its Creator's name. Newest first. */
+export function publishedGames(db: Database, most: number): { readonly versionId: string; readonly about: About; readonly creator: string }[] {
   return all(
     z.object({ id: z.string(), about: aboutJson, display_name: z.string() }),
     db
       .prepare(
-        "SELECT versions.id, versions.about, accounts.display_name FROM games JOIN versions ON versions.id = games.published_version_id JOIN accounts ON accounts.id = games.owner_id WHERE versions.state = 'ready' ORDER BY versions.created_at DESC, versions.id",
+        "SELECT versions.id, versions.about, accounts.display_name FROM games JOIN versions ON versions.id = games.published_version_id JOIN accounts ON accounts.id = games.owner_id WHERE versions.state = 'ready' ORDER BY versions.created_at DESC, versions.id LIMIT ?",
       )
-      .all(),
+      .all(most),
   ).map((row) => ({ versionId: row.id, about: row.about, creator: row.display_name }));
 }
