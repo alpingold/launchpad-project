@@ -175,3 +175,19 @@ Worth knowing:
 - Both domains' DNS records must point straight at the server (at Cloudflare: "DNS only"). Caddy
   needs that to get certificates, and nothing may sit in front of the game domain that could change
   its Content-Security-Policy header (ADR 0004).
+
+### Admins, and taking a Game down
+
+Uploaded Games are public as soon as their Creator publishes them, without review, so an admin can
+take any Game down. There is no page for it yet (milestone 4). An account is made an admin by hand,
+on the server, as the site's user, with the account's email address:
+
+    sudo -u boilergames /usr/local/bin/node -e 'const db = new (require("node:sqlite").DatabaseSync)("/var/lib/boilergames/boilergames.db"); console.log(db.prepare("UPDATE accounts SET admin = 1 WHERE email = ?").run(process.argv[1]).changes, "account(s) made an admin")' someone@purdue.edu
+
+(`admin = 0` undoes it.) Then, signed in on the site as that account, in the browser's console on
+any of the site's pages, with the `id` that `/api/games` lists for the Game (or the Game's own id):
+
+    fetch("/api/admin/games/<id>/unpublish", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }).then((r) => r.json()).then(console.log)
+
+The Game leaves the list at once, and its code is refused to everyone but its Creator. The server's
+log names the admin and the Game.

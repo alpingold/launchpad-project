@@ -21,8 +21,10 @@ export default defineConfig({
           name,
           root: name,
           include: ["src/**/*.test.ts"],
-          // The Playtest's runner is started as a program, from its compiled dist/.
+          // The Playtest's runner is started as a program, from its compiled dist/: by its own
+          // tests, and by the server's, which run one real Playtest end to end.
           ...(name === "playtest" ? { globalSetup: ["scripts/build-for-tests.ts"] } : {}),
+          ...(name === "server" ? { globalSetup: ["../playtest/scripts/build-for-tests.ts"] } : {}),
         },
       })),
       "client",

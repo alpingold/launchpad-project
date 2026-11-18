@@ -118,7 +118,7 @@ function newToken(): string {
 }
 
 /** "3 minutes", "2 hours": how long to wait, rounded up. */
-function waitWords(ms: number): string {
+export function waitWords(ms: number): string {
   const minutes = Math.max(1, Math.ceil(ms / MINUTE_MS));
   if (minutes < 120) return minutes === 1 ? "1 minute" : `${minutes} minutes`;
   return `${Math.ceil(minutes / 60)} hours`;
@@ -200,8 +200,8 @@ export function signInRoutes(options: SignInOptions): SignIn {
   }
 
   const router = Router();
-  // Nothing about who is signed in may be kept by a cache on the way: these routes only, not the
-  // rest of /api (a Game's bundle is fine to cache).
+  // Nothing about who is signed in may be kept by a cache on the way. (A Game's bundle and the
+  // Creator's own pages set their own: games.ts.)
   router.use(["/api/sign-in", "/api/sign-out", "/api/me"], (_request, response, next) => {
     response.setHeader("Cache-Control", "no-store");
     next();

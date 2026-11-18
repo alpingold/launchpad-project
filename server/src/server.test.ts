@@ -83,7 +83,9 @@ describe("HTTP", () => {
     expect(await (await fetch(`http://${base}/`)).text()).toContain("BoilerGames");
     expect(await (await fetch(`http://${base}/api/games`)).json()).toEqual([GAME]);
     const bundle = await fetch(`http://${base}/api/games/demo/bundle.js`);
-    expect(bundle.headers.get("content-type")).toContain("text/javascript");
+    // As text, never as a script: the site never runs a Game's code itself (games.ts).
+    expect(bundle.headers.get("content-type")).toContain("text/plain");
+    expect(bundle.headers.get("x-content-type-options")).toBe("nosniff");
     expect(await bundle.text()).toBe("var BoilerGamesGame = {};");
   });
 

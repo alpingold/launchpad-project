@@ -26,8 +26,8 @@ export interface ServerOptions extends SiteOptions {
   /** How emails are sent (mail.ts). Recorded, and sent nowhere, unless given. */
   readonly mail?: Mail;
   /**
-   * How a Playtest is run (config.ts, playtestFrom), for Uploads (BUILD-PLAN Step 14). Null: there
-   * is none, and Uploads are refused.
+   * How a Playtest is run (config.ts, playtestFrom), for Uploads. Null or left out: there is none,
+   * and Uploads are refused.
    */
   readonly playtest?: PlaytestRunner | null;
 }
@@ -54,7 +54,7 @@ export function createServer(options: ServerOptions): RunningServer {
   const database = options.database ?? openDatabase({ file: IN_MEMORY, log: () => undefined });
   const clock = options.clock ?? realClock;
   const addressOf = options.addressOf ?? ((request: IncomingMessage) => request.socket.remoteAddress ?? "unknown");
-  const site = createSite({ ...options, database, clock, addressOf, mail: options.mail ?? new RecordedMail() });
+  const site = createSite({ ...options, database, clock, addressOf, mail: options.mail ?? new RecordedMail(), playtest: options.playtest ?? null });
   const http = createHttpServer(site.app);
   const { stop } = attachRooms(http, {
     clock,

@@ -382,7 +382,19 @@ describe("limits", () => {
 
 describe("only the site's own pages can change anything", () => {
   /** Every route that changes something, and a path with no route at all: a route added later is guarded too. */
-  const CHANGING = ["/api/sign-in", "/api/sign-in/confirm", "/api/sign-out", "/api/me/display-name", "/api/not-a-route-yet"];
+  const CHANGING = [
+    "/api/sign-in",
+    "/api/sign-in/confirm",
+    "/api/sign-out",
+    "/api/me/display-name",
+    "/api/my/games",
+    "/api/my/games/x",
+    "/api/my/games/x/versions",
+    "/api/my/games/x/publish",
+    "/api/my/games/x/unpublish",
+    "/api/admin/games/x/unpublish",
+    "/api/not-a-route-yet",
+  ];
 
   test("a POST, PUT or DELETE from another origin, or with no Origin, is refused before anything is read", async () => {
     const cookie = await signIn("ada@purdue.edu");
@@ -423,7 +435,8 @@ describe("only the site's own pages can change anything", () => {
     expect((await call("GET", "/api/me", { cookie })).headers.get("cache-control")).toBe("no-store");
     expect((await call("POST", "/api/sign-out", { body: {}, cookie })).headers.get("cache-control")).toBe("no-store");
     expect((await call("GET", "/api/config")).headers.get("cache-control")).toBeNull();
-    expect((await call("GET", "/api/games")).headers.get("cache-control")).toBeNull();
+    // The list of Games changes when one is published or taken down: kept, but asked about each time.
+    expect((await call("GET", "/api/games")).headers.get("cache-control")).toBe("no-cache");
   });
 
   test("reading needs no Origin", async () => {

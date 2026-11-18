@@ -838,6 +838,8 @@ The API, all of it for a signed-in account with a display name unless it says ot
   published Version's id (see "What a Room plays").
 - `GET /api/games/<id>/bundle.js`: an Official game by name, or a Version by id under the rule in
   "Who may fetch a Version's bundle". Refused and not-found look the same from outside.
+- `GET /api/games/<id>` (added while building): one Game's line of the list, under the same rule,
+  for a Screen playing a Version the list doesn't name (Play it, or after a newer one is published).
 - An admin may unpublish any Game. `admin` is set by hand in the database (a command for it goes
   in the README); there is no page for it until milestone 4. Games are public without review, so
   this must exist before the first Game is published.

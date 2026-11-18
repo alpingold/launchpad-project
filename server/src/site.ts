@@ -1,13 +1,15 @@
 /**
- * The site's HTTP side, with Express: the built client, the list of Official games, each Game's
- * bundle, and accounts (sign-in.ts). The game domain (the frame) is a separate server: see
- * frame-origin.ts.
+ * The site's HTTP side, with Express: the built client, accounts (sign-in.ts), and Games: the
+ * Official ones and those Creators upload, their lists and their code (games.ts). The game domain
+ * (the frame) is a separate server: see frame-origin.ts.
  */
 import { readFileSync } from "node:fs";
 import type { IncomingMessage } from "node:http";
 import { join } from "node:path";
+import type { PlaytestRunner } from "@boilergames/playtest/client";
 import express, { type ErrorRequestHandler, type Express, type RequestHandler } from "express";
 import type { Database } from "./db/database.js";
+import { gameRoutes, UPLOAD_PATHS, uploadBodies, type Listing, type OfficialGames } from "./games.js";
 import type { Mail } from "./mail.js";
 import type { Clock } from "./rooms.js";
 import { signInRoutes } from "./sign-in.js";
@@ -30,6 +32,8 @@ export interface SiteParts {
   readonly siteOrigin: string;
   /** The visitor's network address, for the per-visitor limits. */
   readonly addressOf: (request: IncomingMessage) => string;
+  /** How a Playtest is run, for Uploads. Null: there is none, and Uploads are refused. */
+  readonly playtest: PlaytestRunner | null;
 }
 
 export interface Site {
@@ -44,7 +48,7 @@ const READING = new Set(["GET", "HEAD", "OPTIONS"]);
 export const MAX_BODY_BYTES = 16 * 1024;
 
 /** The client's pages. Each is the same index.html; the client draws the page its path names. */
-const PAGES = ["/screen", "/play", "/sign-in", "/sign-in/confirm", "/sign-in/name"];
+const PAGES = ["/screen", "/play", "/sign-in", "/sign-in/confirm", "/sign-in/name", "/my/games", "/my/games/:id"];
 
 /**
  * Every request that changes something passes here first, before its body is read and before any
@@ -77,10 +81,10 @@ const errors: ErrorRequestHandler = (error: { status?: number; statusCode?: numb
  * The listing and every bundle, read once at start, together: a bundle is served only if the
  * listing names it, and a request's `:id` is looked up, never turned into a file path.
  */
-function loadGames(gamesDist: string): { readonly listing: unknown[]; readonly bundles: Map<string, Buffer> } {
-  let listing: { id?: unknown }[];
+function loadGames(gamesDist: string): OfficialGames {
+  let listing: Listing[];
   try {
-    listing = JSON.parse(readFileSync(join(gamesDist, "games.json"), "utf8")) as { id?: unknown }[];
+    listing = JSON.parse(readFileSync(join(gamesDist, "games.json"), "utf8")) as Listing[];
   } catch (error) {
     // Not built yet (development before the first build): no Games, rather than no server.
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
@@ -89,14 +93,14 @@ function loadGames(gamesDist: string): { readonly listing: unknown[]; readonly b
   }
   const bundles = new Map<string, Buffer>();
   for (const game of listing) {
-    if (typeof game.id !== "string" || !/^[a-z0-9-]+$/.test(game.id)) throw new Error(`games.json lists a Game with a bad id: ${JSON.stringify(game.id)}`);
+    if (typeof (game.id as unknown) !== "string" || !/^[a-z0-9-]+$/.test(game.id)) throw new Error(`games.json lists a Game with a bad id: ${JSON.stringify(game.id)}`);
     bundles.set(game.id, readFileSync(join(gamesDist, `${game.id}.js`)));
   }
   return { listing, bundles };
 }
 
 export function createSite(options: SiteOptions & SiteParts): Site {
-  const { listing, bundles } = loadGames(options.gamesDist);
+  const official = loadGames(options.gamesDist);
   const app = express();
   app.disable("x-powered-by");
   app.use((_request, response, next) => {
@@ -104,22 +108,19 @@ export function createSite(options: SiteOptions & SiteParts): Site {
     next();
   });
   app.use(onlyFromTheSite(options.siteOrigin));
+  // A Game's code is larger than anything else sent: its routes read their bodies first, with their
+  // own limit. Every other body is held to MAX_BODY_BYTES.
+  app.post(UPLOAD_PATHS, ...uploadBodies());
   app.use(express.json({ limit: MAX_BODY_BYTES }));
 
   const signIn = signInRoutes(options);
   app.use(signIn.router);
+  const games = gameRoutes({ database: options.database, clock: options.clock, playtest: options.playtest, official, signedIn: signIn.signedIn });
+  app.use(games.router);
 
   // What the pages need to know about this deployment: where the Game frame is served.
   app.get("/api/config", (_request, response) => {
     response.json({ frameUrl: options.frameUrl });
-  });
-  app.get("/api/games", (_request, response) => {
-    response.json(listing);
-  });
-  app.get("/api/games/:id/bundle.js", (request, response) => {
-    const bundle = bundles.get(request.params.id);
-    if (bundle === undefined) return void response.status(404).type("text/plain").send("No such Game");
-    response.type("text/javascript").send(bundle);
   });
 
   app.use(express.static(options.clientDist, { index: "index.html", dotfiles: "deny" }));
@@ -130,5 +131,11 @@ export function createSite(options: SiteOptions & SiteParts): Site {
     response.status(404).type("text/plain").send("Not found");
   });
   app.use(errors);
-  return { app, stop: signIn.stop };
+  return {
+    app,
+    stop: () => {
+      signIn.stop();
+      games.stop();
+    },
+  };
 }
