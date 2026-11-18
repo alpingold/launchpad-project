@@ -42,10 +42,16 @@ install -m 644 "$here/boilergames.env" /etc/boilergames.env
 install -m 644 "$here/boilergames.service" /etc/systemd/system/boilergames.service
 install -m 644 "$here/boilergames-release.service" /etc/systemd/system/boilergames-release.service
 install -m 644 "$here/boilergames-release.timer" /etc/systemd/system/boilergames-release.timer
+# The Playtest: its socket, its walled runner, and the slices that share out the processor.
+install -m 644 "$here/boilergames.slice" /etc/systemd/system/boilergames.slice
+install -m 644 "$here/boilergames-playtest.slice" /etc/systemd/system/boilergames-playtest.slice
+install -m 644 "$here/boilergames-playtest.socket" /etc/systemd/system/boilergames-playtest.socket
+install -m 644 "$here/boilergames-playtest@.service" "/etc/systemd/system/boilergames-playtest@.service"
 install -m 755 "$here/install-release.sh" /usr/local/bin/boilergames-install-release
 install -m 755 "$here/check-release.sh" /usr/local/bin/boilergames-check-release
 systemctl daemon-reload
 systemctl enable boilergames.service
+systemctl enable --now boilergames-playtest.socket
 systemctl enable --now boilergames-release.timer
 
 # --- Caddy. It asks for a certificate for each name in the Caddyfile, so the names' DNS records

@@ -917,8 +917,8 @@ way to send email, so nothing can be pushed until this is done):
   the release on an ARM runner and asking npm for the ARM packages in
   `deploy/package-release.sh`. The install's health check then runs one real Playtest through the
   socket, so a release whose Playtest can't run is rolled back.
-- Memory: the server has 2 GB and the site's process may use 1.5 GB of it today. The Playtest needs
-  room, so `MAX_ROOMS` and the site's cap come down to make it.
+- Memory: the server has 2 GB. The site's process is capped at 1.1 GB with `MAX_ROOMS=90`, and the
+  Playtest's runs share 500 MB (`deploy/boilergames.service`, `boilergames.env`).
 - Run `deploy/attack-playtest.sh` on a throwaway server set up the same way, not on the live one.
   Every attack must be contained before the live site accepts an Upload.
 - Until milestone 4's nightly backups exist, copy the database somewhere off the server on a

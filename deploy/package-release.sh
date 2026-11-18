@@ -32,6 +32,9 @@ cp -r server/migrations "$stage/server/migrations"
 cp -r client/dist "$stage/client/dist"
 cp -r client/dist-frame "$stage/client/dist-frame"
 cp -r games/dist "$stage/games/dist"
+# The check the installer runs on the server after switching to this release.
+mkdir -p "$stage/deploy"
+cp deploy/check-playtest.mjs "$stage/deploy/"
 
 # Only what the server imports when it runs: its own dependencies and the packages it uses, which
 # include the Playtest's. TypeScript and Vite each bring a program built for one kind of machine,

@@ -45,12 +45,20 @@ switch_to() {
   systemctl restart boilergames
 }
 
+# One real Playtest of a small Game through the socket, as the site's user. Skipped on a server
+# that has no Playtest socket, or for a release from before the check existed.
+playtest_works() {
+  [ -S /run/boilergames-playtest.sock ] && [ -f "$ROOT/current/deploy/check-playtest.mjs" ] || return 0
+  runuser -u boilergames -- /usr/local/bin/node "$ROOT/current/deploy/check-playtest.mjs" >&2
+}
+
 # The site answers its settings, and the game domain serves the frame page with its policy header.
 healthy() {
   for _ in $(seq 1 20); do
     if curl -fs -o /dev/null http://127.0.0.1:3000/api/config &&
       curl -fs -D - -o /dev/null http://127.0.0.1:3001/v1/ | grep -qi '^content-security-policy:'; then
-      return 0
+      playtest_works
+      return
     fi
     sleep 1
   done

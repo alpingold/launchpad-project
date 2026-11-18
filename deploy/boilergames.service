@@ -15,10 +15,10 @@ Group=boilergames
 WorkingDirectory=/opt/boilergames/current
 EnvironmentFile=/etc/boilergames.env
 # The memory cap sits under the server's 2 GB; MAX_ROOMS in the settings is sized to fit inside it.
-ExecStart=/usr/local/bin/node --max-old-space-size=1280 server/dist/main.js
+ExecStart=/usr/local/bin/node --max-old-space-size=900 server/dist/main.js
 Restart=always
 RestartSec=2
-MemoryMax=1500M
+MemoryMax=1100M
 # The one folder the site may write to: /var/lib/boilergames, for the database. systemd makes it,
 # owned by the site's user, and lets writes through there although the rest is read-only.
 StateDirectory=boilergames
