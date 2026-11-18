@@ -1,11 +1,18 @@
-// The site's pages, chosen by the address: /, /screen (the Host's Screen) and /play (a phone).
+// The site's pages, chosen by the address: /, /screen (the Host's Screen), /play (a phone), and
+// signing in: /sign-in, /sign-in/confirm (the emailed link's page) and /sign-in/name.
 import "./pages/pages.css";
+import { ConfirmPage } from "./pages/ConfirmPage.js";
 import { HomePage } from "./pages/HomePage.js";
+import { NamePage } from "./pages/NamePage.js";
 import { PlayPage } from "./pages/PlayPage.js";
 import { ScreenPage } from "./pages/ScreenPage.js";
+import { SignInPage } from "./pages/SignInPage.js";
 
 export function App({ path = typeof location === "undefined" ? "/" : location.pathname }: { path?: string }) {
   if (path.startsWith("/screen")) return <ScreenPage />;
   if (path.startsWith("/play")) return <PlayPage />;
+  if (path === "/sign-in/confirm") return <ConfirmPage />;
+  if (path === "/sign-in/name") return <NamePage />;
+  if (path === "/sign-in") return <SignInPage />;
   return <HomePage />;
 }

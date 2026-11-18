@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 import { build, defaultClientConditions } from "vite";
 import { buildOfficialGames } from "../games/scripts/build.js";
 import { createFrameServer } from "../server/src/frame-origin.js";
-import { createServer as createSiteServer } from "../server/src/index.js";
+import { createServer as createSiteServer, RecordedMail } from "../server/src/index.js";
 import { APP, APP_FRAME, FRAME, OUTSIDE, SITE } from "./origins.js";
 
 const here = (path: string) => fileURLToPath(new URL(path, import.meta.url));
@@ -133,9 +133,14 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     await listen(frame, FRAME);
   }
 
+  // The real site's emails are recorded, never sent; the tests read them here, on the test site, so
+  // the real server has no way to read them back.
+  const mail = new RecordedMail();
+
   const siteHits: Hits = [];
   const site = createServer((request, response) => {
     const path = new URL(request.url ?? "/", SITE).pathname;
+    if (path === "/__mail") return void response.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(mail.sent));
     // What the frame server has answered, for the tests; and a new build of the frame.
     if (path === "/__frame-hits") return void response.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(frameHits));
     if (path === "/__new-build" && request.method === "POST") {
@@ -181,6 +186,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     // A test's Room stays open for 5 minutes after its Screen goes, and a run opens far more than
     // the default 30 in that time.
     maxRooms: 1_000,
+    mail,
   });
   const appFrame = createFrameServer({ root: join(out, "frame"), siteOrigin: APP });
 

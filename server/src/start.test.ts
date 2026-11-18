@@ -11,13 +11,18 @@ test("in production without DATABASE_FILE, the server refuses to start and liste
   await expect(start({ ...ports, NODE_ENV: "production" })).rejects.toThrow(/DATABASE_FILE must be set in production/);
 });
 
+test("in production without MAIL=ses, or with a MAIL it doesn't know, the server refuses to start", async () => {
+  await expect(start({ ...ports, NODE_ENV: "production", DATABASE_FILE: "/nowhere/site.db" })).rejects.toThrow(/MAIL=ses must be set in production/);
+  await expect(start({ ...ports, MAIL: "carrier-pigeon" })).rejects.toThrow(/MAIL must be "ses" or unset/);
+});
+
 test("with DATABASE_FILE, the server makes the database there, brings it up to date and answers", async () => {
   const folder = mkdtempSync(join(tmpdir(), "start-"));
   const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
   const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
   try {
     const file = join(folder, "site.db");
-    const server = await start({ ...ports, NODE_ENV: "production", DATABASE_FILE: file });
+    const server = await start({ ...ports, NODE_ENV: "production", MAIL: "ses", DATABASE_FILE: file });
     try {
       expect(existsSync(file)).toBe(true);
       expect(log).toHaveBeenCalledWith("Database: applied 0002-games.sql");

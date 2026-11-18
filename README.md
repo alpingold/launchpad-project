@@ -61,6 +61,11 @@ rather than the proxy's.
 `DATABASE_FILE` the database is in memory and forgotten on every restart, which is fine while
 developing; with `NODE_ENV=production` the server refuses to start without it.
 
+`MAIL=ses` sends the sign-in emails through Amazon SES, from `sign-in@boilergames.party`, in
+`AWS_REGION` (us-east-2 unless set), signed with the server's own AWS role. Without `MAIL`, emails
+are kept in memory and each one's link is printed to the console, so signing in works while
+developing; with `NODE_ENV=production` the server refuses to start without `MAIL=ses`.
+
 The server also serves the Game frame on the next port up (http://localhost:3001/v1/), from
 `client/dist-frame`, which `npm run build` makes. It is built outside `client/dist` on purpose:
 the site serves `client/dist`, and must never serve the frame's page from its own origin.

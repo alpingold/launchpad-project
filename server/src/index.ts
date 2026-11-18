@@ -4,6 +4,7 @@
  */
 import { createServer as createHttpServer, type IncomingMessage, type Server } from "node:http";
 import { IN_MEMORY, openDatabase, type Database } from "./db/database.js";
+import { RecordedMail, type Mail } from "./mail.js";
 import type { Clock } from "./rooms.js";
 import { createSite, type SiteOptions } from "./site.js";
 import { attachRooms } from "./transport.js";
@@ -21,6 +22,8 @@ export interface ServerOptions extends SiteOptions {
   readonly pingIntervalMs?: number;
   /** The database, opened and up to date (main.ts opens it). A fresh one in memory unless given. */
   readonly database?: Database;
+  /** How emails are sent (mail.ts). Recorded, and sent nowhere, unless given. */
+  readonly mail?: Mail;
 }
 
 export interface RunningServer {
@@ -43,10 +46,13 @@ export function createServer(options: ServerOptions): RunningServer {
   // A database this server opened itself is closed with it; one it was given belongs to the caller.
   const ownDatabase = options.database === undefined;
   const database = options.database ?? openDatabase({ file: IN_MEMORY, log: () => undefined });
-  const http = createHttpServer(createSite({ ...options, database }));
+  const clock = options.clock ?? realClock;
+  const addressOf = options.addressOf ?? ((request: IncomingMessage) => request.socket.remoteAddress ?? "unknown");
+  const site = createSite({ ...options, database, clock, addressOf, mail: options.mail ?? new RecordedMail() });
+  const http = createHttpServer(site.app);
   const { stop } = attachRooms(http, {
-    clock: options.clock ?? realClock,
-    addressOf: options.addressOf ?? ((request) => request.socket.remoteAddress ?? "unknown"),
+    clock,
+    addressOf,
     siteOrigin: options.siteOrigin,
     ...(options.maxRooms === undefined ? {} : { maxRooms: options.maxRooms }),
     ...(options.pingIntervalMs === undefined ? {} : { pingIntervalMs: options.pingIntervalMs }),
@@ -55,6 +61,7 @@ export function createServer(options: ServerOptions): RunningServer {
     http,
     async close() {
       stop();
+      site.stop();
       http.closeAllConnections();
       await new Promise<void>((resolve) => http.close(() => resolve()));
       if (ownDatabase) database.close();
@@ -77,5 +84,6 @@ export function forwardedAddress(request: IncomingMessage): string {
 
 export { createFrameServer, frameContentSecurityPolicy, inlineScriptHash, type FrameServerOptions } from "./frame-origin.js";
 export { IN_MEMORY, openDatabase, transaction, type Database } from "./db/database.js";
+export { RecordedMail, type Mail, type Message } from "./mail.js";
 export { DEFAULT_MAX_ROOMS, Rooms, type Clock } from "./rooms.js";
 export { MAX_SOCKETS_PER_ADDRESS, WEBSOCKET_PATH } from "./transport.js";

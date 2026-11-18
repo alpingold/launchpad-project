@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 import { databaseFileFrom, maxRoomsFrom } from "./config.js";
 import { IN_MEMORY, openDatabase } from "./db/database.js";
 import { createFrameServer, createServer, forwardedAddress } from "./index.js";
+import { mailFrom } from "./mail.js";
 
 type Settings = Readonly<Record<string, string | undefined>>;
 
@@ -25,8 +26,8 @@ const here = (path: string) => fileURLToPath(new URL(path, import.meta.url));
 
 /**
  * Opens the database and starts listening. Rejects, having started nothing, if a setting is wrong or
- * the database can't be brought up to date: no DATABASE_FILE in production, or a migration that
- * fails. Then the server doesn't run at all, which systemd and the release's health check see.
+ * the database can't be brought up to date: no DATABASE_FILE or no MAIL=ses in production, or a
+ * migration that fails. Then the server doesn't run at all, which systemd and the release's health check see.
  */
 export async function start(env: Settings): Promise<Started> {
   const port = Number(env["PORT"] ?? 3000);
@@ -38,6 +39,7 @@ export async function start(env: Settings): Promise<Started> {
   const maxRooms = maxRoomsFrom(env);
 
   const file = databaseFileFrom(env);
+  const mail = await mailFrom(env);
   const database = openDatabase({ file });
   if (file === IN_MEMORY) console.log("Database: in memory (no DATABASE_FILE), forgotten when the server stops");
 
@@ -48,6 +50,7 @@ export async function start(env: Settings): Promise<Started> {
     frameUrl: env["FRAME_URL"] ?? `http://localhost:${framePort}/v1/`,
     maxRooms,
     database,
+    mail,
     // Behind Caddy every request comes from 127.0.0.1; the phone's own address is in X-Forwarded-For.
     ...(env["TRUST_PROXY"] === "1" ? { addressOf: forwardedAddress } : {}),
   });
