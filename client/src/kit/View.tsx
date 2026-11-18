@@ -18,7 +18,7 @@ export interface ViewProps {
   readonly timerEndsAt: number | null;
   /** Sends an Action: a Controller's. Left out on the Screen. */
   readonly onAction?: (action: unknown) => void;
-  /** "screen" fills a TV; "controller" fits a phone. */
+  /** "screen" fills the Screen's display; "controller" fits a phone. */
   readonly kind: "screen" | "controller";
 }
 

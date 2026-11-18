@@ -1,13 +1,13 @@
-# Typed actions, views as plain data, one timer
+# Typed Actions, Views as plain data, one timer
 
 Decided 2026-11-16, designing SDK v1 from a blank file.
 
-- **Typed actions.** A Game declares everything a Player can do as one `Action` type. Each button,
+- **Typed Actions.** A Game declares everything a Player can do as one `Action` type. Each button,
   text box, drawing pad and tappable shape carries the exact Action it sends. The alternative,
-  parts with string ids that the logic matches by name, lets a view and its handler disagree until
+  parts with string ids that the logic matches by name, lets a View and its handler disagree until
   a simulated Match happens to press that button. Here the mistake is a compile error, and `tsc` is
   far cheaper than a Match, which matters most when a small model writes the Game.
-- **Views are object literals.** There are no builder functions to import: a view is exactly the
+- **Views are object literals.** There are no builder functions to import: a View is exactly the
   data that gets sent. Fewer names for a model to invent, and nothing between the code and the wire.
 - **One timer per Match.** A Step may start it (replacing one running), stop it or leave it. Phase
   games almost always have one deadline, and replacing the timer on a phase change removes the bug
@@ -26,5 +26,5 @@ Decided 2026-11-16, designing SDK v1 from a blank file.
 
 - The site owns a renderer for untrusted shapes. It must only ever create the listed elements with
   the listed attributes.
-- Within SDK v1 the view format may only grow, because phones always draw with the site's current
+- Within SDK v1 the View format may only grow, because phones always draw with the site's current
   code while a Game keeps the Engine it was checked with.

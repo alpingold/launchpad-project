@@ -1,14 +1,16 @@
 /**
  * The Engine: the one piece of code that runs a Match.
  *
- * It knows nothing about browsers, sockets or real time. It is called with events (a Player acted,
- * the timer ran out, the Seats changed) and returns what happened. The Host's browser, the
- * simulator and the Playtest all run this same code, so the rules of a Match have one definition.
+ * It knows nothing about browsers, sockets or real time. Its Driver calls it with events (a Player
+ * acted, the timer ran out, the Seats changed) and it returns what happened, an Outcome. The Game
+ * frame in the Host's browser, the simulator and the Playtest all drive this same code, so the rules
+ * of a Match have one definition.
  *
  * It trusts nothing the Game returns. Every Step and every View is checked, and anything wrong
  * ends the Match as "broken" with a problem naming the Game function and what to fix. It never
  * reads a clock and never calls `Math.random`, so the same seed and events always give the same
- * Match. It cannot stop a Game that loops forever: whoever hosts it does.
+ * Match. It cannot stop a Game that loops forever: its Driver does (the Game frame's two-second rule,
+ * or the Playtest's time limit).
  */
 import type { About, Context, MatchEnd, Player, Rng } from "./game.js";
 import type { ControllerView, ScreenView } from "./kit.js";
@@ -87,7 +89,7 @@ export interface MatchSnapshot {
 export interface Match {
   /** A Player used their Controller. Ignored unless their current View offers exactly this Action. */
   act(playerId: string, action: unknown): Outcome;
-  /** The host's real timer ran out. Ignored if the timer isn't running. */
+  /** The Driver's real timer ran out. Ignored if the timer isn't running. */
   timerFired(): Outcome;
   /** The Room's Seats changed. Players gone leave the Match; new ones join it if the Game takes latecomers. */
   setPlayers(players: unknown): Outcome;
@@ -167,7 +169,7 @@ class EngineMatch implements Match {
     return this.#finish(applied.kind === "ok" ? applied.timer : applied.outcome);
   }
 
-  /** Draws the Views of a resumed Match. The host restarts its own timer from the deadline it saved. */
+  /** Draws the Views of a resumed Match. The Driver restarts its own timer from the deadline it saved. */
   resume(): Outcome {
     return this.#finish(undefined);
   }
@@ -257,7 +259,7 @@ class EngineMatch implements Match {
   /**
    * Calls one Game logic function and applies the Step it returns. The function gets its own
    * `ctx`, whose `rng` stops working once it returns: a Game that kept it and used it later (in a
-   * view function, say) would make a resumed Match differ from the original.
+   * View function, say) would make a resumed Match differ from the original.
    */
   #run(label: string, call: (ctx: Context) => unknown): Applied {
     let live = true;
@@ -431,7 +433,7 @@ export function endProblem(end: unknown, ids: ReadonlySet<string>): string | nul
   return null;
 }
 
-/** A list of Players as the host sends it: `{ id, name }` each, ids unique. Returns why not, if not. */
+/** A list of Players as the Driver sends it: `{ id, name }` each, ids unique. Returns why not, if not. */
 export function checkPlayers(value: unknown): Player[] | string {
   if (!Array.isArray(value)) return "the Players must be a list";
   if (value.length > MAX_PLAYERS) return `a Match holds at most ${MAX_PLAYERS} Players`;

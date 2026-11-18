@@ -82,7 +82,7 @@ export function PlayerList({ part, context }: { part: PlayerListPart; context: P
       {part.players.map((player) => (
         <li key={player.id} data-mark={player.mark ?? "none"}>
           <span className="kit-player-name">{nameOf(context, player.id)}</span>
-          {/* The mark and the note share one line: a list of tiles stays short enough to show big on a TV. */}
+          {/* The mark and the note share one line: a list of tiles stays short enough to show big on the Screen. */}
           {player.mark === undefined && player.note === undefined ? null : (
             <span className="kit-player-detail">
               {player.mark === undefined ? null : <span className="kit-player-mark">{MARKS[player.mark]}</span>}

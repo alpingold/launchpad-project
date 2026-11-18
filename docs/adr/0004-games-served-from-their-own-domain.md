@@ -23,7 +23,9 @@ Added 2026-11-17, after the browser tests of step 4.
   scripts from `'self'`, the frame's own origin. Counting what reached the frame server showed a
   Game's `importScripts` and `import()` getting there, with whatever the Game put in the URL
   (Chromium and Firefox; WebKit refused them). So the frame's script is now inline in its page and
-  allowed by its hash, and no source in the CSP names `'self'`, a host or a wildcard. The server
+  allowed by its hash, and no source in the CSP names `'self'`, a host or a wildcard. One directive
+  does name a host, and it allows no request: `frame-ancestors <the site>` says which page may embed
+  the frame and refuses every other. The server
   takes the hash from the page it serves, when it starts, so the two can't disagree; the browser
   tests check that a cached page and a new build each start a Match.
 - **The storage wall is partly our own code.** The frame's opaque origin makes the browsers refuse
@@ -32,7 +34,11 @@ Added 2026-11-17, after the browser tests of step 4.
   Game on the site shares it, across Matches and browser restarts. The browser tests found that
   only in a saved profile, so every browser test now runs in a fresh profile and a saved one.
 - So, before each Game loads, the frame empties the cache store, in a worker of its own because
-  WebKit refuses the store to the frame's page, and waits for that to finish. Then, before the
+  WebKit refuses the store to the frame's page, and waits for that to finish. Emptying is the
+  browser's work, not the Game's, so it has its own budget of 5 seconds (`EMPTY_STORAGE_MS`), apart
+  from the Game's two seconds to answer: the frame tells the Screen `emptied` when it is done, and
+  only then does the Game's clock start. If emptying takes longer, the Game isn't started and the
+  Host is told, in words they can act on, to reload and try again. Then, before the
   Game's code runs, the worker's bootstrap removes these, from every object on the global's
   prototype chain where the browser defines them, and fixes each on the global as `undefined`
   (unwritable, unconfigurable), so there is nothing left to call or put back:

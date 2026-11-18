@@ -1,5 +1,5 @@
 /**
- * The room messages. DRAFT, under design with the owner.
+ * The room messages.
  *
  * Three programs talk: the Screen, the phones, and the server between them. Every message is one
  * JSON object told apart by `type`, and each direction has its own union with a schema, so whoever
@@ -8,12 +8,12 @@
  *
  * Three rules shape everything here:
  *
- * 1. The Screen is the referee. It runs the Game and decides every view. The server never runs or
- *    reads a Game: a view and an action are `unknown` to it, passed along whole.
+ * 1. The Screen is the referee. It runs the Game and decides every View. The server never runs or
+ *    reads a Game: a View and an Action are `unknown` to it, passed along whole.
  * 2. Snapshots, never changes. The server always sends the whole Room, and the Screen always sends
- *    a phone's whole view. A missed message is repaired by the next one, and a reconnect is just
+ *    a phone's whole View. A missed message is repaired by the next one, and a reconnect is just
  *    "send the latest again".
- * 3. The server remembers the latest view of every Seat. A phone that reconnects gets its view at
+ * 3. The server remembers the latest View of every Seat. A phone that reconnects gets its View at
  *    once, without the Screen, even while the Screen itself is reloading.
  */
 import type { Look, MatchEnd } from "@boilergames/sdk/v1";
@@ -41,7 +41,7 @@ export const SCREEN_MESSAGES_PER_SECOND = 100;
 // ---------------------------------------------------------------------------------------------
 // Pieces
 
-/** Four letters, without the ones that look alike when read off a TV (I and O). */
+/** Four letters, without the ones that look alike when read off the Screen (I and O). */
 const roomCode = z.string().regex(/^[A-HJ-NP-Z]{4}$/);
 const playerName = z.string().trim().min(1).max(MAX_NAME_LENGTH);
 /** A secret that proves who a socket is: a Seat's own, or the Host's. Never sent to anyone else. */
@@ -51,7 +51,7 @@ const version = z.literal(PROTOCOL_VERSION);
 
 const hex = z.custom<`#${string}`>((value) => typeof value === "string" && /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(value));
 
-/** A Game's look, as the SDK defines it. Phones need it to draw the Game's views. */
+/** A Game's Look, as the SDK defines it. Phones need it to draw the Game's Views. */
 export const lookSchema = z.strictObject({
   colors: z.strictObject({ background: hex, surface: hex, text: hex, accent: hex }).partial().optional(),
   font: z.enum(["plain", "rounded", "serif", "mono", "poster", "handwritten"]).optional(),
@@ -66,7 +66,7 @@ export const lookSchema = z.strictObject({
 const seat = z.strictObject({ id: seatId, name: z.string().min(1).max(MAX_NAME_LENGTH + 5), connected: z.boolean() });
 export type Seat = z.infer<typeof seat>;
 
-/** The Match being played, as much as a phone needs before its first view arrives. */
+/** The Match being played, as much as a phone needs before its first View arrives. */
 const matchInfo = z.strictObject({
   gameId: z.string().min(1).max(64),
   title: z.string().min(1).max(60),
@@ -131,10 +131,10 @@ export const screenToServer = z.discriminatedUnion("type", [
   z.strictObject({ type: z.literal("openRoom"), v: version }),
   /** First message after the Screen reloads: take the Room back. Answered with `roomOpened`. */
   z.strictObject({ type: z.literal("resumeRoom"), v: version, code: roomCode, hostToken: token }),
-  /** The Host started a Match. Every earlier view is forgotten. */
+  /** The Host started a Match. Every earlier View is forgotten. */
   z.strictObject({ type: z.literal("startMatch"), match: matchInfo }),
   /**
-   * The latest views, by Seat, for the Seats whose view changed, and the Match's timer: how many
+   * The latest Views, by Seat, for the Seats whose View changed, and the Match's timer: how many
    * milliseconds are left, or null when it isn't running. The server hands each phone only its own.
    */
   z.strictObject({
@@ -168,8 +168,8 @@ export const serverToScreen = z.discriminatedUnion("type", [
    */
   z.strictObject({ type: z.literal("room"), room }),
   /**
-   * A Player used their Controller. The Screen checks their current view really offers it. Actions
-   * sent while the Screen is away are dropped, not kept: the Player still sees their view and taps again.
+   * A Player used their Controller. The Screen checks their current View really offers it. Actions
+   * sent while the Screen is away are dropped, not kept: the Player still sees their View and taps again.
    */
   z.strictObject({ type: z.literal("action"), seatId, action: z.unknown() }),
   z.strictObject({ type: z.literal("refused"), reason: refusal }),
@@ -185,7 +185,7 @@ export const phoneToServer = z.discriminatedUnion("type", [
   z.strictObject({ type: z.literal("join"), v: version, code: roomCode, name: playerName }),
   /** First message after a phone reloads or wakes: take the Seat back. Answered with `seated`. */
   z.strictObject({ type: z.literal("rejoin"), v: version, code: roomCode, seatToken: token }),
-  /** The Player used a part of their Controller. Passed to the Screen with their Seat's id. */
+  /** The Player used a Part of their Controller. Passed to the Screen with their Seat's id. */
   z.strictObject({ type: z.literal("action"), action: z.unknown() }),
   /** The Player left on purpose. Their Seat is gone at once, with no wait for them to return. */
   z.strictObject({ type: z.literal("leave") }),
@@ -200,8 +200,8 @@ export const serverToPhone = z.discriminatedUnion("type", [
   z.strictObject({ type: z.literal("seated"), seatId, seatToken: token, room }),
   z.strictObject({ type: z.literal("room"), room }),
   /**
-   * Your Controller's view, and how long the Match's timer has left (null: not running). During a
-   * Match, a phone that has had no view yet is a latecomer waiting for the next Match.
+   * Your Controller's View, and how long the Match's timer has left (null: not running). During a
+   * Match, a phone that has had no View yet is a latecomer waiting for the next Match.
    */
   z.strictObject({ type: z.literal("view"), view: z.unknown(), timerMs: z.number().nonnegative().nullable() }),
   z.strictObject({ type: z.literal("refused"), reason: refusal }),

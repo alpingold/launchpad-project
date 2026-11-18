@@ -1,10 +1,10 @@
 /**
- * SDK v1: the Kit. DRAFT, under design with the owner.
+ * SDK v1: the Kit.
  *
- * A view is plain data: a list of parts, each told apart by `kind`. Games write them as object
+ * A View is plain data: a list of Parts, each told apart by `kind`. Games write them as object
  * literals; the site draws them with its own code, so a phone never runs anything a Game wrote.
  *
- * The Kit must not limit Games. Its ready-made parts cover the common cases, and one part,
+ * The Kit must not limit Games. Its ready-made Parts cover the common cases, and one Part,
  * `picture`, is the way out: shapes at any position, any of which a Player can tap.
  */
 
@@ -14,19 +14,19 @@
 /** A colour as hex: "#1d3557" or "#fa3". */
 export type Hex = `#${string}`;
 
-/** A colour from the Game's own look, so a picture follows the theme without repeating it. */
+/** A colour from the Game's own look, so a picture follows the Look without repeating it. */
 export type LookColor = "background" | "surface" | "text" | "accent";
 
 export type Color = Hex | LookColor;
 
 /**
  * How a Game looks, declared once in `about`. Everything is optional. The site fills the gaps from
- * one of its two default looks, light or dark, whichever suits the Game's `background` (light if it
+ * one of its two default Looks, light or dark, whichever suits the Game's `background` (light if it
  * sets none), and always picks black or white for the text on buttons.
  *
- * A look must be readable once its gaps are filled, measured as the WCAG contrast ratio: `text` on
+ * A Look must be readable once its gaps are filled, measured as the WCAG contrast ratio: `text` on
  * `background` and `text` on `surface` at least 4.5 to 1, and `accent` on `background` at least
- * 3 to 1. A look that isn't is refused when the Game is checked, with the colours and the ratios.
+ * 3 to 1. A Look that isn't is refused when the Game is checked, with the colours and the ratios.
  * Setting only a `background` always passes, whatever the colour: the text default is black or
  * white, whichever reads better on it, and where the default accent doesn't show up on it (a strong
  * red like #e63946, a blue like #3a86ff, mid greys) the accent is that same black or white. A colour the
@@ -115,7 +115,7 @@ interface ShapeStyle<Action> {
   readonly strokeWidth?: number;
   /** From 0 (invisible) to 1. */
   readonly opacity?: number;
-  /** On a Controller: tapping this shape sends this action. */
+  /** On a Controller: tapping this shape sends this Action. */
   readonly action?: Action;
 }
 
@@ -133,7 +133,7 @@ export type Shape<Action> = ShapeStyle<Action> &
 
 /**
  * A picture `width` by `height` units, scaled to fit, with shapes drawn in the order listed (later
- * ones on top). For boards, maps, dice, cards, charts: whatever the other parts can't show.
+ * ones on top). For boards, maps, dice, cards, charts: whatever the other Parts can't show.
  */
 export interface PicturePart<Action> {
   readonly kind: "picture";
@@ -146,11 +146,11 @@ export interface PicturePart<Action> {
 // Parts a Player uses (Controller only)
 
 /**
- * For a part where the Player supplies a value: the action it sends, minus the field the Player
- * fills in. Only actions that have that field, with that type of value, qualify.
+ * For a Part where the Player supplies a value: the Action it sends, minus the field the Player
+ * fills in. Only Actions that have that field, with that type of value, qualify.
  *
  * The site reads Views without knowing a Game's Action type (`ControllerView<unknown>`). There the
- * action is any plain object: without this first branch it would be `never`, a type no value has.
+ * Action is any plain object: without this first branch it would be `never`, a type no value has.
  * A Game's own Action type never reaches that branch, so it is checked exactly as strictly.
  */
 export type Unfilled<Action, Field extends string, Value> = unknown extends Action
@@ -193,7 +193,7 @@ type ControllerLeaf<Action> = ShowPart | PicturePart<Action> | ButtonPart<Action
 
 type ScreenLeaf = ShowPart | PicturePart<never>;
 
-/** Puts parts side by side instead of one under the other. Rows don't nest. */
+/** Puts Parts side by side instead of one under the other. Rows don't nest. */
 export interface RowPart<Leaf> {
   readonly kind: "row";
   readonly parts: readonly Leaf[];
@@ -205,12 +205,22 @@ export type ControllerPart<Action> = ControllerLeaf<Action> | RowPart<Controller
 /** A part the Screen can show. The Screen has no inputs: only the Host's own controls. */
 export type ScreenPart = ScreenLeaf | RowPart<ScreenLeaf>;
 
-/** What one Controller shows: its parts, top to bottom. */
+/** What one Controller shows: its Parts, top to bottom. */
 export interface ControllerView<Action> {
   readonly parts: readonly ControllerPart<Action>[];
 }
 
-/** What the Screen shows: its parts, top to bottom. */
+/**
+ * What the Screen shows: its Parts, top to bottom.
+ *
+ * Write it for a Stage 1,280 pixels wide and as tall as it needs, never for a particular display:
+ * the site scales the Stage to fit the Host's display and centres it, with every Part centred. The
+ * taller the View, the smaller everything is drawn, so put on it what the room needs to see and
+ * leave the rest to the phones. List every Player in one `playerList` and every score in one
+ * `scoreboard`: the site wraps long lists into columns, so splitting them up yourself only makes
+ * the View taller. A `drawing` or `picture` keeps its size before lists do, and the site may move
+ * it beside them, so it can be the centre of attention without you laying the View out around it.
+ */
 export interface ScreenView {
   readonly parts: readonly ScreenPart[];
 }

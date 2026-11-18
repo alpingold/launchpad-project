@@ -143,7 +143,7 @@ test("the Screen's socket drops mid-Match and comes back: phones catch up, newco
 test("a phone that sends too much at once is told to slow down, and keeps its Seat and its View", async ({ context, another }) => {
   const { phones } = await startWith(context, another, ["Ada", "Ben", "Cy"], "Sum It Up");
   const ada = phones[0]!;
-  // Ada's page, sending 25 actions in one go through its own socket.
+  // Ada's page, sending 25 Actions in one go through its own socket.
   const server: { send(message: string): void }[] = [];
   await ada.routeWebSocket(/\/ws$/, (ws) => void server.push(ws.connectToServer()));
   await ada.reload();

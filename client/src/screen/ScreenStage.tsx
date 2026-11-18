@@ -1,15 +1,15 @@
 /**
- * The Screen's View, fitted to the TV. The site does this, not the Game: a Game can't know whether it
- * is on a 720p projector or a 4K TV, and it shouldn't have to.
+ * The Screen's View, fitted to the display. The site does this, not the Game: a Game can't know whether it
+ * is on a 720p projector or a 4K display, and it shouldn't have to.
  *
  * The View is laid out on a stage of fixed width (STAGE_WIDTH stage pixels), as tall as it needs.
  * The stage is then scaled so the whole View fits the space it is given, and centred in it: a
  * crowded View shrinks until nothing is cut off, and a sparse one grows, up to MAX_SCALE so three
- * words don't fill a 4K TV. The Look's background fills the whole space, not only the stage.
+ * words don't fill a 4K display. The Look's background fills the whole space, not only the stage.
  *
  * A drawing or a picture is what everyone is looking at, so it gives up space last. When the View
  * has one (not inside a row, where the Game already put something beside it), the stage also tries
- * it "beside": the picture in a left column and everything else to its right, using the TV's width
+ * it "beside": the picture in a left column and everything else to its right, using the display's width
  * rather than its height. "Beside" is kept when it shows the picture bigger without making anything
  * else smaller, so the lists give up their place below the picture, not their text size.
  */
@@ -29,7 +29,7 @@ export function ScreenStage({ background, children }: { background: string; chil
     const outer = space.current;
     const inner = stage.current;
     if (outer === null || inner === null) return;
-    /** The fit for the stage as it is laid out now, and how tall its picture would be on the TV. */
+    /** The fit for the stage as it is laid out now, and how tall its picture would be on the display. */
     const fitNow = () => {
       // offsetHeight is the stage's own height, unaffected by its scale.
       const height = Math.max(1, inner.offsetHeight);

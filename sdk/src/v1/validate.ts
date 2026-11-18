@@ -286,7 +286,7 @@ function json(v: unknown, at: string, p: Problems, depth: number): void {
   p.add(at, "must be plain data (text, numbers, true/false, null, lists and plain objects)");
 }
 
-/** A text box's or drawing pad's action: an action minus the field the Player fills in. */
+/** A text box's or drawing pad's Action: an Action minus the field the Player fills in. */
 function template(v: unknown, at: string, p: Problems, noun: string, filled: "text" | "drawing"): void {
   action(v, at, p, noun);
   if (isRecord(v) && has(v, filled)) p.add(`${at}.${filled}`, `${noun} fills in "${filled}" itself; leave it out of the action`);

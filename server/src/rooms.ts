@@ -70,7 +70,7 @@ export const FIRST_MESSAGE_MS = 10_000;
  * closed: it isn't a person tapping fast, it's a loop.
  */
 export const CLOSE_AT_TIMES_THE_LIMIT = 2;
-/** The letters of a Room Code: A to Z without I and O, which look like 1 and 0 on a TV. */
+/** The letters of a Room Code: A to Z without I and O, which look like 1 and 0 when read off the Screen. */
 export const CODE_LETTERS = "ABCDEFGHJKLMNPQRSTUVWXYZ";
 export const CODE_LENGTH = 4;
 /** Bytes of randomness in a token: 16 bytes, written as 32 hex characters. */
@@ -626,7 +626,7 @@ function sameToken(real: string, given: string): boolean {
 
 /**
  * The name as typed (the schema has trimmed it), or with " (2)", " (3)"... if someone in the Room
- * already has it. Compared without case: "ada" and "Ada" on one TV would be confusing.
+ * already has it. Compared without case: "ada" and "Ada" on one Screen would be confusing.
  */
 function uniqueName(typed: string, seats: readonly SeatState[]): string {
   const taken = new Set(seats.map((s) => s.name.toLowerCase()));

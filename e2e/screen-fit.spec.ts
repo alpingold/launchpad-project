@@ -1,4 +1,4 @@
-// The Screen's View, fitted to the TV by the site: at 1280x720 and 1920x1080, with the most Players
+// The Screen's View, fitted to the display by the site: at 1280x720 and 1920x1080, with the most Players
 // and the longest names, nothing in any phase of the three Games reaches outside the visible area.
 import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures.js";

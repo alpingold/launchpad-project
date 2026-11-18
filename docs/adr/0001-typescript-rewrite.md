@@ -13,7 +13,11 @@ knows the language well enough to want all of it.
 - **Run `.ts` directly with Node 24's type stripping (no build step):** simpler to deploy, but it
   allows only the TypeScript that can simply be deleted (no `enum`, `namespace` or parameter
   properties). Rejected because we want the whole language. `tsc` compiles to JavaScript for the
-  server; Vite builds the client.
+  server; Vite builds the client, the Game frame's page and the Game bundles.
+- **Build scripts are the exception (2026-11-17).** A script that only builds something (the
+  Official games' build, `games/scripts/build.ts`) runs as `.ts` directly with Node's type
+  stripping, on a developer's machine and in CI, and keeps to the TypeScript that allows. The
+  server never does: it still runs the output `tsc` compiled.
 
 ## Consequences
 

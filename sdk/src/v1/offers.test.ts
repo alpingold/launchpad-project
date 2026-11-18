@@ -129,7 +129,7 @@ test("availableActions lists what the View offers, with text boxes and drawing p
 });
 
 test("site code reading a View without the Game's Action type sees each input's action as plain data", () => {
-  // Before Unfilled had its `unknown` branch, these actions had type `never` and this didn't compile.
+  // Before Unfilled had its `unknown` branch, these Actions had type `never` and this didn't compile.
   const read: ControllerView<unknown> = {
     parts: [
       { kind: "textInput", action: { type: "write", round: 1 } },

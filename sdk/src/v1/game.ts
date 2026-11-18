@@ -1,9 +1,9 @@
 /**
- * SDK v1: the shape of a Game. DRAFT, under design with the owner.
+ * SDK v1: the shape of a Game.
  *
  * A Game is plain functions over plain data. It never touches a clock, the network or the page:
  * the platform owns time (the one timer a Game may set), randomness (`ctx.rng`) and drawing (the
- * views a Game returns). So the same seed and the same events always replay the same Match, which
+ * Views a Game returns). So the same seed and the same events always replay the same Match, which
  * is what lets a Match survive a Screen reload and lets a simulator play a Game to its end.
  */
 import type { ControllerView, Look, ScreenView } from "./kit.js";
@@ -11,7 +11,7 @@ import type { ControllerView, Look, ScreenView } from "./kit.js";
 /** The SDK version a Game written against this folder is recorded with. */
 export const SDK_VERSION = 1;
 
-/** Anything `JSON.stringify` keeps whole. A Game's state and its actions are made only of this. */
+/** Anything `JSON.stringify` keeps whole. A Game's state and its Actions are made only of this. */
 export type Json = string | number | boolean | null | readonly Json[] | { readonly [key: string]: Json };
 
 /**
@@ -37,7 +37,7 @@ export interface About {
   readonly title: string;
   /** The fewest and the most Players a Match can hold (the site's own cap is 16). */
   readonly players: { readonly min: number; readonly max: number };
-  /** The Game's own colours, typeface and corners. The site's look if left out. */
+  /** The Game's own colours, typeface and corners. The site's default Look if left out. */
   readonly look?: Look;
 }
 
@@ -60,7 +60,7 @@ export interface Context {
   readonly rng: Rng;
 }
 
-/** How a Match ended. Both parts are optional: a Game about the moment needs neither. */
+/** How a Match ended. Both Parts are optional: a Game about the moment needs neither. */
 export interface MatchEnd {
   /** Final scores by Player id. The site shows them as a scoreboard. */
   readonly scores?: Readonly<Record<string, number>>;
@@ -83,7 +83,7 @@ export interface Step<State> {
 
 /**
  * A Game. `State` is whatever the Game keeps between events; `Action` is everything a Player can
- * do, as a union of objects told apart by `type`. Controller views carry the exact `Action` each
+ * do, as a union of objects told apart by `type`. Controller Views carry the exact `Action` each
  * button sends, so a button and the code that handles it can't disagree without a compile error.
  */
 export interface Game<State, Action extends { readonly type: string }> {
@@ -92,7 +92,7 @@ export interface Game<State, Action extends { readonly type: string }> {
   /** Builds the first state for the Players in `ctx.players`. */
   start(ctx: Context): Step<State>;
 
-  /** A Player used a part of their Controller that sends `action`. */
+  /** A Player used a Part of their Controller that sends `action`. */
   onAction(state: State, player: Player, action: Action, ctx: Context): Step<State>;
 
   /** The timer ran out. A Game that never sets the timer can leave this out. */
@@ -121,7 +121,7 @@ type MustBePlainData<T, What extends string> = [T] extends [PlainData<T>]
 
 /**
  * Declares a Game. It returns the Game unchanged; its job is the type check: the state and the
- * actions must be plain data, because both get saved and sent as JSON.
+ * Actions must be plain data, because both get saved and sent as JSON.
  *
  * @example export default defineGame<State, Action>({ about, start, onAction, onLeave, screen, controller });
  */

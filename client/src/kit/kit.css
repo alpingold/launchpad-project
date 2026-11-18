@@ -13,7 +13,7 @@
   min-height: 100%;
 }
 /* The Screen's View is laid out on the site's stage, 1280 stage pixels wide, and scaled to fit the
-   TV (client/src/screen/ScreenStage.tsx): sizes here are in stage pixels, never vw or vh. Every
+   display (client/src/screen/ScreenStage.tsx): sizes here are in stage pixels, never vw or vh. Every
    Part on the Screen is centred, one alignment for all. */
 .kit-view[data-kind="screen"] {
   font-size: 28px;
@@ -158,7 +158,7 @@
 .kit-view[data-kind="screen"] .kit-timer { align-self: center; }
 /* Player tiles in equal columns, as many as fit, centred: two beside a picture, three or more across. */
 .kit-view[data-kind="screen"] .kit-players { display: grid; grid-template-columns: repeat(auto-fit, 12em); justify-content: center; width: 100%; }
-/* Long lists spread into columns rather than running down: on a TV the View is scaled to fit its
+/* Long lists spread into columns rather than running down: on the Screen the View is scaled to fit its
    height, so every line saved makes all the text bigger. */
 .kit-view[data-kind="screen"] .kit-scoreboard { width: 100%; max-width: none; }
 .kit-view[data-kind="screen"] .kit-scoreboard ol { display: grid; grid-template-columns: repeat(auto-fill, minmax(13em, 1fr)); column-gap: 1.5em; }

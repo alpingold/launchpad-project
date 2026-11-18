@@ -101,19 +101,19 @@ export function mistakesTheContractCatches(): void {
   type G = typeof bestWord;
   const state: State = { phase: { kind: "voting" }, words: {}, votes: {} };
 
-  // A button that sends an action the Game doesn't have.
+  // A button that sends an Action the Game doesn't have.
   const misspelled: ReturnType<G["controller"]> = {
-    // @ts-expect-error "vot" is not one of the Game's actions
+    // @ts-expect-error "vot" is not one of the Game's Actions
     parts: [{ kind: "button", label: "Vote", action: { type: "vot", for: "b" } }],
   };
 
-  // A button that sends half an action.
+  // A button that sends half an Action.
   const incomplete: ReturnType<G["controller"]> = {
     // @ts-expect-error a "vote" needs its `for`
     parts: [{ kind: "button", label: "Vote", action: { type: "vote" } }],
   };
 
-  // A text box wired to an action with no `text` to fill in.
+  // A text box wired to an Action with no `text` to fill in.
   const noText: ReturnType<G["controller"]> = {
     // @ts-expect-error "vote" has no `text` field
     parts: [{ kind: "textInput", action: { type: "vote", for: "b" } }],
@@ -146,7 +146,7 @@ export function mistakesTheContractCatches(): void {
     parts: [{ kind: "row", parts: [{ kind: "row", parts: [] }] }],
   };
   const badColor: ScreenView = {
-    // @ts-expect-error "red" is neither hex nor one of the look's colours
+    // @ts-expect-error "red" is neither hex nor one of the Look's colours
     parts: [{ kind: "picture", width: 10, height: 10, shapes: [{ shape: "circle", x: 5, y: 5, r: 2, fill: "red" }] }],
   };
 

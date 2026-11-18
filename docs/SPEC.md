@@ -1,6 +1,6 @@
 # BoilerGames: the rewrite spec
 
-What the rewritten BoilerGames is, and the decisions it rests on, as of 2026-11-16. Words in bold
+What the rewritten BoilerGames is, and the decisions it rests on, as of 2026-11-17. Words in bold
 are defined in [GLOSSARY.md](../GLOSSARY.md); lasting decisions are ADRs in [docs/adr/](adr/); the
 order of work is in [BUILD-PLAN.md](BUILD-PLAN.md). This file is the current truth, kept short: when
 a decision changes, change it here rather than adding to a log.
@@ -89,7 +89,7 @@ from `main` until the owner decides the new one replaces it.
 31. As a Creator, I want Generations to wait their turn in a queue when the site is busy, so that the site stays usable.
 32. As a Creator, I want to be told when GenAI Studio is down, so that I know why making Games doesn't work while playing still does.
 33. As a Creator, I want the AI to add a score and a winner only when my idea asks for one, so that Games about the moment don't get a pointless scoreboard.
-34. As a Creator, I want my Game to have its own look (colours, a typeface, corner style), so that it doesn't look like every other Game.
+34. As a Creator, I want my Game to have its own Look (colours, a typeface, corner style), so that it doesn't look like every other Game.
 
 **Uploads and Remixes**
 
@@ -125,21 +125,23 @@ from `main` until the owner decides the new one replaces it.
 **Shape of the system**
 - One repository of npm workspaces, TypeScript throughout (ADR 0001): **sdk** (what Games are
   written against and the Engine that runs a Match; no dependencies, because it is bundled into
-  every Game), **protocol** (the room messages, with a Zod schema for each), **server** and
-  **client**. A package is split off only when the code demands it.
+  every Game), **protocol** (the room messages, with a Zod schema for each), **server**, **client**
+  and **games** (the Official games and their build). The browser tests live in `e2e/`. A package
+  is split off only when the code demands it.
 - One server process in the AWS project (us-east-2), behind Caddy (HTTPS and `wss://`), under
   systemd, as its own user. It serves the built client and the API. Scaling out isn't planned.
-- Stack: Express 5 for HTTP, `ws` for WebSockets, Zod for every piece of data that comes from
+- Stack: Express 5 for the site's HTTP (the game domain's one page is served by plain `node:http`),
+  `ws` for WebSockets, Zod for every piece of data that comes from
   outside, React and Vite for the client, Vitest for tests, Playwright for browser tests. SQLite
   arrives with milestone 2 (ADR 0002, still proposed). New dependencies need the owner's approval.
 
 **Games (ADRs 0003, 0004, 0006)**
 - A Game is one module: `about` (title, Player range, **Look**), logic functions (`start`,
-  `onAction`, `onTimer`, `onLeave`, `onJoin`), and two view functions (`screen`, `controller`). The
+  `onAction`, `onTimer`, `onLeave`, `onJoin`), and two View functions (`screen`, `controller`). The
   logic functions take the state and return a **Step**: the new state, optionally a timer change or
   the end of the Match. The contract is `sdk/src/v1/game.ts`.
 - Everything a Player can do is one typed **Action**. Each button, text box, drawing pad and
-  tappable shape carries the exact Action it sends, so a view and the code that handles it can't
+  tappable shape carries the exact Action it sends, so a View and the code that handles it can't
   disagree without failing the type check.
 - State and Actions are plain data, enforced by the compiler. That is what lets a Match be saved,
   resumed and replayed.
@@ -158,7 +160,9 @@ from `main` until the owner decides the new one replaces it.
   colour the Game sets. The filled-in Look must be readable, measured as the WCAG contrast ratio:
   text on the background and text on the surface at least 4.5 to 1, the accent (timer, highlights)
   on the background at least 3 to 1. A Look that isn't is refused, with a problem naming both
-  colours, the ratio measured and the ratio needed. Button text is black or white, chosen by the
+  colours, the ratio measured and the ratio needed: the games build refuses an Official game's, and
+  the Playtest will refuse a generated one's. A Look's typeface is one of six the site serves from
+  its own origin (`client/public/fonts`), each loaded only by a page whose Look uses it. Button text is black or white, chosen by the
   site, so it needs no rule. The default Looks and the check live in the SDK
   (`sdk/src/v1/look.ts`), so the checker and the renderer use the same colours.
 - Sizes fit together end to end. A Drawing is at most 2,000 whole-number points (about 32 KB as
@@ -166,6 +170,13 @@ from `main` until the owner decides the new one replaces it.
   at most 128 KB, so it fits in one message to a phone; the Screen splits Views across `views`
   messages so none passes the server's 256 KB limit. The Screen's own View never leaves the Host's
   browser and may be as big as the state.
+- The Screen's View is drawn for a **Stage** 1,280 pixels wide and as tall as it needs. The site
+  scales the Stage to fit the Host's display, centres it, and centres every Part on it, so a Game
+  writes for the Stage and never for a particular screen. The taller the View, the smaller it is
+  drawn, so it should hold what the room needs to see. The site wraps long lists of Players and
+  scores into columns, and a drawing or picture keeps its size before lists do (it may be moved
+  beside them), so a Game lists everyone rather than splitting a list up. Phone Views are never
+  scaled: a short one sits in the middle of the phone, a tall one scrolls.
 - Views are plain data made of Kit Parts (`sdk/src/v1/kit.ts`), written as object literals. The
   **Picture** Part (shapes at any position, tappable on a phone) is the way out when the ready-made
   Parts aren't enough. There is no Canvas and no Game-written HTML.
@@ -173,27 +184,51 @@ from `main` until the owner decides the new one replaces it.
   SDK v2, and nothing in v1 may rule it out.
 - One **Engine** runs every Match: in the Host's browser, in the Playtest and in tests. It calls the
   Game's functions and checks everything they return, so "what a valid Game does" has one definition.
+  In the browser the Game shares the Engine's worker and could forge its reply, so the Screen checks
+  every reply from the Game frame again itself.
 - In the Host's browser the Engine and the Game run in a Web Worker inside a hidden, sandboxed
-  **Game frame** (`allow-scripts` only) served from its own domain, with a policy that blocks all
-  network access. The Game draws nothing, so the frame shows nothing: it is only a wall.
+  **Game frame** (`allow-scripts` only) served from its own domain. Its Content-Security-Policy is
+  the network wall: it allows the page's own inline script by its hash and nothing from any URL, so
+  a Game can make no request to any origin, the game domain included. The storage wall is partly
+  the site's own code: before each Game the frame empties the cache store a browser may give it,
+  and the worker removes `caches`, `Worker` and `BroadcastChannel` before the Game's code runs
+  (ADR 0004). The Game draws nothing, so the frame shows nothing: it is only a wall. In development
+  the frame is the next port up, the same site; its sandbox and policy still apply.
 - Every Version records the SDK version it was checked against and runs on that version's frozen
-  Engine. The view format is the part phones depend on, so within an SDK version it only grows.
+  Engine. The View format is the part phones depend on, so within an SDK version it only grows.
 - Official games are ordinary Games published by the owner. None of the first site's games is
   carried over; new ones are written for the SDK.
 
 **Rooms (ADR 0005)**
-- The Screen is the referee: it runs the Game and decides every view. The server only passes
-  messages along, and a view or an Action is `unknown` to it.
+- The Screen is the referee: it runs the Game and decides every View. The server only passes
+  messages along, and a View or an Action is `unknown` to it. It measures each View, without reading
+  it, and refuses one over 128 KB, so a Room can't make it hold more than it was sized for.
 - Messages are snapshots, never changes: the server sends the whole Room, the Screen sends a phone's
-  whole view. The Screen works out who joined or left by comparing Rooms. The contract is
+  whole View. The Screen works out who joined or left by comparing Rooms. The contract is
   `protocol/src/messages.ts`.
-- The server remembers each Seat's latest view, so a phone that wakes gets it back at once.
-- A Match survives a Screen reload because the Screen saves it in its own browser storage after
-  every Step. It does not survive the Host's browser being lost; the Room and its Seats do.
+- The server remembers each Seat's latest View, so a phone that wakes gets it back at once.
+- A Room and its Match survive the Screen reloading in the same browser: the Screen saves the Match
+  in its own browser storage after every Step and keeps the Room's host token there. Without that
+  browser's saved host token nothing can take the Room back: it closes 5 minutes after its Screen
+  goes, or 60 seconds if it has no Seats. If the Screen's socket drops without a reload, the Screen
+  catches up when it comes back (ADR 0005).
+- A second tab or device that takes up a Seat (or the Room) replaces the first: the old page is
+  told `closed: replaced` and doesn't reconnect.
+- The Host can remove a Player in the Lobby or during a Match; the Game hears it as that Player
+  leaving.
 - Actions sent while the Screen is away are dropped. Two Players may share a name; the server shows
   the second as "Ada (2)".
-- Rooms live in memory. The server's layers: transport (sockets, limits, checking each message
-  against its schema) and rooms (who may do what, given a `send` function and a clock, no sockets).
+- Limits (each a named constant in the server): a phone may send 20 messages a second and the
+  Screen 100; one address may make 30 wrong guesses a minute (a Room Code or token refused), open 5
+  Rooms a minute and have 10 open, and hold 200 sockets; 30 Rooms may be open in all (`MAX_ROOMS`,
+  sized for about 256 MB); a socket must say what it is within 10 seconds and answer a ping every
+  30. Joining that succeeds isn't limited per address: a Room's phones share one Wi-Fi, and 16
+  Seats bound them.
+- Rooms live in memory. The server's parts: rooms (every rule and limit, given `send`, `close` and
+  a clock, no sockets); transport (`ws`: refuses a socket from another origin or over the per-address
+  cap, pings, drops a socket that doesn't read, checks each message against its schema); the site
+  (Express: the client, `/api/games` and each Game's bundle, and `/api/config`, which tells the
+  Screen where the Game frame is); and the game domain's server (its one page).
 
 **Making Games**
 - A Generation is: Concept → the Creator's approval or edits → Build → Playtest, with failures going
@@ -230,8 +265,11 @@ from `main` until the owner decides the new one replaces it.
 - Games are tested by playing them in the simulator, which is also what the Playtest uses.
 - The rooms layer is tested with a fake `send` and a fake clock; the whole server once, in one
   process, over real HTTP and WebSockets.
-- The walls are tested by attacking them in a real browser (network requests, WebRTC, navigation,
-  reaching the parent page), in Chromium, Firefox and WebKit.
+- The walls are tested by attacking them in a real browser: network requests to outside servers,
+  the site and the game domain itself (counted on the servers, not taken from the browser's
+  errors), WebRTC, and storage or channels one Game could use to leave something for another. In
+  Chromium, Firefox and WebKit, each in a fresh profile and a saved one. (A worker has no page to
+  navigate and no parent page to reach, so there is nothing of that kind to attack.)
 
 ## Out of scope
 

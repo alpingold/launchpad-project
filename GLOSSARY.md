@@ -90,6 +90,18 @@ _Avoid_: Theme, skin, style
 The site's code that runs a Match: it calls the Game's functions and checks everything they return. The same Engine runs in the Host's browser, in the Playtest and in tests.
 _Avoid_: Runtime, runner, host
 
+**Driver**:
+Whatever runs the Engine and hands it each event: the Game frame in the Host's browser, the simulator in the Playtest, or a test. It owns the real clock: it starts the timer the Engine asks for and tells the Engine when it runs out.
+_Avoid_: Host (that's the person), runner, harness
+
+**Outcome**:
+What the Engine reports after each event: the Match goes on (and what happens to its timer), the event was ignored and why, the Match ended and how, or it broke and why.
+_Avoid_: Result, status, Step (that's what a Game returns)
+
+**Stage**:
+The space, 1,280 pixels wide, on which the site lays out the Screen's View before scaling it to fit the display and centring it. A Game draws for the Stage, never for a particular display.
+_Avoid_: Canvas, viewport, screen size
+
 **Game frame**:
 The hidden, walled-off frame in the Host's browser where the Engine and the Game run. It shows nothing.
 _Avoid_: Sandbox, iframe, game window
