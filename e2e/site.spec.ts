@@ -195,3 +195,70 @@ test("a text box's send button stays on screen when the keyboard takes half the 
   expect(send.y).toBeGreaterThanOrEqual(0);
   expect(send.y + send.height).toBeLessThanOrEqual(90);
 });
+
+/** Holds back every font file a page asks for until `release()`, and lists which it asked for. */
+async function holdFonts(page: Page): Promise<{ requested: string[]; release: () => void }> {
+  const requested: string[] = [];
+  let release!: () => void;
+  const released = new Promise<void>((resolve) => (release = resolve));
+  await page.route("**/fonts/*.woff2", async (route) => {
+    requested.push(new URL(route.request().url()).pathname.replace("/fonts/", ""));
+    await released;
+    await route.continue();
+  });
+  return { requested, release };
+}
+
+/** Whether a face of `family` has finished loading on the page. */
+const loaded = (page: Page, family: string) => page.evaluate((f) => [...document.fonts].some((face) => face.family.replaceAll('"', "") === f && face.status === "loaded"), family);
+
+/** Every button, text box and tappable shape on the page: where it is. */
+const controls = (page: Page) =>
+  page.evaluate(() =>
+    [...document.querySelectorAll('.kit-view button, .kit-view input, .kit-view [role="button"]')].map((element) => {
+      const box = element.getBoundingClientRect();
+      return { x: box.left, y: box.top, width: box.width, height: box.height };
+    }),
+  );
+
+for (const [title, family, file] of [
+  ["Sum It Up", "Anton", "anton-400.woff2"],
+  ["Scribble Pick", "Patrick Hand", "patrick-hand-400.woff2"],
+  ["Allotments", "Nunito", "nunito-700.woff2"],
+] as const) {
+  test(`${title}: pages load only their Look's font, show text before it arrives, and the swap moves no button from under a thumb`, async ({ context, another }) => {
+    const { screen, code } = await openScreen(context);
+    const screenFonts = await holdFonts(screen);
+    const phones: Page[] = [];
+    const held: Awaited<ReturnType<typeof holdFonts>>[] = [];
+    for (const name of ["Ada", "Ben", "Cy"]) {
+      const phone = await joinPhone(another, code, name);
+      held.push(await holdFonts(phone));
+      phones.push(phone);
+    }
+    await screen.getByRole("button", { name: `Start ${title}` }).click();
+    for (const p of phones) await expect(p.locator(".kit-view .kit-text").first()).toBeVisible();
+    // The phone with something to tap (in Allotments, only the one whose turn it is).
+    const phone = (await Promise.all(phones.map(async (p) => ((await controls(p)).length > 0 ? p : undefined)))).find((p) => p !== undefined)!;
+    // The View is up and readable before any font has arrived.
+    expect(await loaded(phone, family)).toBe(false);
+    const before = await controls(phone);
+    expect(before.length).toBeGreaterThan(0);
+
+    for (const h of [...held, screenFonts]) h.release();
+    await expect.poll(() => loaded(phone, family)).toBe(true);
+    await phone.waitForTimeout(100);
+    const after = await controls(phone);
+    // Where a thumb was aiming at each control is still on it.
+    for (const [i, old] of before.entries()) {
+      const now = after[i]!;
+      const centre = { x: old.x + old.width / 2, y: old.y + old.height / 2 };
+      expect(centre.x >= now.x && centre.x <= now.x + now.width && centre.y >= now.y && centre.y <= now.y + now.height, `control ${i} moved from under its old centre`).toBe(true);
+    }
+    console.log(`${title}: the largest move of a control when ${family} arrived: ${Math.max(...before.map((old, i) => Math.max(Math.abs(after[i]!.x - old.x), Math.abs(after[i]!.y - old.y)))).toFixed(1)} px`);
+
+    // Only this Look's typeface was asked for, by the phones and by the Screen.
+    for (const h of [...held, screenFonts]) expect(h.requested.every((f) => f.startsWith(file.split("-").slice(0, -1).join("-")))).toBe(true);
+    expect(held[0]!.requested).toContain(file);
+  });
+}

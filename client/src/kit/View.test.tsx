@@ -128,3 +128,11 @@ test("the Look becomes CSS variables on the View's root, and button text is blac
   expect(html).toContain("--kit-radius:0px");
   expect(html).toContain("monospace");
 });
+
+test("each Look font is the site's own typeface with its matched fallback, and a one-weight typeface gets no faked bold", () => {
+  const draw = (font: "poster" | "rounded") => renderToStaticMarkup(<View kind="controller" view={{ parts: [] }} look={{ font }} names={names} timerEndsAt={null} />);
+  expect(draw("poster")).toContain("&quot;Anton&quot;, &quot;Anton Fallback&quot;");
+  expect(draw("poster")).toContain("data-single-weight");
+  expect(draw("rounded")).toContain("&quot;Nunito&quot;, &quot;Nunito Fallback&quot;");
+  expect(draw("rounded")).not.toContain("data-single-weight");
+});

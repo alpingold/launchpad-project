@@ -25,6 +25,10 @@
 .kit-view * {
   box-sizing: border-box;
 }
+/* A typeface with one weight is never given a faked bold: headings and buttons use it as it is. */
+.kit-view[data-single-weight] {
+  font-synthesis: none;
+}
 
 .kit-text {
   margin: 0;

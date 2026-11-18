@@ -7,15 +7,26 @@ import type { Color, Look } from "@boilergames/sdk/v1";
 import { contrastRatio, withDefaults } from "@boilergames/sdk/v1/check";
 import type { CSSProperties } from "react";
 
-/** The site's own typefaces. Games can't load fonts (they have no network), so these are system stacks. */
+/**
+ * The site's own typefaces (fonts.css), each followed by its metric-matched fallback, so text shows
+ * at once and barely moves when the font arrives. Games can't load fonts: they have no network.
+ */
 const FONTS = {
-  plain: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
-  rounded: 'ui-rounded, "SF Pro Rounded", "Nunito", "Varela Round", system-ui, sans-serif',
-  serif: 'ui-serif, Georgia, "Times New Roman", serif',
-  mono: 'ui-monospace, "SF Mono", Menlo, Consolas, monospace',
-  poster: 'Impact, "Arial Black", "Helvetica Neue", system-ui, sans-serif',
-  handwritten: '"Comic Sans MS", "Segoe Print", "Bradley Hand", cursive',
+  plain: '"Atkinson Hyperlegible", "Atkinson Hyperlegible Fallback", system-ui, sans-serif',
+  rounded: '"Nunito", "Nunito Fallback", system-ui, sans-serif',
+  serif: '"Source Serif 4", "Source Serif 4 Fallback", Georgia, serif',
+  mono: '"JetBrains Mono", "JetBrains Mono Fallback", ui-monospace, monospace',
+  poster: '"Anton", "Anton Fallback", Impact, sans-serif',
+  handwritten: '"Patrick Hand", "Patrick Hand Fallback", cursive',
 } as const;
+
+/** The typefaces with one weight: a browser would fake their bold, badly, so it mustn't. */
+export const SINGLE_WEIGHT_FONTS: ReadonlySet<string> = new Set(["poster", "handwritten"]);
+
+/** The Look's typeface name, filled in: what the View's root records for the CSS. */
+export function lookFont(look: Look | undefined): string {
+  return withDefaults(look).font;
+}
 
 const CORNERS = { sharp: "0px", soft: "10px", round: "22px" } as const;
 

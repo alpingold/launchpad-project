@@ -1,0 +1,124 @@
+/* The site's six typefaces, one per Look font name (client/public/fonts/FONTS.md says where each
+   came from and under what licence). Served from the site's own origin. A browser downloads a font
+   only when some text uses it, so a page fetches just the one its Game's Look names.
+
+   font-display: swap: text shows at once in a fallback and changes to the real font when it
+   arrives. So that the change doesn't move things (a button sliding from under a thumb), each font
+   has a fallback face: a common system font, resized and with its line metrics set to match the
+   real font. The numbers were measured in Chromium against Liberation Sans and Liberation Mono,
+   which have the metrics of Arial and Courier New: size-adjust is the width of a sample sentence in
+   the real font over the fallback's; ascent and descent are the real font's, at that size. */
+
+@font-face {
+  font-family: "Atkinson Hyperlegible";
+  src: url("/fonts/atkinson-hyperlegible-400.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Atkinson Hyperlegible";
+  src: url("/fonts/atkinson-hyperlegible-700.woff2") format("woff2");
+  font-weight: 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Atkinson Hyperlegible Fallback";
+  src: local("Arial"), local("Liberation Sans"), local("Helvetica"), local("Arimo");
+  size-adjust: 98.79%;
+  ascent-override: 96.16%;
+  descent-override: 29.35%;
+  line-gap-override: 0%;
+}
+
+@font-face {
+  font-family: "Nunito";
+  src: url("/fonts/nunito-400.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Nunito";
+  src: url("/fonts/nunito-700.woff2") format("woff2");
+  font-weight: 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Nunito Fallback";
+  src: local("Arial"), local("Liberation Sans"), local("Helvetica"), local("Arimo");
+  size-adjust: 101.74%;
+  ascent-override: 99.27%;
+  descent-override: 34.40%;
+  line-gap-override: 0%;
+}
+
+@font-face {
+  font-family: "Source Serif 4";
+  src: url("/fonts/source-serif-4-400.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Source Serif 4";
+  src: url("/fonts/source-serif-4-700.woff2") format("woff2");
+  font-weight: 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Source Serif 4 Fallback";
+  src: local("Arial"), local("Liberation Sans"), local("Helvetica"), local("Arimo");
+  size-adjust: 105.74%;
+  ascent-override: 98.35%;
+  descent-override: 32.15%;
+  line-gap-override: 0%;
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("/fonts/jetbrains-mono-400.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("/fonts/jetbrains-mono-700.woff2") format("woff2");
+  font-weight: 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: "JetBrains Mono Fallback";
+  src: local("Courier New"), local("Liberation Mono"), local("Cousine");
+  size-adjust: 99.98%;
+  ascent-override: 102.02%;
+  descent-override: 30.00%;
+  line-gap-override: 0%;
+}
+
+@font-face {
+  font-family: "Anton";
+  src: url("/fonts/anton-400.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Anton Fallback";
+  src: local("Arial"), local("Liberation Sans"), local("Helvetica"), local("Arimo");
+  size-adjust: 89.31%;
+  ascent-override: 132.13%;
+  descent-override: 36.95%;
+  line-gap-override: 0%;
+}
+
+@font-face {
+  font-family: "Patrick Hand";
+  src: url("/fonts/patrick-hand-400.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Patrick Hand Fallback";
+  src: local("Arial"), local("Liberation Sans"), local("Helvetica"), local("Arimo");
+  size-adjust: 78.79%;
+  ascent-override: 131.99%;
+  descent-override: 39.34%;
+  line-gap-override: 0%;
+}

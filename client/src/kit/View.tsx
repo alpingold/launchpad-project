@@ -3,8 +3,9 @@
  * every View with the SDK's checker before it gets here; this file only draws.
  */
 import type { ControllerPart, ControllerView, Look, ScreenView } from "@boilergames/sdk/v1";
+import "./fonts.css";
 import "./kit.css";
-import { lookStyle } from "./look-style.js";
+import { lookFont, lookStyle, SINGLE_WEIGHT_FONTS } from "./look-style.js";
 import { Button, DrawingPad, DrawingView, PlayerList, Picture, Scoreboard, Text, TextInput, Timer, type PartContext } from "./parts.js";
 
 export interface ViewProps {
@@ -24,7 +25,7 @@ export interface ViewProps {
 export function View({ view, look, names, timerEndsAt, onAction, kind }: ViewProps) {
   const context: PartContext = { names, onAction, timerEndsAt };
   return (
-    <div className="kit-view" data-kind={kind} style={lookStyle(look)}>
+    <div className="kit-view" data-kind={kind} data-single-weight={SINGLE_WEIGHT_FONTS.has(lookFont(look)) ? "" : undefined} style={lookStyle(look)}>
       {(view.parts as readonly ControllerPart<unknown>[]).map((part, i) => (
         <Part key={i} part={part} context={context} />
       ))}
