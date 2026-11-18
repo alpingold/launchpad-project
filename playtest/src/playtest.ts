@@ -32,6 +32,11 @@ export type PlaytestResult =
 export interface PlaytestOptions {
   /** The SDK's source or its built output; whichever is there unless told (sdk.ts). */
   readonly sdk?: SdkForm;
+  /**
+   * For the attack script only (runner.ts, --attack-test): globals handed to the Game, such as
+   * Node's `process`, so a hostile Game can try the operating system's wall directly.
+   */
+  readonly giveTheGame?: Readonly<Record<string, unknown>>;
 }
 
 const utf8Bytes = (text: string) => Buffer.byteLength(text, "utf8");
@@ -79,7 +84,7 @@ export async function playtest(source: string, options: PlaytestOptions = {}): P
       return failed([{ stage: "bundle", message: `The Game's bundle is ${Math.ceil(utf8Bytes(bundle) / 1024)} KB; the most it may be is ${MAX_BUNDLE_BYTES / 1024} KB.` }]);
     }
 
-    const loaded = load(bundle, await harnessScript(form));
+    const loaded = load(bundle, await harnessScript(form), options.giveTheGame);
     if (!loaded.ok) return failed(loaded.problems);
     const playProblems = playAll(loaded.context, loaded.about);
     if (playProblems.length > 0) return failed(playProblems);

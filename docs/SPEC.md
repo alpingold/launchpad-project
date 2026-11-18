@@ -128,9 +128,10 @@ the site has no AI game maker.
 **Shape of the system**
 - One repository of npm workspaces, TypeScript throughout (ADR 0001): **sdk** (what Games are
   written against and the Engine that runs a Match; no dependencies, because it is bundled into
-  every Game), **protocol** (the room messages, with a Zod schema for each), **server**, **client**
-  and **games** (the Official games and their build). The browser tests live in `e2e/`. A package
-  is split off only when the code demands it.
+  every Game), **protocol** (the room messages, with a Zod schema for each), **server**, **client**,
+  **games** (the Official games and their build) and **playtest** (the Playtest, its runner, and the
+  one definition of a Game's bundle, which the games' build uses too). The browser tests live in
+  `e2e/`. A package is split off only when the code demands it.
 - One server process in the AWS project (us-east-2), behind Caddy (HTTPS and `wss://`), under
   systemd, as its own user. It serves the built client and the API. Scaling out isn't planned.
 - Stack: Express 5 for the site's HTTP (the game domain's one page is served by plain `node:http`),

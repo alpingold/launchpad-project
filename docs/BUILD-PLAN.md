@@ -50,7 +50,7 @@ begins with a design session with the owner that this plan does not replace.
 
 ## Where things stand
 
-Branch `rewrite`. Five npm workspace packages, each a folder at the root, and the browser tests:
+Branch `rewrite`. Six npm workspace packages, each a folder at the root, and the browser tests:
 
 | Folder     | Holds                                                                 | State (milestone 1 done)  |
 | ---------- | --------------------------------------------------------------------- | ------------------------- |
@@ -59,6 +59,7 @@ Branch `rewrite`. Five npm workspace packages, each a folder at the root, and th
 | `server`   | The one server process: Rooms, the site's HTTP, the game domain       | Built and tested          |
 | `client`   | The site's pages (React, Vite), the Kit renderer, the Game frame      | Built and tested          |
 | `games`    | The three Official games and their build                              | Built and tested          |
+| `playtest` | The Playtest, its walled runner's program, and how a bundle is made   | Built (Steps 12, 13); its wall not yet attacked |
 | `e2e`      | Playwright tests: the walls, the frame, the real site                 | Six projects, all passing |
 | `deploy`   | The server's setup, service and release scripts (not a package)       | Running the live site     |
 

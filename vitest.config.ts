@@ -17,7 +17,13 @@ export default defineConfig({
       ...nodePackages.map((name) => ({
         resolve: { conditions: name === "server" ? serverConditions : conditions },
         ssr: { resolve: { conditions: name === "server" ? serverConditions : conditions } },
-        test: { name, root: name, include: ["src/**/*.test.ts"] },
+        test: {
+          name,
+          root: name,
+          include: ["src/**/*.test.ts"],
+          // The Playtest's runner is started as a program, from its compiled dist/.
+          ...(name === "playtest" ? { globalSetup: ["scripts/build-for-tests.ts"] } : {}),
+        },
       })),
       "client",
     ],

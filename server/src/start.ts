@@ -8,7 +8,7 @@
 import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { fileURLToPath } from "node:url";
-import { databaseFileFrom, maxRoomsFrom } from "./config.js";
+import { databaseFileFrom, maxRoomsFrom, playtestFrom } from "./config.js";
 import { IN_MEMORY, openDatabase } from "./db/database.js";
 import { createFrameServer, createServer, forwardedAddress } from "./index.js";
 import { mailFrom } from "./mail.js";
@@ -51,6 +51,7 @@ export async function start(env: Settings): Promise<Started> {
     maxRooms,
     database,
     mail,
+    playtest: playtestFrom(env),
     // Behind Caddy every request comes from 127.0.0.1; the phone's own address is in X-Forwarded-For.
     ...(env["TRUST_PROXY"] === "1" ? { addressOf: forwardedAddress } : {}),
   });

@@ -3,6 +3,7 @@
  * only the Game frame, is a separate server (createFrameServer) on its own port or domain.
  */
 import { createServer as createHttpServer, type IncomingMessage, type Server } from "node:http";
+import type { PlaytestRunner } from "@boilergames/playtest/client";
 import { IN_MEMORY, openDatabase, type Database } from "./db/database.js";
 import { RecordedMail, type Mail } from "./mail.js";
 import type { Clock } from "./rooms.js";
@@ -24,6 +25,11 @@ export interface ServerOptions extends SiteOptions {
   readonly database?: Database;
   /** How emails are sent (mail.ts). Recorded, and sent nowhere, unless given. */
   readonly mail?: Mail;
+  /**
+   * How a Playtest is run (config.ts, playtestFrom), for Uploads (BUILD-PLAN Step 14). Null: there
+   * is none, and Uploads are refused.
+   */
+  readonly playtest?: PlaytestRunner | null;
 }
 
 export interface RunningServer {

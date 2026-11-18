@@ -1,7 +1,7 @@
 // The server's settings from the environment, and that the README says what the code does.
 import { readFileSync } from "node:fs";
 import { expect, test } from "vitest";
-import { databaseFileFrom, maxRoomsFrom } from "./config.js";
+import { databaseFileFrom, maxRoomsFrom, playtestFrom } from "./config.js";
 import { IN_MEMORY } from "./db/database.js";
 import { DEFAULT_MAX_ROOMS } from "./rooms.js";
 
@@ -23,4 +23,11 @@ test("DATABASE_FILE names the database; without it, one in memory, except in pro
   expect(databaseFileFrom({ NODE_ENV: "development" })).toBe(IN_MEMORY);
   expect(() => databaseFileFrom({ NODE_ENV: "production" })).toThrow(/DATABASE_FILE must be set in production/);
   expect(() => databaseFileFrom({ NODE_ENV: "production", DATABASE_FILE: "" })).toThrow(/DATABASE_FILE/);
+});
+
+test("the Playtest goes through PLAYTEST_SOCKET when set; never unwalled in production", () => {
+  expect(playtestFrom({ PLAYTEST_SOCKET: "/run/boilergames-playtest.sock", NODE_ENV: "production" })).not.toBeNull();
+  expect(playtestFrom({ NODE_ENV: "production" })).toBeNull();
+  // Development and tests: a child process, with no wall.
+  expect(playtestFrom({})).not.toBeNull();
 });

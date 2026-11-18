@@ -1,9 +1,17 @@
 // The Playtest on real Games: the test Game and the Official games pass, and each way a Game can be
-// broken gives a problem a Creator can fix it from.
+// broken gives a problem a Creator can fix it from. Every test runs twice: in this process, and
+// through the runner in a child process, as the site starts it in development.
 import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
+import { childProcessRunner, type RunResult } from "./client.js";
 import { MAX_SOURCE_BYTES, RUN_MS } from "./limits.js";
-import { playtest, type PlaytestResult } from "./playtest.js";
+import { playtest } from "./playtest.js";
+
+const runner = childProcessRunner();
+const WAYS: [string, (source: string) => Promise<RunResult>][] = [
+  ["in this process", (source) => playtest(source)],
+  ["through the runner", (source) => runner.run(source)],
+];
 
 const file = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
 
@@ -27,11 +35,13 @@ export default defineGame<{ taps: number }, { type: "tap" }>({
 `;
 }
 
-function problems(result: PlaytestResult): { stage: string; message: string; line?: number }[] {
+function problems(result: RunResult): { stage: string; message: string; line?: number }[] {
   if (result.ok) throw new Error("expected the Playtest to fail");
-  return result.problems;
+  if ("checkFailed" in result) throw new Error("the check itself failed");
+  return [...result.problems];
 }
 
+describe.each(WAYS)("%s", (_way, playtest) => {
 describe("good Games pass", () => {
   test("Best Word, the SDK's test Game", async () => {
     const result = await playtest(BEST_WORD);
@@ -41,8 +51,9 @@ describe("good Games pass", () => {
   test.each(OFFICIAL)("the Official game %s, with its bundle, about and SDK version", async (id) => {
     const result = await playtest(file(`../../games/src/${id}/index.ts`));
     if (!result.ok) throw new Error(JSON.stringify(result.problems, null, 2));
-    const listing = (JSON.parse(file("../../games/dist/games.json")) as { id: string }[]).find((entry) => entry.id === id);
-    expect({ id, ...result.about }).toEqual(listing);
+    // The Game's own about, read from its source (nothing here needs a build first).
+    const { about } = ((await import(`../../games/src/${id}/index.ts`)) as { default: { about: object } }).default;
+    expect(result.about).toEqual(about);
     expect(result.sdkVersion).toBe("v1");
     expect(result.bundle).toMatch(/^var BoilerGamesGame = \(function\(\) \{/);
   });
@@ -162,4 +173,5 @@ describe("playing it", () => {
 test("a source over the size is refused before anything runs", async () => {
   const found = problems(await playtest(game({ top: `// ${"x".repeat(MAX_SOURCE_BYTES)}` })));
   expect(found).toEqual([{ stage: "source", message: `The Game's source is 257 KB; the most it may be is ${MAX_SOURCE_BYTES / 1024} KB.` }]);
+});
 });

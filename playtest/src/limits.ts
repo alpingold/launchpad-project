@@ -6,6 +6,8 @@ export const MAX_SOURCE_BYTES = 256 * 1024;
 export const MAX_BUNDLE_BYTES = 1024 * 1024;
 /** The most problems one Playtest reports. A Creator fixes the first ones first. */
 export const MAX_PROBLEMS = 50;
+/** The longest one problem's message may be; a longer one (tsc can write pages) is cut short. */
+export const MAX_PROBLEM_CHARS = 2_000;
 /** How long tsc may take on one Game. */
 export const TYPES_MS = 30_000;
 /** How long loading the bundle (its top-level code) and reading its `about` may take. */
@@ -14,3 +16,8 @@ export const LOAD_MS = 2_000;
 export const RUN_MS = 3_000;
 /** The seeds each kind of run is played with. */
 export const SEEDS = [1, 2, 3] as const;
+
+/** The most a runner's request may be: the largest source, written as JSON (which can double it), and room for the rest. */
+export const MAX_REQUEST_BYTES = MAX_SOURCE_BYTES * 2 + 1024;
+/** The runner's command-line switch that hands a Game Node's own objects (runner.ts). Never on the live server. */
+export const ATTACK_TEST_SWITCH = "--attack-test";

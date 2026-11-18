@@ -1,0 +1,21 @@
+# The Playtest's socket. The site connects here to check a Game; for each connection systemd starts
+# a fresh runner, boilergames-playtest@.service, inside its wall, and hands it the connection as
+# its standard input and output. One process per Playtest: nothing a Game leaves behind is there
+# for the next one. The site's setting PLAYTEST_SOCKET names this path.
+[Unit]
+Description=BoilerGames Playtest socket (a fresh, walled runner per connection)
+
+[Socket]
+ListenStream=/run/boilergames-playtest.sock
+Accept=yes
+# At most two Playtests at once. systemd refuses a third connection rather than queueing it, so the
+# site keeps its own queue of two (playtest/src/client.ts, MAX_AT_ONCE).
+MaxConnections=2
+# Only the site's user may connect: nobody else can make the server run code.
+SocketUser=boilergames
+SocketGroup=boilergames
+SocketMode=0600
+RemoveOnStop=yes
+
+[Install]
+WantedBy=sockets.target

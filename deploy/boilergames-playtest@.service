@@ -1,0 +1,79 @@
+# One Playtest runner, started by boilergames-playtest.socket for one connection. It runs a
+# stranger's code, so it runs where that code can reach nothing: this file is the wall (BUILD-PLAN
+# Step 13). It is written and NOT YET PROVEN: deploy/attack-playtest.sh must be run against it, on a
+# throwaway server, and every attack contained, before the live site accepts an Upload.
+#
+# What a Game's code could try, and what stops it:
+# - the network: a network of its own with nothing in it, no IP traffic, and no sockets but Unix ones;
+# - the site's secrets and data: the settings file and the database's folder can't be seen at all,
+#   home folders are hidden, other processes are invisible in /proc;
+# - leaving something behind: a new user for each run (DynamicUser), the whole file system read-only
+#   but for an empty /tmp of its own, gone when the run ends;
+# - taking over the machine: no privileges, no capabilities, only ordinary system calls, and caps on
+#   memory, processes and threads, CPU and time.
+#
+# The runner must be able to start tsc, TypeScript's compiler, which is a program of its own, so
+# starting programs can't be forbidden. A program the Game starts is inside this same wall, with
+# the same user, limits and view, and dies with the run.
+[Unit]
+Description=BoilerGames Playtest runner (one Playtest, walled)
+
+[Service]
+ExecStart=/usr/local/bin/node --max-old-space-size=256 /opt/boilergames/current/playtest/dist/runner.js
+StandardInput=socket
+StandardOutput=socket
+StandardError=journal
+Environment=NODE_ENV=production
+# Thread pools sized for the server's two cores, not every core the machine reports: Node's, Go's
+# (tsc) and Rust's (Vite's bundler). Each thread counts against TasksMax.
+Environment=UV_THREADPOOL_SIZE=2 GOMAXPROCS=2 RAYON_NUM_THREADS=2
+
+# Its own user, new for every run. Implies ProtectSystem=strict, ProtectHome=read-only, PrivateTmp,
+# RemoveIPC, NoNewPrivileges and RestrictSUIDSGID.
+DynamicUser=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+UMask=0077
+# The site's settings and its database: not there at all. ("-": fine if one doesn't exist yet.)
+InaccessiblePaths=-/etc/boilergames.env -/var/lib/boilergames
+# Other processes (and so /proc/1/environ) can't be seen.
+ProtectProc=invisible
+ProcSubset=pid
+PrivateDevices=yes
+PrivateIPC=yes
+
+# No network: a network namespace with only an unused loopback, no IP traffic even so, and no
+# socket families but Unix (the connection itself, and pipes to tsc).
+PrivateNetwork=yes
+IPAddressDeny=any
+RestrictAddressFamilies=AF_UNIX
+
+# No privileges and no way to get any.
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallFilter=@system-service
+# A system call outside the list fails, rather than killing the run with no result.
+SystemCallErrorNumber=EPERM
+SystemCallArchitectures=native
+LockPersonality=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+# Never MemoryDenyWriteExecute: V8, which runs JavaScript, writes the machine code it runs.
+
+# Limits. Measured on a developer's machine (x86, the Official games): a Playtest took 0.4 to 1.2 s,
+# peaked at 74 to 81 MB for Node and tsc together, and had about 20 threads on two cores with the
+# pool sizes above (45 with every one of 16 cores). The caps leave room for a large Game, not for an
+# attack.
+MemoryMax=400M
+MemorySwapMax=0
+TasksMax=64
+CPUQuota=100%
+RuntimeMaxSec=60

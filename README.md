@@ -67,6 +67,12 @@ developing; with `NODE_ENV=production` the server refuses to start without it.
 are kept in memory and each one's link is printed to the console, so signing in works while
 developing; with `NODE_ENV=production` the server refuses to start without `MAIL=ses`.
 
+`PLAYTEST_SOCKET` is the Unix socket of the Playtest's walled runner (`deploy/boilergames-playtest.socket`
+and `boilergames-playtest@.service`). Without it, a Playtest runs in a child process with no wall,
+which is only for developing; with `NODE_ENV=production` and no `PLAYTEST_SOCKET`, there is no
+Playtest at all, so Uploads are refused. `deploy/attack-playtest.sh` attacks the wall, on a
+throwaway server only.
+
 The server also serves the Game frame on the next port up (http://localhost:3001/v1/), from
 `client/dist-frame`, which `npm run build` makes. It is built outside `client/dist` on purpose:
 the site serves `client/dist`, and must never serve the frame's page from its own origin.

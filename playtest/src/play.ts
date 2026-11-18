@@ -91,18 +91,21 @@ function describe(context: vm.Context, error: unknown): string {
 
 export type Loaded = { readonly ok: true; readonly context: vm.Context; readonly about: About } | { readonly ok: false; readonly problems: Problem[] };
 
-/** Loads the bundle and the harness into a new context and reads the Game's `about`. */
-export function load(bundle: string, harness: string): Loaded {
+/**
+ * Loads the bundle and the harness into a new context and reads the Game's `about`. `given` is put
+ * in the context first (only for the attack script: runner.ts) and isn't counted as the Game's.
+ */
+export function load(bundle: string, harness: string, given: Readonly<Record<string, unknown>> = {}): Loaded {
   const bundleProblem = (message: string): Loaded => ({ ok: false, problems: [{ stage: "bundle", message }] });
   // Promises the Game makes run inside each call, so they count against its timeout.
-  const context = vm.createContext({}, { microtaskMode: "afterEvaluate" });
+  const context = vm.createContext({ ...given }, { microtaskMode: "afterEvaluate" });
   try {
     vm.runInContext(`"use strict";\n${bundle}`, context, { filename: "game.js", timeout: LOAD_MS });
   } catch (error) {
     if (isTimeout(error)) return bundleProblem(`The Game's top-level code didn't finish within ${LOAD_MS / 1000} seconds: does it loop forever?`);
     return bundleProblem(`The Game threw while loading: ${describe(context, error)}`);
   }
-  const globals = Object.getOwnPropertyNames(context);
+  const globals = Object.getOwnPropertyNames(context).filter((name) => !Object.hasOwn(given, name));
   if (globals.length !== 1 || globals[0] !== GAME_GLOBAL) {
     const extra = globals.filter((name) => name !== GAME_GLOBAL);
     return bundleProblem(`The Game's code sets globals of its own (${extra.join(", ")}). Keep everything inside the file: a Game's code may set nothing global.`);

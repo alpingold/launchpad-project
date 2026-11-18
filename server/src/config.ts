@@ -1,6 +1,7 @@
 /**
  * The server's settings from environment variables, read in one place so they can be tested.
  */
+import { childProcessRunner, socketRunner, type PlaytestRunner } from "@boilergames/playtest/client";
 import { IN_MEMORY } from "./db/database.js";
 import { DEFAULT_MAX_ROOMS } from "./rooms.js";
 
@@ -24,4 +25,18 @@ export function databaseFileFrom(env: Readonly<Record<string, string | undefined
   if (file !== undefined && file !== "") return file;
   if (env["NODE_ENV"] === "production") throw new Error("DATABASE_FILE must be set in production: without it every account would be forgotten on restart");
   return IN_MEMORY;
+}
+
+/**
+ * How the server runs a Playtest. With PLAYTEST_SOCKET, through that socket: systemd starts each
+ * runner inside its wall (deploy/boilergames-playtest@.service). Without it, a child process,
+ * which has NO WALL: the Game's code would run as the site's own user, so that is for development
+ * and tests only. In production without PLAYTEST_SOCKET there is no Playtest at all (null), and
+ * Uploads are refused, rather than ever running a stranger's code unwalled.
+ */
+export function playtestFrom(env: Readonly<Record<string, string | undefined>>): PlaytestRunner | null {
+  const socket = env["PLAYTEST_SOCKET"];
+  if (socket !== undefined && socket !== "") return socketRunner(socket);
+  if (env["NODE_ENV"] === "production") return null;
+  return childProcessRunner();
 }
