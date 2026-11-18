@@ -40,3 +40,17 @@ body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; ba
 .play-join { display: flex; flex-direction: column; gap: 12px; }
 .play-join label { display: flex; flex-direction: column; gap: 4px; font-weight: 600; }
 .play-join input { font: inherit; font-size: 1.3em; padding: 10px; border: 2px solid #1d3f91; border-radius: 8px; }
+
+/* "Beside" (ScreenStage.tsx): a View's drawing or picture in a left column, everything else to its
+   right, top to bottom in the Game's order. */
+.screen-stage .kit-view[data-layout="beside"] {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  grid-auto-flow: row dense;
+  align-items: center;
+  align-content: center;
+}
+.screen-stage .kit-view[data-layout="beside"] > * { grid-column: 2; }
+.screen-stage .kit-view[data-layout="beside"] > .kit-drawing,
+.screen-stage .kit-view[data-layout="beside"] > .kit-picture { grid-column: 1; grid-row: 1 / span 12; align-self: center; }
+.screen-stage .kit-view[data-layout="beside"] .kit-drawing svg { width: 100%; }

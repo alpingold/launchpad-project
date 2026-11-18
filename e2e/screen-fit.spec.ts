@@ -20,14 +20,19 @@ test("the Screen's View fits the window at 720p and 1080p, with 8 Players and th
   for (const name of LONG_NAMES) phones.push(await joinPhone(another, code, name));
 
   const smallest: Record<string, Record<string, number>> = {};
-  const fits = async (phase: string) => {
+  const pictures: Record<string, Record<string, string>> = {};
+  /** `pictureShare`: the least part of the height the View's drawing or picture must keep. */
+  const fits = async (phase: string, pictureShare = 0) => {
     smallest[phase] = {};
+    pictures[phase] = {};
     for (const size of SIZES) {
       await screen.setViewportSize({ width: size.width, height: size.height });
       const report = await fitReport(screen);
       expect(report.outside, `${phase} at ${size.name} (scale ${report.scale})`).toEqual([]);
       expect(report.smallestTextPx, `the smallest text in ${phase} at ${size.name}`).toBeGreaterThanOrEqual(size.smallestTextPx);
       smallest[phase]![size.name] = report.smallestTextPx;
+      if (report.pictureHeightPx > 0) pictures[phase]![size.name] = `${report.pictureHeightPx} of ${report.spaceHeightPx} px`;
+      expect(report.pictureHeightPx, `the drawing in ${phase} at ${size.name}`).toBeGreaterThanOrEqual(report.spaceHeightPx * pictureShare);
     }
   };
 
@@ -55,7 +60,8 @@ test("the Screen's View fits the window at 720p and 1080p, with 8 Players and th
     await phone.getByRole("button", { name: "Send" }).click();
   }
   await expect(screen.getByText("What is it? Pick on your phone.")).toBeVisible();
-  await fits("Scribble Pick, picking");
+  // The drawing everyone is looking at: the lists give up their place before it shrinks.
+  await fits("Scribble Pick, picking", 0.55);
   for (const phone of phones) await actOnce(phone);
   await expect(screen.getByText(/^It was "/)).toBeVisible();
   await fits("Scribble Pick, reveal");
@@ -71,5 +77,6 @@ test("the Screen's View fits the window at 720p and 1080p, with 8 Players and th
   }
   await fits("Allotments, a dozen turns in");
 
+  console.log(`Drawing or picture height on the Screen:\n${Object.entries(pictures).filter(([, s]) => Object.keys(s).length > 0).map(([phase, sizes]) => `  ${phase}: ${Object.entries(sizes).map(([s, h]) => `${h} at ${s}`).join(", ")}`).join("\n")}`);
   console.log(`Smallest text on the Screen, in real pixels:\n${Object.entries(smallest).map(([phase, sizes]) => `  ${phase}: ${Object.entries(sizes).map(([s, px]) => `${px} px at ${s}`).join(", ")}`).join("\n")}`);
 });

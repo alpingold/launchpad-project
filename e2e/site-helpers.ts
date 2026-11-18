@@ -131,7 +131,7 @@ export const LONG_NAMES = ["Alexandria Jones", "Bartholomew Ross", "Christophers
  * (the space above the Host's bar), the stage's scale, and the smallest text there in real pixels
  * (its CSS size times the scale; text inside a Game's pictures is left out, being the Game's).
  */
-export async function fitReport(screen: Page): Promise<{ outside: string[]; scale: number; smallestTextPx: number }> {
+export async function fitReport(screen: Page): Promise<{ outside: string[]; scale: number; smallestTextPx: number; pictureHeightPx: number; spaceHeightPx: number }> {
   await screen.waitForTimeout(150);
   return screen.evaluate(() => {
     const space = document.querySelector(".screen-stage-space")!.getBoundingClientRect();
@@ -148,6 +148,9 @@ export async function fitReport(screen: Page): Promise<{ outside: string[]; scal
       const hasText = [...element.childNodes].some((node) => node.nodeType === Node.TEXT_NODE && (node.textContent ?? "").trim() !== "");
       if (hasText && element.closest("svg") === null) smallestTextPx = Math.min(smallestTextPx, parseFloat(getComputedStyle(element).fontSize) * scale);
     }
-    return { outside, scale, smallestTextPx: Math.round(smallestTextPx * 10) / 10 };
+    // The tallest drawing or picture: what everyone is looking at, and what should shrink last.
+    let pictureHeightPx = 0;
+    for (const picture of stage.querySelectorAll(".kit-drawing svg, .kit-picture")) pictureHeightPx = Math.max(pictureHeightPx, picture.getBoundingClientRect().height);
+    return { outside, scale, smallestTextPx: Math.round(smallestTextPx * 10) / 10, pictureHeightPx: Math.round(pictureHeightPx), spaceHeightPx: Math.round(space.height) };
   });
 }
