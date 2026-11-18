@@ -8,16 +8,17 @@ import { contrastRatio, withDefaults } from "@boilergames/sdk/v1/check";
 import type { CSSProperties } from "react";
 
 /**
- * The site's own typefaces (fonts.css), each followed by its metric-matched fallback, so text shows
- * at once and barely moves when the font arrives. Games can't load fonts: they have no network.
+ * The site's own typefaces (fonts.css), each followed by its metric-matched fallbacks (one for
+ * Android, one for everything else), so text shows at once and barely moves when the font arrives.
+ * Games can't load fonts: they have no network.
  */
 const FONTS = {
-  plain: '"Atkinson Hyperlegible", "Atkinson Hyperlegible Fallback", system-ui, sans-serif',
-  rounded: '"Nunito", "Nunito Fallback", system-ui, sans-serif',
-  serif: '"Source Serif 4", "Source Serif 4 Fallback", Georgia, serif',
-  mono: '"JetBrains Mono", "JetBrains Mono Fallback", ui-monospace, monospace',
-  poster: '"Anton", "Anton Fallback", Impact, sans-serif',
-  handwritten: '"Patrick Hand", "Patrick Hand Fallback", cursive',
+  plain: '"Atkinson Hyperlegible", "Atkinson Hyperlegible Fallback Roboto", "Atkinson Hyperlegible Fallback Arial", system-ui, sans-serif',
+  rounded: '"Nunito", "Nunito Fallback Roboto", "Nunito Fallback Arial", system-ui, sans-serif',
+  serif: '"Source Serif 4", "Source Serif 4 Fallback Noto Serif", "Source Serif 4 Fallback Times", Georgia, serif',
+  mono: '"JetBrains Mono", "JetBrains Mono Fallback Droid Sans Mono", "JetBrains Mono Fallback Courier", ui-monospace, monospace',
+  poster: '"Anton", "Anton Fallback Roboto", "Anton Fallback Arial", Impact, sans-serif',
+  handwritten: '"Patrick Hand", "Patrick Hand Fallback Roboto", "Patrick Hand Fallback Arial", cursive',
 } as const;
 
 /** The typefaces with one weight: a browser would fake their bold, badly, so it mustn't. */

@@ -1,13 +1,22 @@
 /* The site's six typefaces, one per Look font name (client/public/fonts/FONTS.md says where each
    came from and under what licence). Served from the site's own origin. A browser downloads a font
-   only when some text uses it, so a page fetches just the one its Game's Look names.
+   only when some text uses it, so a page fetches just the one its Game's Look uses.
 
    font-display: swap: text shows at once in a fallback and changes to the real font when it
    arrives. So that the change doesn't move things (a button sliding from under a thumb), each font
-   has a fallback face: a common system font, resized and with its line metrics set to match the
-   real font. The numbers were measured in Chromium against Liberation Sans and Liberation Mono,
-   which have the metrics of Arial and Courier New: size-adjust is the width of a sample sentence in
-   the real font over the fallback's; ascent and descent are the real font's, at that size. */
+   has two fallback faces, each a system font resized and with its line metrics set to match the
+   real font:
+   - one for Android, which has none of the usual desktop fonts: Roboto, Noto Serif or Droid Sans
+     Mono;
+   - one for Windows, macOS, iOS and Linux: Arial, Times New Roman or Courier New, or the Liberation
+     fonts Linux has in their place, which have exactly the same widths.
+   A face whose fonts the device doesn't have is skipped, and the next one in the Look's list is
+   tried (look-style.ts). Each face's numbers are for its own system font, so it doesn't matter which
+   one a device has: a laptop with Roboto installed gets the Roboto face, and that is right too.
+
+   size-adjust is the width of a sample sentence in the real font over its width in the system font;
+   ascent and descent are the real font's, at that size. FONTS.md says which numbers were measured
+   and which are estimates. */
 
 @font-face {
   font-family: "Atkinson Hyperlegible";
@@ -22,8 +31,16 @@
   font-display: swap;
 }
 @font-face {
-  font-family: "Atkinson Hyperlegible Fallback";
-  src: local("Arial"), local("Liberation Sans"), local("Helvetica"), local("Arimo");
+  font-family: "Atkinson Hyperlegible Fallback Roboto";
+  src: local("Roboto"), local("Roboto Regular"), local("Roboto-Regular");
+  size-adjust: 99.45%;
+  ascent-override: 95.53%;
+  descent-override: 29.16%;
+  line-gap-override: 0%;
+}
+@font-face {
+  font-family: "Atkinson Hyperlegible Fallback Arial";
+  src: local("Arial"), local("ArialMT"), local("Liberation Sans"), local("LiberationSans"), local("Arimo"), local("Helvetica");
   size-adjust: 98.79%;
   ascent-override: 96.16%;
   descent-override: 29.35%;
@@ -43,8 +60,16 @@
   font-display: swap;
 }
 @font-face {
-  font-family: "Nunito Fallback";
-  src: local("Arial"), local("Liberation Sans"), local("Helvetica"), local("Arimo");
+  font-family: "Nunito Fallback Roboto";
+  src: local("Roboto"), local("Roboto Regular"), local("Roboto-Regular");
+  size-adjust: 102.42%;
+  ascent-override: 98.62%;
+  descent-override: 34.17%;
+  line-gap-override: 0%;
+}
+@font-face {
+  font-family: "Nunito Fallback Arial";
+  src: local("Arial"), local("ArialMT"), local("Liberation Sans"), local("LiberationSans"), local("Arimo"), local("Helvetica");
   size-adjust: 101.74%;
   ascent-override: 99.27%;
   descent-override: 34.40%;
@@ -64,11 +89,19 @@
   font-display: swap;
 }
 @font-face {
-  font-family: "Source Serif 4 Fallback";
-  src: local("Arial"), local("Liberation Sans"), local("Helvetica"), local("Arimo");
-  size-adjust: 105.74%;
-  ascent-override: 98.35%;
-  descent-override: 32.15%;
+  font-family: "Source Serif 4 Fallback Noto Serif";
+  src: local("Noto Serif"), local("Noto Serif Regular"), local("NotoSerif-Regular");
+  size-adjust: 98.45%;
+  ascent-override: 105.64%;
+  descent-override: 34.54%;
+  line-gap-override: 0%;
+}
+@font-face {
+  font-family: "Source Serif 4 Fallback Times";
+  src: local("Times New Roman"), local("TimesNewRomanPSMT"), local("Liberation Serif"), local("LiberationSerif"), local("Tinos");
+  size-adjust: 115.56%;
+  ascent-override: 89.99%;
+  descent-override: 29.42%;
   line-gap-override: 0%;
 }
 
@@ -85,8 +118,16 @@
   font-display: swap;
 }
 @font-face {
-  font-family: "JetBrains Mono Fallback";
-  src: local("Courier New"), local("Liberation Mono"), local("Cousine");
+  font-family: "JetBrains Mono Fallback Droid Sans Mono";
+  src: local("Droid Sans Mono"), local("DroidSansMono");
+  size-adjust: 100.00%;
+  ascent-override: 102.00%;
+  descent-override: 30.00%;
+  line-gap-override: 0%;
+}
+@font-face {
+  font-family: "JetBrains Mono Fallback Courier";
+  src: local("Courier New"), local("CourierNewPSMT"), local("Liberation Mono"), local("LiberationMono"), local("Cousine");
   size-adjust: 99.98%;
   ascent-override: 102.02%;
   descent-override: 30.00%;
@@ -100,8 +141,16 @@
   font-display: swap;
 }
 @font-face {
-  font-family: "Anton Fallback";
-  src: local("Arial"), local("Liberation Sans"), local("Helvetica"), local("Arimo");
+  font-family: "Anton Fallback Roboto";
+  src: local("Roboto"), local("Roboto Regular"), local("Roboto-Regular");
+  size-adjust: 89.90%;
+  ascent-override: 131.26%;
+  descent-override: 36.71%;
+  line-gap-override: 0%;
+}
+@font-face {
+  font-family: "Anton Fallback Arial";
+  src: local("Arial"), local("ArialMT"), local("Liberation Sans"), local("LiberationSans"), local("Arimo"), local("Helvetica");
   size-adjust: 89.31%;
   ascent-override: 132.13%;
   descent-override: 36.95%;
@@ -115,8 +164,16 @@
   font-display: swap;
 }
 @font-face {
-  font-family: "Patrick Hand Fallback";
-  src: local("Arial"), local("Liberation Sans"), local("Helvetica"), local("Arimo");
+  font-family: "Patrick Hand Fallback Roboto";
+  src: local("Roboto"), local("Roboto Regular"), local("Roboto-Regular");
+  size-adjust: 79.31%;
+  ascent-override: 131.12%;
+  descent-override: 39.09%;
+  line-gap-override: 0%;
+}
+@font-face {
+  font-family: "Patrick Hand Fallback Arial";
+  src: local("Arial"), local("ArialMT"), local("Liberation Sans"), local("LiberationSans"), local("Arimo"), local("Helvetica");
   size-adjust: 78.79%;
   ascent-override: 131.99%;
   descent-override: 39.34%;
