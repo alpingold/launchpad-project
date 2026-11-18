@@ -10,6 +10,10 @@
  * Node runs this file as TypeScript directly. It imports nothing from the SDK: Node would get the
  * SDK's built dist/, which may not exist yet. Everything it learns about a Game, it learns from the
  * bundle itself, which is also the proof that the bundle stands alone.
+ *
+ * Every Game's Look must be readable (the SDK's checkLook). The build refuses one that isn't and
+ * prints the problems: the same rule the Playtest will hold generated Games to. The checker is built
+ * from the SDK's source by Vite, like a Game, and run the same way.
  */
 import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { join, relative, resolve, sep } from "node:path";
@@ -57,6 +61,42 @@ function entry(id: string): Plugin {
   };
 }
 
+/** A module whose source is given here, for a library entry: `virtual:<name>`. */
+function virtualEntry(name: string, source: string): Plugin {
+  const id = `virtual:${name}`;
+  return {
+    name: `virtual-entry-${name}`,
+    // Vite hands a library entry over as a path under the root, so both forms name it.
+    resolveId: (asked) => (asked === id || asked === resolve(root, id) ? `\0${id}` : null),
+    load: (loaded) => (loaded === `\0${id}` ? source : null),
+  };
+}
+
+type LookCheck = (look: unknown) => { ok: true } | { ok: false; problems: string[] };
+
+/** The SDK's checkLook, built from its source into a script and loaded in an empty context. */
+async function lookChecker(): Promise<LookCheck> {
+  const built = await build({
+    configFile: false,
+    root,
+    logLevel: "warn",
+    resolve: { conditions: ["@boilergames/source", ...defaultClientConditions] },
+    plugins: [virtualEntry("look-checker", `export { checkLook } from "@boilergames/sdk/v1/check";`)],
+    build: { write: false, minify: false, lib: { entry: "virtual:look-checker", formats: ["iife"], name: "LookChecker" } },
+  });
+  const outputs = (Array.isArray(built) ? built : [built]).flatMap((o) => ("output" in o ? o.output : []));
+  const code = outputs.find((o) => o.type === "chunk")?.code;
+  if (code === undefined) throw new Error("building the SDK's checkLook gave no script");
+  const context = vm.createContext({});
+  vm.runInContext(code, context);
+  // The checker accepts only plain objects of its own context, so each Look goes in as JSON text and
+  // the answer comes back the same way.
+  return (look) => {
+    context["look"] = JSON.stringify(look);
+    return JSON.parse(vm.runInContext("JSON.stringify(LookChecker.checkLook(JSON.parse(look)))", context) as string) as ReturnType<LookCheck>;
+  };
+}
+
 /** Refuses any import from a Game's code that isn't its own file or the SDK's public entry. */
 function onlyItsOwnFilesAndTheSdk(id: string): Plugin {
   const folder = join(src, id) + sep;
@@ -94,6 +134,8 @@ export async function buildOfficialGames(outDir: string): Promise<Listing[]> {
   await rm(outDir, { recursive: true, force: true });
   await mkdir(outDir, { recursive: true });
   const listing: Listing[] = [];
+  const checkLook = await lookChecker();
+  const unreadable: string[] = [];
   for (const id of await ids()) {
     await build({
       configFile: false,
@@ -110,8 +152,14 @@ export async function buildOfficialGames(outDir: string): Promise<Listing[]> {
         lib: { entry: `virtual:official/${id}`, formats: ["iife"], name: GAME_GLOBAL, fileName: () => `${id}.js` },
       },
     });
-    listing.push(load(id, await readFile(join(outDir, `${id}.js`), "utf8")));
+    const game = load(id, await readFile(join(outDir, `${id}.js`), "utf8"));
+    if (game.look !== undefined) {
+      const checked = checkLook(game.look);
+      if (!checked.ok) unreadable.push(`${id}:\n${checked.problems.map((p) => `  ${p}`).join("\n")}`);
+    }
+    listing.push(game);
   }
+  if (unreadable.length > 0) throw new Error(`These Games' Looks aren't readable:\n${unreadable.join("\n")}`);
   await writeFile(join(outDir, "games.json"), `${JSON.stringify(listing, null, 2)}\n`);
   return listing;
 }

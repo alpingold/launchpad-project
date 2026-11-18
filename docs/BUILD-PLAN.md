@@ -354,7 +354,9 @@ Add a fifth workspace package, `games`, that depends only on `sdk`.
     of all its exports). The build refuses a Game that imports anything but its own files and
     `@boilergames/sdk/v1`, then runs each bundle in an empty `node:vm` context: it must load with
     nothing else there and set exactly one global, `BoilerGamesGame`. `games.json` is read from
-    the bundles themselves, so it can't disagree with them.
+    the bundles themselves, so it can't disagree with them. Each Game's Look goes through the SDK's
+    `checkLook` (built from source by Vite and run the same way), and the build fails on a problem,
+    printing it.
   - The browser tests build the Official games with the same function and play each to its end
     through the real frame, in every browser and profile.
 
@@ -590,6 +592,8 @@ bullets are the direction the spec sets, not a design.
   10 of 12 Games on a 27B model, with 2 to 4 Builds each and 4 to 14 minutes per Game. Almost
   nothing passed first time.
 - Creators' own GenAI Studio keys, encrypted. The queue. The Track. Revisions.
+- The Playtest refuses a generated Game whose Look isn't readable, with checkLook's problems, as the
+  games build does for Official games (games/scripts/build.ts): a Look must be checked, not trusted.
 - The eval set, so every change to the instructions or the Kit is measured. A live run costs real
   model calls and needs the owner's yes each time.
 
