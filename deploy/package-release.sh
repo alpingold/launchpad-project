@@ -34,9 +34,12 @@ cp -r client/dist-frame "$stage/client/dist-frame"
 cp -r games/dist "$stage/games/dist"
 
 # Only what the server imports when it runs: its own dependencies and the packages it uses, which
-# include the Playtest's (TypeScript and Vite, each with its program for this kind of machine; see
-# BUILD-PLAN Step 16 on building for the server's ARM).
-(cd "$stage" && npm ci --omit=dev --ignore-scripts --no-audit --no-fund --workspace=@boilergames/server >/dev/null)
+# include the Playtest's. TypeScript and Vite each bring a program built for one kind of machine,
+# and npm picks the one for the machine it runs on. CI builds on x86 and the server is ARM, so CI
+# sets RELEASE_CPU=arm64 and npm fetches the ARM programs instead. Unset, it is this machine's kind.
+machine=()
+[ -z "${RELEASE_CPU:-}" ] || machine=(--cpu="$RELEASE_CPU" --os=linux --libc=glibc)
+(cd "$stage" && npm ci --omit=dev --ignore-scripts --no-audit --no-fund --workspace=@boilergames/server "${machine[@]}" >/dev/null)
 
 # The release is named after the commit it was built from (CI passes it as RELEASE_ID).
 echo "${RELEASE_ID:-$(git rev-parse HEAD)}" > "$stage/RELEASE"
