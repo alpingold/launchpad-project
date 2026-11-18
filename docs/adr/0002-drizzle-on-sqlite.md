@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: superseded by ADR 0007
 ---
 
 # Drizzle on SQLite for the database

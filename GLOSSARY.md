@@ -113,7 +113,7 @@ A signed-in person who makes a Game, by Generation, Upload or Remix.
 _Avoid_: Maker, author, developer
 
 **Purdue-verified**:
-An account that has confirmed a Purdue email address. It is needed to Vote and to start a Generation.
+An account that has confirmed a Purdue email address. It is needed to Vote and to start a Generation. For now only Purdue addresses can sign in, so every account is Purdue-verified.
 _Avoid_: Student account, verified
 
 **Generation**:

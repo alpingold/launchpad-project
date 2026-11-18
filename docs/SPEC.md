@@ -39,7 +39,9 @@ the site has no AI game maker.
 1. **Play.** A Room plays a Match of an **Official game** on real phones, on the deployed site.
    Stories 1–14.
 2. **Uploads.** Accounts, the database, the **Playtest**, and Games that Creators upload, publish
-   and browse. Stories 15–16, 19–23, 29–30, 35–36, 40–42, 45–47.
+   and browse. Stories 15–16, 19–23, 29–30, 35–36, 40–42, 45–47. Built in two parts: **2a** is
+   accounts, the database, the Playtest, and uploading, privately playing and publishing a Game;
+   **2b** is the Library's pages, the page of SDK types for Creators' own AIs, and the privacy page.
 3. **The AI.** **Generations** and **Revisions**, and the eval set. Stories 24–28, 31–34, 53.
 4. **The community.** Votes, reports, Remixes, the admin page and backups.
    Stories 17–18, 37–39, 43–44, 48–52, 54.
@@ -134,7 +136,7 @@ the site has no AI game maker.
 - Stack: Express 5 for the site's HTTP (the game domain's one page is served by plain `node:http`),
   `ws` for WebSockets, Zod for every piece of data that comes from
   outside, React and Vite for the client, Vitest for tests, Playwright for browser tests. SQLite
-  arrives with milestone 2 (ADR 0002, still proposed). New dependencies need the owner's approval.
+  arrives with milestone 2, through Node's own `node:sqlite` and plain SQL (ADR 0007). New dependencies need the owner's approval.
 
 **Games (ADRs 0003, 0004, 0006)**
 - A Game is one module: `about` (title, Player range, **Look**), logic functions (`start`,
@@ -251,9 +253,16 @@ the site has no AI game maker.
   before milestone 3, as the data model does before milestone 2.
 
 **Accounts**
-- Sign-in is passwordless: an emailed link, sent through SES. A confirmed Purdue email makes an
-  account Purdue-verified, which is needed to Vote and to start a Generation; playing, Hosting,
-  Uploads and Remixes are open.
+- Sign-in is passwordless: an emailed link, sent through SES. The link opens a page with a button,
+  and only pressing the button signs in: mail scanners open every link in an email, and would
+  otherwise use the link up before its owner saw it.
+- For now only `@purdue.edu` addresses can sign in (decided 2026-11-17), so every account is
+  Purdue-verified and there is one kind of account. Games go public without review, and this keeps
+  Uploads to people the university can identify. Playing and Hosting need no account. If sign-in
+  opens to other addresses later, Purdue-verified becomes a mark on an account again, needed to
+  Vote and to start a Generation.
+- The server keeps a sign-in link and a session only as a hash, so a copy of the database can't be
+  used to sign in as anyone.
 - Sending email sits behind a small interface, so tests and local development record the link
   instead of sending it.
 

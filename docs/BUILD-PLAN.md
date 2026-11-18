@@ -1,8 +1,9 @@
 # Build plan
 
 Written 2026-11-16 for whoever builds the rewrite next, human or agent. It assumes you have read
-nothing else. Milestone 1 is planned step by step and can be built from this file. Milestones 2 to 4
-are outlined, and each begins with a design session with the owner that this plan does not replace.
+nothing else. Milestone 1 (steps 0 to 9, done) and milestone 2a (steps 10 to 16) are planned step by
+step and can be built from this file. Milestone 2b and milestones 3 and 4 are outlined, and each
+begins with a design session with the owner that this plan does not replace.
 
 ## Read these first, in this order
 
@@ -584,24 +585,323 @@ Still open:
 
 # After milestone 1
 
-Each milestone below starts with a design session between the owner and whoever builds it. The
-bullets are the direction the spec sets, not a design.
+Milestone 2a is designed and planned step by step. Each later one starts with a design session
+between the owner and whoever builds it; its bullets are the direction the spec sets, not a design.
 
 ## Milestone 2: Uploads
 
-- **Design first, with the owner:** the data model (accounts, sessions, Games, Versions, what a
-  Version may do next) and whether Drizzle stays (ADR 0002 is still "proposed").
-- Sign-in by emailed link, behind an interface so tests record the link. Purdue verification.
-- The Playtest: strict `tsc` on the uploaded file, a bundle that can import only the SDK, then
-  `simulate` with the fewest Players, the most, the most with leavers, and the fewest with joiners
-  (so a Game's `onJoin` runs before real people play it), in a child process with
-  no network and tight time and memory limits. How to take the network away on the server (a
-  network namespace, a systemd sandbox, Node's permission flags) must be tried and attacked before
-  it is trusted.
-- Upload a Game, see its Versions, play it privately with real phones, publish and unpublish it.
-- The Library and each Game's page. A page with the SDK's types and a ready-made prompt for
-  Creators using their own AI.
-- Limits on Uploads and sign-in emails. The privacy page.
+Designed with the owner on 2026-11-17 and built in two parts. **2a** (steps 10 to 16, planned
+below) is accounts, the database, the Playtest, and uploading, privately playing and publishing a
+Game. **2b** (outlined after it) is the Library's pages, the page for Creators' own AIs and the
+privacy page.
+
+The owner's four decisions for 2a:
+
+1. **The database is Node's built-in SQLite with plain SQL** (ADR 0007, which replaces 0002).
+2. **Only `@purdue.edu` addresses can sign in for now**, so every account is Purdue-verified and
+   there is no second kind of account. Playing and Hosting still need no account.
+3. **The Playtest runs in its own service on the same server**, started by the operating system
+   with no network and with memory and time caps. The site hands it code and reads back a result.
+4. **2a before 2b.**
+
+Dependencies approved for 2a, besides those above: `@aws-sdk/client-sesv2` (the server, to send the
+sign-in email with the server's own AWS role, so no password for it is ever stored), and
+`typescript` and `vite` as runtime dependencies of the new `playtest` package (both are already
+used to build the site). Anything else needs the owner's yes. Each must be at least two weeks old.
+
+What 2a leaves out, on purpose: the Library's pages and each Game's public page (2b); Remixes,
+Votes, Profiles, reports, account deletion and the admin page (milestone 4); anything to do with
+the AI (milestone 3). Don't build towards them beyond what a step says.
+
+### The data, in one place
+
+Five tables. Times are whole seconds since 1970, in UTC. Ids are random text, never a counter
+(a counter tells a stranger how many accounts and Games exist, and lets them guess the next one).
+
+| Table           | Columns that matter                                                                    |
+| --------------- | -------------------------------------------------------------------------------------- |
+| `accounts`      | id, email (unique, lower case), display name (unique, ignoring case), admin (0 or 1)   |
+| `sign_in_links` | the hash of the link's token, email, when made, when it runs out, when used            |
+| `sessions`      | the hash of the session's token, account, when made, when last seen, when it runs out  |
+| `games`         | id, owner, description, which Version is published (or none), when made                |
+| `versions`      | id, Game, number (1, 2, 3...), how it was made (`upload`), the source, its state, its problems, its bundle, its `about` (title, Player count, Look), SDK version (`v1`), when made, when checked |
+
+- A Version's state is `checking`, then `ready` or `failed`, and never changes after that. A
+  `failed` Version keeps every problem the Playtest found. Only a `ready` Version has a bundle.
+- A Game's title, Player count and Look are its Version's `about`, read from the code itself. The
+  Creator types only the description.
+- Publishing points a Game at one of its `ready` Versions. Unpublishing clears it. A new Version
+  never changes what is published: the Creator publishes it when they choose (story 29).
+- The bundle is kept in the database, so a backup of one file is a backup of everything.
+- Rooms stay in memory and know nothing of accounts.
+
+**What a Room plays.** Today the Screen names a Game by `gameId` and fetches
+`/api/games/<gameId>/bundle.js`, and it fetches the same address again after a reload. For an
+uploaded Game the `gameId` is the **Version's** id, so a Match keeps the code it started with: a
+reload mid-Match gets the same Version back even if the Creator has published a newer one since.
+Official games keep their names (`allotments`). No message in `protocol` changes for this. If you
+find it can't work that way, stop and say so.
+
+**Who may fetch a Version's bundle:** its Game's owner, always; anyone, while its Game is published
+and the Version is `ready`. Version ids are long and random, and a Game's code is not a secret
+once published.
+
+## Step 10: the database (`server`)
+
+`server/src/db/`: open the file, apply the migrations, and the query modules.
+
+- The file's place comes from `DATABASE_FILE`; tests and anything that passes `:memory:` get a
+  database in memory. Turn on foreign keys and write-ahead logging, and make every table `STRICT`.
+- Migrations are the numbered `.sql` files in `server/migrations/`, applied in order at start, each
+  in one transaction, recorded in a table. Before applying any to a database that already has
+  data, copy the file beside itself (`VACUUM INTO`), and keep the last three copies. A migration
+  file that has shipped is never edited. The build must carry the `.sql` files into what is
+  released (`deploy/package-release.sh` packs `server/dist`; make sure they are found there).
+- One query module per subject. They are the only files with SQL in them. Every row read is
+  parsed with a Zod schema. Every value goes in as a parameter, never by building a string.
+- This step makes all five tables. The queries each later step needs can be written in that step.
+
+Done when:
+- A new database gets every table; starting again changes nothing; a database one migration
+  behind gets only the missing one, and a copy of the file from before it exists.
+- A migration that fails leaves the database exactly as it was, and the server refuses to start.
+- Tests run through the real migration files on an in-memory database.
+- The server starts with no `DATABASE_FILE` only in development and tests. In production it
+  refuses to start without one (a site that quietly forgot every account on restart is worse than
+  one that is down).
+
+## Step 11: accounts and sign-in (`server`, `client`)
+
+The flow:
+
+1. `POST /api/sign-in` with an email. Not `@purdue.edu` (exactly that domain, after trimming and
+   lower-casing): refused, with a message that says why. Otherwise make a token (32 random bytes),
+   store its SHA-256 hash with a 15-minute life, and email the link
+   `<SITE_ORIGIN>/sign-in/confirm#<token>`. The token is after the `#`, so it never reaches a
+   server log or a `Referer` header.
+2. The page at `/sign-in/confirm` shows a button. Pressing it sends the token in a `POST`. Opening
+   the page uses nothing up: Purdue's mail is scanned by a service that opens every link.
+3. That `POST` finds the hash, unused and in date, marks it used, makes the account if the email
+   is new, and makes a session: another random token, stored as its hash, sent as the cookie
+   `__Host-session` (`HttpOnly`, `Secure`, `SameSite=Lax`, `Path=/`), good for 90 days from its
+   last use. In development over plain http the cookie can't be `Secure` or `__Host-`; make that
+   the one difference and name it in a comment.
+4. A new account has no display name. Until it picks one (2 to 30 characters, unique ignoring
+   case, trimmed, no control characters) the pages send it to a page that asks. The display name
+   is what other people will see; the email address is never shown to anyone else and never
+   appears in a response about another account.
+5. `POST /api/sign-out` deletes the session. `GET /api/me` says who is signed in, or nobody.
+
+Rules that hold for every request that changes something, from this step on: it is a `POST` (or
+`PUT`/`DELETE`) with a JSON body, and its `Origin` header must be the site's own. With
+`SameSite=Lax` that is the defence against another site acting as a signed-in visitor. Put it in
+one place that every such route goes through, with a test that a route added without it fails.
+
+Sending email sits behind one small interface: `send({ to, subject, text })`. Two
+implementations: one that records what it was given (tests, and development, where it also prints
+the link to the console), and one that sends through SES v2 from `sign-in@boilergames.party`. The
+server uses SES only when `MAIL=ses`. Nobody can try the SES one until Step 16: write it small
+and say so. The email is plain text: what it is, the link, that it runs out in 15 minutes, and
+that it can be ignored if they didn't ask for it.
+
+Limits, each a named constant, each tested with a fake clock: 3 sign-in emails to one address in
+15 minutes; 10 from one visitor's address in an hour; 300 a day in all (the site must never be a
+way to flood Purdue inboxes, and SES judges the sender by complaints). 10 wrong tokens a minute
+from one address. A refusal says to wait and how long. Old links and sessions are deleted
+when they run out.
+
+Pages (bare, like the rest): `/sign-in`, `/sign-in/confirm`, the display-name page, and a line at
+the top of the home page that says who is signed in, with sign out.
+
+Done when:
+- A browser test signs in end to end with the recorded link, picks a name, reloads and is still
+  signed in, signs out and is not.
+- A link works once. A link opened but not pressed still works. A link 15 minutes old doesn't.
+- Fetching `/sign-in/confirm` (as a mail scanner would) signs nobody in and uses nothing up.
+- The database holds no token, only hashes: a test reads the tables and looks.
+- A `POST` from another origin, or with no `Origin`, is refused on every changing route.
+- No response and no log line contains another account's email address.
+
+## Step 12: the Playtest (`playtest`, a new package)
+
+One function: given a Game's source text, say whether it is a working Game, and if so hand back
+its bundle and its `about`. It is the same check for an Upload now and for the AI's Games in
+milestone 3, so it lives in its own package and knows nothing of accounts, HTTP or the database.
+
+    playtest(source) → { ok: true, bundle, about, sdkVersion }
+                     | { ok: false, problems: [{ stage, message, line? }] }
+
+Three stages, and a later one runs only if the earlier passed:
+
+1. **Types.** Strict `tsc` on the one file, against the SDK's types and nothing else: no DOM, no
+   Node types, no other package. Every error is reported with its line, not just the first.
+2. **Bundle.** The same bundling the Official games get, moved here so there is one definition of
+   "a bundle": `games/scripts/build.ts` then uses this package for it. The file may import only
+   `@boilergames/sdk/v1`. The bundle must set exactly the one global, to a Game whose `about` is
+   valid and whose Look passes `checkLook`.
+3. **Play.** `simulate` with the fewest Players, the most, the most with leavers, and the fewest
+   with joiners, each on 3 seeds. Every problem from every run is reported, with the run it came
+   from, the same problem said once.
+
+Limits, named constants: source up to 256 KB; bundle up to 1 MB; at most 50 problems reported.
+
+Things to get right:
+- **Released code has no TypeScript source.** On the server only `sdk/dist` exists (its `.js` and
+  `.d.ts`), with no `@boilergames/source` condition. The Playtest must find the SDK both ways.
+  Add a check to the build that runs the Playtest on a small Game against the built output.
+- **It runs code a stranger wrote.** Loading a bundle in Node's `vm` is not a wall; Step 13 is the
+  wall. Don't spend effort hardening the `vm` use, and say in a comment that it isn't one.
+- **The problems are the product.** A Creator, and later the AI, fixes the Game from this text
+  alone. Each problem says what is wrong and where, in the SDK's own words.
+
+Done when:
+- Best Word and each Official game pass. The Official games' bundles are byte-for-byte what the
+  games build made before this step.
+- A Game fails, with a useful problem, for each of: a type error (with its line); two type errors
+  (both reported); importing anything but the SDK; using `fetch`, `document` or `process` (a type
+  error, since none is declared); a Match that never ends; a View that breaks a limit; a Player
+  offered nothing to do; throwing when a Player leaves; an unreadable Look; a source over the size.
+- The Playtest of a good Game takes a few seconds, measured and reported.
+
+## Step 13: the Playtest's wall (`playtest`, `deploy`)
+
+The Playtest runs hostile code, so on the server it runs where that code can reach nothing.
+
+- **A runner**: a small program in `playtest` that reads one request (the source) from standard
+  input, runs the Playtest, writes one result to standard output and exits. One process per
+  Playtest: nothing a Game leaves behind is there for the next one.
+- **Two ways to start it**, behind one interface the server uses (`run(source) → result`):
+  - a child process, for development and tests (no wall; say so where it is chosen);
+  - on the server, a connection to a Unix socket that systemd listens on, which starts a fresh
+    runner for each connection (`boilergames-playtest.socket` with `Accept=yes`, and
+    `boilergames-playtest@.service`). The server chooses this when `PLAYTEST_SOCKET` is set.
+- **The service's wall** (`deploy/`): its own user, not the site's; `PrivateNetwork=yes` and
+  `IPAddressDeny=any`; `RestrictAddressFamilies=AF_UNIX`; the file system read-only, with an empty
+  private `/tmp` and no view of `/home`, of `/etc/boilergames.env` or of the database's folder;
+  `MemoryMax`, `TasksMax`, `CPUQuota` and `RuntimeMaxSec` (start from 400 MB, 64 tasks, one core
+  and 60 seconds, and report what a real Playtest needs); `NoNewPrivileges`, an empty
+  `CapabilityBoundingSet`, `SystemCallFilter=@system-service`; at most 2 running at once. The
+  socket file can be opened by the site's user and nobody else.
+- **The site trusts nothing that comes back.** The runner ran a stranger's code and could be made
+  to write anything. The server parses the result with a Zod schema, holds it to the size limits,
+  and gives up after its own timeout. Write down, in the code, what a forged result could gain: a
+  forged "ready" gets a bundle that then runs only inside the Game frame, which is a wall of its
+  own, with the Screen checking every reply. If you find it could gain more than that, stop and
+  say so.
+
+This wall can't be tested on a developer's machine, and it is not to be trusted until it has
+been attacked. So this step also writes the attack, to be run in Step 16 on a real server:
+`deploy/attack-playtest.sh` sends hostile Games through the real socket and fails unless every one
+is contained. Each tries one thing: open a connection to an outside address, to `127.0.0.1:3000`
+and to the AWS metadata address `169.254.169.254`; look up a name; read the database file,
+`/etc/boilergames.env` and `/proc/1/environ`; write outside `/tmp`; start another program; use
+more memory than the cap; loop forever; start processes until refused; write a huge result; write
+a forged "ready" result and exit early. To reach that code at all, a hostile Game must first get
+out of the `vm`; for the attack, the runner takes a test-only switch that hands the Game Node's
+`process` and `require`, and that switch must be impossible to set through the socket.
+
+Done when:
+- Through the child-process way, every Step 12 test passes, a Game that loops forever is stopped
+  by the timeout and reported as a problem, and a runner that dies or writes nonsense gives the
+  Creator a plain "the check itself failed, try again" and gives the logs the detail.
+- The units pass `systemd-analyze verify` if this machine has it (say if it doesn't).
+- The attack script exists, reads clearly, and says for each attack what "contained" means.
+- Say plainly: the wall is written and not yet proven.
+
+## Step 14: Games and Versions (`server`)
+
+The API, all of it for a signed-in account with a display name unless it says otherwise:
+
+- `POST /api/my/games` with a source: makes a Game and its Version 1, `checking`.
+- `POST /api/my/games/<id>/versions` with a source: the next Version of a Game you own.
+- `GET /api/my/games` and `GET /api/my/games/<id>`: your Games, their Versions, states, problems.
+- `PUT /api/my/games/<id>` with a description (up to 300 characters).
+- `POST /api/my/games/<id>/publish` with a Version id (`ready`, and yours), and `/unpublish`.
+- `GET /api/games` (anyone): the Official games as now, then every published Game, each with its
+  title, Player count, Look, and its Creator's display name. For a published Game the `id` is the
+  published Version's id (see "What a Room plays").
+- `GET /api/games/<id>/bundle.js`: an Official game by name, or a Version by id under the rule in
+  "Who may fetch a Version's bundle". Refused and not-found look the same from outside.
+- An admin may unpublish any Game. `admin` is set by hand in the database (a command for it goes
+  in the README); there is no page for it until milestone 4. Games are public without review, so
+  this must exist before the first Game is published.
+
+The queue: a `checking` Version waits its turn; Playtests run two at a time at most, one per
+account at a time. The Version's row is the truth: at start the server queues every Version still
+`checking`, so a restart (every deploy is one) loses nothing. A result is written in one
+transaction with the state.
+
+Limits, named constants: 10 Uploads an hour and 50 a day for one account; 20 Games for one account;
+50 Versions for one Game; 20 waiting in the queue in all (past that, "the site is busy, try again
+in a few minutes"). The request body's size is capped just over the source limit before it is
+parsed.
+
+Done when:
+- Tests, with a fake Playtest behind the Step 13 interface: an Upload goes `checking` then `ready`
+  or `failed` with its problems; a restart in between finishes it; nobody but the owner can see,
+  change, publish or add a Version to a Game; publishing a `failed`, `checking` or someone else's
+  Version is refused; an unpublished Game's bundle is not served to anyone else, and is served to
+  its owner; each limit refuses with a message that says what to do.
+- One test runs a real Playtest end to end through the child-process way.
+- Every text a Creator supplies (description, and the title inside `about`) is treated as text
+  wherever it is shown or logged, and its length is capped.
+
+## Step 15: the Creator's pages (`client`)
+
+Bare pages, like the rest. The site's look comes later.
+
+- **My Games** (`/my/games`): your Games, each with its title, whether it is published, and its
+  latest Version's state. An Upload box: choose a `.ts` file or paste the code.
+- **One Game** (`/my/games/<id>`): the description, and every Version, newest first, with its
+  state. A `checking` Version updates by itself (ask the server every couple of seconds; stop when
+  it settles). A `failed` one lists its problems, each with its stage and line. A `ready` one has
+  **Play it** (opens a Screen with a Room on that Version: story 30) and **Publish**. The
+  published Version is marked, with **Unpublish**. Upload a new Version here.
+- **The Screen's list of Games** shows published Games after the Official games, each with its
+  Creator's display name and the word "Uploaded", so a Host knows a stranger wrote it.
+- Signed out, the `/my` pages send you to sign in and bring you back after.
+
+Done when, in the browser tests (the recorded-link sign-in, the real Playtest through a child
+process, on all six projects unless one is too slow, and say so):
+- A Creator signs in, uploads Best Word, watches it turn `ready`, presses Play it, two phones join
+  and the Match plays to its end.
+- The Creator uploads a broken Version 2 and sees its problems. Version 1 is still playable.
+- The Creator publishes Version 1. A signed-out Host on another browser sees it in the list, with
+  the Creator's name, and plays it.
+- The Creator uploads a working Version 3 and publishes it during that Host's Match. The Host
+  reloads the Screen and the Match goes on, on Version 1.
+- The Creator unpublishes. It leaves the list, and its bundle is refused to the signed-out Host.
+- Add to the README how to run the site locally and sign in (the link is printed to the console).
+
+## Step 16: deploy 2a, with the owner
+
+Not for the building agent alone: this is AWS and the live server, done with the owner present.
+
+- The server's role gets permission to send email from `sign-in@boilergames.party` and nothing else.
+- The database's folder (`/var/lib/boilergames`), owned by the site's user; `DATABASE_FILE`,
+  `MAIL=ses` and `PLAYTEST_SOCKET` in the settings; the Playtest's user, socket and service.
+- Releases are built on x86 machines and the server is ARM. `tsc` and Vite each bring a program
+  built for one kind of machine, so the release must carry the ARM ones: decide between building
+  the release on an ARM runner and asking npm for the ARM packages in
+  `deploy/package-release.sh`. The install's health check then runs one real Playtest through the
+  socket, so a release whose Playtest can't run is rolled back.
+- Memory: the server has 2 GB and the site's process may use 1.5 GB of it today. The Playtest needs
+  room, so `MAX_ROOMS` and the site's cap come down to make it.
+- Run `deploy/attack-playtest.sh` on a throwaway server set up the same way, not on the live one.
+  Every attack must be contained before the live site accepts an Upload.
+- Send a real sign-in email to a Purdue address and check it arrives, isn't marked as spam, and
+  survives the mail scanner.
+- Until milestone 4's nightly backups exist, copy the database file somewhere off the server on
+  a schedule: from now on, losing the file loses people's accounts and Games.
+
+### Milestone 2b, outlined
+
+- The Library (`/library`) and each Game's page: description, Player count, who made it and how,
+  and how often it was played (which needs a count of Matches, and a decision on what counts).
+- A page with the SDK's types and a ready-made prompt for Creators using their own AI (story 36).
+- The privacy page: what is stored (an email address, a display name, Games), for how long, and
+  how to have it removed until account deletion exists.
+- A changed-lines view between Versions (story 29).
 
 ## Milestone 3: the AI
 
