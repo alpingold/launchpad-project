@@ -56,10 +56,11 @@ export function createServer(options: ServerOptions): RunningServer {
 }
 
 /**
- * The address a request came from when the server runs behind a proxy (Caddy) that appends it to
- * X-Forwarded-For: the rightmost entry, the one the proxy added. Never the leftmost: a client can
- * send the header itself, with whatever it likes at the start. Only for that setup: without a
- * proxy, anyone could write the header and dodge the per-address limits.
+ * The address a request came from when the server runs behind a proxy (Caddy) that puts it in
+ * X-Forwarded-For: the rightmost entry, the one the proxy added. Caddy, trusting no one in front of
+ * it, replaces any X-Forwarded-For a visitor sent with their address alone (index.test.ts); a proxy
+ * that appends instead leaves the visitor's own text on the left, so never read the leftmost. Only
+ * for that setup: without a proxy, anyone could write the header and dodge the per-address limits.
  */
 export function forwardedAddress(request: IncomingMessage): string {
   const header = request.headers["x-forwarded-for"];

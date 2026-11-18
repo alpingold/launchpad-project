@@ -573,7 +573,8 @@ Still open:
   hoarding test Games find every wall in place (ADR 0004). The browser tests only ever ran
   Playwright's WebKit on Linux, and WebKit is where the storage walls differed.
 - Not tested live: that the server sees each visitor's own address through Caddy (the guessing
-  limit depends on it).
+  limit depends on it). A unit test now feeds `forwardedAddress` what Caddy 2.11's source says it
+  sends, forged headers included, and the server reads the visitor's own address every time.
 - `www.boilergames.party` has no DNS record yet. The server's Caddyfile leaves its redirect out
   until it does (`deploy/Caddyfile` has it).
 - The old server (a stopped `t3.small` in the same project) is to be deleted, and its address
