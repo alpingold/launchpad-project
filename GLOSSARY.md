@@ -21,7 +21,7 @@ The shared display (a laptop on a TV or projector) that runs a Room and shows th
 _Avoid_: Big screen, host screen, TV
 
 **Host**:
-The person who opens a Room and controls it: picking Games, starting and stopping Matches, removing Players.
+The person who opens a Room and controls it: picking Games, starting and stopping Matches, removing Players. The Screen's browser holds a secret host token that takes the Room back after a reload; without it, nothing can.
 _Avoid_: Owner, admin, GM
 
 **Player**:
