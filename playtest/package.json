@@ -1,0 +1,23 @@
+{
+  "name": "@boilergames/playtest",
+  "description": "The Playtest: given a Game's source, says whether it is a working Game, and if so builds it.",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "@boilergames/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json && tsc -p scripts/tsconfig.json",
+    "check-built": "node scripts/check-built.ts"
+  },
+  "dependencies": {
+    "@boilergames/sdk": "*",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5"
+  }
+}

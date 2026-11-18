@@ -22,6 +22,7 @@ One repository of npm workspaces, each a folder at the root:
 | `server` | The one server process                                                 |
 | `client` | The site's pages (React, built by Vite)                                |
 | `games`  | The Official games, each built into one bundle the Game frame runs     |
+| `playtest` | The Playtest: type-checks, bundles and plays a Game's source; the one definition of a bundle |
 
 Packages import each other by name (`import { defineGame } from "@boilergames/sdk/v1"`). Every
 package's `tsconfig.json` extends the strict `tsconfig.base.json`.

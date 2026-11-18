@@ -5,6 +5,7 @@
   "references": [
     { "path": "sdk/tsconfig.build.json" },
     { "path": "protocol/tsconfig.build.json" },
-    { "path": "server/tsconfig.build.json" }
+    { "path": "server/tsconfig.build.json" },
+    { "path": "playtest/tsconfig.build.json" }
   ]
 }

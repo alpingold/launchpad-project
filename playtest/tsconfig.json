@@ -1,0 +1,8 @@
+// The type check: the whole package, tests included. Nothing is written. The Playtest runs in Node.
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["node"]
+  },
+  "include": ["src"]
+}

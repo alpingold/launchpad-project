@@ -8,6 +8,7 @@
     "typecheck": "tsc -p tsconfig.json && tsc -p scripts/tsconfig.json"
   },
   "dependencies": {
+    "@boilergames/playtest": "*",
     "@boilergames/sdk": "*"
   },
   "devDependencies": {

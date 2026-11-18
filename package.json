@@ -11,10 +11,11 @@
     "protocol",
     "server",
     "client",
-    "games"
+    "games",
+    "playtest"
   ],
   "scripts": {
-    "build": "tsc -b tsconfig.build.json && npm run build -w @boilergames/client && npm run build -w @boilergames/games",
+    "build": "tsc -b tsconfig.build.json && npm run build -w @boilergames/client && npm run build -w @boilergames/games && npm run check-built -w @boilergames/playtest",
     "typecheck": "npm run typecheck --workspaces && tsc -p e2e/tsconfig.json",
     "test": "vitest run",
     "dev": "tsc -b tsconfig.build.json && node scripts/dev.js",

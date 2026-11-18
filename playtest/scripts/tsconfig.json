@@ -1,0 +1,9 @@
+// The type check of the build-time scripts, which Node runs as TypeScript directly.
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "allowImportingTsExtensions": true
+  },
+  "include": ["."]
+}
