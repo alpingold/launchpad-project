@@ -877,9 +877,20 @@ process, on all six projects unless one is too slow, and say so):
 
 Not for the building agent alone: this is AWS and the live server, done with the owner present.
 
+**First, as soon as Step 11 is built** (a release now refuses to start without a database and a
+way to send email, so nothing can be pushed until this is done):
+
 - The server's role gets permission to send email from `sign-in@boilergames.party` and nothing else.
-- The database's folder (`/var/lib/boilergames`), owned by the site's user; `DATABASE_FILE`,
-  `MAIL=ses` and `PLAYTEST_SOCKET` in the settings; the Playtest's user, socket and service.
+- The database's folder: `deploy/boilergames.service` sets `StateDirectory=boilergames`, which
+  makes `/var/lib/boilergames`, owned by the site's user and writable although the rest of the file
+  system is read-only to it. `DATABASE_FILE`, `MAIL=ses` and `AWS_REGION` go in the settings.
+- Send a real sign-in email to a Purdue address and check it arrives, isn't marked as spam, and
+  survives the mail scanner. Check a browser keeps the `__Host-session` cookie, and that Caddy
+  passes the `Origin` header through (a sign-in on the live site proves both).
+
+**Then, once steps 12 to 15 are built:**
+
+- `PLAYTEST_SOCKET` in the settings; the Playtest's user, socket and service.
 - Releases are built on x86 machines and the server is ARM. `tsc` and Vite each bring a program
   built for one kind of machine, so the release must carry the ARM ones: decide between building
   the release on an ARM runner and asking npm for the ARM packages in
@@ -889,10 +900,8 @@ Not for the building agent alone: this is AWS and the live server, done with the
   room, so `MAX_ROOMS` and the site's cap come down to make it.
 - Run `deploy/attack-playtest.sh` on a throwaway server set up the same way, not on the live one.
   Every attack must be contained before the live site accepts an Upload.
-- Send a real sign-in email to a Purdue address and check it arrives, isn't marked as spam, and
-  survives the mail scanner.
-- Until milestone 4's nightly backups exist, copy the database file somewhere off the server on
-  a schedule: from now on, losing the file loses people's accounts and Games.
+- Until milestone 4's nightly backups exist, copy the database somewhere off the server on a
+  schedule, made with `VACUUM INTO` (a plain copy of the file can miss the latest changes): from now on, losing the file loses people's accounts and Games.
 
 ### Milestone 2b, outlined
 
