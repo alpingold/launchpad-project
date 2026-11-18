@@ -56,7 +56,11 @@ const notThere = (seen) => typeof seen === "string" && /^FAILED (ENOENT|EACCES|E
  * kernel's views, Node and the release in /opt, and its own /tmp and empty /var. All read-only but
  * /tmp. Anything else it can open is something the wall forgot.
  */
-const EXPECTED_AT_THE_TOP = new Set(["bin", "sbin", "lib", "lib32", "lib64", "libx32", "usr", "etc", "opt", "dev", "proc", "sys", "run", "tmp", "var", "srv", "mnt", "media"]);
+const EXPECTED_AT_THE_TOP = new Set([
+  ...["bin", "sbin", "lib", "lib32", "lib64", "libx32", "usr", "etc", "opt", "dev", "proc", "sys", "run", "tmp", "var", "srv", "mnt", "media"],
+  // Empty folders Ubuntu leaves at the top after merging /bin, /lib and /sbin into /usr.
+  ...["bin.usr-is-merged", "lib.usr-is-merged", "sbin.usr-is-merged"],
+]);
 
 async function siteAnswers() {
   try {
