@@ -66,6 +66,7 @@ function ScreenContent({ screen }: { screen: ScreenRoom }) {
             Room <strong>{state.room.code}</strong>
           </span>
           {state.online ? null : <span>Reconnecting…</span>}
+          <RemoveDuringMatch room={state.room} screen={screen} />
           <button type="button" className="page-button page-button-small" onClick={() => screen.stopMatch()}>
             Stop
           </button>
@@ -123,6 +124,57 @@ function Lobby({ room, games, notice, online, names, screen }: { room: Room; gam
         </ul>
       </section>
     </main>
+  );
+}
+
+/**
+ * The Host's way to remove a Player mid-Match: pick the Player, then confirm with their name on the
+ * button. The Game hears it as that Player leaving, like any other leave.
+ */
+function RemoveDuringMatch({ room, screen }: { room: Room; screen: ScreenRoom }) {
+  const [open, setOpen] = useState(false);
+  const [chosen, setChosen] = useState<{ id: string; name: string } | null>(null);
+  const close = () => {
+    setOpen(false);
+    setChosen(null);
+  };
+  if (!open) {
+    return (
+      <button type="button" className="page-button page-button-small page-button-quiet" onClick={() => setOpen(true)} disabled={room.seats.length === 0}>
+        Remove a Player…
+      </button>
+    );
+  }
+  return (
+    <div className="screen-remove" role="dialog" aria-label="Remove a Player">
+      {chosen === null ? (
+        <>
+          <span>Remove which Player?</span>
+          {room.seats.map((seat) => (
+            <button key={seat.id} type="button" className="page-button page-button-small page-button-quiet" onClick={() => setChosen({ id: seat.id, name: seat.name })}>
+              {seat.name}
+            </button>
+          ))}
+        </>
+      ) : (
+        <>
+          <span>Remove {chosen.name} from the Room? Their phone is told, and the Game carries on without them.</span>
+          <button
+            type="button"
+            className="page-button page-button-small"
+            onClick={() => {
+              screen.removeSeat(chosen.id);
+              close();
+            }}
+          >
+            Remove {chosen.name}
+          </button>
+        </>
+      )}
+      <button type="button" className="page-button page-button-small page-button-quiet" onClick={close}>
+        Cancel
+      </button>
+    </div>
   );
 }
 

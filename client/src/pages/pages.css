@@ -54,3 +54,5 @@ body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; ba
 .screen-stage .kit-view[data-layout="beside"] > .kit-drawing,
 .screen-stage .kit-view[data-layout="beside"] > .kit-picture { grid-column: 1; grid-row: 1 / span 12; align-self: center; }
 .screen-stage .kit-view[data-layout="beside"] .kit-drawing svg { width: 100%; }
+
+.screen-remove { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }

@@ -262,3 +262,23 @@ for (const [title, family, file] of [
     expect(held[0]!.requested).toContain(file);
   });
 }
+
+for (const [title, names, removed, ending] of [
+  ["Sum It Up", ["Ada", "Ben", "Cy", "Dee"], "Dee", "It finished."],
+  ["Scribble Pick", ["Ada", "Ben", "Cy"], "Cy", "Too few Players were left."],
+  ["Allotments", ["Ada", "Ben", "Cy"], "Cy", "It finished."],
+] as const) {
+  test(`the Host removes a Player during ${title}: the Game hears a leave, and the Match ${ending === "It finished." ? "plays on" : "ends with too few Players"}`, async ({ context, another }) => {
+    const { screen, phones } = await startWith(context, another, names, title);
+    await actOnce(phones[0]!);
+    await screen.getByRole("button", { name: "Remove a Player…" }).click();
+    await screen.getByRole("dialog", { name: "Remove a Player" }).getByRole("button", { name: removed, exact: true }).click();
+    await expect(screen.getByText(`Remove ${removed} from the Room?`)).toBeVisible();
+    await screen.getByRole("button", { name: `Remove ${removed}` }).click();
+    const gone = phones[(names as readonly string[]).indexOf(removed)]!;
+    await expect(gone.getByText("The Host removed you from the Room.")).toBeVisible();
+    await playToTheEnd(screen, phones.filter((p) => p !== gone));
+    await expect(screen.locator(".screen-result")).toContainText(`${title}: ${ending}`);
+    await expect(screen.locator(".screen-seats li")).toHaveCount(names.length - 1);
+  });
+}
