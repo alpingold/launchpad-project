@@ -1,7 +1,8 @@
 /**
  * Part of `npm run build`: runs the Playtest on a small Game against the SDK's built output, the way
  * a release runs it, where there is no TypeScript source (sdk/src) and no "@boilergames/source"
- * condition. The tests use the source; this proves the other way works before anything ships.
+ * condition. The tests use the source; this proves the other way works before anything ships, and
+ * gives the same bundle.
  *
  *   npm run check-built -w @boilergames/playtest
  */
@@ -27,8 +28,11 @@ if (!result.ok) {
   for (const problem of result.problems) console.error(`  ${problem.stage}${problem.line === undefined ? "" : ` line ${problem.line}`}: ${problem.message}`);
   process.exit(1);
 }
-if (!result.bundle.includes("sdk/dist/v1/") || result.bundle.includes("sdk/src/")) {
-  console.error("The Playtest didn't bundle the SDK's built output");
+// A release's bundle must be development's, byte for byte: an Upload's bundle names no file, so
+// nothing tells which SDK it was made from.
+const fromSource = await playtest(SMALL_GAME, { sdk: "source" });
+if (!fromSource.ok || fromSource.bundle !== result.bundle) {
+  console.error("The Playtest made a different bundle from the SDK's built output than from its source");
   process.exit(1);
 }
 console.log(`Playtest against the built SDK: passed "${result.about.title}" in ${Math.round(performance.now() - started)} ms`);

@@ -5,12 +5,14 @@
 #
 # What a Game's code could try, and what stops it:
 # - the network: a network of its own with nothing in it, no IP traffic, and no sockets but Unix ones;
-# - the site's secrets and data: the settings file and the database's folder can't be seen at all,
-#   home folders are hidden, other processes are invisible in /proc;
+# - the site's secrets and data: all of /var is an empty folder (the database, Caddy's TLS keys,
+#   every log), and the settings file, home folders, /boot, /snap, Caddy's, SSH's and the AWS
+#   Systems Manager agent's settings can't be seen at all; other processes are invisible in /proc;
 # - leaving something behind: a new user for each run (DynamicUser), the whole file system read-only
 #   but for an empty /tmp of its own, gone when the run ends;
 # - taking over the machine: no privileges, no capabilities, only ordinary system calls, and caps on
-#   memory, processes and threads, CPU and time.
+#   memory, processes and threads, CPU and time, and every run at once shares one budget
+#   (boilergames-playtest.slice).
 #
 # The runner must be able to start tsc, TypeScript's compiler, which is a program of its own, so
 # starting programs can't be forbidden. A program the Game starts is inside this same wall, with
@@ -19,7 +21,8 @@
 Description=BoilerGames Playtest runner (one Playtest, walled)
 
 [Service]
-ExecStart=/usr/local/bin/node --max-old-space-size=256 /opt/boilergames/current/playtest/dist/runner.js
+# Node's own heap stops below the run's memory cap (MemoryMax below), leaving room for tsc.
+ExecStart=/usr/local/bin/node --max-old-space-size=192 /opt/boilergames/current/playtest/dist/runner.js
 StandardInput=socket
 StandardOutput=socket
 StandardError=journal
@@ -28,15 +31,33 @@ Environment=NODE_ENV=production
 # (tsc) and Rust's (Vite's bundler). Each thread counts against TasksMax.
 Environment=UV_THREADPOOL_SIZE=2 GOMAXPROCS=2 RAYON_NUM_THREADS=2
 
+# Every run shares one budget with the others (CPU, memory, tasks), beside the site.
+Slice=boilergames-playtest.slice
+
 # Its own user, new for every run. Implies ProtectSystem=strict, ProtectHome=read-only, PrivateTmp,
 # RemoveIPC, NoNewPrivileges and RestrictSUIDSGID.
 DynamicUser=yes
+
+# What it can see of the disk. Everything is read-only (ProtectSystem=strict), and what it has no
+# need to read is hidden. It needs only Node (/usr/local/bin/node, a link into /opt/node-*), the
+# release (/opt/boilergames/current, a link into /opt/boilergames/releases), /usr, /lib and /etc's
+# ordinary files, and the empty /tmp of its own. So /opt stays, read-only: Node lives there, and the
+# releases hold nothing that isn't on GitHub.
 ProtectSystem=strict
+# An empty, read-only /var of its own: the database (/var/lib/boilergames), Caddy's TLS keys
+# (/var/lib/caddy), the Systems Manager agent's state and logs (/var/lib/amazon, /var/snap,
+# /var/log), and anything else that is ever put there, all gone at once. Only its private /var/tmp
+# (PrivateTmp below) appears in it.
+TemporaryFileSystem=/var:ro
+# /home, /root and /run/user: not there at all.
 ProtectHome=yes
+# The rest it has no need to read: not there at all. ("-": fine if one doesn't exist.) The site's
+# settings; the boot files; snaps (the Systems Manager agent is one on Ubuntu); Caddy's, SSH's and
+# the Systems Manager agent's settings.
+InaccessiblePaths=-/etc/boilergames.env -/boot -/snap -/etc/caddy -/etc/ssh -/etc/amazon
+# /tmp and /var/tmp: empty, its own, and gone when the run ends.
 PrivateTmp=yes
 UMask=0077
-# The site's settings and its database: not there at all. ("-": fine if one doesn't exist yet.)
-InaccessiblePaths=-/etc/boilergames.env -/var/lib/boilergames
 # Other processes (and so /proc/1/environ) can't be seen.
 ProtectProc=invisible
 ProcSubset=pid
@@ -68,11 +89,11 @@ ProtectClock=yes
 ProtectHostname=yes
 # Never MemoryDenyWriteExecute: V8, which runs JavaScript, writes the machine code it runs.
 
-# Limits. Measured on a developer's machine (x86, the Official games): a Playtest took 0.4 to 1.2 s,
-# peaked at 74 to 81 MB for Node and tsc together, and had about 20 threads on two cores with the
-# pool sizes above (45 with every one of 16 cores). The caps leave room for a large Game, not for an
-# attack.
-MemoryMax=400M
+# Limits for this one run; boilergames-playtest.slice caps every run at once. Measured on a
+# developer's machine (x86, the Official games): a Playtest took 0.4 to 1.2 s, peaked at 74 to 81 MB
+# for Node and tsc together, and had about 20 threads on two cores with the pool sizes above (45 with
+# every one of 16 cores). The caps leave room for a large Game, not for an attack.
+MemoryMax=256M
 MemorySwapMax=0
 TasksMax=64
 CPUQuota=100%

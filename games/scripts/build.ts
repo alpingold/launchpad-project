@@ -53,8 +53,10 @@ export async function buildOfficialGames(outDir: string): Promise<Listing[]> {
   for (const id of await ids()) {
     const folder = join(src, id) + sep;
     const code = await bundleGame({
-      // The paths in a bundle's comments are from here: keep it, and the bundles keep their bytes.
       root,
+      // The paths in a bundle's comments are from here (games/), wherever the build is run: keep
+      // it, and the bundles keep their bytes.
+      fileComments: { pathsFrom: root },
       entry: join(src, id, "index.ts"),
       name: `official/${id}`,
       sdk: "source",

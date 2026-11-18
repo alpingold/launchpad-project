@@ -1,0 +1,20 @@
+# Every Playtest runner at once, on one budget (BUILD-PLAN Step 13). Each run has its own caps
+# (boilergames-playtest@.service); this caps them all together, so two runs at once can't take more
+# than one run's worth of the server from the site.
+#
+# Inside boilergames.slice (the dash in the name), beside the site itself. On the server's two cores:
+# - CPU: one core in all, and a low weight, so when the site and the runners want the same core,
+#   the site gets about ten times their share.
+# - Memory: 500 MB in all. Two runs at their own cap of 256 MB each would pass it, so the kernel stops
+#   one of them first, and the site hears the check failed.
+[Unit]
+Description=BoilerGames Playtest runners (one budget for all of them)
+Before=slices.target
+
+[Slice]
+CPUQuota=100%
+CPUWeight=10
+MemoryMax=500M
+MemorySwapMax=0
+# Two runs at their own cap of 64 each.
+TasksMax=128

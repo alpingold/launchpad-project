@@ -15,11 +15,17 @@ import { sdkConditions, type SdkForm } from "./sdk.js";
 export const GAME_GLOBAL = "BoilerGamesGame";
 
 export interface BundleOptions {
-  /**
-   * Vite's root. The bundle's comments name each file it holds by its path from here (such as
-   * `// ../sdk/src/v1/game.ts`), so the same root gives the same bytes.
-   */
+  /** Vite's root. */
   readonly root: string;
+  /**
+   * The comment above each file's code in the bundle. The bundler names each file by its path from
+   * a folder, such as `// ../sdk/src/v1/game.ts` from `games/`:
+   * - `{ pathsFrom }`: from this folder (the Official games: from `games/`, wherever the build is
+   *   run, so their bytes don't depend on it);
+   * - "none": no such comments (an Upload: a path from anywhere would name the machine that built
+   *   it, and whether its SDK was the source or the built output).
+   */
+  readonly fileComments: { readonly pathsFrom: string } | "none";
   /** The file whose default export is the Game. */
   readonly entry: string;
   /** A name for the bundle's entry, unique to it, such as `official/allotments`. */
@@ -94,6 +100,11 @@ export async function bundleGame(options: BundleOptions): Promise<string> {
     build: {
       write: false,
       minify: false,
+      rolldownOptions:
+        options.fileComments === "none"
+          ? { experimental: { attachDebugInfo: "none" } }
+          : // The bundler counts the paths in its comments from its working folder, not Vite's root.
+            { cwd: options.fileComments.pathsFrom },
       lib: { entry: entryId, formats: ["iife"], name: GAME_GLOBAL, fileName: () => "game.js" },
     },
   });

@@ -1,9 +1,11 @@
 // The Playtest on real Games: the test Game and the Official games pass, and each way a Game can be
 // broken gives a problem a Creator can fix it from. Every test runs twice: in this process, and
 // through the runner in a child process, as the site starts it in development.
+import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { describe, expect, test } from "vitest";
-import { childProcessRunner, type RunResult } from "./client.js";
+import { childProcessRunner, RUNNER, type RunResult } from "./client.js";
 import { MAX_SOURCE_BYTES, RUN_MS } from "./limits.js";
 import { playtest } from "./playtest.js";
 
@@ -174,4 +176,28 @@ test("a source over the size is refused before anything runs", async () => {
   const found = problems(await playtest(game({ top: `// ${"x".repeat(MAX_SOURCE_BYTES)}` })));
   expect(found).toEqual([{ stage: "source", message: `The Game's source is 257 KB; the most it may be is ${MAX_SOURCE_BYTES / 1024} KB.` }]);
 });
+});
+
+describe("an Upload's bundle names nothing about the machine that built it", () => {
+  // Every runtime export of the SDK, so every SDK file the bundle can hold is in it.
+  const source = game({ imports: `import { SDK_VERSION } from "@boilergames/sdk/v1";`, screen: `(state) => ({ parts: [{ kind: "text", text: \`\${state.taps} taps, SDK \${SDK_VERSION}\` }] })` });
+  const bundleOf = (result: RunResult) => (result.ok ? result.bundle : JSON.stringify(result.problems));
+  /** The runner, started from another working folder: the bundler names files by their path from there. */
+  const fromElsewhere = () => {
+    const ran = spawnSync(process.execPath, [RUNNER], { cwd: tmpdir(), input: JSON.stringify({ v: 1, source }), encoding: "utf8" });
+    return JSON.parse(ran.stdout) as RunResult;
+  };
+
+  test("the same source gives the same bytes: twice, from another folder, and with the SDK's source or its built output (as a release has)", async () => {
+    const first = bundleOf(await playtest(source, { sdk: "source" }));
+    expect(first).toMatch(/^var BoilerGamesGame = /);
+    expect(bundleOf(await playtest(source, { sdk: "source" }))).toBe(first);
+    expect(bundleOf(await playtest(source, { sdk: "built" }))).toBe(first);
+    expect(bundleOf(fromElsewhere())).toBe(first);
+  });
+
+  test("no path in it: not the workspace's, not a temp folder's, not the SDK's", async () => {
+    const bundle = bundleOf(await playtest(source));
+    for (const part of [process.cwd(), tmpdir(), "sdk/src", "sdk/dist", "game.ts", "playtest-"]) expect(bundle).not.toContain(part);
+  });
 });

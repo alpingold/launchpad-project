@@ -67,6 +67,8 @@ export async function playtest(source: string, options: PlaytestOptions = {}): P
     try {
       bundle = await bundleGame({
         root: folder,
+        // No file paths in an Upload's bundle: the same source gives the same bytes on any machine.
+        fileComments: "none",
         entry: join(folder, GAME_FILE),
         name: "playtest/game",
         sdk: form,

@@ -7,6 +7,9 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
+# Beside the Playtest's runners (boilergames-playtest.slice, inside this one), so the CPU weight
+# they are given counts against the site, which wins when both want the same core.
+Slice=boilergames.slice
 User=boilergames
 Group=boilergames
 WorkingDirectory=/opt/boilergames/current

@@ -1,0 +1,8 @@
+# The site and the Playtest's runners, side by side, so the runners' low CPU weight counts against
+# the site. systemd reads a dash in a slice's name as "inside": boilergames-playtest.slice is inside
+# this one. A CPU weight only matters between neighbours in the same slice, so the site
+# (boilergames.service, Slice=boilergames.slice) must be here too, or the runners' weight would be
+# weighed against nothing.
+[Unit]
+Description=BoilerGames: the site, and the Playtest's runners
+Before=slices.target

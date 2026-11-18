@@ -68,7 +68,8 @@ are kept in memory and each one's link is printed to the console, so signing in 
 developing; with `NODE_ENV=production` the server refuses to start without `MAIL=ses`.
 
 `PLAYTEST_SOCKET` is the Unix socket of the Playtest's walled runner (`deploy/boilergames-playtest.socket`
-and `boilergames-playtest@.service`). Without it, a Playtest runs in a child process with no wall,
+and `boilergames-playtest@.service`, whose runs share one budget in `boilergames-playtest.slice`,
+inside `boilergames.slice` beside the site). Without it, a Playtest runs in a child process with no wall,
 which is only for developing; with `NODE_ENV=production` and no `PLAYTEST_SOCKET`, there is no
 Playtest at all, so Uploads are refused. `deploy/attack-playtest.sh` attacks the wall, on a
 throwaway server only.

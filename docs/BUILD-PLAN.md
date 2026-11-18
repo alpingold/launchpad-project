@@ -803,6 +803,19 @@ a forged "ready" result and exit early. To reach that code at all, a hostile Gam
 out of the `vm`; for the attack, the runner takes a test-only switch that hands the Game Node's
 `process` and `require`, and that switch must be impossible to set through the socket.
 
+Changed with the owner after review (2026-11-18):
+- **It sees less of the disk.** Besides the settings file and the database, it has no view of all of
+  `/var` (Caddy keeps the site's TLS keys under `/var/lib/caddy`), `/root`, `/home`, `/boot`,
+  `/snap`, `/etc/caddy`, `/etc/ssh` and the Systems Manager agent's folders. It keeps what Node,
+  `tsc` and Vite need: Node in `/opt`, the release, `/usr`, `/lib`, `/etc` and its private `/tmp`.
+  The attack lists and reads each of those places, Caddy's keys among them; "contained" means not
+  found or permission denied.
+- **Every run at once shares one budget**: `boilergames-playtest.slice`, one core and 500 MB in
+  all, with a low CPU weight so the site wins when they compete. Each run's own `MemoryMax` comes
+  down to 256 MB. An attack runs two spinning Games at once while timing requests outside the slice.
+- **An Upload's bundle carries no path from the machine that built it**: the same source gives the
+  same bundle in development and in a release. The Official games' bundles keep their bytes.
+
 Done when:
 - Through the child-process way, every Step 12 test passes, a Game that loops forever is stopped
   by the timeout and reported as a problem, and a runner that dies or writes nonsense gives the
