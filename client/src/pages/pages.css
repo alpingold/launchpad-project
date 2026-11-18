@@ -50,9 +50,9 @@ body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; ba
   align-items: center;
   align-content: center;
 }
-.screen-stage .kit-view[data-layout="beside"] > * { grid-column: 2; }
+.screen-stage .kit-view[data-layout="beside"] > * { grid-column: 2; justify-self: center; }
 .screen-stage .kit-view[data-layout="beside"] > .kit-drawing,
-.screen-stage .kit-view[data-layout="beside"] > .kit-picture { grid-column: 1; grid-row: 1 / span 12; align-self: center; }
+.screen-stage .kit-view[data-layout="beside"] > .kit-picture { grid-column: 1; grid-row: 1 / span 12; align-self: center; justify-self: stretch; }
 .screen-stage .kit-view[data-layout="beside"] .kit-drawing svg { width: 100%; }
 
 .screen-remove { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
