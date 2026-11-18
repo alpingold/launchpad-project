@@ -4,7 +4,8 @@
 import { readFileSync } from "node:fs";
 import type { BrowserContext, Page } from "@playwright/test";
 import { expect, test } from "./fixtures.js";
-import { APP, SITE } from "./origins.js";
+import { sentMail } from "./mail.js";
+import { APP } from "./origins.js";
 import { joinPhone, playToTheEnd, type Another } from "./site-helpers.js";
 
 /** Best Word, importing the SDK by its name, with the default export a Game needs. */
@@ -30,7 +31,7 @@ async function signInFromMyGames(page: Page, email: string, name: string): Promi
   await page.getByLabel("Purdue email").fill(email);
   await page.getByRole("button", { name: "Email me a link" }).click();
   await expect(page.getByRole("status")).toBeVisible();
-  const sent = (await (await fetch(`${SITE}/__mail`)).json()) as { to: string; text: string }[];
+  const sent = await sentMail();
   const link = /http:\S+/.exec(sent.filter((message) => message.to === email).at(-1)?.text ?? "")?.[0] ?? "";
   await page.goto(link);
   await page.getByRole("button", { name: "Sign in" }).click();

@@ -1,11 +1,12 @@
 // Signing in on the real site, in each browser: the emailed link (recorded by the test servers, never
 // sent), the button on its page, a display name, and staying signed in until signing out.
 import { expect, test } from "./fixtures.js";
-import { APP, SITE } from "./origins.js";
+import { sentMail } from "./mail.js";
+import { APP } from "./origins.js";
 
 /** The link in the latest email to `email`. */
 async function linkFor(email: string): Promise<string> {
-  const sent = (await (await fetch(`${SITE}/__mail`)).json()) as { to: string; text: string }[];
+  const sent = await sentMail();
   const text = sent.filter((message) => message.to === email).at(-1)?.text ?? "";
   const link = /http:\S+/.exec(text)?.[0];
   expect(link, `an email to ${email}`).toBeDefined();
