@@ -26,6 +26,12 @@ jobs:
   browsers:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # Playwright's own image, which already holds the three browsers and the system libraries they
+    # need: downloading them on every run took 21 minutes the first time. The tag must be the
+    # @playwright/test version in package.json, or the tests won't find their browsers.
+    container:
+      image: mcr.microsoft.com/playwright:v1.64.1-noble
+      options: --user 1001
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -33,8 +39,8 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci --no-audit --no-fund
-      # The three browsers at the version package-lock.json pins, and the system libraries they need.
-      - run: npx playwright install --with-deps chromium firefox webkit
+      # The browser tests start the real server, which imports the other packages' compiled output.
+      - run: npm run build
       - run: npm run test:e2e
       - if: failure()
         uses: actions/upload-artifact@v4
