@@ -28,15 +28,17 @@ are outlined, and each begins with a design session with the owner that this pla
 - **Dependencies.** Approved for this plan: `zod` (installed), `ws`, `express` (5), their `@types`,
   and `@playwright/test`. Anything else needs the owner's yes first. `sdk` must keep zero
   dependencies: it is bundled into every Game.
-- **Commits.** The owner's standing rule is "commit only when asked". This plan is that ask for
-  milestone 1: one commit per finished step, on branch `rewrite`, in the style of `git log`
-  (a sentence saying what is now true). Never push, force-push or rebase. Never commit `.claude/`,
-  `CLAUDE.md` or `.scratch/`.
+- **Commits.** The owner's standing rule is "commit only when asked". This plan is that ask: one
+  commit per finished step, on branch `rewrite`, in the style of `git log` (a sentence saying what
+  is now true). Never force-push or rebase. Never commit `.claude/`, `CLAUDE.md` or `.scratch/`.
+- **A push is a deploy.** Since milestone 1, a push to `rewrite` that passes CI goes live within
+  minutes, and the restart closes every open Room. So never push: tell the owner what is ready,
+  and the owner decides when it goes out.
 - **Done means checked.** A step is finished when `npm run typecheck`, `npm run build` and
   `npm test` pass from the root and its "Done when" list holds. Say plainly what you could not check.
 - **Tests check behaviour, not insides.** A test should survive a rewrite of the module that keeps
   what it does. Don't test private functions or internal fields.
-- **AWS.** Don't create, change or inspect anything in AWS on your own. Step 9 is done with the
+- **AWS.** Don't create, change or inspect anything in AWS on your own. AWS work is done with the
   owner present.
 - **Other repositories.** `~/slopProjects/boilergamesretry` is an earlier experiment by the owner.
   You may read it for evidence where this plan points at it. Don't copy its code (this design
@@ -49,7 +51,7 @@ are outlined, and each begins with a design session with the owner that this pla
 
 Branch `rewrite`. Five npm workspace packages, each a folder at the root, and the browser tests:
 
-| Folder     | Holds                                                                 | State (after step 8)      |
+| Folder     | Holds                                                                 | State (milestone 1 done)  |
 | ---------- | --------------------------------------------------------------------- | ------------------------- |
 | `sdk`      | The Game contract, the Kit, the Engine, the checkers, the simulator   | Built and tested          |
 | `protocol` | The room messages and their Zod schemas                               | Built and tested          |
@@ -57,9 +59,14 @@ Branch `rewrite`. Five npm workspace packages, each a folder at the root, and th
 | `client`   | The site's pages (React, Vite), the Kit renderer, the Game frame      | Built and tested          |
 | `games`    | The three Official games and their build                              | Built and tested          |
 | `e2e`      | Playwright tests: the walls, the frame, the real site                 | Six projects, all passing |
+| `deploy`   | The server's setup, service and release scripts (not a package)       | Running the live site     |
+
+Milestone 1 is live at boilergames.party since 2026-11-17, with the Game frame on
+boilergames-play.party. The README's "How the site is deployed" says how a push reaches it.
 
 Packages import each other's TypeScript source through the `@boilergames/source` export condition
-(see `tsconfig.base.json`), so nothing needs building before a type check or a test. Relative
+(see `tsconfig.base.json`), so nothing needs building before a type check or a unit test. The
+browser tests are the exception: they start the real server, so run `npm run build` first. Relative
 imports end in `.js`. Node 24.
 
 The tickets in `.scratch/rewrite/issues/` describe an older plan. Ignore them.
@@ -538,26 +545,39 @@ Update `README.md` (packages, commands, how to run a Room locally with phones on
 Make CI run the Playwright tests. Re-read `docs/SPEC.md` and the ADRs against what was built and
 list, for the owner, anything that no longer matches.
 
-## Step 9: deploy, with the owner
+## Step 9: deploy, with the owner (done 2026-11-17)
 
-Not to be done alone. With the owner present: a small EC2 instance in the AWS project (us-east-2),
-Caddy for HTTPS on the site's domain and the game domain, the server under systemd as its own user,
-and `update.sh` (build, test, switch, roll back on failure). Load the project's `aws-project-rules`
-skill before any AWS work. The old site stays on `main` until the owner decides otherwise.
+What was built, with the owner: one EC2 `t4g.small` in us-east-2 with a fixed address and only
+ports 80 and 443 open; Caddy for HTTPS on both domains; the server under systemd as its own user;
+and a deploy where CI publishes each tested build as a GitHub Release and the server fetches it
+(`deploy/`, and the README's "How the site is deployed"). The plan's `update.sh` became
+`deploy/install-release.sh`: it switches to a release and goes back if the site doesn't answer.
+GitHub has no way in to AWS, because the project's managed rules forbid giving it one, and the
+server has no SSH port; the owner reaches it through Systems Manager. The new site replaced the old
+one at boilergames.party. DNS for both domains is at Cloudflare, set to "DNS only".
 
-Done when:
-- The deployed game domain's responses carry the exact Content-Security-Policy of
-  `frameContentSecurityPolicy`, with the hash of the page actually served, checked against the live
-  site, for the frame page and a 404. The CSP is the only wall between a Game and the network (ADR 0004): with it removed, a
-  Game's requests reached outside servers. So nothing in front of the frame server (Caddy, a CDN, a
-  cache) may drop or rewrite it.
+Checked against the live site:
+- The game domain's frame page and a 404 both carry one Content-Security-Policy, identical on both,
+  whose hash is the hash of the script actually served. Caddy adds, drops and changes nothing.
+- A Room opens, a phone joins and the Host closes it, through Caddy; a socket from another site's
+  page is refused with a 403; HTTP redirects to HTTPS.
+- A push went from CI to the running site without anyone touching the server.
 
-- `package.json` has no `overrides` left, and `npm audit --omit=dev` is clean (what the server runs).
-
-Checks with the owner:
+Still open:
+- `package.json` still has two `overrides` (router, encodeurl) and pins `ws` at 8.22.1 with the
+  ping mitigation. Upgrade `ws` once 8.23.0 is two weeks old (26 November 2026) and drop the
+  mitigation only if its notes say that is safe; drop each override once its newer version is two
+  weeks old (encodeurl 2.0.3 on 26 November, router 2.3.0 on 1 December). `npm audit --omit=dev`
+  must stay clean.
 - Real Safari, on an iPhone and on a Mac: a Match plays through the frame, and the hostile and
   hoarding test Games find every wall in place (ADR 0004). The browser tests only ever ran
   Playwright's WebKit on Linux, and WebKit is where the storage walls differed.
+- Not tested live: that the server sees each visitor's own address through Caddy (the guessing
+  limit depends on it).
+- `www.boilergames.party` has no DNS record yet. The server's Caddyfile leaves its redirect out
+  until it does (`deploy/Caddyfile` has it).
+- The old server (a stopped `t3.small` in the same project) is to be deleted, and its address
+  released, once the owner is satisfied with the new site.
 
 ---
 
@@ -600,5 +620,5 @@ bullets are the direction the spec sets, not a design.
 ## Milestone 4: the community
 
 Votes and Voted off, Profiles, Game reports and Site reports, Remixes, account deletion, the admin
-page, nightly backups copied to S3, play-test nights with real groups, and the switch-over from the
-old site.
+page, nightly backups copied to S3, and play-test nights with real groups. (The switch-over from
+the old site already happened, with milestone 1.)

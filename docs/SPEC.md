@@ -32,15 +32,16 @@ The first release has bare, working pages. The site's look is designed later.
 
 ## Milestones
 
-The rewrite ships in four milestones. Each one is usable on its own, and the old site keeps running
-from `main` until the owner decides the new one replaces it.
+The rewrite ships in four milestones, each usable on its own. The first is live: the owner chose
+to replace the old site with it on 2026-11-17, before the later milestones, so until milestone 3
+the site has no AI game maker.
 
 1. **Play.** A Room plays a Match of an **Official game** on real phones, on the deployed site.
    Stories 1–14.
 2. **Uploads.** Accounts, the database, the **Playtest**, and Games that Creators upload, publish
    and browse. Stories 15–16, 19–23, 29–30, 35–36, 40–42, 45–47.
 3. **The AI.** **Generations** and **Revisions**, and the eval set. Stories 24–28, 31–34, 53.
-4. **The community.** Votes, reports, Remixes, the admin page, backups and the switch-over.
+4. **The community.** Votes, reports, Remixes, the admin page and backups.
    Stories 17–18, 37–39, 43–44, 48–52, 54.
 
 ## User Stories

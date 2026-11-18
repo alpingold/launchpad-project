@@ -1,9 +1,10 @@
-# BoilerGames (rewrite in progress)
+# BoilerGames
 
 Party games for one shared Screen and everyone's phones, and the tools to make your own.
 
-This branch (`rewrite`) is a from-scratch rewrite in TypeScript. The live site,
-[boilergames.party](https://boilergames.party), still runs from `main`.
+This branch (`rewrite`) is a from-scratch rewrite in TypeScript, and it is what runs at
+[boilergames.party](https://boilergames.party): every push here that passes its tests is deployed
+(see [How the site is deployed](#how-the-site-is-deployed)). The first site's code is on `main`.
 
 - What it is and the decisions behind it: [docs/SPEC.md](docs/SPEC.md)
 - The order of work: [docs/BUILD-PLAN.md](docs/BUILD-PLAN.md)
