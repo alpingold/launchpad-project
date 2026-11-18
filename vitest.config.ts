@@ -23,6 +23,9 @@ export default defineConfig({
           include: ["src/**/*.test.ts"],
           // The Playtest's runner is started as a program, from its compiled dist/: by its own
           // tests, and by the server's, which run one real Playtest end to end.
+          // A real Playtest starts tsc and a bundler and plays twelve Matches: about a second here,
+          // several on a slow or busy machine (GitHub's timed one out at the default 5 seconds).
+          ...(name === "playtest" || name === "server" ? { testTimeout: 30_000 } : {}),
           ...(name === "playtest" ? { globalSetup: ["scripts/build-for-tests.ts"] } : {}),
           ...(name === "server" ? { globalSetup: ["../playtest/scripts/build-for-tests.ts"] } : {}),
         },
