@@ -27,10 +27,30 @@ async function answer<T>(response: Response): Promise<Answer<T>> {
 }
 
 export async function post<T>(path: string, body: unknown): Promise<Answer<T>> {
+  return send<T>("POST", path, body);
+}
+
+export async function put<T>(path: string, body: unknown): Promise<Answer<T>> {
+  return send<T>("PUT", path, body);
+}
+
+async function send<T>(method: string, path: string, body: unknown): Promise<Answer<T>> {
   try {
-    return await answer<T>(await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }));
+    return await answer<T>(await fetch(path, { method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) }));
   } catch {
-    return { ok: false, error: "The site can't be reached. Check the connection and try again." };
+    return { ok: false, error: UNREACHABLE };
+  }
+}
+
+const UNREACHABLE = "The site can't be reached. Check the connection and try again.";
+
+/** A read, with the reply's status too: a page that needs an account tells "signed out" (401) apart. */
+export async function get<T>(path: string): Promise<Answer<T> & { readonly status: number }> {
+  try {
+    const response = await fetch(path);
+    return { ...(await answer<T>(response)), status: response.status };
+  } catch {
+    return { ok: false, error: UNREACHABLE, status: 0 };
   }
 }
 

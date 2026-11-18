@@ -2,6 +2,7 @@
 // address is never shown to anyone else.
 import { useEffect, useState, type FormEvent } from "react";
 import { post, whoIsSignedIn, type Me } from "../account/account-api.js";
+import { takeWhereTo } from "../account/after-sign-in.js";
 
 export function NamePage() {
   const [me, setMe] = useState<Me | null | undefined>(undefined);
@@ -20,7 +21,7 @@ export function NamePage() {
     setBusy(true);
     const reply = await post("/api/me/display-name", { displayName: name });
     setBusy(false);
-    if (reply.ok) return location.assign("/");
+    if (reply.ok) return location.assign(takeWhereTo());
     setError(reply.error);
   }
 

@@ -13,6 +13,7 @@ import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build, defaultClientConditions } from "vite";
 import { buildOfficialGames } from "../games/scripts/build.js";
+import { childProcessRunner } from "../playtest/src/client.js";
 import { createFrameServer } from "../server/src/frame-origin.js";
 import { createServer as createSiteServer, RecordedMail } from "../server/src/index.js";
 import { APP, APP_FRAME, FRAME, OUTSIDE, SITE } from "./origins.js";
@@ -187,6 +188,9 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     // the default 30 in that time.
     maxRooms: 1_000,
     mail,
+    // The real Playtest, in a child process (no wall: this is a test machine), from the Playtest's
+    // built runner: `npm run build` first.
+    playtest: childProcessRunner(),
   });
   const appFrame = createFrameServer({ root: join(out, "frame"), siteOrigin: APP });
 

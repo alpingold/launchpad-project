@@ -12,19 +12,33 @@ import { packViews } from "../net/pack-views.js";
 import { forget, load, save } from "../net/saved.js";
 import { GameFrame, type FrameResult } from "./game-frame.js";
 
-/** One line of /api/games. */
+/**
+ * One line of /api/games: an Official game by its name, or an uploaded Game by its Version's id. A
+ * Match is of one Version, so it keeps the code it started with, even after a reload.
+ */
 export interface GameListing {
   readonly id: string;
   readonly title: string;
   readonly players: { readonly min: number; readonly max: number };
   readonly look?: Look;
+  /** An uploaded Game's Creator, by display name. */
+  readonly creator?: string;
+  /** Uploaded by a Creator, not one of the site's own: the Lobby says so. */
+  readonly uploaded?: true;
 }
 
 interface Saved {
   readonly code: string;
   readonly hostToken: string;
-  readonly match?: { readonly gameId: string; readonly snapshot: unknown; readonly timerDeadline: number | null };
+  /**
+   * The Match being played. `game` is kept with it: after a reload the list may no longer name its
+   * Version (a newer one published, or one only its Creator can play).
+   */
+  readonly match?: { readonly gameId: string; readonly game?: GameListing; readonly snapshot: unknown; readonly timerDeadline: number | null };
 }
+
+/** What the Screen says when a Game's code is refused: only its Creator may load an unpublished Version. */
+export const CODE_REFUSED = "This Game's code can't be loaded: it has been unpublished, or it's an unpublished Version and only its Creator, signed in on this browser, can play it.";
 
 const SAVED = "boilergames.screen";
 
@@ -35,6 +49,8 @@ export interface ScreenState {
   /** The socket is open. */
   readonly online: boolean;
   readonly games: readonly GameListing[];
+  /** A Version its Creator is trying out (Play it, on the Creator's page): offered above the list. */
+  readonly trying: GameListing | null;
   /** Something to tell the Host, such as why a Game couldn't start. */
   readonly notice: string | null;
   /** Why this page's Room is over, when phase is gone. */
@@ -43,14 +59,17 @@ export interface ScreenState {
 }
 
 export class ScreenRoom {
-  state: ScreenState = { phase: "connecting", room: null, online: false, games: [], notice: null, gone: null, match: null };
+  state: ScreenState = { phase: "connecting", room: null, online: false, games: [], trying: null, notice: null, gone: null, match: null };
   readonly #listeners = new Set<() => void>();
   readonly #frameContainer: HTMLElement;
   #frameUrl = "";
   #connection: Connection<ServerToScreen> | undefined;
   #saved: Saved | undefined = load<Saved>(SAVED);
   #frame: GameFrame | undefined;
-  #gameId: string | undefined;
+  /** The Game the frame is playing. */
+  #game: GameListing | undefined;
+  /** The Version to try out, from the address (/screen?play=<id>). */
+  readonly #play: string | null;
   /** Whether the server has been told about the Match running in the frame. */
   #announced = false;
   /** The Views each phone was last sent, as JSON, and the timer deadline they carried. */
@@ -63,8 +82,9 @@ export class ScreenRoom {
   /** How the last Match ended, to send again if the socket was down when it did. */
   #lastEnd: EndMatch | undefined;
 
-  constructor(frameContainer: HTMLElement) {
+  constructor(frameContainer: HTMLElement, options: { readonly play?: string | null } = {}) {
     this.#frameContainer = frameContainer;
+    this.#play = options.play ?? null;
   }
 
   subscribe(listener: () => void): () => void {
@@ -77,6 +97,11 @@ export class ScreenRoom {
     const [config, games] = await Promise.all([fetch("/api/config").then((r) => r.json()), fetch("/api/games").then((r) => r.json())]);
     this.#frameUrl = (config as { frameUrl: string }).frameUrl;
     this.#set({ games: games as GameListing[] });
+    if (this.#play !== null) {
+      const response = await fetch(`/api/games/${encodeURIComponent(this.#play)}`);
+      if (response.ok) this.#set({ trying: (await response.json()) as GameListing });
+      else this.#set({ notice: CODE_REFUSED });
+    }
     this.#connection = new Connection({
       schema: serverToScreen,
       hello: () => (this.#saved === undefined ? { type: "openRoom", v: 1 } : { type: "resumeRoom", v: 1, code: this.#saved.code, hostToken: this.#saved.hostToken }),
@@ -87,12 +112,14 @@ export class ScreenRoom {
 
   /** Starts a Match of `gameId` with everyone in the Room. */
   async startMatch(gameId: string): Promise<void> {
-    const game = this.state.games.find((g) => g.id === gameId);
+    const game = [...(this.state.trying === null ? [] : [this.state.trying]), ...this.state.games].find((g) => g.id === gameId);
     const room = this.state.room;
     if (game === undefined || room === null || this.#frame !== undefined) return;
     this.#set({ notice: null });
-    const bundle = await (await fetch(`/api/games/${encodeURIComponent(gameId)}/bundle.js`)).text();
-    this.#gameId = gameId;
+    const bundle = await codeOf(gameId);
+    if (bundle === undefined) return this.#set({ notice: CODE_REFUSED });
+    if (this.#frame !== undefined) return;
+    this.#game = game;
     this.#announced = false;
     this.#frame = this.#newFrame();
     this.#players = room.seats.map((s) => s.id).join(",");
@@ -204,8 +231,9 @@ export class ScreenRoom {
   }
 
   #announce(): void {
-    const game = this.state.games.find((g) => g.id === this.#gameId);
-    this.#connection?.send({ type: "startMatch", match: { gameId: this.#gameId ?? "", title: game?.title ?? "", look: game?.look ?? {} } });
+    const game = this.#game;
+    if (game === undefined) return;
+    this.#connection?.send({ type: "startMatch", match: { gameId: game.id, title: game.title, look: game.look ?? {} } });
   }
 
   #newFrame(): GameFrame {
@@ -213,9 +241,16 @@ export class ScreenRoom {
   }
 
   async #resumeMatch(match: NonNullable<Saved["match"]>): Promise<void> {
-    const bundle = await (await fetch(`/api/games/${encodeURIComponent(match.gameId)}/bundle.js`)).text();
-    this.#gameId = match.gameId;
+    // Saved before the Game was kept with the Match: the list, if it still names it.
+    const game = match.game ?? this.state.games.find((g) => g.id === match.gameId) ?? { id: match.gameId, title: "The Game", players: { min: 1, max: 16 } };
+    this.#game = game;
     this.#announced = true;
+    const bundle = await codeOf(match.gameId);
+    if (bundle === undefined) {
+      // Its code is refused now (taken down, or the Creator signed out): the Match can't go on.
+      this.#endMatch({ type: "endMatch", reason: "broken" });
+      return this.#set({ notice: CODE_REFUSED });
+    }
     this.#sent.clear();
     this.#sentDeadline = null;
     const players = (match.snapshot as { players?: { id: string }[] } | null)?.players ?? [];
@@ -245,7 +280,7 @@ export class ScreenRoom {
       this.#endMatch({ type: "endMatch", reason: "broken" });
       return this.#set({ notice: `The Game stopped: ${result.problem}` });
     }
-    const game = this.state.games.find((g) => g.id === this.#gameId);
+    const game = this.#game;
     if (!this.#announced) {
       this.#announced = true;
       this.#sent.clear();
@@ -265,7 +300,7 @@ export class ScreenRoom {
     if (outcome.status === "ignored") return;
     this.#latestViews = result.views.controllers;
     this.#sendViews(result.views.controllers, deadline);
-    this.#saved = { ...this.#saved!, match: { gameId: this.#gameId ?? "", snapshot: result.snapshot, timerDeadline: deadline } };
+    this.#saved = { ...this.#saved!, match: { gameId: game?.id ?? "", ...(game === undefined ? {} : { game }), snapshot: result.snapshot, timerDeadline: deadline } };
     save(SAVED, this.#saved);
   }
 
@@ -308,5 +343,18 @@ export class ScreenRoom {
 }
 
 const toPlayer = (seat: Room["seats"][number]): Player => ({ id: seat.id, name: seat.name });
+
+/**
+ * A Game's code, or undefined if the site refuses it. An unpublished Version's code goes only to its
+ * Creator: the browser sends the session cookie with this request, as with any to the site itself.
+ */
+async function codeOf(gameId: string): Promise<string | undefined> {
+  try {
+    const response = await fetch(`/api/games/${encodeURIComponent(gameId)}/bundle.js`);
+    return response.ok ? await response.text() : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 type EndMatch = { type: "endMatch"; reason: "finished" | "stopped" | "broken" | "tooFewPlayers"; scores?: Readonly<Record<string, number>>; winners?: readonly string[] };

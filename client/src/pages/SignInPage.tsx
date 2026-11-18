@@ -1,12 +1,15 @@
 // /sign-in: a Purdue email address in, a link out by email. No password, ever.
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { post } from "../account/account-api.js";
+import { rememberWhereTo } from "../account/after-sign-in.js";
 
 export function SignInPage() {
   const [email, setEmail] = useState("");
   const [sentTo, setSentTo] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Sent here from a page that needs an account (/sign-in?next=/my/games): go back there after.
+  useEffect(() => rememberWhereTo(new URLSearchParams(location.search).get("next")), []);
 
   async function send(event: FormEvent): Promise<void> {
     event.preventDefault();

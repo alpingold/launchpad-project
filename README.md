@@ -46,8 +46,24 @@ screenshots of the Lobby and each Official game, on the Screen and a phone, into
 `.scratch/rewrite/screenshots/`.
 
 The browser tests need the browsers once: `npx playwright install chromium firefox webkit`, and on
-Linux their system libraries: `sudo npx playwright install-deps`. They build what they need
-themselves, into `e2e/.build/`.
+Linux their system libraries: `sudo npx playwright install-deps`. They build most of what they need
+themselves, into `e2e/.build/`, but not the Playtest's runner, which their uploads run: run
+`npm run build` first.
+
+### Signing in and uploading a Game, on your own computer
+
+1. `npm run dev`, and open http://localhost:3000.
+2. Sign in with any `@purdue.edu` address. No email is sent while developing: the server prints the
+   sign-in link to its console (the terminal running `npm run dev`). Open that link in the same
+   browser and press **Sign in**, then pick a display name.
+3. **My Games** (http://localhost:3000/my/games): choose a Game's `.ts` file or paste its code, and
+   upload it. The real Playtest checks it, in a child process with no wall around it: fine for your
+   own code on your own computer, and never how the server runs it (`PLAYTEST_SOCKET` below).
+4. When it is ready, **Play it** opens a Screen with a Room on that Version; **Publish** puts it in
+   every Screen's list of Games.
+
+Without `DATABASE_FILE` the database is in memory, so every restart forgets every account and Game.
+To keep them: `DATABASE_FILE=dev.db npm run dev` (`*.db` files are never committed).
 
 Settings, as environment variables: `HOST` (`localhost`: only this computer can reach the server),
 `PORT` (3000) and `FRAME_PORT` (the next one up); `SITE_ORIGIN`

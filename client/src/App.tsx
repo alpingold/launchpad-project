@@ -1,8 +1,11 @@
-// The site's pages, chosen by the address: /, /screen (the Host's Screen), /play (a phone), and
-// signing in: /sign-in, /sign-in/confirm (the emailed link's page) and /sign-in/name.
+// The site's pages, chosen by the address: /, /screen (the Host's Screen), /play (a phone),
+// signing in: /sign-in, /sign-in/confirm (the emailed link's page) and /sign-in/name, and the
+// Creator's: /my/games and /my/games/<id>.
 import "./pages/pages.css";
 import { ConfirmPage } from "./pages/ConfirmPage.js";
 import { HomePage } from "./pages/HomePage.js";
+import { MyGamePage } from "./pages/MyGamePage.js";
+import { MyGamesPage } from "./pages/MyGamesPage.js";
 import { NamePage } from "./pages/NamePage.js";
 import { PlayPage } from "./pages/PlayPage.js";
 import { ScreenPage } from "./pages/ScreenPage.js";
@@ -14,5 +17,8 @@ export function App({ path = typeof location === "undefined" ? "/" : location.pa
   if (path === "/sign-in/confirm") return <ConfirmPage />;
   if (path === "/sign-in/name") return <NamePage />;
   if (path === "/sign-in") return <SignInPage />;
+  if (path === "/my/games") return <MyGamesPage />;
+  const game = /^\/my\/games\/([^/]+)$/.exec(path)?.[1];
+  if (game !== undefined) return <MyGamePage id={decodeURIComponent(game)} />;
   return <HomePage />;
 }

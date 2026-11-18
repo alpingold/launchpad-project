@@ -4,6 +4,7 @@
 // sends it to the server in the address, and it never reaches a log or a Referer header.
 import { useState } from "react";
 import { post, type Me } from "../account/account-api.js";
+import { takeWhereTo } from "../account/after-sign-in.js";
 
 export function ConfirmPage({ hash = typeof location === "undefined" ? "" : location.hash }: { hash?: string }) {
   const token = hash.replace(/^#/, "");
@@ -19,7 +20,8 @@ export function ConfirmPage({ hash = typeof location === "undefined" ? "" : loca
     }
     // The token is used up; take it out of the address and the history all the same.
     history.replaceState(null, "", "/sign-in/confirm");
-    location.assign(reply.value.account.displayName === null ? "/sign-in/name" : "/");
+    // A new account picks its name first; then, as now, where the visitor was going.
+    location.assign(reply.value.account.displayName === null ? "/sign-in/name" : takeWhereTo());
   }
 
   if (token === "") {

@@ -62,3 +62,15 @@ body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; ba
 .screen-stage .kit-view[data-layout="beside"] .kit-drawing svg { width: 100%; }
 
 .screen-remove { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+/* The Creator's pages. */
+.page-form textarea { font: inherit; font-family: ui-monospace, "Cascadia Mono", Menlo, monospace; font-size: 0.95em; padding: 8px; border: 2px solid #1d3f91; border-radius: 8px; }
+.my-games, .my-versions { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.my-games li { background: #fff; border-radius: 8px; padding: 8px 12px; display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.my-games a { font-weight: 700; }
+.my-version { background: #fff; border-radius: 8px; padding: 8px 12px; }
+.my-version p { margin: 0; }
+.my-version[data-state="failed"] { border-left: 6px solid #b3261e; }
+.my-problems { margin: 6px 0 0; padding-left: 20px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.my-version-actions { display: flex; gap: 8px; margin-top: 6px !important; }
+.screen-uploaded { font-style: italic; }

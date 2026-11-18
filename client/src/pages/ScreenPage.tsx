@@ -12,7 +12,8 @@ export function ScreenPage() {
   const [screen, setScreen] = useState<ScreenRoom | null>(null);
   useEffect(() => {
     if (frames.current === null) return;
-    const created = new ScreenRoom(frames.current);
+    // /screen?play=<Version id>: a Creator trying out one of their Versions (Play it).
+    const created = new ScreenRoom(frames.current, { play: new URLSearchParams(location.search).get("play") });
     setScreen(created);
     void created.begin();
   }, []);
@@ -74,10 +75,26 @@ function ScreenContent({ screen }: { screen: ScreenRoom }) {
       </main>
     );
   }
-  return <Lobby room={state.room} games={state.games} notice={state.notice} online={state.online} names={names} screen={screen} />;
+  return <Lobby room={state.room} games={state.games} trying={state.trying} notice={state.notice} online={state.online} names={names} screen={screen} />;
 }
 
-function Lobby({ room, games, notice, online, names, screen }: { room: Room; games: readonly GameListing[]; notice: string | null; online: boolean; names: ReadonlyMap<string, string>; screen: ScreenRoom }) {
+function Lobby({
+  room,
+  games,
+  trying,
+  notice,
+  online,
+  names,
+  screen,
+}: {
+  room: Room;
+  games: readonly GameListing[];
+  trying: GameListing | null;
+  notice: string | null;
+  online: boolean;
+  names: ReadonlyMap<string, string>;
+  screen: ScreenRoom;
+}) {
   const count = room.seats.length;
   return (
     <main className="page screen-lobby">
@@ -105,25 +122,40 @@ function Lobby({ room, games, notice, online, names, screen }: { room: Room; gam
           ))}
         </ul>
       </section>
+      {trying === null ? null : (
+        <section aria-label="Trying out">
+          <h2>Trying out</h2>
+          <p>Your Version, which only you can play until you publish it.</p>
+          <ul className="screen-games">
+            <GameChoice game={trying} count={count} screen={screen} />
+          </ul>
+        </section>
+      )}
       <section>
         <h2>Games</h2>
         <ul className="screen-games">
-          {games.map((game) => {
-            const fits = count >= game.players.min && count <= game.players.max;
-            return (
-              <li key={game.id}>
-                <button type="button" className="page-button" disabled={!fits} onClick={() => void screen.startMatch(game.id)}>
-                  Start {game.title}
-                </button>
-                <small>
-                  {game.players.min} to {game.players.max} players
-                </small>
-              </li>
-            );
-          })}
+          {games.map((game) => (
+            <GameChoice key={game.id} game={game} count={count} screen={screen} />
+          ))}
         </ul>
       </section>
     </main>
+  );
+}
+
+/** One Game the Host can start. An uploaded one says so, and who made it: a stranger wrote its code. */
+function GameChoice({ game, count, screen }: { game: GameListing; count: number; screen: ScreenRoom }) {
+  const fits = count >= game.players.min && count <= game.players.max;
+  return (
+    <li>
+      <button type="button" className="page-button" disabled={!fits} onClick={() => void screen.startMatch(game.id)}>
+        Start {game.title}
+      </button>
+      <small>
+        {game.players.min} to {game.players.max} players
+      </small>
+      {game.uploaded === true ? <small className="screen-uploaded">Uploaded, by {game.creator}</small> : null}
+    </li>
   );
 }
 

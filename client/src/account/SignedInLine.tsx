@@ -22,7 +22,7 @@ export function SignedInLine() {
   }
   return (
     <p className="account-line">
-      Signed in as <strong>{me.displayName}</strong>{" "}
+      Signed in as <strong>{me.displayName}</strong> <a href="/my/games">My Games</a>{" "}
       <button
         type="button"
         className="page-link"
