@@ -20,9 +20,13 @@ const runner = (timeoutMs) => socketRunner(SOCKET, { timeoutMs, log: (line) => l
 
 /** A Game that runs `body` (JavaScript, with `process`, `require` and a `report(value)` that ends the load) as it loads. */
 function attackGame(body) {
+  // The bundler refuses any `require("...")` call it finds in a Game, as it refuses any import but
+  // the SDK. So the Game's own calls go through `need`, which asks Node for the module directly.
+  // (A `require` inside a program the Game starts is text to the bundler, escaped, and is left.)
+  body = body.replaceAll('require("', 'need("');
   return `import { defineGame } from "@boilergames/sdk/v1";
 declare const process: any;
-declare const require: any;
+const need = (name: string) => process.getBuiltinModule(name);
 function report(value: unknown): never { throw new Error("REPORT:" + JSON.stringify(value)); }
 function attempt(what: () => unknown): string { try { const result = what(); return "DONE " + String(result).slice(0, 200); } catch (error) { return "FAILED " + String((error as { code?: string }).code ?? (error as Error).message).slice(0, 200); } }
 ${body}

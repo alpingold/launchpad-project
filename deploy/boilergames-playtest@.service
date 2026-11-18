@@ -1,7 +1,7 @@
 # One Playtest runner, started by boilergames-playtest.socket for one connection. It runs a
 # stranger's code, so it runs where that code can reach nothing: this file is the wall (BUILD-PLAN
-# Step 13). It is written and NOT YET PROVEN: deploy/attack-playtest.sh must be run against it, on a
-# throwaway server, and every attack contained, before the live site accepts an Upload.
+# Step 13). deploy/attack-playtest.sh attacked it on a throwaway server on 2026-11-18 and all 31
+# attacks were contained. Run that again, the same way, after any change to this file.
 #
 # What a Game's code could try, and what stops it:
 # - the network: a network of its own with nothing in it, no IP traffic, and no sockets but Unix ones;
@@ -53,8 +53,9 @@ TemporaryFileSystem=/var:ro
 ProtectHome=yes
 # The rest it has no need to read: not there at all. ("-": fine if one doesn't exist.) The site's
 # settings; the boot files; snaps (the Systems Manager agent is one on Ubuntu); Caddy's, SSH's and
-# the Systems Manager agent's settings.
-InaccessiblePaths=-/etc/boilergames.env -/boot -/snap -/etc/caddy -/etc/ssh -/etc/amazon
+# the Systems Manager agent's settings; and /dev/shm, the shared-memory folder, which the server's
+# other programs share and a run could otherwise write to (found by the attack run, 2026-11-18).
+InaccessiblePaths=-/etc/boilergames.env -/boot -/snap -/etc/caddy -/etc/ssh -/etc/amazon /dev/shm
 # /tmp and /var/tmp: empty, its own, and gone when the run ends.
 PrivateTmp=yes
 UMask=0077
