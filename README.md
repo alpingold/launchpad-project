@@ -56,6 +56,11 @@ up in development). Behind a proxy such as Caddy, set `TRUST_PROXY=1`, so the
 per-address limits see each phone's own address (the one the proxy appended to X-Forwarded-For)
 rather than the proxy's.
 
+`DATABASE_FILE` is the database (SQLite, one file; ADR 0007). The server applies the migrations in
+`server/migrations` at start, copying the file beside itself first if it already holds data. Without
+`DATABASE_FILE` the database is in memory and forgotten on every restart, which is fine while
+developing; with `NODE_ENV=production` the server refuses to start without it.
+
 The server also serves the Game frame on the next port up (http://localhost:3001/v1/), from
 `client/dist-frame`, which `npm run build` makes. It is built outside `client/dist` on purpose:
 the site serves `client/dist`, and must never serve the frame's page from its own origin.

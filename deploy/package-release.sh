@@ -9,7 +9,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-for built in sdk/dist protocol/dist server/dist/main.js client/dist/index.html client/dist-frame/v1/index.html games/dist/games.json; do
+for built in sdk/dist protocol/dist server/dist/main.js server/migrations/0001-accounts.sql client/dist/index.html client/dist-frame/v1/index.html games/dist/games.json; do
   [ -e "$built" ] || { echo "missing $built: run 'npm run build' first" >&2; exit 1; }
 done
 
@@ -25,6 +25,8 @@ done
 cp -r sdk/dist "$stage/sdk/dist"
 cp -r protocol/dist "$stage/protocol/dist"
 cp -r server/dist "$stage/server/dist"
+# The database's migrations: the server applies them at start, from server/migrations beside dist.
+cp -r server/migrations "$stage/server/migrations"
 cp -r client/dist "$stage/client/dist"
 cp -r client/dist-frame "$stage/client/dist-frame"
 cp -r games/dist "$stage/games/dist"

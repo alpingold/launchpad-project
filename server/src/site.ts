@@ -5,6 +5,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import express, { type Express } from "express";
+import type { Database } from "./db/database.js";
 
 export interface SiteOptions {
   /** The built client: client/dist. Never the frame's build, which lives apart in client/dist-frame. */
@@ -13,6 +14,11 @@ export interface SiteOptions {
   readonly gamesDist: string;
   /** The Game frame's page on the game domain, such as https://boilergames-play.party/v1/. */
   readonly frameUrl: string;
+}
+
+export interface SiteParts {
+  /** The database, opened and up to date. */
+  readonly database: Database;
 }
 
 /** The client's pages. Each is the same index.html; the client draws the page its path names. */
@@ -40,7 +46,7 @@ function loadGames(gamesDist: string): { readonly listing: unknown[]; readonly b
   return { listing, bundles };
 }
 
-export function createSite(options: SiteOptions): Express {
+export function createSite(options: SiteOptions & SiteParts): Express {
   const { listing, bundles } = loadGames(options.gamesDist);
   const app = express();
   app.disable("x-powered-by");
