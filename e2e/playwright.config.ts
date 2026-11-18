@@ -12,7 +12,9 @@ export default defineConfig<{ profile: Profile }>({
   workers: 1,
   fullyParallel: false,
   forbidOnly: !!process.env["CI"],
-  reporter: [["list"]],
+  // On GitHub, each failure is also written as an annotation on the run, which can be read without
+  // downloading the log.
+  reporter: process.env["GITHUB_ACTIONS"] ? [["list"], ["github"]] : [["list"]],
   timeout: 60_000,
   // A failed test keeps its trace (every step, console message and network request) and a
   // screenshot, in e2e/test-results/, which CI uploads when a run fails.
