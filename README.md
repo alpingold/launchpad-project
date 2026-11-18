@@ -192,6 +192,27 @@ Worth knowing:
   needs that to get certificates, and nothing may sit in front of the game domain that could change
   its Content-Security-Policy header (ADR 0004).
 
+### The database's backups
+
+Accounts and Games live in one file on the one server, so every night at 09:00 UTC a timer
+(`boilergames-backup.timer`) runs `deploy/backup-database.sh`. It makes a complete copy of the
+database while the site keeps running, checks the copy, compresses it and uploads it to the S3
+bucket `boilergames-party-backups` as `database/<the time>.db.gz`. The bucket deletes copies after
+30 days. The server may only add files there: it can't read or delete them, so a break-in on the
+server can't reach the backups. At most a day of changes can be lost.
+
+Did last night's run work? On the server: `systemctl status boilergames-backup.service`. Nothing
+warns anyone when it fails, so look now and then (`aws s3 ls s3://boilergames-party-backups/database/`
+from a signed-in AWS CLI lists the copies).
+
+To put a backup back, from a signed-in AWS CLI download one and unpack it:
+
+    aws s3 cp s3://boilergames-party-backups/database/<name>.db.gz . && gunzip <name>.db.gz
+
+Then on the server, as root: stop the site (`systemctl stop boilergames`), move the old
+`/var/lib/boilergames/boilergames.db`, `.db-wal` and `.db-shm` aside, put the unpacked file there as
+`boilergames.db` owned by `boilergames`, and start the site again.
+
 ### Admins, and taking a Game down
 
 Uploaded Games are public as soon as their Creator publishes them, without review, so an admin can

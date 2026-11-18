@@ -1,0 +1,11 @@
+# Backs the database up once a night, at 09:00 UTC (4 or 5 in the morning in Indiana), when few
+# people are playing. If the server was off at that time, it runs as soon as the server is back.
+[Unit]
+Description=Back the BoilerGames database up every night
+
+[Timer]
+OnCalendar=*-*-* 09:00:00 UTC
+Persistent=true
+
+[Install]
+WantedBy=timers.target

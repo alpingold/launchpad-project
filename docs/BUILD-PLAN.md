@@ -52,19 +52,21 @@ begins with a design session with the owner that this plan does not replace.
 
 Branch `rewrite`. Six npm workspace packages, each a folder at the root, and the browser tests:
 
-| Folder     | Holds                                                                 | State (milestone 1 done)  |
+| Folder     | Holds                                                                 | State (milestone 2a done) |
 | ---------- | --------------------------------------------------------------------- | ------------------------- |
 | `sdk`      | The Game contract, the Kit, the Engine, the checkers, the simulator   | Built and tested          |
 | `protocol` | The room messages and their Zod schemas                               | Built and tested          |
 | `server`   | The one server process: Rooms, the site's HTTP, the game domain       | Built and tested          |
 | `client`   | The site's pages (React, Vite), the Kit renderer, the Game frame      | Built and tested          |
 | `games`    | The three Official games and their build                              | Built and tested          |
-| `playtest` | The Playtest, its walled runner's program, and how a bundle is made   | Built (Steps 12, 13); its wall not yet attacked |
+| `playtest` | The Playtest, its walled runner's program, and how a bundle is made   | Built and tested; its wall held against 31 attacks |
 | `e2e`      | Playwright tests: the walls, the frame, the real site                 | Six projects, all passing |
 | `deploy`   | The server's setup, service and release scripts (not a package)       | Running the live site     |
 
 Milestone 1 is live at boilergames.party since 2026-11-17, with the Game frame on
-boilergames-play.party. The README's "How the site is deployed" says how a push reaches it.
+boilergames-play.party. Milestone 2a (steps 10 to 16) is live since 2026-11-18: the owner signed in
+with a real Purdue address and uploaded and played a Game, and the database is copied to S3 every
+night. The README's "How the site is deployed" says how a push reaches it.
 
 Packages import each other's TypeScript source through the `@boilergames/source` export condition
 (see `tsconfig.base.json`), so nothing needs building before a type check or a unit test. The
@@ -921,8 +923,9 @@ way to send email, so nothing can be pushed until this is done):
   Playtest's runs share 500 MB (`deploy/boilergames.service`, `boilergames.env`).
 - Run `deploy/attack-playtest.sh` on a throwaway server set up the same way, not on the live one.
   Every attack must be contained before the live site accepts an Upload.
-- Until milestone 4's nightly backups exist, copy the database somewhere off the server on a
-  schedule, made with `VACUUM INTO` (a plain copy of the file can miss the latest changes): from now on, losing the file loses people's accounts and Games.
+- Copy the database off the server on a schedule, made with `VACUUM INTO` (a plain copy of the
+  file can miss the latest changes): losing the file loses people's accounts and Games. Done
+  2026-11-18: nightly, to S3 (`deploy/backup-database.sh`, the README's "The database's backups").
 
 ### Milestone 2b, outlined
 
@@ -951,5 +954,5 @@ way to send email, so nothing can be pushed until this is done):
 ## Milestone 4: the community
 
 Votes and Voted off, Profiles, Game reports and Site reports, Remixes, account deletion, the admin
-page, nightly backups copied to S3, and play-test nights with real groups. (The switch-over from
+page, a warning when the nightly backup fails, and play-test nights with real groups. (The switch-over from
 the old site already happened, with milestone 1.)

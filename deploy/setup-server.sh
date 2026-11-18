@@ -47,12 +47,17 @@ install -m 644 "$here/boilergames.slice" /etc/systemd/system/boilergames.slice
 install -m 644 "$here/boilergames-playtest.slice" /etc/systemd/system/boilergames-playtest.slice
 install -m 644 "$here/boilergames-playtest.socket" /etc/systemd/system/boilergames-playtest.socket
 install -m 644 "$here/boilergames-playtest@.service" "/etc/systemd/system/boilergames-playtest@.service"
+# The nightly backup of the database.
+install -m 644 "$here/boilergames-backup.service" /etc/systemd/system/boilergames-backup.service
+install -m 644 "$here/boilergames-backup.timer" /etc/systemd/system/boilergames-backup.timer
+install -m 755 "$here/backup-database.sh" /usr/local/bin/boilergames-backup-database
 install -m 755 "$here/install-release.sh" /usr/local/bin/boilergames-install-release
 install -m 755 "$here/check-release.sh" /usr/local/bin/boilergames-check-release
 systemctl daemon-reload
 systemctl enable boilergames.service
 systemctl enable --now boilergames-playtest.socket
 systemctl enable --now boilergames-release.timer
+systemctl enable --now boilergames-backup.timer
 
 # --- Caddy. It asks for a certificate for each name in the Caddyfile, so the names' DNS records
 # must already point at this server, or it will keep failing and may be rate-limited.

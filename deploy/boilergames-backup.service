@@ -1,0 +1,18 @@
+# One backup of the database, run by boilergames-backup.timer. See backup-database.sh.
+[Unit]
+Description=Copy the BoilerGames database to S3
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# The site's user, which is the one that can read the database. It has its own /tmp for the copy.
+User=boilergames
+Group=boilergames
+EnvironmentFile=/etc/boilergames.env
+ExecStart=/usr/local/bin/boilergames-backup-database
+PrivateTmp=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/boilergames
