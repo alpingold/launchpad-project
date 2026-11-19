@@ -13,7 +13,8 @@
   "scripts": {
     "build": "tsc -b tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json",
-    "start": "node dist/main.js"
+    "start": "node dist/main.js",
+    "eval": "node dist/eval.js"
   },
   "dependencies": {
     "@aws-sdk/client-sesv2": "3.1161.0",
