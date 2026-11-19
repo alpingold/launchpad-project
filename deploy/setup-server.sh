@@ -53,6 +53,10 @@ install -m 644 "$here/boilergames-backup.timer" /etc/systemd/system/boilergames-
 install -m 755 "$here/backup-database.sh" /usr/local/bin/boilergames-backup-database
 install -m 755 "$here/install-release.sh" /usr/local/bin/boilergames-install-release
 install -m 755 "$here/check-release.sh" /usr/local/bin/boilergames-check-release
+# The system log is kept 30 days (the privacy page says so).
+mkdir -p /etc/systemd/journald.conf.d
+install -m 644 "$here/journald-boilergames.conf" /etc/systemd/journald.conf.d/boilergames.conf
+systemctl restart systemd-journald
 systemctl daemon-reload
 systemctl enable boilergames.service
 systemctl enable --now boilergames-playtest.socket

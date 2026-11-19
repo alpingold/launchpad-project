@@ -956,6 +956,15 @@ Designed 2026-11-18. 2a made Games; 2b lets everyone else find them. Steps 17 to
 4. **The address people write to is `hello@boilergames.party`** (Step 23), forwarded to the owner's
    own inbox by the DNS host. The owner sets the forwarding up before Step 24.
 
+Two more answers, from checking Step 23's page against the live server (2026-11-19):
+
+- **Backups exist for up to 60 days, and the page says 60.** The bucket stops listing a copy after
+  30 days and deletes it for good 30 days later; the second 30 days is what protects a backup from
+  being written over. The bucket is not changed.
+- **The server's system log is kept 30 days** (`deploy/journald-boilergames.conf`). The text copies
+  Ubuntu keeps of it (`/var/log/syslog`) are rotated weekly and four are kept, so a line can last
+  up to five weeks. The page says "about a month, five weeks at most".
+
 Steps 17, 18, 19 and 21 were built first, on 2026-11-18. Three small things are left from their
 review, to do with the next step: a test for the Library's 500-Game cap; the second copy of the
 256 KB limit in `client/src/creator/creator-api.ts` reads `/api/config` like `/make` does; and the

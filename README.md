@@ -197,8 +197,9 @@ Worth knowing:
 Accounts and Games live in one file on the one server, so every night at 09:00 UTC a timer
 (`boilergames-backup.timer`) runs `deploy/backup-database.sh`. It makes a complete copy of the
 database while the site keeps running, checks the copy, compresses it and uploads it to the S3
-bucket `boilergames-party-backups` as `database/<the time>.db.gz`. The bucket deletes copies after
-30 days. The server may only add files there: it can't read or delete them, so a break-in on the
+bucket `boilergames-party-backups` as `database/<the time>.db.gz`. The bucket stops listing a copy after
+30 days and deletes it for good 30 days after that, so a copy exists for up to 60 days. (The second
+30 days is what stops anyone, the server included, from destroying a backup by writing over it.) The server may only add files there: it can't read or delete them, so a break-in on the
 server can't reach the backups. At most a day of changes can be lost.
 
 Did last night's run work? On the server: `systemctl status boilergames-backup.service`. Nothing
@@ -247,8 +248,8 @@ A published Game of the account's leaves the Library and the Lobby at once, and 
 from then on. A Room playing it at that moment finishes its Match on the code it already has, but a
 reload of that Screen can't load the code again and says so. Nothing else needs doing.
 
-The nightly copies still hold the account until each is deleted, 30 days after it was made: tell the
-person so in the reply.
+The nightly copies still hold the account until each is deleted for good, up to 60 days after it was
+made: tell the person so in the reply.
 
 ### Admins, and taking a Game down
 
