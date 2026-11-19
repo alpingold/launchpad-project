@@ -17,7 +17,11 @@ export const RUN_MS = 3_000;
 /** The seeds each kind of run is played with. */
 export const SEEDS = [1, 2, 3] as const;
 
-/** The most a runner's request may be: the largest source, written as JSON (which can double it), and room for the rest (a Concept's expect included). */
-export const MAX_REQUEST_BYTES = MAX_SOURCE_BYTES * 2 + 4096;
+/** The most a runner's request may be: the largest source, written as JSON (which can double it), and room for the rest. */
+export const MAX_REQUEST_BYTES = MAX_SOURCE_BYTES * 2 + 1024;
+
+/** For a generated Game's Playtest (expect.ts): the most different phase values noted in one Match, and the longest kept of each. */
+export const WATCHED_PHASES = 20;
+export const WATCHED_PHASE_CHARS = 60;
 /** The runner's command-line switch that hands a Game Node's own objects (runner.ts). Never on the live server. */
 export const ATTACK_TEST_SWITCH = "--attack-test";

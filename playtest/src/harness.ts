@@ -9,6 +9,7 @@
  */
 import { fileURLToPath } from "node:url";
 import { build } from "vite";
+import { WATCHED_PHASE_CHARS, WATCHED_PHASES } from "./limits.js";
 import { sdkConditions, type SdkForm } from "./sdk.js";
 
 /** The global the harness script sets in the Game's context. */
@@ -49,9 +50,9 @@ export function about() {
 }
 
 /** The most different phase values one Match's notes keep. */
-const MAX_PHASES_SEEN = 20;
+const MAX_PHASES_SEEN = ${WATCHED_PHASES};
 /** The longest a phase value is kept: enough to quote it, never the Game's whole text. */
-const MAX_PHASE_CHARS = 60;
+const MAX_PHASE_CHARS = ${WATCHED_PHASE_CHARS};
 
 /**
  * One simulated Match: the simulator's result. Asked to watch (a generated Game's Playtest), it also
@@ -63,6 +64,7 @@ export function play(options) {
   if (watch !== true) return JSON.stringify(simulate(globalThis.BoilerGamesGame, run));
   const phases = [];
   let notText = null;
+  let tooMany = false;
   let noPhase = false;
   let end = null;
   const observe = ({ match, outcome, events }) => {
@@ -70,8 +72,11 @@ export function play(options) {
     if (events === 0) end = null;
     const state = match.state;
     if (!isRecord(state) || !Object.hasOwn(state, "phase")) noPhase = true;
-    else if (typeof state.phase !== "string") notText ??= state.phase === null ? "null" : Array.isArray(state.phase) ? "a list" : typeof state.phase;
-    else if (!phases.includes(state.phase.slice(0, MAX_PHASE_CHARS)) && phases.length < MAX_PHASES_SEEN) phases.push(state.phase.slice(0, MAX_PHASE_CHARS));
+    else if (typeof state.phase !== "string") notText ??= state.phase === null ? "null" : Array.isArray(state.phase) ? "list" : typeof state.phase;
+    else if (!phases.includes(state.phase.slice(0, MAX_PHASE_CHARS))) {
+      if (phases.length < MAX_PHASES_SEEN) phases.push(state.phase.slice(0, MAX_PHASE_CHARS));
+      else tooMany = true;
+    }
     if (outcome.status === "ended" && outcome.reason === "finished") {
       const scores = isRecord(outcome.end.scores) ? Object.values(outcome.end.scores) : [];
       const winners = Array.isArray(outcome.end.winners) ? outcome.end.winners.length : 0;
@@ -79,7 +84,7 @@ export function play(options) {
     }
   };
   const result = simulate(globalThis.BoilerGamesGame, { ...run, observe });
-  return JSON.stringify({ ...result, watched: { phases, notText, noPhase, end } });
+  return JSON.stringify({ ...result, watched: { phases, tooMany, notText, noPhase, end } });
 }
 `;
 

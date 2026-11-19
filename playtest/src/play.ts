@@ -13,7 +13,7 @@ import vm from "node:vm";
 import { GAME_GLOBAL } from "./bundle.js";
 import type { Expect } from "./expect.js";
 import { HARNESS_GLOBAL } from "./harness.js";
-import { LOAD_MS, RUN_MS, SEEDS } from "./limits.js";
+import { LOAD_MS, RUN_MS, SEEDS, WATCHED_PHASE_CHARS, WATCHED_PHASES } from "./limits.js";
 import type { Problem } from "./problems.js";
 import { SDK_IMPORT } from "./sdk.js";
 
@@ -179,7 +179,9 @@ export function playAll(context: vm.Context, about: About, expect?: Expect): Pro
 interface Watched {
   /** The phase values the state held, as text, each cut short. */
   readonly phases: readonly string[];
-  /** What state.phase was when it wasn't text ("a number"), the first time. */
+  /** Whether there were more different phase values than the harness keeps: some went unnoted. */
+  readonly tooMany: boolean;
+  /** What state.phase was when it wasn't text, the first time: "a number", "a list"... */
   readonly notText: string | null;
   /** Whether a state had no phase at all. */
   readonly noPhase: boolean;
@@ -187,20 +189,21 @@ interface Watched {
   readonly end: { readonly players: number; readonly scores: readonly number[]; readonly winners: number } | null;
 }
 
-const MAX_NOTED_PHASES = 20;
-const MAX_NOTED_CHARS = 60;
+/** What the harness may say state.phase was, when it wasn't text, and how a problem says it. */
+const NOT_TEXT: Readonly<Record<string, string>> = { number: "a number", boolean: "true or false", object: "an object", list: "a list", null: "null" };
 
 function readWatched(value: unknown): Watched | undefined {
   if (typeof value !== "object" || value === null) return undefined;
-  const { phases, notText, noPhase, end } = value as Record<string, unknown>;
-  if (!Array.isArray(phases) || phases.length > MAX_NOTED_PHASES || !phases.every((phase) => typeof phase === "string" && phase.length <= MAX_NOTED_CHARS)) return undefined;
-  if (notText !== null && (typeof notText !== "string" || notText.length > 20)) return undefined;
-  if (typeof noPhase !== "boolean") return undefined;
-  if (end === null) return { phases, notText, noPhase, end };
+  const { phases, tooMany, notText, noPhase, end } = value as Record<string, unknown>;
+  if (!Array.isArray(phases) || phases.length > WATCHED_PHASES || !phases.every((phase) => typeof phase === "string" && phase.length <= WATCHED_PHASE_CHARS)) return undefined;
+  if (notText !== null && (typeof notText !== "string" || !Object.hasOwn(NOT_TEXT, notText))) return undefined;
+  if (typeof noPhase !== "boolean" || typeof tooMany !== "boolean") return undefined;
+  const said = notText === null ? null : (NOT_TEXT[notText] ?? null);
+  if (end === null) return { phases, tooMany, notText: said, noPhase, end };
   if (typeof end !== "object") return undefined;
   const { players, scores, winners } = end as Record<string, unknown>;
   if (!Number.isInteger(players) || !Array.isArray(scores) || !scores.every((score) => typeof score === "number") || !Number.isInteger(winners)) return undefined;
-  return { phases, notText, noPhase, end: { players: players as number, scores: scores as number[], winners: winners as number } };
+  return { phases, tooMany, notText: said, noPhase, end: { players: players as number, scores: scores as number[], winners: winners as number } };
 }
 
 /** A phase value, quoted and cut short, for a problem's text. */
@@ -215,7 +218,8 @@ const quoted = (text: string) => JSON.stringify(text.length > 40 ? `${text.slice
 function scoringMoved(ends: readonly NonNullable<Watched["end"]>[]): boolean {
   const many = ends.filter((end) => end.players >= 2);
   if (many.length === 0) return ends.some((end) => end.scores.length > 0 || end.winners > 0);
-  return many.some((end) => new Set(end.scores).size >= 2 || (end.winners > 0 && end.winners < end.players));
+  // Scores for only some of the Players tell them apart too: the rest have none.
+  return many.some((end) => new Set(end.scores).size >= 2 || (end.scores.length > 0 && end.scores.length < end.players) || (end.winners > 0 && end.winners < end.players));
 }
 
 /**
@@ -237,8 +241,11 @@ function againstConcept(expect: Expect, watched: readonly { readonly run: Run; r
     }
   }
   const problems = [...found].map(([message, runs]): Problem => ({ stage: "play", message: `${whichRuns(runs)}: ${message}` }));
+  // A Game with more different phase values than were noted may have reached a phase unnoted: its
+  // wrong values are reported above, and "never reached" could be untrue.
+  const allNoted = watched.every(({ notes }) => !notes.tooMany);
   for (const id of expect.phases) {
-    if (!reached.has(id)) problems.push({ stage: "play", message: `No simulated Match ever reached the phase "${id}": state.phase was never "${id}". Every phase of the Concept must happen in a Match.` });
+    if (allNoted && !reached.has(id)) problems.push({ stage: "play", message: `No simulated Match ever reached the phase "${id}": state.phase was never "${id}". Every phase of the Concept must happen in a Match.` });
   }
   const ends = watched.flatMap(({ notes }) => (notes.end === null ? [] : [notes.end]));
   if (expect.scoring && ends.length > 0 && !scoringMoved(ends)) {

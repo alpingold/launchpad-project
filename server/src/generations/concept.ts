@@ -175,7 +175,7 @@ function systemText(): string {
     `  - "screen": what the Screen shows during it, at most ${CONCEPT_LIMITS.phaseScreen} characters;`,
     `  - "phone": what each Player does on their phone during it, at most ${CONCEPT_LIMITS.phasePhone} characters;`,
     `  - "ends": what ends it (everyone has acted, a timer, a choice), at most ${CONCEPT_LIMITS.phaseEnds} characters.`,
-    `- "scoring": { "kind": "none", "points" or "winner", "how": text at most ${CONCEPT_LIMITS.scoringHow} characters }. "none" is a real choice: add points or a winner only when the idea asks for them.`,
+    `- "scoring": { "kind": "none", "points" or "winner", "how": text at most ${CONCEPT_LIMITS.scoringHow} characters }. "none" is a real choice: add points or a winner only when the idea asks for them. "points" and "winner" must tell the Players apart when a Match ends (the site checks that they do); a Game where everyone wins or loses together is "none".`,
     `- "length": how long a Match takes, at most ${CONCEPT_LIMITS.length} characters.`,
     '- "look": the Game\'s own colours, typeface and corners, as the SDK\'s Look type below, which says how readable its colours must be.',
     "",

@@ -63,7 +63,7 @@ describe.each(WAYS)("%s", (_way, run) => {
 
   test("a phase that isn't text", async () => {
     const found = problems(await run(game({ second: `3` }), { expect: CONCEPT }));
-    expect(found[0]).toMatch(/state\.phase was number, not text\. It must always be one of the Concept's phases: "write", "vote"$/);
+    expect(found[0]).toMatch(/state\.phase was a number, not text\. It must always be one of the Concept's phases: "write", "vote"$/);
   });
 
   test("a state with no phase", async () => {
@@ -82,6 +82,32 @@ describe.each(WAYS)("%s", (_way, run) => {
   test("a Game that names a winner and gives no scores has scoring", async () => {
     const result = await run(game({ end: `{ winners: [ctx.players[0]!.id] }` }), { expect: CONCEPT });
     expect(passed(result)).toBe("passed");
+  });
+
+  test("a Game that scores only some of its Players tells them apart", async () => {
+    const result = await run(game({ end: `{ scores: { [ctx.players[0]!.id]: 1 } }` }), { expect: CONCEPT });
+    expect(passed(result)).toBe("passed");
+  });
+
+  test("a Game with more phase values than are noted isn't told a phase it may have reached was never reached", async () => {
+    // "write", then 30 wrong phases ("w1", "w2"...), then "vote": past the 20 values noted per Match.
+    const source = `import { defineGame } from "@boilergames/sdk/v1";
+export default defineGame<{ phase: string; taps: number }, { type: "tap" }>({
+  about: { title: "Many Phases", players: { min: 2, max: 4 } },
+  start: () => ({ state: { phase: "write", taps: 0 } }),
+  onAction: (state, player, _action, ctx) => {
+    const taps = state.taps + 1;
+    if (taps >= 40) return { state: { ...state, taps }, end: { scores: { [player.id]: 1 } } };
+    return { state: { phase: taps <= 30 ? \`w\${taps}\` : "vote", taps } };
+  },
+  onLeave: (state) => ({ state }),
+  screen: (state) => ({ parts: [{ kind: "text", text: \`\${state.taps} taps\` }] }),
+  controller: () => ({ parts: [{ kind: "button", label: "Tap", action: { type: "tap" } }] }),
+});
+`;
+    const found = problems(await run(source, { expect: CONCEPT }));
+    expect(found.some((problem) => problem.includes(`state.phase was "w1", which isn't one of the Concept's phases`))).toBe(true);
+    expect(found.some((problem) => problem.includes("never reached"))).toBe(false);
   });
 
   test("a Game for 1 to 4 that always ends level fails, though its one-Player Matches can't be level", async () => {
