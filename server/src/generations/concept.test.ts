@@ -33,6 +33,11 @@ describe("checking a Concept, field by field", () => {
     expect(checkConcept({ ...GOOD, title: `  ${GOOD.title}  ` })).toEqual({ ok: true, concept: GOOD });
   });
 
+  test("a title the Playtest would refuse is refused here too: it counts each emoji as 2", () => {
+    expect(problemsOf(withField("title", "🎲".repeat(31)))).toEqual(["title must be at most 60 characters, counting each emoji as 2 (it is 62)."]);
+    expect(problemsOf(withField("title", "🎲".repeat(30)))).toEqual([]);
+  });
+
   test("title, pitch and length: text, not empty, within their lengths", () => {
     expect(problemsOf(withField("title", "x".repeat(CONCEPT_LIMITS.title + 1)))).toEqual([`title must be at most ${CONCEPT_LIMITS.title} characters (it is ${CONCEPT_LIMITS.title + 1}).`]);
     expect(problemsOf(withField("title", "   "))).toEqual(["title must be text, and not empty."]);
@@ -84,9 +89,9 @@ describe("checking a Concept, field by field", () => {
     expect(problemsOf([GOOD])).toEqual(["The Concept must be one JSON object with the fields title, pitch, players, phases, scoring, length and look."]);
   });
 
-  test("lengths are counted in characters, as a person counts them, not in UTF-16 units", () => {
-    expect(problemsOf(withField("title", "🎲".repeat(CONCEPT_LIMITS.title)))).toEqual([]);
-    expect(problemsOf(withField("title", "🎲".repeat(CONCEPT_LIMITS.title + 1)))).toEqual([`title must be at most ${CONCEPT_LIMITS.title} characters (it is ${CONCEPT_LIMITS.title + 1}).`]);
+  test("lengths are counted in characters, as a person counts them, not in UTF-16 units (but for the title: below)", () => {
+    expect(problemsOf(withField("pitch", "🎲".repeat(CONCEPT_LIMITS.pitch)))).toEqual([]);
+    expect(problemsOf(withField("pitch", "🎲".repeat(CONCEPT_LIMITS.pitch + 1)))).toEqual([`pitch must be at most ${CONCEPT_LIMITS.pitch} characters (it is ${CONCEPT_LIMITS.pitch + 1}).`]);
   });
 
   test("a missing Look is refused (the SDK's checkLook), and fields inside players or scoring it doesn't know are named, not dropped", () => {

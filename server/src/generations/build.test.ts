@@ -3,10 +3,10 @@
 // each cap ending it with a reason; and the skeleton type-checking against the SDK.
 import { childProcessRunner, readExpect, type RunResult } from "@boilergames/playtest/client";
 import { describe, expect, test } from "vitest";
-import { buildGame, buildMessages, expectOf, generationContext, skeleton, type BuildStep } from "./build.js";
+import { buildGame, buildMessages, expectOf, generationContext, skeleton, type BuildProgress, type BuildStep } from "./build.js";
 import { CONCEPT_LIMITS, type Concept } from "./concept.js";
 import { ScriptedModel, type ScriptedReply } from "./fake-model.js";
-import type { ChatMessage } from "./model.js";
+import { longestCodeBlock, type ChatMessage } from "./model.js";
 import { MAX_BUILDS, MAX_TYPE_FIXES_PER_BUILD } from "./numbers.js";
 
 const playtest = childProcessRunner();
@@ -117,6 +117,63 @@ describe("the Build", () => {
     const { model, run } = build(["I can't write that.", GOOD]);
     expect(await run).toMatchObject({ ok: true, builds: 1, typeFixes: 1 });
     expect(model.calls[1]?.messages.at(-1)?.content).toMatch(/Your last answer had no code block\. Answer with the whole file, in one TypeScript code block\.$/);
+  });
+});
+
+describe("type fixes and Builds together", () => {
+  test("an answer with no code after a file goes back with what that file's check found, and costs a type fix", async () => {
+    const { model, run } = build([TYPE_ERROR, "Here it is, fixed.", GOOD]);
+    expect(await run).toMatchObject({ ok: true, builds: 1, typeFixes: 2 });
+    const third = model.calls[2]?.messages[1]?.content ?? "";
+    expect(third).toContain(`const count: number = "three";`);
+    expect(third).toMatch(/- types, line 2: Type 'string' is not assignable to type 'number'\.\n- source: The answer has no code block\./);
+  });
+
+  test("a play failure starts a new Build, with its type fixes counted afresh", async () => {
+    const { steps, run } = build([TYPE_ERROR, PLAY_FAILURE, TYPE_ERROR, GOOD]);
+    expect(await run).toMatchObject({ ok: true, builds: 2, typeFixes: 1 });
+    expect(steps.map((step) => [step.kind, step.build, step.outcome])).toEqual([
+      ["build", 1, "problems"],
+      ["typeFix", 1, "problems"],
+      ["build", 2, "problems"],
+      ["typeFix", 2, "passed"],
+    ]);
+  });
+});
+
+describe("carrying on from saved progress (a restart)", () => {
+  test("it says where it stands before each call and each check, and carrying on from there asks exactly what it would have", async () => {
+    const heard: [string, BuildProgress][] = [];
+    const model = new ScriptedModel([TYPE_ERROR, GOOD]);
+    const options = { playtest, first: buildMessages(CONCEPT), context: generationContext(CONCEPT), expect: expectOf(CONCEPT) };
+    await buildGame({ ...options, ask: (messages) => model.complete("key", messages), onProgress: (stage, progress) => void heard.push([stage, progress]) });
+    expect(heard.map(([stage, progress]) => [stage, progress.builds, progress.typeFixes])).toEqual([
+      ["build", 1, 0],
+      ["playtest", 1, 0],
+      ["build", 1, 1],
+      ["playtest", 1, 1],
+    ]);
+    // As if the server restarted just before the second call: carry on from what was saved there.
+    const saved = heard[2]?.[1];
+    if (saved === undefined) throw new Error("no progress heard");
+    const again = new ScriptedModel([GOOD]);
+    const result = await buildGame({ ...options, ask: (messages) => again.complete("key", messages), from: saved });
+    expect(result).toMatchObject({ ok: true, builds: 1, typeFixes: 1 });
+    expect(again.calls[0]?.messages).toEqual(model.calls[1]?.messages);
+  });
+
+  test("carrying on at a check runs the Playtest on the saved file without asking the model", async () => {
+    const model = new ScriptedModel([]);
+    const result = await buildGame({
+      ask: (messages) => model.complete("key", messages),
+      playtest,
+      first: buildMessages(CONCEPT),
+      context: generationContext(CONCEPT),
+      expect: expectOf(CONCEPT),
+      from: { builds: 2, typeFixes: 0, toCheck: longestCodeBlock(GOOD) ?? "" },
+    });
+    expect(result).toMatchObject({ ok: true, builds: 2, typeFixes: 0 });
+    expect(model.calls).toHaveLength(0);
   });
 });
 

@@ -197,7 +197,9 @@ function messagesFor(options: BuildOptions, progress: BuildProgress): readonly C
 
 /** Builds until the Playtest passes, or a cap ends it. */
 export async function buildGame(options: BuildOptions): Promise<BuildResult> {
-  let progress: BuildProgress = options.from ?? { builds: 1, typeFixes: 0 };
+  const from = options.from ?? { builds: 1, typeFixes: 0 };
+  // A file waiting for its check is also the last file the model wrote.
+  let progress: BuildProgress = from.toCheck !== undefined && from.lastFile === undefined ? { ...from, lastFile: from.toCheck } : from;
   const kindOf = (at: BuildProgress): BuildStep["kind"] => (at.typeFixes === 0 ? "build" : "typeFix");
   const ended = (reason: string, failure?: ModelFailure): BuildResult => ({
     ok: false,
@@ -209,7 +211,8 @@ export async function buildGame(options: BuildOptions): Promise<BuildResult> {
   });
   for (;;) {
     const kind = kindOf(progress);
-    let problems: readonly CheckProblem[];
+    // No code in the answer, unless a check below finds otherwise.
+    let problems: readonly CheckProblem[] = [NO_CODE];
     if (progress.toCheck === undefined) {
       await options.onProgress?.("build", progress);
       const answer = await options.ask(messagesFor(options, progress), kind);
@@ -240,11 +243,11 @@ export async function buildGame(options: BuildOptions): Promise<BuildResult> {
       }
       problems = result.problems;
       await options.onStep?.({ kind, build: progress.builds, outcome: "problems", problems });
-    } else {
-      problems = [NO_CODE];
     }
-    // Problems from playing use up a Build; the rest are a type fix, which doesn't.
-    const base = { ...(progress.lastFile === undefined ? {} : { lastFile: progress.lastFile }), problems };
+    // Problems from playing use up a Build; the rest are a type fix, which doesn't. An answer with no
+    // code is a type fix, and what the last file's check found still goes back with it.
+    const sent = problems.length === 1 && problems[0] === NO_CODE ? [...(progress.problems ?? []).filter((problem) => problem !== NO_CODE), NO_CODE] : problems;
+    const base = { ...(progress.lastFile === undefined ? {} : { lastFile: progress.lastFile }), problems: sent };
     if (problems.some((problem) => problem.stage === "play")) {
       if (progress.builds >= MAX_BUILDS) return ended(`The Game still failed its check after ${MAX_BUILDS} Builds.`);
       progress = { builds: progress.builds + 1, typeFixes: 0, ...base };

@@ -92,6 +92,11 @@ export function checkConcept(value: unknown): ConceptCheck {
   };
 
   const title = text("title", value["title"], CONCEPT_LIMITS.title);
+  // The Game's about.title is held to 60 by the Playtest, which counts an emoji as 2: the Concept's
+  // title must fit that too, or the Build is told to keep a title its check refuses.
+  if ([...title].length <= CONCEPT_LIMITS.title && title.length > CONCEPT_LIMITS.title) {
+    problems.push(`title must be at most ${CONCEPT_LIMITS.title} characters, counting each emoji as 2 (it is ${title.length}).`);
+  }
   const pitch = text("pitch", value["pitch"], CONCEPT_LIMITS.pitch);
   const length = text("length", value["length"], CONCEPT_LIMITS.length);
 
