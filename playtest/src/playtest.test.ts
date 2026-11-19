@@ -90,6 +90,8 @@ describe("the type check", () => {
     ["lodash", `import _ from "lodash";`],
     ["./helpers", `import { help } from "./helpers";`],
     ["@boilergames/sdk/v1/engine", `import { simulate } from "@boilergames/sdk/v1/engine";`],
+    // The reference text (rules and types, for /make and the site's AI) is the SDK's, but not a Game's.
+    ["@boilergames/sdk/v1/reference", `import { SDK_TYPES } from "@boilergames/sdk/v1/reference";`],
   ])("importing %s: refused, with its line", async (name, line) => {
     const found = problems(await playtest(game({ imports: line })));
     expect(found).toContainEqual({ stage: "types", line: 2, message: `"${name}" can't be imported: a Game may import only @boilergames/sdk/v1.` });

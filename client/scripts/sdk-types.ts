@@ -1,12 +1,15 @@
 /**
- * Makes the SDK's types as one text, for the page that tells Creators how to write a Game with any
- * AI (/make): everything a Game may import from `@boilergames/sdk/v1`, as declarations.
+ * Makes the SDK's types as one text: everything a Game may import from `@boilergames/sdk/v1`, as
+ * declarations. It is half of the SDK's reference text (`@boilergames/sdk/v1/reference`), which the
+ * page for Creators' own AIs (/make) and the site's own AI both read.
  *
- *   npm run sdk-types -w @boilergames/client   → client/src/make/sdk-v1.d.ts.txt
+ *   npm run sdk-types -w @boilergames/client   → sdk/src/v1/reference-types.ts
  *
- * Made from the SDK's own declarations, by TypeScript's compiler, so the page can't say something
- * the SDK doesn't. The text is kept in the repository, so neither the client's build nor its tests
- * need the compiler; a test makes it again and fails if the SDK has changed since (sdk-types.test.ts).
+ * Made from the SDK's own declarations, by TypeScript's compiler, so the text can't say something
+ * the SDK doesn't. It is kept in the repository as a module holding one string, so neither a build,
+ * the tests nor the server as it runs need the compiler or a file of their own; a test makes it again
+ * and fails if the SDK has changed since (client/src/make/sdk-types.test.ts). The script lives with
+ * the client because the client's tests are where Node and the compiler are at hand.
  *
  * The SDK's public entry (sdk/src/v1/index.ts) is two files: kit.ts, which needs nothing, and
  * game.ts, which needs kit.ts. The text is kit's declarations, then game's without its import of
@@ -21,8 +24,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const SDK_V1 = fileURLToPath(new URL("../../sdk/src/v1/", import.meta.url));
-/** Where the text is kept. */
-export const SDK_TYPES_FILE = fileURLToPath(new URL("../src/make/sdk-v1.d.ts.txt", import.meta.url));
+/** Where the text is kept: a module of the SDK's, holding it as one string. */
+export const SDK_TYPES_FILE = fileURLToPath(new URL("../../sdk/src/v1/reference-types.ts", import.meta.url));
 
 /** What the SDK's entry must say, comments aside: the two files this script joins. */
 const ENTRY = ['export * from "./game.js";', 'export type * from "./kit.js";'];
@@ -84,7 +87,23 @@ export function makeSdkTypes(): string {
   }
 }
 
+/**
+ * The module that holds the text: one JSON string per line, joined, so a change to the SDK shows as
+ * a change to the lines it touched.
+ */
+export function typesModule(text: string): string {
+  const lines = text.split("\n").map((line) => `  ${JSON.stringify(line)},`);
+  return [
+    "// The SDK's types as text: half of the reference text (reference.ts). Made by client/scripts/sdk-types.ts",
+    "// from the SDK's own declarations; don't edit it by hand: run `npm run sdk-types -w @boilergames/client`.",
+    "export const SDK_TYPES: string = [",
+    ...lines,
+    '].join("\\n");',
+    "",
+  ].join("\n");
+}
+
 if (import.meta.main) {
-  writeFileSync(SDK_TYPES_FILE, makeSdkTypes());
+  writeFileSync(SDK_TYPES_FILE, typesModule(makeSdkTypes()));
   console.log(`Wrote ${SDK_TYPES_FILE}`);
 }

@@ -1,9 +1,8 @@
 // /make: how to write a Game for the site with any AI, or by hand (story 36). The rules the
 // Playtest enforces, what it does with a file, a ready-made prompt to copy, and the SDK's types,
-// made from the SDK's own declarations (client/scripts/sdk-types.ts).
+// from the SDK's reference text, which the site's own AI reads too (@boilergames/sdk/v1/reference).
 import { useEffect, useMemo, useState } from "react";
-import { fileRules, playtestSteps, promptText, type GameLimits } from "../make/rules.js";
-import sdkTypes from "../make/sdk-v1.d.ts.txt?raw";
+import { fileRules, playtestSteps, promptText, SDK_TYPES as sdkTypes, type GameLimits } from "../make/rules.js";
 import { siteConfig } from "../site-config.js";
 
 export function MakePage() {

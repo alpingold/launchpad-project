@@ -14,6 +14,11 @@
       "types": "./dist/v1/engine-entry.d.ts",
       "default": "./dist/v1/engine-entry.js"
     },
+    "./v1/reference": {
+      "@boilergames/source": "./src/v1/reference.ts",
+      "types": "./dist/v1/reference.d.ts",
+      "default": "./dist/v1/reference.js"
+    },
     "./v1/check": {
       "@boilergames/source": "./src/v1/check.ts",
       "types": "./dist/v1/check.d.ts",
@@ -22,6 +27,7 @@
   },
   "scripts": {
     "build": "tsc -b tsconfig.build.json",
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json && tsc -p scripts/tsconfig.json",
+    "check-built": "node scripts/check-built.ts"
   }
 }

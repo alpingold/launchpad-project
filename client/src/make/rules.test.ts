@@ -1,6 +1,5 @@
 import { expect, test } from "vitest";
-import { fileRules, playtestSteps, promptText, type GameLimits } from "./rules.js";
-import sdkTypes from "./sdk-v1.d.ts.txt?raw";
+import { fileRules, playtestSteps, promptText, SDK_TYPES as sdkTypes, type GameLimits } from "./rules.js";
 
 /** Numbers no real limit has, so finding each in the text shows it came from here and nowhere else. */
 const ODD: GameLimits = { maxSourceBytes: 123 * 1024, maxBundleBytes: 456 * 1024, loadMs: 7_000, runMs: 9_000, seeds: 11, uploadsPerHour: 13, uploadsPerDay: 17 };

@@ -9,7 +9,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-for built in sdk/dist protocol/dist playtest/dist/runner.js playtest/dist/client.js server/dist/main.js server/migrations/0001-accounts.sql client/dist/index.html client/dist-frame/v1/index.html games/dist/games.json; do
+for built in sdk/dist sdk/dist/v1/reference.js protocol/dist playtest/dist/runner.js playtest/dist/client.js server/dist/main.js server/migrations/0001-accounts.sql client/dist/index.html client/dist-frame/v1/index.html games/dist/games.json; do
   [ -e "$built" ] || { echo "missing $built: run 'npm run build' first" >&2; exit 1; }
 done
 

@@ -1,18 +1,21 @@
-// The SDK's types as the page shows them (sdk-v1.d.ts.txt): made from the SDK as it is now, and
-// complete. They run TypeScript's compiler, so they get more time than a unit test usually needs.
+// The SDK's types as the page shows them (the SDK's reference text): made from the SDK as it is
+// now, and complete. They run TypeScript's compiler, so they get more time than a unit test usually needs.
 import { copyFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "vitest";
-import { makeSdkTypes, SDK_TYPES_FILE, tsc } from "../../scripts/sdk-types.js";
+import { SDK_TYPES } from "@boilergames/sdk/v1/reference";
+import { makeSdkTypes, SDK_TYPES_FILE, tsc, typesModule } from "../../scripts/sdk-types.js";
 
 const COMPILER = { timeout: 60_000 };
 const OFFICIAL = ["allotments", "scribble-pick", "sum-it-up"];
-const kept = () => readFileSync(SDK_TYPES_FILE, "utf8");
+const kept = () => SDK_TYPES;
 
 test("the text kept for the page is the SDK's as it is now (if not: npm run sdk-types -w @boilergames/client)", COMPILER, () => {
-  expect(makeSdkTypes()).toBe(kept());
+  const made = makeSdkTypes();
+  expect(made).toBe(kept());
+  expect(typesModule(made)).toBe(readFileSync(SDK_TYPES_FILE, "utf8"));
 });
 
 /**
