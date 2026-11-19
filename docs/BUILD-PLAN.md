@@ -944,20 +944,23 @@ Designed 2026-11-18. 2a made Games; 2b lets everyone else find them. Steps 17 to
 - Story 45: the privacy page. Story 46: the reminder on the phone.
 - Stories 19 (Profiles) and 23 (account deletion) stay in milestone 4.
 
-**The owner's decisions for 2b** (asked 2026-11-18; a step marked "waits" is not to be started
-until its answer is written here):
+**The owner's decisions for 2b** (all answered 2026-11-18):
 
-1. **A counted play.** Decided: a Match that reaches its end with at least the Game's fewest
-   Players. **That the count can only be approximate: waits** (it doesn't hold Step 18 up, only the
-   wording on the pages). The Engine runs in the Host's browser (ADR 0005), so it is the Host's
-   browser that says a Match finished, and a Room needs no account. The server can make cheating
-   slow (Step 18's rules) but can't make it impossible. Proposed: the Library says "about".
-2. **Blocked words** (Step 20): waits.
-3. **The changed-lines view** may use the `diff` package (Step 22): waits. Without it, the step
-   writes its own line comparison.
-4. **The address people write to** (Step 23): waits.
+1. **A counted play** is a Match that reaches its end with at least the Game's fewest Players, and
+   **the count is shown as "about N plays"**. The Engine runs in the Host's browser (ADR 0005), so
+   it is the Host's browser that says a Match finished, and a Room needs no account. The server can
+   make cheating slow (Step 18's rules) but can't make it impossible.
+2. **Blocked words are built now** (Step 20). The list sits in the repository, which is public.
+3. **The changed-lines view uses the `diff` package** (Step 22), in the `client`. It is the one
+   dependency approved for 2b, and the version installed must be at least two weeks old.
+4. **The address people write to is `hello@boilergames.party`** (Step 23), forwarded to the owner's
+   own inbox by the DNS host. The owner sets the forwarding up before Step 24.
 
-No new dependency is approved for 2b yet.
+Steps 17, 18, 19 and 21 were built first, on 2026-11-18. Three small things are left from their
+review, to do with the next step: a test for the Library's 500-Game cap; the second copy of the
+256 KB limit in `client/src/creator/creator-api.ts` reads `/api/config` like `/make` does; and the
+browser tests already ask for 36 of the 50 sign-in emails one address may have in an hour, so new
+tests reuse signed-in accounts where they can.
 
 ## Step 17: what the first real Upload showed (`playtest`, `client`)
 
@@ -1019,7 +1022,8 @@ which changes with every publish. A page people link to can't. So the Library na
   `plays`. Never the source, the bundle, an email address or an account's id.
 - `GET /api/library/<id>`: one of them. An unpublished or taken-down Game, and an id that never
   existed, get the same "not found", so nobody learns which private Games exist.
-- Both are read-only and public. `/api/games` and the Lobby don't change.
+- Both are read-only and public. `/api/games` doesn't change. The Lobby gained one thing: a Game
+  opened from its page shows in a "Chosen" box above the list.
 - The server serves the site's page at `/library`, `/library/<id>`, and at Step 21's and 23's
   addresses when those are built (`PAGES` in `site.ts`).
 - Each Official game gets a description, written beside its code in `games` and carried in
@@ -1044,7 +1048,7 @@ which changes with every publish. A page people link to can't. So the Library na
 found" by its Game id and that no listing carries an email address; browser tests search, filter,
 sort, open a Game's page and host it from there; the page works at phone width.
 
-## Step 20: blocked words (`server`, `client`) — waits for decision 2
+## Step 20: blocked words (`server`, `client`)
 
 - One list, in one file in `server`, of words the site refuses. Matching is on whole words, after
   lower-casing and removing accents, so that a harmless word that merely contains a blocked one is
@@ -1053,6 +1057,10 @@ sort, open a Game's page and host it from there; the page works at phone width.
 - Checked where text becomes public: a display name when it is chosen; a Game's title (from its
   Version's `about`) and description when it is published; a description changed while published.
 - A refusal names the word, so the Creator knows what to change (story 41).
+- Digits, underscores and punctuation separate words too, so a display name like `x_word_99` is
+  caught. Words run together with others are not.
+- Keep the list short: slurs and the crudest words, the ones nobody could defend in a title. The
+  owner edits the file to change it. Names and Games that already exist are not gone back over.
 
 **Done when:** tests show a refusal at each of the three places with the word named, and that a
 harmless word containing a blocked one passes.
@@ -1079,7 +1087,7 @@ harmless word containing a blocked one passes.
 only declaration of `@boilergames/sdk/v1` (so the text is complete), and a test fails if the
 page's rules and the Playtest's limits disagree.
 
-## Step 22: what changed between Versions (`server`, `client`) — the package waits for decision 3
+## Step 22: what changed between Versions (`server`, `client`)
 
 - `GET /api/my/games/<id>/versions/<versionId>/source`: the Version's source, as plain text, to its
   Game's owner only, never kept by a browser. Anyone else gets "not found".
@@ -1094,7 +1102,7 @@ page's rules and the Playtest's limits disagree.
 **Done when:** tests cover the route (owner only) and the comparison (added, removed, unchanged,
 identical files, one empty file); a browser test opens a comparison.
 
-## Step 23: the privacy page (`client`) — the address waits for decision 4
+## Step 23: the privacy page (`client`)
 
 `/privacy`, linked from every page's foot and from the sign-in page. **Write it from what the
 system does, checked in the code and on the server's settings, not from memory.** It must say:
@@ -1117,7 +1125,7 @@ system does, checked in the code and on the server's settings, not from memory.*
   the Host's browser (story 42); an admin can take one down.
 - **Backups** are kept 30 days, so something removed is gone from them 30 days later.
 - **How to have an account and its Games removed**, until account deletion exists (milestone 4):
-  write to the address from decision 4.
+  write to `hello@boilergames.party`.
 
 **Removal has to be real.** The README gets "Removing an account by hand": the commands that
 delete an account's sessions, sign-in links, Versions, Games and the account itself, in the order
@@ -1130,7 +1138,7 @@ check is written in the step's report, sentence by sentence; the removal command
 ## Step 24: deploy 2b, with the owner
 
 - `0004-plays.sql` only adds a table, so the release before it still runs (ADR 0007).
-- No change in AWS is expected. If the address from decision 4 is at the site's own domain, its
+- No change in AWS is expected. `hello@boilergames.party` is at the site's own domain, so its
   forwarding is set up at the DNS host first, and a test message sent to it.
 - The owner opens the Library on a phone, hosts a Game from its page, and sees its count go up.
 
