@@ -11,8 +11,9 @@ const MINUTE_MS = 60 * SECOND_MS;
 // --- The model (default 1) -------------------------------------------------------------------
 
 /**
- * What the experiment measured, and what the README suggests setting. They are settings
- * (GENAI_MODEL, GENAI_BASE_URL), never defaults: the maker is off unless both are set.
+ * What the experiment measured, and what the README suggests setting. For the site they are
+ * settings (GENAI_MODEL, GENAI_BASE_URL), never defaults: the maker is off unless both are set. Only
+ * a live eval run, which the owner starts with --live, falls back on them (eval.ts).
  */
 export const SUGGESTED_MODEL = "qwen3.8:27b";
 export const SUGGESTED_BASE_URL = "https://genai.rcac.purdue.edu/api";
