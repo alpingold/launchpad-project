@@ -14,6 +14,7 @@ import { GAME_GLOBAL } from "./bundle.js";
 import { HARNESS_GLOBAL } from "./harness.js";
 import { LOAD_MS, RUN_MS, SEEDS } from "./limits.js";
 import type { Problem } from "./problems.js";
+import { SDK_IMPORT } from "./sdk.js";
 
 /** The Game's `about`, as the harness checked it. */
 export interface About {
@@ -89,6 +90,14 @@ function describe(context: vm.Context, error: unknown): string {
   }
 }
 
+/**
+ * A `require()` the bundler couldn't see (its name worked out as the code runs) fails only when it
+ * is called, with "require is not defined". Say the rule it broke, as the bundler does for the rest.
+ */
+function withImportRule(message: string): string {
+  return /\brequire is not defined\b/.test(message) ? `${message}: a Game may import only ${SDK_IMPORT}, with import, never with require().` : message;
+}
+
 export type Loaded = { readonly ok: true; readonly context: vm.Context; readonly about: About } | { readonly ok: false; readonly problems: Problem[] };
 
 /**
@@ -96,7 +105,7 @@ export type Loaded = { readonly ok: true; readonly context: vm.Context; readonly
  * in the context first (only for the attack script: runner.ts) and isn't counted as the Game's.
  */
 export function load(bundle: string, harness: string, given: Readonly<Record<string, unknown>> = {}): Loaded {
-  const bundleProblem = (message: string): Loaded => ({ ok: false, problems: [{ stage: "bundle", message }] });
+  const bundleProblem = (message: string): Loaded => ({ ok: false, problems: [{ stage: "bundle", message: withImportRule(message) }] });
   // Promises the Game makes run inside each call, so they count against its timeout.
   const context = vm.createContext({ ...given }, { microtaskMode: "afterEvaluate" });
   try {
@@ -130,7 +139,10 @@ export function load(bundle: string, harness: string, given: Readonly<Record<str
 export function playAll(context: vm.Context, about: About): Problem[] {
   /** Each problem's text, and the runs that found it, in the order first found. */
   const found = new Map<string, Run[]>();
-  const note = (message: string, run: Run) => found.set(message, [...(found.get(message) ?? []), run]);
+  const note = (said: string, run: Run) => {
+    const message = withImportRule(said);
+    found.set(message, [...(found.get(message) ?? []), run]);
+  };
   for (const run of runsFor(about)) {
     try {
       const options = JSON.stringify({ players: run.players, seed: run.seed, leavers: run.leavers, joiners: run.joiners });

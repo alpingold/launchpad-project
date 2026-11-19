@@ -39,7 +39,10 @@ export interface BundleOptions {
    * and the import. Imports inside the SDK itself aren't asked about.
    */
   readonly mayImport: (source: string, importer: string) => boolean;
-  /** Says why an import was refused, for the message. */
+  /**
+   * The rule a refused import broke, for the message, without a full stop: "a Game may import only
+   * @boilergames/sdk/v1".
+   */
   readonly onlyWhat: string;
   /**
    * Resolve the Game's allowed imports as if made from this file. For a Game whose file sits
@@ -48,14 +51,24 @@ export interface BundleOptions {
   readonly resolveFrom?: string;
 }
 
-/** An import the Game's code may not make. */
+/**
+ * An import the Game's code may not make. A `require()` is always one: a Game is a module and
+ * imports with `import`. The type check stops a plain `require()` first (it isn't declared), but a
+ * file can declare its own `require`, or write `import x = require(...)`, which TypeScript turns into
+ * one. Either reaches the bundler, which is where it is refused, the SDK's name included.
+ */
 export class RefusedImport extends Error {
   constructor(
     readonly importer: string,
     readonly source: string,
     onlyWhat: string,
+    byRequire: boolean,
   ) {
-    super(`"${source}" can't be imported: ${onlyWhat}`);
+    super(
+      byRequire
+        ? `require(${JSON.stringify(source)}) can't be used: ${onlyWhat}, with import, never with require().`
+        : `"${source}" can't be imported: ${onlyWhat}.`,
+    );
   }
 }
 
@@ -73,15 +86,21 @@ function defaultExportOnly(name: string, entry: string, root: string): Plugin {
   };
 }
 
-function onlyAllowedImports(options: BundleOptions): Plugin {
+/** `refused` collects each refusal: the bundler wraps a plugin's error in its own, losing its class. */
+function onlyAllowedImports(options: BundleOptions, refused: RefusedImport[]): Plugin {
   const folder = resolve(options.folder) + sep;
   return {
     name: "game-imports",
     enforce: "pre",
-    resolveId(source, importer) {
+    resolveId(source, importer, { kind }) {
       // Only the Game's own files are asked about: not the entry's re-export, not the SDK's imports.
       if (importer === undefined || !resolve(importer).startsWith(folder)) return null;
-      if (!options.mayImport(source, importer)) throw new RefusedImport(importer, source, options.onlyWhat);
+      const byRequire = kind === "require-call";
+      if (byRequire || !options.mayImport(source, importer)) {
+        const refusal = new RefusedImport(importer, source, options.onlyWhat, byRequire);
+        refused.push(refusal);
+        throw refusal;
+      }
       return options.resolveFrom === undefined ? null : this.resolve(source, options.resolveFrom, { skipSelf: true });
     },
   };
@@ -90,13 +109,14 @@ function onlyAllowedImports(options: BundleOptions): Plugin {
 /** Builds the bundle and returns its text. Throws RefusedImport for an import the Game may not make. */
 export async function bundleGame(options: BundleOptions): Promise<string> {
   const entryId = `virtual:${options.name}`;
+  const refused: RefusedImport[] = [];
   const built = await build({
     configFile: false,
     root: options.root,
     // Nothing printed: the Playtest's runner keeps standard output for its one result.
     logLevel: "silent",
     resolve: { conditions: sdkConditions(options.sdk) },
-    plugins: [defaultExportOnly(options.name, options.entry, options.root), onlyAllowedImports(options)],
+    plugins: [defaultExportOnly(options.name, options.entry, options.root), onlyAllowedImports(options, refused)],
     build: {
       write: false,
       minify: false,
@@ -107,6 +127,9 @@ export async function bundleGame(options: BundleOptions): Promise<string> {
             { cwd: options.fileComments.pathsFrom },
       lib: { entry: entryId, formats: ["iife"], name: GAME_GLOBAL, fileName: () => "game.js" },
     },
+  }).catch((error: unknown) => {
+    // The refusal itself, not the bundler's wrapping of it ("[plugin game-imports]" and a stack).
+    throw refused[0] ?? error;
   });
   const outputs = (Array.isArray(built) ? built : [built]).flatMap((output) => ("output" in output ? output.output : []));
   const chunk = outputs.find((output) => output.type === "chunk");

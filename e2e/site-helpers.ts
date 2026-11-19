@@ -28,6 +28,8 @@ export async function joinPhone(another: Another, code: string, name: string): P
   await phone.getByLabel("Your name").fill(name);
   await phone.getByRole("button", { name: "Join" }).click();
   await expect(phone.getByRole("heading", { name: `You're in, ${name}` })).toBeVisible();
+  // Story 46: the Lobby's reminder, on every phone that joins.
+  await expect(phone.getByText("BoilerGames never asks for a password or an email address inside a Game.")).toBeVisible();
   return phone;
 }
 

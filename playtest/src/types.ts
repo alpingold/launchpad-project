@@ -54,6 +54,9 @@ export function compilerPath(): string {
   return join(dirname(packageJson), "lib", process.platform === "win32" ? "tsc.exe" : "tsc");
 }
 
+/** The end of the message for an import the type check refused, after the import's name in quotes. */
+const REFUSED_IMPORT_ENDING = `can't be imported: a Game may import only ${SDK_IMPORT}.`;
+
 /** Names a Game might reach for that it doesn't have, and why not. */
 const NOT_FOR_GAMES: Readonly<Record<string, string>> = {
   fetch: "a Game has no network",
@@ -68,7 +71,7 @@ const NOT_FOR_GAMES: Readonly<Record<string, string>> = {
   sessionStorage: "a Game keeps nothing between Matches but what it returns as its state",
   indexedDB: "a Game keeps nothing between Matches but what it returns as its state",
   process: "a Game doesn't run in Node",
-  require: "a Game doesn't run in Node; it may import only @boilergames/sdk/v1",
+  require: `a Game doesn't run in Node; it may import only ${SDK_IMPORT}, with import, never with require()`,
   Buffer: "a Game doesn't run in Node",
   setTimeout: "a Game asks for time with its Step's timer, which calls onTimer",
   setInterval: "a Game asks for time with its Step's timer, which calls onTimer",
@@ -82,11 +85,11 @@ const NOT_FOR_GAMES: Readonly<Record<string, string>> = {
 function forAGame(code: number, message: string): string {
   if (code === 2307) {
     const what = /'([^']+)'/.exec(message)?.[1] ?? "That";
-    return `"${what}" can't be imported: a Game may import only ${SDK_IMPORT}.`;
+    return `"${what}" ${REFUSED_IMPORT_ENDING}`;
   }
   const missing = /^Cannot find name '([^']+)'\./.exec(message);
   // tsc reports an import of one of Node's own modules ("node:fs") as a missing name.
-  if (missing?.[1]?.startsWith("node:") === true) return `"${missing[1]}" can't be imported: a Game may import only ${SDK_IMPORT}.`;
+  if (missing?.[1]?.startsWith("node:") === true) return `"${missing[1]}" ${REFUSED_IMPORT_ENDING}`;
   if (missing !== null) {
     const name = missing[1] ?? "";
     const why = NOT_FOR_GAMES[name];
@@ -95,28 +98,44 @@ function forAGame(code: number, message: string): string {
   return message;
 }
 
-/** tsc's plain output: `game.ts(3,7): error TS2322: Type ...`, with any further lines indented under it. */
+/**
+ * tsc's codes for "X implicitly has an 'any' type" (a variable, a parameter, a member, a rest
+ * parameter, a destructured name). Under a refused import they are noise: what the import would have
+ * given is unknown, so every parameter typed by it loses its type, one line each, all caused by the
+ * one import. The Official games' test file gives 3 refused imports and 4 such lines; the SDK's test
+ * Game with its import uncorrected gives 1 and 17.
+ */
+const IMPLICIT_ANY = new Set([7005, 7006, 7008, 7019, 7031]);
+
+/**
+ * tsc's plain output: `game.ts(3,7): error TS2322: Type ...`, with any further lines indented under
+ * it. If an import was refused, the refused imports come first and the "implicitly has an 'any'
+ * type" lines are left out. Every other problem stays: a Creator has 10 Uploads an hour, and each
+ * hidden problem would cost one more.
+ */
 export function parseCompilerOutput(output: string): Problem[] {
-  const problems: Problem[] = [];
+  const found: { problem: Problem; refusedImport: boolean; implicitAny: boolean }[] = [];
   for (const line of output.split(/\r?\n/)) {
     const error = /^(.+?)\((\d+),(\d+)\): error TS(\d+): (.*)$/.exec(line);
     if (error !== null) {
       const [, file = "", lineNumber = "0", , code = "0", message = ""] = error;
       const inGame = file.endsWith(GAME_FILE);
-      problems.push({
-        stage: "types",
-        message: inGame ? forAGame(Number(code), message) : `In the SDK's ${file}: ${message}`,
-        ...(inGame ? { line: Number(lineNumber) } : {}),
+      const said = inGame ? forAGame(Number(code), message) : `In the SDK's ${file}: ${message}`;
+      found.push({
+        problem: { stage: "types", message: said, ...(inGame ? { line: Number(lineNumber) } : {}) },
+        refusedImport: inGame && said.endsWith(REFUSED_IMPORT_ENDING),
+        implicitAny: IMPLICIT_ANY.has(Number(code)),
       });
-    } else if (line.startsWith(" ") && line.trim() !== "" && problems.length > 0) {
+    } else if (line.startsWith(" ") && line.trim() !== "" && found.length > 0) {
       // The rest of the last error: tsc indents what explains it.
-      const last = problems[problems.length - 1];
-      if (last !== undefined) problems[problems.length - 1] = { ...last, message: `${last.message} ${line.trim()}` };
+      const last = found[found.length - 1];
+      if (last !== undefined) last.problem = { ...last.problem, message: `${last.problem.message} ${line.trim()}` };
     } else if (/^error TS\d+: /.test(line)) {
-      problems.push({ stage: "types", message: line.replace(/^error TS\d+: /, "") });
+      found.push({ problem: { stage: "types", message: line.replace(/^error TS\d+: /, "") }, refusedImport: false, implicitAny: false });
     }
   }
-  return problems;
+  if (!found.some((each) => each.refusedImport)) return found.map((each) => each.problem);
+  return [...found.filter((each) => each.refusedImport), ...found.filter((each) => !each.refusedImport && !each.implicitAny)].map((each) => each.problem);
 }
 
 /**

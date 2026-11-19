@@ -74,7 +74,7 @@ export async function playtest(source: string, options: PlaytestOptions = {}): P
         sdk: form,
         folder,
         mayImport: (imported) => imported === SDK_IMPORT,
-        onlyWhat: `a Game may import only ${SDK_IMPORT}.`,
+        onlyWhat: `a Game may import only ${SDK_IMPORT}`,
         // The temp folder has no node_modules above it: the SDK is found from this package.
         resolveFrom: fileURLToPath(import.meta.url),
       });

@@ -104,6 +104,30 @@ describe("the type check", () => {
     expect(found).toEqual([{ stage: "types", line: 3, message: `Cannot find name '${name}': ${why}.` }]);
   });
 
+  test("a refused import comes first, without the 'implicitly any' lines it causes; every other problem stays", async () => {
+    // The SDK's test Game as it is in the SDK: its import is "./index.js", which a Game can't make.
+    // Unknown, defineGame's parameters lose their types: 17 lines of "implicitly has an 'any' type".
+    const asInTheSdk = file("../../sdk/src/v1/best-word.fixture.ts");
+    const refused = { stage: "types", line: 4, message: `"./index.js" can't be imported: a Game may import only @boilergames/sdk/v1.` };
+    expect(problems(await playtest(asInTheSdk))).toEqual([refused]);
+    // An unrelated type error after it is still reported, and the refused import is still first.
+    const withAnError = `${asInTheSdk}\nconst count: number = "three";\n`;
+    const line = withAnError.split("\n").length - 1;
+    expect(problems(await playtest(withAnError))).toEqual([refused, { stage: "types", line, message: "Type 'string' is not assignable to type 'number'." }]);
+  });
+
+  test("an 'implicitly any' line with no refused import is reported", async () => {
+    const found = problems(await playtest(game({ top: `function double(n) { return n * 2; }` })));
+    expect(found).toEqual([{ stage: "types", line: 3, message: "Parameter 'n' implicitly has an 'any' type." }]);
+  });
+
+  test("calling require(), undeclared: the rule, with import", async () => {
+    const found = problems(await playtest(game({ top: `const _ = require("lodash");` })));
+    expect(found).toEqual([
+      { stage: "types", line: 3, message: "Cannot find name 'require': a Game doesn't run in Node; it may import only @boilergames/sdk/v1, with import, never with require()." },
+    ]);
+  });
+
   test("a /// <reference> line, which could declare the DOM, is refused", async () => {
     const found = problems(await playtest(`/// <reference lib="dom" />\n${game({ top: `fetch("x");` })}`));
     expect(found).toEqual([{ stage: "types", line: 1, message: "A Game can't use a /// <reference> line: it gets the SDK's types and nothing else." }]);
@@ -114,6 +138,29 @@ describe("the bundle", () => {
   test("a file with no default export", async () => {
     const found = problems(await playtest(game().replace("export default defineGame", "export const threeTaps = defineGame")));
     expect(found).toEqual([{ stage: "bundle", message: "The file has no default export: end it with export default defineGame({ ... })." }]);
+  });
+
+  test("the SDK's test Game, its import corrected but no default export: says so", async () => {
+    const helper = file("../../sdk/src/v1/best-word.fixture.ts").replace(`from "./index.js"`, `from "@boilergames/sdk/v1"`);
+    expect(problems(await playtest(helper))).toEqual([{ stage: "bundle", message: "The file has no default export: end it with export default defineGame({ ... })." }]);
+  });
+
+  // A file can get a require() past the type check: by declaring require itself, or with
+  // TypeScript's `import x = require(...)`. The bundler refuses it, the SDK's name included.
+  test.each([
+    ["declared by the file", `declare const require: (name: string) => unknown;\nconst _ = require("lodash");`, "lodash"],
+    ["of the SDK, declared by the file", `declare const require: (name: string) => unknown;\nconst _ = require("@boilergames/sdk/v1");`, "@boilergames/sdk/v1"],
+    ["as import = require", `import sdk = require("@boilergames/sdk/v1");`, "@boilergames/sdk/v1"],
+  ])("require(), %s: the rule, with import", async (_how, top, name) => {
+    const found = problems(await playtest(game({ top })));
+    expect(found).toEqual([{ stage: "bundle", message: `require("${name}") can't be used: a Game may import only @boilergames/sdk/v1, with import, never with require().` }]);
+  });
+
+  test("require() of a name worked out as the code runs: the rule, when it is called", async () => {
+    const found = problems(await playtest(game({ top: `declare const require: (name: string) => unknown;\nconst _ = require(["lo", "dash"].join(""));` })));
+    expect(found).toEqual([
+      { stage: "bundle", message: "The Game threw while loading: require is not defined: a Game may import only @boilergames/sdk/v1, with import, never with require()." },
+    ]);
   });
 
   test("a Game whose code sets a global of its own", async () => {

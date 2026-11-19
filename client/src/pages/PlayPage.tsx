@@ -49,6 +49,9 @@ export function PlayPage() {
       <button type="button" className="page-button page-button-quiet" onClick={() => seat.leave()}>
         Leave the Room
       </button>
+      {/* Story 46. The site's own page says it, in the Lobby, never a Game's View: a Game written
+          by a stranger could put up a form that asks, and this is what a Player has to go on. */}
+      <p className="page-quiet">BoilerGames never asks for a password or an email address inside a Game.</p>
     </main>
   );
 }
