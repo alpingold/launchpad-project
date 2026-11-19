@@ -84,7 +84,7 @@ const versionRow = z
     state: z.enum(["checking", "ready", "failed"]),
     problems: problemsJson.nullable(),
     about: aboutJson.nullable(),
-    made_by: z.literal("upload"),
+    made_by: z.enum(["upload", "generation", "revision"]),
     sdk_version: z.literal("v1"),
     created_at: z.number().int(),
     checked_at: z.number().int().nullable(),

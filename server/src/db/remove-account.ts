@@ -5,6 +5,8 @@
  * it, through server/src/remove-account.ts.
  *
  * The order:
+ * 0. Its Generations' steps, then its Generations, with the ideas and Concepts and code the AI wrote:
+ *    a Generation points at the Game and Version it made, so they go first.
  * 1. Its Games are unpublished: a Game points at its published Version, and that Version at its
  *    Game, so one of the two links has to go first.
  * 2. Its Games' Versions, with their code.
@@ -31,6 +33,8 @@ import { one } from "./rows.js";
 
 /** How many rows went from each table. */
 export interface Removed {
+  readonly generationSteps: number;
+  readonly generations: number;
   readonly games: number;
   readonly versions: number;
   readonly plays: number;
@@ -55,6 +59,8 @@ export function removeAccount(db: Database, email: string): Removed | undefined 
     const account = one(z.object({ id: z.string() }), db.prepare("SELECT id FROM accounts WHERE email = ?").get(address));
     if (account === undefined) return undefined;
     const theirGames = "SELECT id FROM games WHERE owner_id = ?";
+    const generationSteps = run("generation_steps", "DELETE FROM generation_steps WHERE generation_id IN (SELECT id FROM generations WHERE account_id = ?)", account.id);
+    const generations = run("generations", "DELETE FROM generations WHERE account_id = ?", account.id);
     run("games", "UPDATE games SET published_version_id = NULL WHERE owner_id = ?", account.id);
     const versions = run("versions", `DELETE FROM versions WHERE game_id IN (${theirGames})`, account.id);
     const plays = run("plays", `DELETE FROM plays WHERE subject IN (${theirGames})`, account.id);
@@ -63,7 +69,7 @@ export function removeAccount(db: Database, email: string): Removed | undefined 
     const genaiKeys = run("genai_keys", "DELETE FROM genai_keys WHERE account_id = ?", account.id);
     const signInLinks = run("sign_in_links", "DELETE FROM sign_in_links WHERE email = ?", address);
     const accounts = run("accounts", "DELETE FROM accounts WHERE id = ?", account.id);
-    return { games, versions, plays, sessions, genaiKeys, signInLinks, accounts };
+    return { generationSteps, generations, games, versions, plays, sessions, genaiKeys, signInLinks, accounts };
   });
 }
 

@@ -230,15 +230,17 @@ on its command line.)
 It removes everything the database keeps about the account, in one transaction per file, in the
 order the tables' keys allow (`server/src/db/remove-account.ts`, tested on a database in memory):
 
-1. its Games are unpublished (a Game and its published Version point at each other, so that link
+1. its Generations' steps, then its Generations, with the ideas, Concepts and code the AI wrote
+   (a Generation points at the Game and Version it made, so they go first);
+2. its Games are unpublished (a Game and its published Version point at each other, so that link
    goes first);
-2. every Version of its Games, with their code;
-3. its Games' counts of plays;
-4. its Games;
-5. its sessions;
-6. its GenAI Studio key, encrypted;
-7. sign-in links sent to its address;
-8. the account.
+3. every Version of its Games, with their code;
+4. its Games' counts of plays;
+5. its Games;
+6. its sessions;
+7. its GenAI Studio key, encrypted;
+8. sign-in links sent to its address;
+9. the account.
 
 It does the same in each copy the server made of the database before a migration (up to three,
 `/var/lib/boilergames/boilergames.db.backup-*`), which would otherwise keep the account. For each
