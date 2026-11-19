@@ -4,6 +4,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { fileRules, playtestSteps, promptText, type GameLimits } from "../make/rules.js";
 import sdkTypes from "../make/sdk-v1.d.ts.txt?raw";
+import { siteConfig } from "../site-config.js";
 
 export function MakePage() {
   const [limits, setLimits] = useState<GameLimits | null>(null);
@@ -11,10 +12,10 @@ export function MakePage() {
   const [copied, setCopied] = useState<string | null>(null);
   useEffect(() => {
     // The limits are the site's own (/api/config), so the page quotes what the Playtest enforces.
-    fetch("/api/config")
-      .then((response) => response.json() as Promise<{ limits: GameLimits }>)
-      .then((config) => setLimits(config.limits))
-      .catch(() => setError("The site's limits couldn't be loaded. Reload the page to try again."));
+    siteConfig().then(
+      (config) => setLimits(config.limits),
+      () => setError("The site's limits couldn't be loaded. Reload the page to try again."),
+    );
   }, []);
   const prompt = useMemo(() => (limits === null ? "" : promptText(limits, sdkTypes)), [limits]);
 

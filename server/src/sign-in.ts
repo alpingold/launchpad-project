@@ -17,6 +17,7 @@ import { createHash, randomBytes } from "node:crypto";
 import type { IncomingMessage } from "node:http";
 import { Router, type Request, type Response } from "express";
 import { z } from "zod";
+import { blockedWordIn, refusals } from "./blocked-words.js";
 import { accountByEmail, createAccount, createSession, createSignInLink, deleteExpired, deleteSession, deleteSignInLink, sessionAccount, setDisplayName, touchSession, useSignInLink, type Account } from "./db/accounts.js";
 import { transaction, type Database } from "./db/database.js";
 import { WindowLimit } from "./limits.js";
@@ -274,6 +275,9 @@ export function signInRoutes(options: SignInOptions): SignIn {
     if (!body.success) return void response.status(400).json({ error: "Send a display name." });
     const checked = displayName(body.data.displayName);
     if (!checked.ok) return void response.status(400).json({ error: checked.error });
+    // A display name is public: it is shown on every published Game of theirs.
+    const blocked = blockedWordIn(checked.name);
+    if (blocked !== undefined) return void response.status(400).json({ error: refusals.displayName(blocked) });
     if (setDisplayName(database, account.id, checked.name, checked.key) === "taken") {
       return void response.status(409).json({ error: "That display name is taken. Pick another." });
     }

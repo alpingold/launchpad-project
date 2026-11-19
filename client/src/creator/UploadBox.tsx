@@ -1,7 +1,8 @@
 // The upload box: choose a .ts file or paste the code, and send it. The site checks it (the
 // Playtest) after it arrives; this only sends it.
 import { useState, type FormEvent } from "react";
-import { MAX_SOURCE_BYTES, type Answer } from "./creator-api.js";
+import { siteConfig } from "../site-config.js";
+import type { Answer } from "./creator-api.js";
 
 export function UploadBox({ label, send, onSent }: { label: string; send: (source: string) => Promise<Answer<unknown>>; onSent: (answer: unknown) => void }) {
   const [source, setSource] = useState("");
@@ -11,7 +12,13 @@ export function UploadBox({ label, send, onSent }: { label: string; send: (sourc
 
   async function chooseFile(file: File | undefined): Promise<void> {
     if (file === undefined) return;
-    if (file.size > MAX_SOURCE_BYTES) return setError(`That file is ${Math.ceil(file.size / 1024)} KB; a Game's code may be at most ${MAX_SOURCE_BYTES / 1024} KB.`);
+    // The largest source the site takes: the Playtest's own limit, from the site. If the site can't
+    // say, the file is read, and the site refuses it when it is sent if it is too large.
+    const maxBytes = await siteConfig().then(
+      (config) => config.limits.maxSourceBytes,
+      () => null,
+    );
+    if (maxBytes !== null && file.size > maxBytes) return setError(`That file is ${Math.ceil(file.size / 1024)} KB; a Game's code may be at most ${maxBytes / 1024} KB.`);
     setSource(await file.text());
     setFileName(file.name);
     setError(null);

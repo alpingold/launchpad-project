@@ -124,3 +124,13 @@ test("published, a stranger Hosts it; a newer Version published mid-Match doesn'
   for (const phone of phones) await expect(phone.getByText("Waiting for the Host to start a Game.")).toBeVisible();
   for (const id of versionIds) expect(await screen.evaluate(async (versionId) => (await fetch(`/api/games/${versionId}/bundle.js`)).status, id)).toBe(404);
 });
+
+test("a file over the site's size limit is refused before it is sent, quoting the limit from the site", async ({ context, signedIn }) => {
+  await context.addCookies(signedIn.cookies);
+  const page = context.pages()[0] ?? (await context.newPage());
+  const { limits } = (await (await page.request.get(`${APP}/api/config`)).json()) as { limits: { maxSourceBytes: number } };
+  await page.goto(`${APP}/my/games`);
+  await expect(page.getByRole("heading", { name: "My Games" })).toBeVisible();
+  await page.getByLabel("Choose a .ts file").setInputFiles({ name: "big.ts", mimeType: "text/plain", buffer: Buffer.alloc(limits.maxSourceBytes + 1, "x") });
+  await expect(page.getByRole("alert")).toHaveText(`That file is ${limits.maxSourceBytes / 1024 + 1} KB; a Game's code may be at most ${limits.maxSourceBytes / 1024} KB.`);
+});

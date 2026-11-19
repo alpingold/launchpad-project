@@ -42,6 +42,7 @@ import {
   type Playable,
   type Version,
 } from "./db/games.js";
+import { blockedWordIn, refusals } from "./blocked-words.js";
 import type { Clock } from "./rooms.js";
 import { waitWords } from "./sign-in.js";
 
@@ -273,6 +274,10 @@ export function gameRoutes(options: GameRoutesOptions): GameRoutes {
     if (!body.success) return void response.status(400).json({ error: "Send a description." });
     const description = body.data.description.trim();
     if ([...description].length > DESCRIPTION_MAX) return void response.status(400).json({ error: `A description may be at most ${DESCRIPTION_MAX} characters.` });
+    // While the Game is published its description is public at once, so it is checked now; an
+    // unpublished Game's is checked when it is published.
+    const blocked = game.publishedVersionId === null ? undefined : blockedWordIn(description);
+    if (blocked !== undefined) return void response.status(400).json({ error: refusals.description(blocked) });
     setDescription(database, game.id, description);
     response.json({ game: detail({ ...game, description }, versionsOf(database, game.id)) });
   });
@@ -285,6 +290,13 @@ export function gameRoutes(options: GameRoutesOptions): GameRoutes {
     const body = z.object({ versionId: z.string() }).safeParse(request.body);
     if (!body.success) return void response.status(400).json({ error: "Say which Version to publish." });
     if (game.takenDownAt !== null) return void response.status(409).json({ error: TAKEN_DOWN });
+    // What publishing makes public: the Version's title (from its code's about) and the description.
+    const versions = versionsOf(database, game.id);
+    const title = versions.find((version) => version.id === body.data.versionId)?.about?.title;
+    const blockedTitle = title === undefined ? undefined : blockedWordIn(title);
+    if (blockedTitle !== undefined) return void response.status(400).json({ error: refusals.title(blockedTitle) });
+    const blockedDescription = blockedWordIn(game.description);
+    if (blockedDescription !== undefined) return void response.status(400).json({ error: refusals.description(blockedDescription) });
     if (!publish(database, game.id, body.data.versionId)) {
       return void response.status(409).json({ error: "Only a Version of this Game that passed its check can be published." });
     }

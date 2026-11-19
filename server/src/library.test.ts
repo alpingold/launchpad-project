@@ -11,6 +11,7 @@ import { IN_MEMORY, openDatabase, type Database } from "./db/database.js";
 import { createGame, createVersion, finishCheck, publish, setDescription, takeDown } from "./db/games.js";
 import { addPlay } from "./db/plays.js";
 import { createServer, type RunningServer } from "./index.js";
+import { MAX_LIBRARY_GAMES } from "./library.js";
 
 const SITE = "https://boilergames.test";
 const OFFICIAL = { id: "demo", title: "Demo", players: { min: 1, max: 4 }, look: { font: "rounded" } };
@@ -118,4 +119,31 @@ test("the Lobby's list is unchanged: no descriptions, no plays, the published Ve
     { id: "older-v1", title: "Old One", players: { min: 2, max: 5 }, creator: "Ada", uploaded: true },
   ]);
   expect(await (await fetch(`${base}/api/games/demo`)).json()).toEqual(OFFICIAL);
+});
+
+test(`the Library lists at most ${MAX_LIBRARY_GAMES} published Games, the newest`, async () => {
+  // Its own database and server, so the other tests' Games are not counted.
+  const many = openDatabase({ file: IN_MEMORY, log: () => undefined });
+  createAccount(many, { id: "a1", email: EMAIL, createdAt: 1 });
+  setDisplayName(many, "a1", "Ada", "ada");
+  const total = MAX_LIBRARY_GAMES + 5;
+  for (let n = 1; n <= total; n += 1) {
+    createGame(many, { id: `g${n}`, ownerId: "a1", createdAt: n });
+    createVersion(many, { id: `g${n}-v1`, gameId: `g${n}`, source: "//", createdAt: n });
+    finishCheck(many, `g${n}-v1`, { ok: true, bundle: "//", about: { title: `Game ${n}`, players: { min: 1, max: 4 } } }, n);
+    publish(many, `g${n}`, `g${n}-v1`);
+  }
+  const listing = createServer({ clientDist: join(root, "client"), gamesDist: join(root, "games"), siteOrigin: SITE, frameUrl: "https://play.test/v1/", database: many });
+  await new Promise<void>((resolve) => listing.http.listen(0, "127.0.0.1", resolve));
+  try {
+    const list = (await (await fetch(`http://127.0.0.1:${(listing.http.address() as AddressInfo).port}/api/library`)).json()) as { id: string; madeBy: string }[];
+    const uploaded = list.filter((entry) => entry.madeBy === "Uploaded");
+    expect(uploaded).toHaveLength(MAX_LIBRARY_GAMES);
+    expect(uploaded[0]?.id).toBe(`g${total}`);
+    expect(uploaded.at(-1)?.id).toBe(`g${total - MAX_LIBRARY_GAMES + 1}`);
+    expect(list.filter((entry) => entry.madeBy === "Official")).toHaveLength(1);
+  } finally {
+    await listing.close();
+    many.close();
+  }
 });

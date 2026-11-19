@@ -37,8 +37,6 @@ export interface GameLine {
   readonly latest: { readonly number: number; readonly state: Version["state"] } | null;
 }
 
-/** The largest source the site takes, in bytes (the Playtest's own limit). */
-export const MAX_SOURCE_BYTES = 256 * 1024;
 /** The longest description, in characters. */
 export const DESCRIPTION_MAX = 300;
 

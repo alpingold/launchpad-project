@@ -2,7 +2,7 @@
 // signed out, finds them by searching, filters and sorts them, opens one's page and hosts it from
 // there. One database serves the whole run, so every check is scoped to this test's own Games.
 import type { BrowserContext, Page } from "@playwright/test";
-import { BEST_WORD, settles, signInFromMyGames, someone, uploadGame, versionLine } from "./creator-helpers.js";
+import { BEST_WORD, settles, uploadGame, versionLine } from "./creator-helpers.js";
 import { expect, test } from "./fixtures.js";
 import { APP } from "./origins.js";
 import { joinPhone, PHONE, type Another } from "./site-helpers.js";
@@ -35,14 +35,17 @@ async function hostWithPhones(screen: Page, another: Another, title: string): Pr
   await expect(screen.locator(".screen-match .kit-view")).toBeVisible();
 }
 
+/** A word no other test has used: one database serves the whole run, and the account is shared. */
+const freshTag = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+
 /** Whether the page is wider than the window: something that doesn't wrap. */
 const scrollsSideways = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
 
-test("a stranger searches the Library, filters and sorts it, opens a Game's page and hosts it from there", async ({ context, another }, info) => {
-  const { email, name } = someone(info.project.name);
-  const tag = name.split(" ")[1] ?? "";
+test("a stranger searches the Library, filters and sorts it, opens a Game's page and hosts it from there", async ({ context, another, signedIn }) => {
+  const { name } = signedIn;
+  const tag = freshTag();
+  await context.addCookies(signedIn.cookies);
   const creator = context.pages()[0] ?? (await context.newPage());
-  await signInFromMyGames(creator, email, name);
   // Aster first, so Zinnia is the newer.
   const asterId = await publishGame(creator, bestWordAs(`Aster ${tag}`, { min: 3, max: 4 }), `A small garden game, ${tag}.`);
   const zinniaId = await publishGame(creator, bestWordAs(`Zinnia ${tag}`, { min: 3, max: 8 }), `A bigger garden game, ${tag}.`);
@@ -116,11 +119,10 @@ test("a Game nobody can see has no page: the same answer as one that never exist
   }
 });
 
-test("at phone width, a long title and a description with no spaces wrap instead of widening the page", async ({ context, another }, info) => {
-  const { email, name } = someone(info.project.name);
-  const tag = name.split(" ")[1] ?? "";
+test("at phone width, a long title and a description with no spaces wrap instead of widening the page", async ({ context, another, signedIn }) => {
+  const tag = freshTag();
+  await context.addCookies(signedIn.cookies);
   const creator = context.pages()[0] ?? (await context.newPage());
-  await signInFromMyGames(creator, email, name);
   const title = `W${tag}${"W".repeat(60)}`.slice(0, 60);
   const id = await publishGame(creator, bestWordAs(title, { min: 3, max: 8 }), `${tag}${"m".repeat(280)}`);
 

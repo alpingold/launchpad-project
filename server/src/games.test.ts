@@ -593,6 +593,51 @@ describe("what a Creator writes is text", () => {
   });
 });
 
+describe("blocked words, where text becomes public, each refusal naming the word", () => {
+  const publishIt = (cookie: string, game: GameSeen) => call("POST", `/api/my/games/${game.id}/publish`, { body: { versionId: game.versions[0]?.id }, cookie });
+  const describeIt = (cookie: string, game: GameSeen, description: string) => call("PUT", `/api/my/games/${game.id}`, { body: { description }, cookie });
+
+  test("a display name, when it is chosen; a harmless name containing a blocked word is taken", async () => {
+    const ada = await signIn("ada@purdue.edu", null);
+    const refused = await call("POST", "/api/me/display-name", { body: { displayName: "x_fuck_99" }, cookie: ada });
+    expect(refused).toEqual(expect.objectContaining({ status: 400, body: { error: `That display name has a word the site doesn't allow: "fuck". Pick another.` } }));
+    expect((await call("POST", "/api/me/display-name", { body: { displayName: "Scunthorpe Sam" }, cookie: ada })).status).toBe(200);
+  });
+
+  test("a Game's title, from its Version's about, when it is published; the Game stays unpublished", async () => {
+    const ada = await signIn("ada@purdue.edu");
+    const game = await readyGame(ada, "rude", "Whores of Space");
+    const refused = await publishIt(ada, game);
+    expect(refused.status).toBe(400);
+    expect(refused.body["error"]).toBe(`The Game's title has a word the site doesn't allow: "whore". Change the title in the Game's code, upload it as a new Version and publish that.`);
+    expect((await gameSeen(ada, game.id)).publishedVersionId).toBeNull();
+  });
+
+  test("a description, when the Game is published: kept while it is private, refused at publishing", async () => {
+    const ada = await signIn("ada@purdue.edu");
+    const game = await readyGame(ada, "nice", "Nice Game");
+    expect((await describeIt(ada, game, "A game for twats")).status).toBe(200);
+    expect(await publishIt(ada, game)).toEqual(expect.objectContaining({ status: 400, body: { error: `The description has a word the site doesn't allow: "twat". Change it and try again.` } }));
+    expect((await gameSeen(ada, game.id)).publishedVersionId).toBeNull();
+  });
+
+  test("a description changed while the Game is published is refused, and the old one stays", async () => {
+    const ada = await signIn("ada@purdue.edu");
+    const game = await readyGame(ada, "nice", "Nice Game");
+    expect((await describeIt(ada, game, "Draw things.")).status).toBe(200);
+    expect((await publishIt(ada, game)).status).toBe(200);
+    expect(await describeIt(ada, game, "Draw a CUNT")).toEqual(expect.objectContaining({ status: 400, body: { error: `The description has a word the site doesn't allow: "cunt". Change it and try again.` } }));
+    expect((await gameSeen(ada, game.id)).description).toBe("Draw things.");
+  });
+
+  test("a harmless title and description containing blocked words are published", async () => {
+    const ada = await signIn("ada@purdue.edu");
+    const game = await readyGame(ada, "harmless", "Scunthorpe Spice Rack");
+    expect((await describeIt(ada, game, "Specific gravity, fire retardant and spicy tacos.")).status).toBe(200);
+    expect((await publishIt(ada, game)).status).toBe(200);
+  });
+});
+
 test("a real Playtest, end to end, through the child-process way", async () => {
   await server.close();
   await startServer(childProcessRunner({ log: () => undefined }));
