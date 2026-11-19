@@ -8,6 +8,8 @@ import type { GameLimits } from "./make/rules.js";
 export interface SiteConfig {
   readonly frameUrl: string;
   readonly limits: GameLimits;
+  /** Whether the site's AI maker is on: a model and a key secret are both set on the server. */
+  readonly aiMaker: boolean;
 }
 
 let loading: Promise<SiteConfig> | undefined;

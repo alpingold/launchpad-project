@@ -5,6 +5,7 @@
 import "./pages/pages.css";
 import { ConfirmPage } from "./pages/ConfirmPage.js";
 import { HomePage } from "./pages/HomePage.js";
+import { KeyPage } from "./pages/KeyPage.js";
 import { LibraryGamePage } from "./pages/LibraryGamePage.js";
 import { LibraryPage } from "./pages/LibraryPage.js";
 import { MakePage } from "./pages/MakePage.js";
@@ -35,6 +36,7 @@ function Page({ path }: { path: string }) {
   if (path === "/sign-in") return <SignInPage />;
   if (path === "/my/games") return <MyGamesPage />;
   if (path === "/make") return <MakePage />;
+  if (path === "/my/genai-key") return <KeyPage />;
   if (path === "/privacy") return <PrivacyPage />;
   const game = /^\/my\/games\/([^/]+)$/.exec(path)?.[1];
   if (game !== undefined) return <MyGamePage id={decodeURIComponent(game)} />;

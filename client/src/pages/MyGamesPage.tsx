@@ -51,6 +51,9 @@ export function MyGamesPage() {
         <p>
           <a href="/make">How to write a Game with any AI, or by hand</a>: the rules, a prompt to copy and the SDK's types.
         </p>
+        <p>
+          <a href="/my/genai-key">Your GenAI Studio key</a>, for the site's own AI maker.
+        </p>
         <UploadBox label="Upload" send={uploadGame} onSent={(sent) => location.assign(`/my/games/${encodeURIComponent((sent as { game: Game }).game.id)}`)} />
       </section>
     </main>

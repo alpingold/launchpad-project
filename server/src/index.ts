@@ -4,6 +4,7 @@
  */
 import { createServer as createHttpServer, type IncomingMessage, type Server } from "node:http";
 import type { PlaytestRunner } from "@boilergames/playtest/client";
+import type { KeySecret } from "./generations/key-secret.js";
 import type { Model } from "./generations/model.js";
 import { IN_MEMORY, openDatabase, type Database } from "./db/database.js";
 import { RecordedMail, type Mail } from "./mail.js";
@@ -36,6 +37,8 @@ export interface ServerOptions extends SiteOptions {
    * is off.
    */
   readonly model?: Model | null;
+  /** What Creators' keys are encrypted with (key-secret.ts). Null or left out: none, and the AI maker is off. */
+  readonly keySecret?: KeySecret | null;
 }
 
 export interface RunningServer {
@@ -60,7 +63,7 @@ export function createServer(options: ServerOptions): RunningServer {
   const database = options.database ?? openDatabase({ file: IN_MEMORY, log: () => undefined });
   const clock = options.clock ?? realClock;
   const addressOf = options.addressOf ?? ((request: IncomingMessage) => request.socket.remoteAddress ?? "unknown");
-  const site = createSite({ ...options, database, clock, addressOf, mail: options.mail ?? new RecordedMail(), playtest: options.playtest ?? null });
+  const site = createSite({ ...options, database, clock, addressOf, mail: options.mail ?? new RecordedMail(), playtest: options.playtest ?? null, model: options.model ?? null, keySecret: options.keySecret ?? null });
   const http = createHttpServer(site.app);
   const { stop } = attachRooms(http, {
     clock,

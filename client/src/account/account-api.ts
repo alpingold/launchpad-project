@@ -34,6 +34,10 @@ export async function put<T>(path: string, body: unknown): Promise<Answer<T>> {
   return send<T>("PUT", path, body);
 }
 
+export async function del<T>(path: string, body: unknown = {}): Promise<Answer<T>> {
+  return send<T>("DELETE", path, body);
+}
+
 async function send<T>(method: string, path: string, body: unknown): Promise<Answer<T>> {
   try {
     return await answer<T>(await fetch(path, { method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) }));

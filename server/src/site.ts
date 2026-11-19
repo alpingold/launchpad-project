@@ -10,6 +10,9 @@ import type { PlaytestRunner } from "@boilergames/playtest/client";
 import express, { type ErrorRequestHandler, type Express, type RequestHandler } from "express";
 import type { Database } from "./db/database.js";
 import { GAME_LIMITS, gameRoutes, UPLOAD_PATHS, uploadBodies, type Listing, type OfficialGames } from "./games.js";
+import { keyRoutes } from "./generations/key-routes.js";
+import type { KeySecret } from "./generations/key-secret.js";
+import type { Model } from "./generations/model.js";
 import { libraryRoutes } from "./library.js";
 import type { Mail } from "./mail.js";
 import { playCounter } from "./plays.js";
@@ -36,6 +39,10 @@ export interface SiteParts {
   readonly addressOf: (request: IncomingMessage) => string;
   /** How a Playtest is run, for Uploads. Null: there is none, and Uploads are refused. */
   readonly playtest: PlaytestRunner | null;
+  /** The model the AI maker talks to. Null: none, and the AI maker is off. */
+  readonly model: Model | null;
+  /** What Creators' keys are encrypted with. Null: none, and the AI maker is off. */
+  readonly keySecret: KeySecret | null;
 }
 
 export interface Site {
@@ -52,7 +59,7 @@ const READING = new Set(["GET", "HEAD", "OPTIONS"]);
 export const MAX_BODY_BYTES = 16 * 1024;
 
 /** The client's pages. Each is the same index.html; the client draws the page its path names. */
-const PAGES = ["/screen", "/play", "/sign-in", "/sign-in/confirm", "/sign-in/name", "/my/games", "/my/games/:id", "/library", "/library/:id", "/make", "/privacy"];
+const PAGES = ["/screen", "/play", "/sign-in", "/sign-in/confirm", "/sign-in/name", "/my/games", "/my/games/:id", "/library", "/library/:id", "/make", "/privacy", "/my/genai-key"];
 
 /**
  * Every request that changes something passes here first, before its body is read and before any
@@ -128,11 +135,16 @@ export function createSite(options: SiteOptions & SiteParts): Site {
   app.use(games.router);
   app.use(libraryRoutes({ database: options.database, official }));
   const plays = playCounter({ database: options.database, clock: options.clock, official });
+  // The AI maker is on only with both a model and a key secret: without either, a release runs as
+  // before, and the maker's pages say it isn't available.
+  const aiMaker = options.model !== null && options.keySecret !== null;
+  const keys = keyRoutes({ database: options.database, clock: options.clock, model: options.model, keySecret: options.keySecret, signedIn: signIn.signedIn });
+  app.use(keys.router);
 
   // What the pages need to know about this deployment: where the Game frame is served, and the
-  // limits a Game is held to (for /make).
+  // limits a Game is held to (for /make), and whether the AI maker is on.
   app.get("/api/config", (_request, response) => {
-    response.json({ frameUrl: options.frameUrl, limits: GAME_LIMITS });
+    response.json({ frameUrl: options.frameUrl, limits: GAME_LIMITS, aiMaker });
   });
 
   app.use(express.static(options.clientDist, { index: "index.html", dotfiles: "deny" }));
@@ -150,6 +162,7 @@ export function createSite(options: SiteOptions & SiteParts): Site {
       signIn.stop();
       games.stop();
       plays.stop();
+      keys.stop();
     },
   };
 }

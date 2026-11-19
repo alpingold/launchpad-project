@@ -7,6 +7,7 @@
  * frame server every request it answers, so a test can prove nothing left the browser, rather than
  * trusting that an attempt "failed".
  */
+import { randomBytes } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { extname, join, normalize } from "node:path";
@@ -15,6 +16,8 @@ import { build, defaultClientConditions } from "vite";
 import { buildOfficialGames } from "../games/scripts/build.js";
 import { childProcessRunner } from "../playtest/src/client.js";
 import { createFrameServer } from "../server/src/frame-origin.js";
+import { devFakeModel } from "../server/src/generations/dev-fake.js";
+import { keySecretFromBytes } from "../server/src/generations/key-secret.js";
 import { createServer as createSiteServer, RecordedMail } from "../server/src/index.js";
 import { APP, APP_FRAME, FRAME, OUTSIDE, SITE } from "./origins.js";
 
@@ -191,6 +194,10 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     // The real Playtest, in a child process (no wall: this is a test machine), from the Playtest's
     // built runner: `npm run build` first.
     playtest: childProcessRunner(),
+    // The AI maker, on: the development fake model (nothing leaves this machine) and a key secret
+    // made for this run.
+    model: devFakeModel(),
+    keySecret: keySecretFromBytes(randomBytes(32)),
   });
   const appFrame = createFrameServer({ root: join(out, "frame"), siteOrigin: APP });
 
