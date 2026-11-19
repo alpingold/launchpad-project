@@ -5,7 +5,8 @@
  *
  *   node playtest/dist/runner.js < request.json > result.json
  *
- * The request is JSON: { "v": 1, "source": "<the Game's TypeScript>" }. The result is the Playtest's
+ * The request is JSON: { "v": 1, "source": "<the Game's TypeScript>" }, and for a Game the site's AI
+ * made, "expect": its Concept (expect.ts), which must be valid or the runner fails. The result is the Playtest's
  * result as JSON (playtest.ts). If the Playtest itself breaks, the runner writes nothing, says why on
  * standard error (the journal, on the server) and exits with 1; whoever started it tells the Creator
  * the check itself failed.
@@ -22,6 +23,7 @@
  * This file is a program, not a module: importing it runs it. Its constants are in limits.ts.
  */
 import { createRequire } from "node:module";
+import { readExpect } from "./expect.js";
 import { ATTACK_TEST_SWITCH, MAX_REQUEST_BYTES } from "./limits.js";
 import { playtest } from "./playtest.js";
 
@@ -46,7 +48,13 @@ async function main(): Promise<void> {
   const request: unknown = JSON.parse(await readRequest());
   const source = (request as { v?: unknown; source?: unknown } | null)?.source;
   if ((request as { v?: unknown } | null)?.v !== 1 || typeof source !== "string") throw new Error('the request must be { "v": 1, "source": "..." }');
-  const result = await playtest(source, attackTest ? { giveTheGame: { process, require: createRequire(import.meta.url) } } : {});
+  const given = (request as { expect?: unknown }).expect;
+  const expect = given === undefined ? undefined : readExpect(given);
+  if (expect !== undefined && !expect.ok) throw new Error(`the request's ${expect.why}`);
+  const result = await playtest(source, {
+    ...(attackTest ? { giveTheGame: { process, require: createRequire(import.meta.url) } } : {}),
+    ...(expect === undefined ? {} : { expect: expect.expect }),
+  });
   await write(`${JSON.stringify(result)}\n`);
 }
 

@@ -48,9 +48,38 @@ export function about() {
   return JSON.stringify({ about: { title, players: { min, max }, ...(about.look === undefined ? {} : { look: about.look }) } });
 }
 
-/** One simulated Match: the simulator's result. */
+/** The most different phase values one Match's notes keep. */
+const MAX_PHASES_SEEN = 20;
+/** The longest a phase value is kept: enough to quote it, never the Game's whole text. */
+const MAX_PHASE_CHARS = 60;
+
+/**
+ * One simulated Match: the simulator's result. Asked to watch (a generated Game's Playtest), it also
+ * notes what the Match's state said its phase was, and how the Match ended: data only, capped, and
+ * checked again outside (play.ts), since the Game shares this context and could forge it.
+ */
 export function play(options) {
-  return JSON.stringify(simulate(globalThis.BoilerGamesGame, JSON.parse(options)));
+  const { watch, ...run } = JSON.parse(options);
+  if (watch !== true) return JSON.stringify(simulate(globalThis.BoilerGamesGame, run));
+  const phases = [];
+  let notText = null;
+  let noPhase = false;
+  let end = null;
+  const observe = ({ match, outcome, events }) => {
+    // Each play starts again at 0 events: what counts is how the last one ended.
+    if (events === 0) end = null;
+    const state = match.state;
+    if (!isRecord(state) || !Object.hasOwn(state, "phase")) noPhase = true;
+    else if (typeof state.phase !== "string") notText ??= state.phase === null ? "null" : Array.isArray(state.phase) ? "a list" : typeof state.phase;
+    else if (!phases.includes(state.phase.slice(0, MAX_PHASE_CHARS)) && phases.length < MAX_PHASES_SEEN) phases.push(state.phase.slice(0, MAX_PHASE_CHARS));
+    if (outcome.status === "ended" && outcome.reason === "finished") {
+      const scores = isRecord(outcome.end.scores) ? Object.values(outcome.end.scores) : [];
+      const winners = Array.isArray(outcome.end.winners) ? outcome.end.winners.length : 0;
+      end = { players: match.players.length, scores, winners };
+    }
+  };
+  const result = simulate(globalThis.BoilerGamesGame, { ...run, observe });
+  return JSON.stringify({ ...result, watched: { phases, notText, noPhase, end } });
 }
 `;
 

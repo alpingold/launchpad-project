@@ -29,6 +29,7 @@ import { connect } from "node:net";
 import { fileURLToPath } from "node:url";
 import { checkLook } from "@boilergames/sdk/v1/check";
 import { z } from "zod";
+import type { Expect } from "./expect.js";
 import { MAX_BUNDLE_BYTES, MAX_PROBLEM_CHARS, MAX_PROBLEMS } from "./limits.js";
 import type { PlaytestResult } from "./playtest.js";
 import type { Problem } from "./problems.js";
@@ -53,8 +54,16 @@ export const CHECK_FAILED = "The check itself failed, not your Game. Try again i
 /** A Playtest's result, or word that the check itself failed (try again: say nothing about the Game). */
 export type RunResult = PlaytestResult | { readonly ok: false; readonly checkFailed: true; readonly problems: readonly [Problem] };
 
+export type { Expect } from "./expect.js";
+export { readExpect } from "./expect.js";
+
+export interface RunOptions {
+  /** For a Game the site's AI made: the Concept it must match. Never for an Upload. */
+  readonly expect?: Expect;
+}
+
 export interface PlaytestRunner {
-  run(source: string): Promise<RunResult>;
+  run(source: string, options?: RunOptions): Promise<RunResult>;
 }
 
 const utf8Bytes = (text: string) => Buffer.byteLength(text, "utf8");
@@ -128,7 +137,8 @@ function settle(outcome: { kind: "output"; text: string } | { kind: "timeout" } 
   return read.result;
 }
 
-const request = (source: string) => `${JSON.stringify({ v: 1, source })}\n`;
+/** The runner's request. An Upload's has no expect key at all: the same request as always. */
+const request = (source: string, options: RunOptions = {}) => `${JSON.stringify(options.expect === undefined ? { v: 1, source } : { v: 1, source, expect: options.expect })}\n`;
 
 /**
  * The child-process way. NO WALL: development and tests only. `command` is the runner by default;
@@ -139,7 +149,7 @@ export function childProcessRunner(options: { readonly timeoutMs?: number; reado
   const log = options.log ?? ((line) => console.error(line));
   const [program = process.execPath, ...args] = options.command ?? [process.execPath, RUNNER];
   return {
-    run(source) {
+    run(source, runOptions) {
       return new Promise((resolve) => {
         const child = spawn(program, args, { stdio: ["pipe", "pipe", "pipe"] });
         const chunks: Buffer[] = [];
@@ -166,7 +176,7 @@ export function childProcessRunner(options: { readonly timeoutMs?: number; reado
           finish({ kind: "broken", why: `the runner exited with ${signal ?? String(code)}${errors === "" ? "" : `: ${errors.trim()}`}` });
         });
         child.stdin.on("error", () => undefined);
-        child.stdin.end(request(source));
+        child.stdin.end(request(source, runOptions));
       });
     },
   };
@@ -188,7 +198,7 @@ export function socketRunner(path: string, options: { readonly timeoutMs?: numbe
   const log = options.log ?? ((line) => console.error(line));
   let running = 0;
   const waiting: (() => void)[] = [];
-  const once = (source: string) =>
+  const once = (source: string, runOptions?: RunOptions) =>
     new Promise<RunResult>((resolve) => {
       const socket = connect(path);
       const chunks: Buffer[] = [];
@@ -202,7 +212,7 @@ export function socketRunner(path: string, options: { readonly timeoutMs?: numbe
         resolve(settle(outcome, timeoutMs, log));
       };
       const timer = setTimeout(() => finish({ kind: "timeout" }), timeoutMs);
-      socket.on("connect", () => socket.end(request(source)));
+      socket.on("connect", () => socket.end(request(source, runOptions)));
       socket.on("data", (chunk: Buffer) => {
         size += chunk.length;
         if (size > MAX_RESULT_BYTES) return finish({ kind: "broken", why: `the runner wrote more than ${MAX_RESULT_BYTES} bytes` });
@@ -216,13 +226,13 @@ export function socketRunner(path: string, options: { readonly timeoutMs?: numbe
       });
     });
   return {
-    async run(source) {
+    async run(source, runOptions) {
       // A run that finishes hands its place straight to the next one waiting, so there are never
       // more than MAX_AT_ONCE, even for a moment.
       if (running >= MAX_AT_ONCE) await new Promise<void>((go) => waiting.push(go));
       else running += 1;
       try {
-        return await once(source);
+        return await once(source, runOptions);
       } finally {
         const next = waiting.shift();
         if (next === undefined) running -= 1;

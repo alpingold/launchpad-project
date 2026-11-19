@@ -11,7 +11,7 @@
  * Game frame's two-second rule, or the Playtest's child process with a time limit).
  */
 import type { Drawing, Hex, Player } from "./index.js";
-import { MAX_PLAYERS, startMatch, type AnyGame, type Match, type Outcome } from "./engine.js";
+import { MAX_PLAYERS, startMatch, type AnyGame, type Match, type MatchSnapshot, type Outcome } from "./engine.js";
 import { availableActions, type AvailableAction } from "./offers.js";
 import { createRng, type SeededRng } from "./rng.js";
 
@@ -51,6 +51,23 @@ export interface SimulateOptions {
    * with joiners is skipped: its problems would only repeat them.
    */
   readonly joiners?: number;
+  /**
+   * Hears the Match as it goes: once after its start and once after every event, with the Match as
+   * it then stands, that event's Outcome, and how many events there had been. For whoever wants to
+   * watch what a Game does (the Playtest, checking a generated Game against its Concept). It changes
+   * nothing about the run or its result.
+   *
+   * With joiners, the Match is played twice (see joiners) and it hears both plays: each one begins
+   * again at 0 events, and the second, when there is one, is the one whose result is returned.
+   */
+  readonly observe?: (seen: Observed) => void;
+}
+
+/** What `observe` hears. */
+export interface Observed {
+  readonly match: MatchSnapshot;
+  readonly outcome: Outcome;
+  readonly events: number;
 }
 
 export interface SimulateResult {
@@ -81,7 +98,7 @@ export function simulate(game: AnyGame, options: SimulateOptions): SimulateResul
     // The simulator's own generator: a different seed from the Match's, so its choices don't shift
     // the Game's own random numbers.
     const choices = createRng((options.seed ^ 0x5f3759df) >>> 0);
-    return new Run(begun.match, starters, leavers, joins, choices).play(begun.outcome);
+    return new Run(begun.match, starters, leavers, joins, choices, options.observe).play(begun.outcome);
   };
 
   const measured = play([]);
@@ -128,6 +145,7 @@ class Run {
     leavers: number,
     joins: readonly Join[],
     private readonly rng: SeededRng,
+    private readonly observe?: (seen: Observed) => void,
   ) {
     this.present = [...starters];
     this.latecomerIds = new Set(joins.map((j) => j.who.id));
@@ -141,6 +159,7 @@ class Run {
     let outcome = first;
     let finished = false;
     for (;;) {
+      this.observe?.({ match: this.match.snapshot(), outcome, events: this.steps });
       if (outcome.status === "broken") {
         // Cut short, like a Match ended by too few Players: whether everyone would have had a turn
         // can't be known, so the "never offered" check would only add noise to the real problem.

@@ -10,6 +10,10 @@
  * 3. Play: the simulator, with the fewest Players, the most, the most with leavers and the fewest
  *    with joiners, each on 3 seeds (play.ts, playAll).
  *
+ * A Game the site's AI made is also checked against its Concept (`expect`, expect.ts): its Player
+ * count at the bundle stage, its phases and scoring at the play stage. Without `expect`, which is
+ * every Upload, none of that happens and the result is what it always was.
+ *
  * It runs code a stranger wrote. Nothing in this package is a wall: on the server it runs inside
  * the operating system's (Step 13).
  */
@@ -18,6 +22,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { bundleGame, RefusedImport } from "./bundle.js";
+import type { Expect } from "./expect.js";
 import { harnessScript } from "./harness.js";
 import { MAX_BUNDLE_BYTES, MAX_SOURCE_BYTES } from "./limits.js";
 import { load, playAll, type About } from "./play.js";
@@ -37,6 +42,8 @@ export interface PlaytestOptions {
    * Node's `process`, so a hostile Game can try the operating system's wall directly.
    */
   readonly giveTheGame?: Readonly<Record<string, unknown>>;
+  /** For a Game the site's AI made: the Concept it must match (expect.ts). Never for an Upload. */
+  readonly expect?: Expect;
 }
 
 const utf8Bytes = (text: string) => Buffer.byteLength(text, "utf8");
@@ -88,7 +95,12 @@ export async function playtest(source: string, options: PlaytestOptions = {}): P
 
     const loaded = load(bundle, await harnessScript(form), options.giveTheGame);
     if (!loaded.ok) return failed(loaded.problems);
-    const playProblems = playAll(loaded.context, loaded.about);
+    const expected = options.expect?.players;
+    if (expected !== undefined && (loaded.about.players.min !== expected.min || loaded.about.players.max !== expected.max)) {
+      const { min, max } = loaded.about.players;
+      return failed([{ stage: "bundle", message: `about.players is { min: ${min}, max: ${max} }, but the Concept's is { min: ${expected.min}, max: ${expected.max} }. Use the Concept's.` }]);
+    }
+    const playProblems = playAll(loaded.context, loaded.about, options.expect);
     if (playProblems.length > 0) return failed(playProblems);
     return { ok: true, bundle, about: loaded.about, sdkVersion: "v1" };
   } finally {
