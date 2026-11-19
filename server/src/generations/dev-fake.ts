@@ -9,5 +9,5 @@ import { ScriptedModel } from "./fake-model.js";
 export const FAKE_REJECTED_KEY = "rejected-key-0000";
 
 export function devFakeModel(): ScriptedModel {
-  return new ScriptedModel([], { rejectedKeys: [FAKE_REJECTED_KEY] });
+  return new ScriptedModel([], { rejectedKeys: [FAKE_REJECTED_KEY], record: false });
 }

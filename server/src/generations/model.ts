@@ -26,9 +26,14 @@ export type ModelFailure = "keyRejected" | "rateLimited" | "unavailable";
 
 export type Completion = { readonly ok: true; readonly text: string } | { readonly ok: false; readonly failure: ModelFailure };
 
+export interface CompleteOptions {
+  /** Gives the call up (a cancelled Generation): it then fails as unavailable, at once. */
+  readonly signal?: AbortSignal;
+}
+
 export interface Model {
-  /** Asks the model, with the Creator's key, and returns its whole answer or how it failed. */
-  complete(key: string, messages: readonly ChatMessage[]): Promise<Completion>;
+  /** Asks the model, with the Creator's key, and returns its whole answer or how it failed. It never throws. */
+  complete(key: string, messages: readonly ChatMessage[], options?: CompleteOptions): Promise<Completion>;
   /** Whether GenAI Studio takes this key: "valid", or how the check failed. */
   checkKey(key: string): Promise<"valid" | ModelFailure>;
 }
@@ -52,20 +57,49 @@ type Answer = { readonly status: number; readonly body: string } | { readonly fa
  * 5 minutes without headers and can't be told otherwise without a dependency. Redirects are never
  * followed (these modules don't), so a key is never sent anywhere but the configured address.
  */
-function send(url: URL, method: "GET" | "POST", key: string, body: string | undefined, timeoutMs: number): Promise<Answer> {
+function send(url: URL, method: "GET" | "POST", key: string, body: string | undefined, timeoutMs: number, signal?: AbortSignal): Promise<Answer> {
   return new Promise((resolve) => {
     let settled = false;
+    let deadline: NodeJS.Timeout | undefined;
     const finish = (answer: Answer) => {
       if (settled) return;
       settled = true;
       clearTimeout(deadline);
+      signal?.removeEventListener("abort", abort);
       resolve(answer);
     };
+    const abort = () => {
+      outgoing?.destroy();
+      finish({ failed: true });
+    };
+    if (signal?.aborted === true) return finish({ failed: true });
     const make = url.protocol === "https:" ? httpsRequest : httpRequest;
-    const outgoing = make(
+    let outgoing: ReturnType<typeof make> | undefined;
+    try {
+      outgoing = makeRequest();
+    } catch {
+      // A header Node won't send (a key holding a line break or a character it can't write) throws
+      // here, naming only the header. It is a failure like any other, never an exception.
+      return finish({ failed: true });
+    }
+    signal?.addEventListener("abort", abort, { once: true });
+    // The whole call, headers and answer, within the time; the error (if any) carries no key, and
+    // is never passed on anyway: only "failed".
+    deadline = setTimeout(() => {
+      outgoing?.destroy();
+      finish({ failed: true });
+    }, timeoutMs);
+    outgoing.on("error", () => finish({ failed: true }));
+    outgoing.end(body);
+
+    function makeRequest() {
+      return make(
       url,
       {
         method,
+        // A connection of its own, not one kept from a shared pool: a call is minutes long, and a
+        // pool's own timeouts must have no say in when it gives up.
+        agent: false,
         headers: {
           authorization: `Bearer ${key}`,
           accept: "application/json",
@@ -86,15 +120,8 @@ function send(url: URL, method: "GET" | "POST", key: string, body: string | unde
         response.on("end", () => finish({ status: response.statusCode ?? 0, body: Buffer.concat(chunks).toString("utf8") }));
         response.on("error", () => finish({ failed: true }));
       },
-    );
-    // The whole call, headers and answer, within the time; the error (if any) carries no key, and
-    // is never passed on anyway: only "failed".
-    const deadline = setTimeout(() => {
-      outgoing.destroy();
-      finish({ failed: true });
-    }, timeoutMs);
-    outgoing.on("error", () => finish({ failed: true }));
-    outgoing.end(body);
+      );
+    }
   });
 }
 
@@ -116,9 +143,9 @@ function parseJson(text: string): { ok: true; value: unknown } | { ok: false } {
 export function genaiModel(options: GenaiOptions): Model {
   const base = options.baseUrl.replace(/\/+$/, "");
   return {
-    async complete(key, messages) {
+    async complete(key, messages, call = {}) {
       const body = JSON.stringify({ model: options.model, messages, stream: false });
-      const answer = await send(new URL(`${base}/chat/completions`), "POST", key, body, options.completionTimeoutMs ?? COMPLETION_TIMEOUT_MS);
+      const answer = await send(new URL(`${base}/chat/completions`), "POST", key, body, options.completionTimeoutMs ?? COMPLETION_TIMEOUT_MS, call.signal);
       if ("failed" in answer) return { ok: false, failure: "unavailable" };
       if (answer.status !== 200) return { ok: false, failure: failureOf(answer.status) };
       const parsed = parseJson(answer.body);
@@ -144,7 +171,10 @@ export function genaiModel(options: GenaiOptions): Model {
 
 /** The answer without the model's thinking (`<think>...</think>`), which some models write first. */
 export function withoutThinking(text: string): string {
-  return text.replace(/<think>[\s\S]*?<\/think>/g, "").replace(/^[\s\S]*<\/think>/, "").trim();
+  // Each <think>...</think>, and a <think> never closed (all of the rest is thinking).
+  if (text.includes("<think>")) return text.replace(/<think>[\s\S]*?(<\/think>|$)/g, "").trim();
+  // Some models leave out the opening tag: everything up to the first </think> is thinking.
+  return text.replace(/^[\s\S]*?<\/think>/, "").trim();
 }
 
 /** The longest fenced code block in the answer (```ts ... ```), or undefined if it has none. */
