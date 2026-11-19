@@ -75,3 +75,22 @@ body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; ba
 .my-problems { margin: 6px 0 0; padding-left: 20px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .my-version-actions { display: flex; gap: 8px; margin-top: 6px !important; }
 .screen-uploaded { font-style: italic; }
+
+/* The Library. A Game's title, description and Creator are a stranger's text: long words break
+   rather than push the page wider than a phone. */
+.library-controls { display: flex; flex-wrap: wrap; gap: 12px; }
+.library-controls label { display: flex; flex-direction: column; gap: 4px; font-weight: 600; flex: 1 1 180px; }
+.library-controls input, .library-controls select { font: inherit; padding: 8px; border: 2px solid #1d3f91; border-radius: 8px; background: #fff; min-width: 0; }
+.library-cards { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: 12px; }
+/* A card is drawn in its Game's own Look: its background and text colours, the pair the Playtest checked. */
+.library-card { background: var(--kit-background); color: var(--kit-text); border-radius: 10px; padding: 12px; min-width: 0; overflow-wrap: anywhere; border: 1px solid rgba(0, 0, 0, 0.15); }
+.library-card h2 { margin: 0 0 6px; font-size: 1.15em; }
+.library-card a { color: inherit; }
+.library-card p { margin: 0; }
+.library-card-facts { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 0.9em; }
+.library-card-description { margin-top: 6px !important; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.library-game-head { background: var(--kit-background); color: var(--kit-text); border-radius: 10px; padding: 16px; overflow-wrap: anywhere; }
+.library-game-head h1 { margin: 0; }
+.library-game-head p { margin: 4px 0 0; }
+.library-game p { margin: 0; overflow-wrap: anywhere; }
+.library-game-description { white-space: pre-line; }

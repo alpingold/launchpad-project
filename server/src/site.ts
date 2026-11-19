@@ -10,6 +10,7 @@ import type { PlaytestRunner } from "@boilergames/playtest/client";
 import express, { type ErrorRequestHandler, type Express, type RequestHandler } from "express";
 import type { Database } from "./db/database.js";
 import { gameRoutes, UPLOAD_PATHS, uploadBodies, type Listing, type OfficialGames } from "./games.js";
+import { libraryRoutes } from "./library.js";
 import type { Mail } from "./mail.js";
 import { playCounter } from "./plays.js";
 import type { Clock, EndedMatch } from "./rooms.js";
@@ -51,7 +52,7 @@ const READING = new Set(["GET", "HEAD", "OPTIONS"]);
 export const MAX_BODY_BYTES = 16 * 1024;
 
 /** The client's pages. Each is the same index.html; the client draws the page its path names. */
-const PAGES = ["/screen", "/play", "/sign-in", "/sign-in/confirm", "/sign-in/name", "/my/games", "/my/games/:id"];
+const PAGES = ["/screen", "/play", "/sign-in", "/sign-in/confirm", "/sign-in/name", "/my/games", "/my/games/:id", "/library", "/library/:id"];
 
 /**
  * Every request that changes something passes here first, before its body is read and before any
@@ -85,21 +86,26 @@ const errors: ErrorRequestHandler = (error: { status?: number; statusCode?: numb
  * listing names it, and a request's `:id` is looked up, never turned into a file path.
  */
 function loadGames(gamesDist: string): OfficialGames {
-  let listing: Listing[];
+  let listed: (Listing & { readonly description?: unknown })[];
   try {
-    listing = JSON.parse(readFileSync(join(gamesDist, "games.json"), "utf8")) as Listing[];
+    listed = JSON.parse(readFileSync(join(gamesDist, "games.json"), "utf8")) as (Listing & { readonly description?: unknown })[];
   } catch (error) {
     // Not built yet (development before the first build): no Games, rather than no server.
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     console.warn(`No games.json in ${gamesDist}: run npm run build to build the Official games.`);
-    return { listing: [], bundles: new Map() };
+    return { listing: [], bundles: new Map(), descriptions: new Map() };
   }
   const bundles = new Map<string, Buffer>();
-  for (const game of listing) {
+  const descriptions = new Map<string, string>();
+  const listing: Listing[] = [];
+  for (const { description, ...game } of listed) {
     if (typeof (game.id as unknown) !== "string" || !/^[a-z0-9-]+$/.test(game.id)) throw new Error(`games.json lists a Game with a bad id: ${JSON.stringify(game.id)}`);
     bundles.set(game.id, readFileSync(join(gamesDist, `${game.id}.js`)));
+    // The description is the Library's alone: the Lobby's list (/api/games) stays as it was.
+    descriptions.set(game.id, typeof description === "string" ? description : "");
+    listing.push(game);
   }
-  return { listing, bundles };
+  return { listing, bundles, descriptions };
 }
 
 export function createSite(options: SiteOptions & SiteParts): Site {
@@ -120,6 +126,7 @@ export function createSite(options: SiteOptions & SiteParts): Site {
   app.use(signIn.router);
   const games = gameRoutes({ database: options.database, clock: options.clock, playtest: options.playtest, official, signedIn: signIn.signedIn });
   app.use(games.router);
+  app.use(libraryRoutes({ database: options.database, official }));
   const plays = playCounter({ database: options.database, clock: options.clock, official });
 
   // What the pages need to know about this deployment: where the Game frame is served.

@@ -17,7 +17,7 @@ class FakeClock implements Clock {
 }
 
 /** One Official game, for 2 to 6 Players, as games.json lists it. */
-const OFFICIAL: OfficialGames = { listing: [{ id: "allotments", title: "Allotments", players: { min: 2, max: 6 } }], bundles: new Map() };
+const OFFICIAL: OfficialGames = { listing: [{ id: "allotments", title: "Allotments", players: { min: 2, max: 6 } }], bundles: new Map(), descriptions: new Map() };
 
 let db: Database;
 let clock: FakeClock;

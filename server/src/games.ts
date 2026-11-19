@@ -90,8 +90,11 @@ export interface Listing {
 
 /** The Official games, as games/dist holds them. */
 export interface OfficialGames {
+  /** As the Lobby lists them: games.json without the descriptions, which only the Library shows. */
   readonly listing: readonly Listing[];
   readonly bundles: ReadonlyMap<string, Buffer>;
+  /** Each one's description, by id, for the Library. */
+  readonly descriptions: ReadonlyMap<string, string>;
 }
 
 export interface GameRoutesOptions {

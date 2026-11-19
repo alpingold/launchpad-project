@@ -96,6 +96,9 @@ function Lobby({
   screen: ScreenRoom;
 }) {
   const count = room.seats.length;
+  // A Game in the site's list (an Official game, or a published Game's current Version) is anyone's
+  // to host. Anything else was opened by its Creator (Play it), who alone may play it.
+  const chosenIsPublic = trying !== null && games.some((game) => game.id === trying.id);
   return (
     <main className="page screen-lobby">
       <header className="screen-code">
@@ -122,7 +125,16 @@ function Lobby({
           ))}
         </ul>
       </section>
-      {trying === null ? null : (
+      {trying === null ? null : chosenIsPublic ? (
+        // Chosen from the Library (Host this Game), or a Creator's published Version: anyone may host it.
+        <section aria-label="Chosen">
+          <h2>Chosen</h2>
+          <p>Start it when everyone is in.</p>
+          <ul className="screen-games">
+            <GameChoice game={trying} count={count} screen={screen} />
+          </ul>
+        </section>
+      ) : (
         <section aria-label="Trying out">
           <h2>Trying out</h2>
           <p>Your Version, which only you can play until you publish it.</p>
@@ -134,9 +146,11 @@ function Lobby({
       <section>
         <h2>Games</h2>
         <ul className="screen-games">
-          {games.map((game) => (
-            <GameChoice key={game.id} game={game} count={count} screen={screen} />
-          ))}
+          {games
+            .filter((game) => game.id !== trying?.id)
+            .map((game) => (
+              <GameChoice key={game.id} game={game} count={count} screen={screen} />
+            ))}
         </ul>
       </section>
     </main>

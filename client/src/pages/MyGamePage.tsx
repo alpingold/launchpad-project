@@ -77,6 +77,11 @@ export function MyGamePage({ id }: { id: string }) {
         <a href="/my/games">My Games</a>
       </p>
       <h1>{titleOf(game) ?? "Untitled Game"}</h1>
+      {game.publishedVersionId === null ? null : (
+        <p>
+          <a href={`/library/${encodeURIComponent(game.id)}`}>Its page in the Library</a>, which anyone can see and host it from.
+        </p>
+      )}
       {game.takenDownAt === null ? null : (
         <p className="page-notice" role="status">
           {TAKEN_DOWN} You can still upload Versions and play them yourself.

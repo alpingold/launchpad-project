@@ -273,3 +273,48 @@ export function publishedGames(db: Database, most: number): { readonly versionId
       .all(most),
   ).map((row) => ({ versionId: row.id, about: row.about, creator: row.display_name }));
 }
+
+/** A published Game as the Library shows it. Never its source, its bundle, or anything about its owner but their display name. */
+export interface LibraryRow {
+  readonly gameId: string;
+  /** Its published Version: what /screen?play= takes. */
+  readonly versionId: string;
+  readonly about: About;
+  readonly description: string;
+  readonly creator: string;
+  /** When the published Version was made. */
+  readonly publishedAt: number;
+  /** Its counted plays (plays.ts). */
+  readonly plays: number;
+}
+
+const libraryRow = z
+  .object({ game_id: z.string(), version_id: z.string(), about: aboutJson, description: z.string(), display_name: z.string(), published_at: z.number().int(), plays: z.number().int() })
+  .transform(
+    (row): LibraryRow => ({
+      gameId: row.game_id,
+      versionId: row.version_id,
+      about: row.about,
+      description: row.description,
+      creator: row.display_name,
+      publishedAt: row.published_at,
+      plays: row.plays,
+    }),
+  );
+
+/** Published Games only: a taken-down Game is unpublished, so it isn't here either. */
+const LIBRARY_SELECT = `SELECT games.id AS game_id, versions.id AS version_id, versions.about, games.description, accounts.display_name,
+  versions.created_at AS published_at, coalesce(plays.count, 0) AS plays
+  FROM games JOIN versions ON versions.id = games.published_version_id JOIN accounts ON accounts.id = games.owner_id
+  LEFT JOIN plays ON plays.subject = games.id
+  WHERE versions.state = 'ready'`;
+
+/** The newest `most` published Games, by when their published Version was made, newest first. */
+export function libraryGames(db: Database, most: number): LibraryRow[] {
+  return all(libraryRow, db.prepare(`${LIBRARY_SELECT} ORDER BY versions.created_at DESC, games.id LIMIT ?`).all(most));
+}
+
+/** One published Game by its Game id, or undefined: unpublished, taken down and never-existing alike. */
+export function libraryGame(db: Database, gameId: string): LibraryRow | undefined {
+  return one(libraryRow, db.prepare(`${LIBRARY_SELECT} AND games.id = ?`).get(gameId));
+}

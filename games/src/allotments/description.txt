@@ -1,0 +1,1 @@
+Gardeners take turns claiming plots on a shared 6 by 6 board, one tap per turn. When every plot is taken, each scores the size of their biggest patch of plots joined side by side.

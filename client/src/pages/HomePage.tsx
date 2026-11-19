@@ -16,6 +16,9 @@ export function HomePage() {
           Join a Room
         </a>
       </nav>
+      <p>
+        <a href="/library">Browse the Library</a>: every Game you can host.
+      </p>
     </main>
   );
 }

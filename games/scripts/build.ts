@@ -16,7 +16,7 @@
  * Node runs this file as TypeScript directly. It imports the Playtest's built dist/, so the root
  * build compiles that first (tsconfig.build.json).
  */
-import { mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { bundleGame, harnessScript, load, SDK_IMPORT } from "@boilergames/playtest";
@@ -31,6 +31,12 @@ export interface Listing {
   readonly players: { readonly min: number; readonly max: number };
   /** The Game's Look as it wrote it; the site fills the gaps. Left out if the Game set none. */
   readonly look?: unknown;
+  /**
+   * What the Players do, in two plain sentences, for the Library: the Game's description.txt, beside
+   * its code. Kept out of the Game itself, so its bundle and its `about` are untouched. The server
+   * keeps it out of the Lobby's list.
+   */
+  readonly description: string;
 }
 
 /** The Official games' ids: every folder in src/ with an index.ts. */
@@ -73,7 +79,12 @@ export async function buildOfficialGames(outDir: string): Promise<Listing[]> {
     }
     await writeFile(join(outDir, `${id}.js`), code);
     const { title, players, look } = loaded.about;
-    listing.push({ id, title, players, ...(look === undefined ? {} : { look }) });
+    const description = (await readFile(join(src, id, "description.txt"), "utf8").catch(() => "")).trim();
+    if (description === "") {
+      refused.push(`${id}:\n  It has no description.txt beside its index.ts: two plain sentences saying what the Players do.`);
+      continue;
+    }
+    listing.push({ id, title, players, ...(look === undefined ? {} : { look }), description });
   }
   if (refused.length > 0) throw new Error(`These Games can't be used:\n${refused.join("\n")}`);
   await writeFile(join(outDir, "games.json"), `${JSON.stringify(listing, null, 2)}\n`);
