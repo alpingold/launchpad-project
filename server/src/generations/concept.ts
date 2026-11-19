@@ -10,6 +10,7 @@
  */
 import type { Look } from "@boilergames/sdk/v1";
 import { checkLook } from "@boilergames/sdk/v1/check";
+import { blockedWordIn } from "../blocked-words.js";
 import type { ChatMessage, Completion, ModelFailure } from "./model.js";
 import { jsonObjectText, withoutThinking } from "./model.js";
 import { MAX_INVALID_CONCEPTS } from "./numbers.js";
@@ -98,6 +99,12 @@ export function checkConcept(value: unknown): ConceptCheck {
     problems.push(`title must be at most ${CONCEPT_LIMITS.title} characters, counting each emoji as 2 (it is ${title.length}).`);
   }
   const pitch = text("pitch", value["pitch"], CONCEPT_LIMITS.pitch);
+  // The title and pitch are what the Game's title and description come from: the same check as
+  // publishing (blocked-words.ts), so a Concept never asks for a Game that couldn't be published.
+  for (const [where, said] of [["title", title], ["pitch", pitch]] as const) {
+    const blocked = blockedWordIn(said);
+    if (blocked !== undefined) problems.push(`${where} has a word the site doesn't allow: "${blocked}". Use another word.`);
+  }
   const length = text("length", value["length"], CONCEPT_LIMITS.length);
 
   let players = { min: 0, max: 0 };

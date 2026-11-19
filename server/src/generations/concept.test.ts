@@ -38,6 +38,12 @@ describe("checking a Concept, field by field", () => {
     expect(problemsOf(withField("title", "🎲".repeat(30)))).toEqual([]);
   });
 
+  test("a blocked word in the title or pitch is refused, with the same check as publishing; a harmless word containing one passes", () => {
+    expect(problemsOf(withField("title", "Fuck Lanterns"))).toEqual(['title has a word the site doesn\'t allow: "fuck". Use another word.']);
+    expect(problemsOf(withField("pitch", "Sell lanterns, x_fuck_99."))).toEqual(['pitch has a word the site doesn\'t allow: "fuck". Use another word.']);
+    expect(problemsOf(withField("title", "Scunthorpe Night Market"))).toEqual([]);
+  });
+
   test("title, pitch and length: text, not empty, within their lengths", () => {
     expect(problemsOf(withField("title", "x".repeat(CONCEPT_LIMITS.title + 1)))).toEqual([`title must be at most ${CONCEPT_LIMITS.title} characters (it is ${CONCEPT_LIMITS.title + 1}).`]);
     expect(problemsOf(withField("title", "   "))).toEqual(["title must be text, and not empty."]);
