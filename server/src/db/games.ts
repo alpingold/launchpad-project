@@ -215,6 +215,23 @@ export function gameOfVersion(db: Database, versionId: string): Game | undefined
   );
 }
 
+/**
+ * The Game a `ready` Version belongs to, by the Version's id, and the Version's `about`: only while
+ * that Game is published (with this Version or another), so not while it is unpublished or taken
+ * down. For counting a play (plays.ts): the play belongs to the Game, whichever of its Versions it was.
+ */
+export function publishedGameOfVersion(db: Database, versionId: string): { readonly gameId: string; readonly about: About } | undefined {
+  const row = one(
+    z.object({ game_id: z.string(), about: aboutJson }),
+    db
+      .prepare(
+        "SELECT versions.game_id, versions.about FROM versions JOIN games ON games.id = versions.game_id WHERE versions.id = ? AND versions.state = 'ready' AND games.published_version_id IS NOT NULL",
+      )
+      .get(versionId),
+  );
+  return row === undefined ? undefined : { gameId: row.game_id, about: row.about };
+}
+
 /** One playable Version, by its id: what a Room needs to list it and load it, and who may. */
 export interface Playable {
   readonly versionId: string;

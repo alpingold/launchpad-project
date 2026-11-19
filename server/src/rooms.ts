@@ -91,6 +91,23 @@ export interface Clock {
   setTimeout(run: () => void, ms: number): () => void;
 }
 
+/**
+ * A Match that has just ended, as Rooms saw it. Rooms reports it and decides nothing about it: what
+ * counts as a play is plays.ts's, which has the database. Rooms stays free of the database (ADR 0005).
+ */
+export interface EndedMatch {
+  /** The `gameId` the Match was started with, as the Room recorded it at `startMatch`. */
+  readonly gameId: string;
+  /** Why it ended, as the Screen said. */
+  readonly reason: MatchResult["reason"];
+  /** How many Seats were in the Room when it ended: the server's own list, not a number from the Screen. */
+  readonly seats: number;
+  /** How long it lasted, by this server's clock, from its (latest) `startMatch`. */
+  readonly lengthMs: number;
+  /** The address of the Screen that ended it. */
+  readonly screenAddress: string;
+}
+
 export interface RoomsOptions {
   /** Sends a message on a connection. The transport writes it as JSON. */
   readonly send: (connection: ConnectionId, message: ServerToScreen | ServerToPhone) => void;
@@ -101,6 +118,11 @@ export interface RoomsOptions {
   readonly randomBytes?: (size: number) => Buffer;
   /** How many Rooms may be open at once. DEFAULT_MAX_ROOMS unless set. */
   readonly maxRooms?: number;
+  /**
+   * Called when a Match ends, after the Room is back in the Lobby. If it throws, the error is logged
+   * and the Room goes on: counting plays must never break a Room.
+   */
+  readonly onMatchEnd?: (ended: EndedMatch) => void;
 }
 
 /** A message as the transport hands it over: checked against its schema, or the reason it failed. */
@@ -150,6 +172,8 @@ interface RoomState {
   seats: SeatState[];
   nextSeat: number;
   match: MatchInfo | null;
+  /** When the Match being played started, by this server's clock. */
+  matchStartedAt: number;
   lastMatch: MatchResult | null;
   /**
    * The latest View of each Seat during a Match, by Seat id, as JSON text: the server never reads a
@@ -315,6 +339,7 @@ export class Rooms {
       seats: [],
       nextSeat: 1,
       match: null,
+      matchStartedAt: 0,
       lastMatch: null,
       views: new Map(),
       timerEndsAt: null,
@@ -385,7 +410,9 @@ export class Rooms {
     if (room === undefined || room.screen !== connection) return;
     switch (message.type) {
       case "startMatch":
+        // A startMatch during a Match replaces it, so its length counts from the latest one.
         room.match = message.match;
+        room.matchStartedAt = this.#options.clock.now();
         room.views.clear();
         room.timerEndsAt = null;
         return this.#broadcast(room);
@@ -411,8 +438,15 @@ export class Rooms {
         if (tooBig) this.#send(connection, { type: "refused", reason: "badMessage" });
         return;
       }
-      case "endMatch":
+      case "endMatch": {
         if (room.match === null) return;
+        const ended: EndedMatch = {
+          gameId: room.match.gameId,
+          reason: message.reason,
+          seats: room.seats.length,
+          lengthMs: this.#options.clock.now() - room.matchStartedAt,
+          screenAddress: connection.address,
+        };
         {
           // Kept and repeated in every `room` message, so only for Seats in the Room: at most 16
           // entries, however many a Screen sends.
@@ -429,7 +463,15 @@ export class Rooms {
         room.match = null;
         room.views.clear();
         room.timerEndsAt = null;
-        return this.#broadcast(room);
+        this.#broadcast(room);
+        try {
+          this.#options.onMatchEnd?.(ended);
+        } catch (error) {
+          // Never the address or the Room Code: the logs keep nothing about who played.
+          console.error(`Counting a play failed: ${(error as Error).message}`);
+        }
+        return;
+      }
       case "removeSeat": {
         const seat = room.seats.find((s) => s.id === message.seatId);
         if (seat !== undefined) this.#removeSeat(room, seat, "removed");

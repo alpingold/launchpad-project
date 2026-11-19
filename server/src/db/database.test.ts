@@ -6,9 +6,9 @@ import { join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { IN_MEMORY, KEPT_COPIES, MIGRATIONS, openDatabase, transaction, type Database } from "./database.js";
 
-const TABLES = ["accounts", "games", "migrations", "sessions", "sign_in_links", "versions"];
+const TABLES = ["accounts", "games", "migrations", "plays", "sessions", "sign_in_links", "versions"];
 /** Every migration in server/migrations, in order. A test's own extra ones are numbered 0099 and up, after them all. */
-const ALL_MIGRATIONS = ["0001-accounts.sql", "0002-games.sql", "0003-takedowns.sql"];
+const ALL_MIGRATIONS = ["0001-accounts.sql", "0002-games.sql", "0003-takedowns.sql", "0004-plays.sql"];
 const quiet = () => undefined;
 
 let folder: string;
@@ -77,7 +77,7 @@ test("a database one migration behind gets only the missing one, and a copy of t
 
   const lines: string[] = [];
   const db = openDatabase({ file, now: () => 1_800_000_000_000, log: (line) => lines.push(line) });
-  expect(lines.filter((line) => line.startsWith("Database: applied"))).toEqual(["Database: applied 0002-games.sql", "Database: applied 0003-takedowns.sql"]);
+  expect(lines.filter((line) => line.startsWith("Database: applied"))).toEqual(["Database: applied 0002-games.sql", "Database: applied 0003-takedowns.sql", "Database: applied 0004-plays.sql"]);
   expect(Object.keys(tables(db))).toEqual(TABLES);
   expect(db.prepare("SELECT email FROM accounts").all()).toEqual([expect.objectContaining({ email: "ada@purdue.edu" })]);
   db.close();

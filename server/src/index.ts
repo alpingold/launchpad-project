@@ -60,6 +60,7 @@ export function createServer(options: ServerOptions): RunningServer {
     clock,
     addressOf,
     siteOrigin: options.siteOrigin,
+    onMatchEnd: site.matchEnded,
     ...(options.maxRooms === undefined ? {} : { maxRooms: options.maxRooms }),
     ...(options.pingIntervalMs === undefined ? {} : { pingIntervalMs: options.pingIntervalMs }),
   });

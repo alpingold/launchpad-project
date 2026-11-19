@@ -2,7 +2,7 @@
 // checked against the protocol's schema for whoever receives it, and no token may ever reach anyone
 // but its owner.
 import { MAX_SEATS, PHONE_MESSAGES_PER_SECOND, SCREEN_MESSAGES_PER_SECOND, serverToPhone, serverToScreen, type PhoneToServer, type Room, type ScreenToServer } from "@boilergames/protocol";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { MAX_VIEW_BYTES } from "@boilergames/sdk/v1/engine";
 import {
   CLOSE_AT_TIMES_THE_LIMIT,
@@ -16,6 +16,7 @@ import {
   SCREEN_GRACE_MS,
   SEAT_GRACE_MS,
   type Clock,
+  type EndedMatch,
   type Incoming,
 } from "./rooms.js";
 
@@ -48,7 +49,7 @@ class FakeClock implements Clock {
 type Sent = { type: string; [key: string]: unknown };
 
 /** A Rooms layer with a fake clock, recording what it sends to and closes on each connection. */
-function harness(randomBytes?: (size: number) => Buffer, maxRooms?: number) {
+function harness(randomBytes?: (size: number) => Buffer, maxRooms?: number, onMatchEnd?: (ended: EndedMatch) => void) {
   const clock = new FakeClock();
   const inbox = new Map<string, Sent[]>();
   const closed = new Set<string>();
@@ -61,6 +62,7 @@ function harness(randomBytes?: (size: number) => Buffer, maxRooms?: number) {
     clock,
     ...(randomBytes === undefined ? {} : { randomBytes }),
     ...(maxRooms === undefined ? {} : { maxRooms }),
+    ...(onMatchEnd === undefined ? {} : { onMatchEnd }),
     send(connection, message) {
       expect(closed.has(connection), `sent ${message.type} to a closed connection`).toBe(false);
       const schema = side.get(connection) === "screen" ? serverToScreen : serverToPhone;
@@ -409,6 +411,65 @@ describe("a Match", () => {
     h.say(back, { type: "endMatch", reason: "stopped" });
     h.say(ada.phone, { type: "action", action: { type: "after" } });
     expect(h.messages(back).some((m) => m.type === "action")).toBe(false);
+  });
+});
+
+describe("a Match's end, reported for counting plays", () => {
+  /** A Room of three Seats whose Screen is at 10.0.0.9, reporting each Match's end into `reported`. */
+  function reporting(onMatchEnd?: (ended: EndedMatch) => void) {
+    const reported: EndedMatch[] = [];
+    const h = harness(undefined, undefined, onMatchEnd ?? ((ended) => reported.push(ended)));
+    const room = h.openRoom("10.0.0.9");
+    const ada = h.join(room.code, "Ada");
+    h.join(room.code, "Ben");
+    h.join(room.code, "Cy");
+    return { h, ...room, ada, reported };
+  }
+
+  test("with the gameId the Room recorded at its start, the reason, the Seats in the Room, its length by the server's clock, and the Screen's address", () => {
+    const { h, screen, reported } = reporting();
+    h.say(screen, { type: "startMatch", match: MATCH });
+    h.clock.advance(45_000);
+    h.say(screen, { type: "endMatch", reason: "finished" });
+    expect(reported).toEqual([{ gameId: "sum-it-up", reason: "finished", seats: 3, lengthMs: 45_000, screenAddress: "10.0.0.9" }]);
+  });
+
+  test("a second startMatch during a Match replaces it: the length counts from the second, with its gameId", () => {
+    const { h, screen, reported } = reporting();
+    h.say(screen, { type: "startMatch", match: MATCH });
+    h.clock.advance(40_000);
+    h.say(screen, { type: "startMatch", match: { ...MATCH, gameId: "allotments", title: "Allotments" } });
+    h.clock.advance(10_000);
+    h.say(screen, { type: "endMatch", reason: "finished" });
+    expect(reported).toEqual([expect.objectContaining({ gameId: "allotments", lengthMs: 10_000 })]);
+  });
+
+  test("the Seats are counted when it ends, not when it started", () => {
+    const { h, screen, ada, reported } = reporting();
+    h.say(screen, { type: "startMatch", match: MATCH });
+    h.say(ada.phone, { type: "leave" });
+    h.say(screen, { type: "endMatch", reason: "tooFewPlayers" });
+    expect(reported).toEqual([expect.objectContaining({ reason: "tooFewPlayers", seats: 2 })]);
+  });
+
+  test("an endMatch with no Match running reports nothing", () => {
+    const { h, screen, reported } = reporting();
+    h.say(screen, { type: "endMatch", reason: "finished" });
+    expect(reported).toEqual([]);
+  });
+
+  test("if counting throws, the Room is back in the Lobby all the same and goes on", () => {
+    const { h, screen, code, ada } = reporting(() => {
+      throw new Error("the database is gone");
+    });
+    const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    h.say(screen, { type: "startMatch", match: MATCH });
+    h.say(screen, { type: "endMatch", reason: "finished" });
+    expect(logged.mock.calls).toEqual([["Counting a play failed: the database is gone"]]);
+    logged.mockRestore();
+    expect(h.lastRoom(ada.phone)).toMatchObject({ match: null, lastMatch: { reason: "finished" } });
+    h.say(screen, { type: "startMatch", match: MATCH });
+    expect(h.lastRoom(h.join(code, "Dee").phone).match).toEqual(MATCH);
   });
 });
 

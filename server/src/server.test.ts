@@ -8,7 +8,9 @@ import { join } from "node:path";
 import { MAX_MESSAGE_BYTES } from "@boilergames/protocol";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { WebSocket } from "ws";
-import { createServer, forwardedAddress, MAX_SOCKETS_PER_ADDRESS, WEBSOCKET_PATH, type RunningServer } from "./index.js";
+import { playsOf } from "./db/plays.js";
+import { createServer, forwardedAddress, IN_MEMORY, MAX_SOCKETS_PER_ADDRESS, openDatabase, realClock, WEBSOCKET_PATH, type RunningServer } from "./index.js";
+import { MIN_COUNTED_MATCH_MS } from "./plays.js";
 
 let server: RunningServer;
 let base: string;
@@ -125,6 +127,35 @@ describe("a Room over real WebSockets", () => {
     phone.send({ type: "action", action: { type: "tap" } });
     expect(await screen.next("action")).toEqual({ type: "action", seatId, action: { type: "tap" } });
   });
+});
+
+test("a finished Match of an Official game, long enough and with enough Players, is counted by the real server", async () => {
+  // Its own server, with a clock whose time a test can move (its timers are the real ones) and a
+  // database the test can read.
+  let offset = 0;
+  const clock = { now: () => Date.now() + offset, setTimeout: realClock.setTimeout };
+  const database = openDatabase({ file: IN_MEMORY, log: () => undefined });
+  const counting = createServer({ clientDist: join(root, "client"), gamesDist: join(root, "games"), siteOrigin: SITE, frameUrl: FRAME_URL, clock, database });
+  await new Promise<void>((resolve) => counting.http.listen(0, "127.0.0.1", resolve));
+  const at = `127.0.0.1:${(counting.http.address() as AddressInfo).port}`;
+  try {
+    const screen = await Client.open({ at });
+    screen.send({ type: "openRoom", v: 1 });
+    const code = ((await screen.next("roomOpened"))["room"] as { code: string }).code;
+    const phone = await Client.open({ at });
+    phone.send({ type: "join", v: 1, code, name: "Ada" });
+    await phone.next("seated");
+    screen.send({ type: "startMatch", match: { gameId: "demo", title: "Demo", look: {} } });
+    await phone.next("room", 1);
+    offset += MIN_COUNTED_MATCH_MS;
+    const before = phone.messages.length;
+    screen.send({ type: "endMatch", reason: "finished" });
+    await phone.next("room", before);
+    expect(playsOf(database, { official: "demo" })).toBe(1);
+  } finally {
+    await counting.close();
+    database.close();
+  }
 });
 
 describe("what the transport does with messages that aren't messages", () => {

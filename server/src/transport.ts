@@ -6,7 +6,7 @@
 import type { IncomingMessage, Server } from "node:http";
 import { MAX_MESSAGE_BYTES, PROTOCOL_VERSION, phoneToServer, screenToServer } from "@boilergames/protocol";
 import { WebSocketServer, type RawData, type WebSocket } from "ws";
-import { Rooms, type Clock, type Incoming } from "./rooms.js";
+import { Rooms, type Clock, type Incoming, type RoomsOptions } from "./rooms.js";
 
 /** The one WebSocket path, for the Screen and the phones alike: a socket's first message says which it is. */
 export const WEBSOCKET_PATH = "/ws";
@@ -36,6 +36,8 @@ export interface TransportOptions {
   readonly maxRooms?: number;
   /** PING_INTERVAL_MS unless a test wants it shorter. */
   readonly pingIntervalMs?: number;
+  /** Told when a Match ends (Rooms' onMatchEnd): the site counts plays with it. */
+  readonly onMatchEnd?: RoomsOptions["onMatchEnd"];
 }
 
 /** Serves Rooms over WebSockets on `server`. Returns the rooms layer and a function that stops it all. */
@@ -50,6 +52,7 @@ export function attachRooms(server: Server, options: TransportOptions): { readon
   const rooms = new Rooms({
     clock: options.clock,
     ...(options.maxRooms === undefined ? {} : { maxRooms: options.maxRooms }),
+    ...(options.onMatchEnd === undefined ? {} : { onMatchEnd: options.onMatchEnd }),
     send(id, message) {
       const socket = sockets.get(id);
       if (socket === undefined || socket.readyState !== socket.OPEN) return;

@@ -11,7 +11,8 @@ import express, { type ErrorRequestHandler, type Express, type RequestHandler } 
 import type { Database } from "./db/database.js";
 import { gameRoutes, UPLOAD_PATHS, uploadBodies, type Listing, type OfficialGames } from "./games.js";
 import type { Mail } from "./mail.js";
-import type { Clock } from "./rooms.js";
+import { playCounter } from "./plays.js";
+import type { Clock, EndedMatch } from "./rooms.js";
 import { signInRoutes } from "./sign-in.js";
 
 export interface SiteOptions {
@@ -38,6 +39,8 @@ export interface SiteParts {
 
 export interface Site {
   readonly app: Express;
+  /** For Rooms (onMatchEnd): counts the play if it meets the rules (plays.ts). */
+  readonly matchEnded: (ended: EndedMatch) => void;
   /** Stops the site's timers. */
   readonly stop: () => void;
 }
@@ -117,6 +120,7 @@ export function createSite(options: SiteOptions & SiteParts): Site {
   app.use(signIn.router);
   const games = gameRoutes({ database: options.database, clock: options.clock, playtest: options.playtest, official, signedIn: signIn.signedIn });
   app.use(games.router);
+  const plays = playCounter({ database: options.database, clock: options.clock, official });
 
   // What the pages need to know about this deployment: where the Game frame is served.
   app.get("/api/config", (_request, response) => {
@@ -133,9 +137,11 @@ export function createSite(options: SiteOptions & SiteParts): Site {
   app.use(errors);
   return {
     app,
+    matchEnded: plays.matchEnded,
     stop: () => {
       signIn.stop();
       games.stop();
+      plays.stop();
     },
   };
 }
