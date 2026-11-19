@@ -48,8 +48,8 @@ test("an idea becomes a Concept, edited and approved, then a Game that is publis
   await page.getByRole("button", { name: "Approve and make the Game" }).click();
   // The real Playtest checks the Game: a second or two, and the page asks every few seconds.
   await expect(page.getByRole("status")).toHaveText("Ready: the Game passed its check.", { timeout: 60_000 });
-  await expect(page.getByRole("listitem", { name: "Step 1" })).toContainText("Drafting the Concept: a usable Concept");
-  await expect(page.getByRole("listitem", { name: "Step 3" })).toContainText("Checking the Game: passed");
+  const track = page.getByRole("list").filter({ has: page.getByText("Drafting the Concept") });
+  await expect(track.getByRole("listitem")).toHaveText(["Drafting the Concept: a usable Concept", "Writing the Game: written", "Checking the Game: passed"]);
   expect(await scrollsSideways(page)).toBe(false);
 
   // A Game like any other on My Games: its title is the edited one, and it can be published.
@@ -72,11 +72,11 @@ test("a Generation that fails says why, and leaves no Game", async ({ context },
   await saveAKey(page);
   await makeFromIdea(page, `A game the fake can't design ${FAKE_FAIL}`);
   await expect(page.getByRole("status")).toContainText("Failed. The AI couldn't write a usable Concept in 3 tries.", { timeout: 15_000 });
-  await expect(page.getByRole("listitem", { name: "Step 3" })).toContainText("Drafting the Concept: not usable");
+  await expect(page.getByRole("listitem").filter({ hasText: "Drafting the Concept: not usable" })).toHaveCount(3);
   expect(await scrollsSideways(page)).toBe(false);
   await page.getByRole("link", { name: "My Games" }).click();
   await expect(page.getByText("You haven't uploaded a Game yet.")).toBeVisible();
-  await expect(page.getByRole("listitem")).toContainText(["failed"]);
+  await expect(page.getByRole("listitem").filter({ hasText: "A game the fake can't design" })).toContainText("failed");
 });
 
 test("the AI changes an uploaded Game: a new Version, not published, whose changed lines can be seen", async ({ context }, info) => {

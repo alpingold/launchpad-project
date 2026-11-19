@@ -12,7 +12,7 @@ import type { Account } from "../db/accounts.js";
 import type { Database } from "../db/database.js";
 import { generationById, generationsOf, stepsOf, type Generation, type Step } from "../db/generations.js";
 import { MAKER_OFF } from "./key-routes.js";
-import { MAX_IDEA_CHARS, MAX_REQUEST_CHARS } from "./numbers.js";
+import { MAX_IDEA_CHARS, MAX_MODEL_CALLS, MAX_REQUEST_CHARS } from "./numbers.js";
 import type { Pipeline } from "./pipeline.js";
 
 export const GENERATIONS_PATH = "/api/my/generations";
@@ -44,6 +44,8 @@ export interface GenerationView {
   readonly place: number | null;
   readonly builds: number;
   readonly modelCalls: number;
+  /** How many more calls the AI may make for it (MAX_MODEL_CALLS in all): a redraft uses some. */
+  readonly callsLeft: number;
   readonly gameId: string | null;
   readonly createdAt: number;
   readonly updatedAt: number;
@@ -52,7 +54,7 @@ export interface GenerationView {
 }
 
 const ideaBody = z.object({ idea: z.string().max(MAX_IDEA_CHARS * 2) });
-const noteBody = z.object({ note: z.string().trim().min(1).max(MAX_REQUEST_CHARS) });
+const noteBody = z.object({ note: z.string().trim().min(1).max(MAX_REQUEST_CHARS), concept: z.unknown().optional() });
 const conceptBody = z.object({ concept: z.unknown() });
 const approveBody = z.object({ concept: z.unknown().optional() });
 const revisionBody = z.object({ versionId: z.string().max(100), request: z.string().max(MAX_REQUEST_CHARS * 2) });
@@ -88,6 +90,7 @@ export function generationRoutes(options: GenerationRoutesOptions): Router {
       place: maker.place(generation.id) ?? null,
       builds: generation.builds,
       modelCalls: generation.modelCalls,
+      callsLeft: Math.max(0, MAX_MODEL_CALLS - generation.modelCalls),
       gameId: generation.gameId,
       createdAt: generation.createdAt,
       updatedAt: generation.updatedAt,
@@ -164,8 +167,8 @@ export function generationRoutes(options: GenerationRoutesOptions): Router {
     if (generation === undefined) return;
     const body = noteBody.safeParse(request.body);
     if (!body.success) return void response.status(400).json({ error: `Say what to change, in 1 to ${MAX_REQUEST_CHARS} characters.` });
-    const redrafted = signed.pipeline.redraft(signed.account.id, generation.id, body.data.note);
-    if (!redrafted.ok) return void response.status(redrafted.status).json({ error: redrafted.error });
+    const redrafted = signed.pipeline.redraft(signed.account.id, generation.id, body.data.note, body.data.concept);
+    if (!redrafted.ok) return void refused(response, redrafted);
     current(response, generation.id, signed.pipeline);
   });
 

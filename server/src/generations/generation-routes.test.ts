@@ -140,7 +140,8 @@ describe("a Generation, from idea to a published Game", () => {
     expect(edited).toMatchObject({ status: 200, body: { state: "review", concept: { title: "Ada's Taps" } } });
 
     // Sent back with a note: drafted again, and back for review.
-    expect((await call("POST", `${GENERATIONS_PATH}/${id}/redraft`, { body: { note: "Make it longer." }, cookie: ada })).body["state"]).toBe("concept");
+    expect((await call("POST", `${GENERATIONS_PATH}/${id}/redraft`, { body: { note: "Make it longer.", concept: { ...FAKE_CONCEPT, players: { min: 4, max: 2 } } }, cookie: ada })).status).toBe(400);
+    expect((await call("POST", `${GENERATIONS_PATH}/${id}/redraft`, { body: { note: "Make it longer." }, cookie: ada })).body).toMatchObject({ state: "concept", callsLeft: expect.any(Number) });
     await until(ada, id, (generation) => generation["state"] === "review");
 
     const approved = await call("POST", `${GENERATIONS_PATH}/${id}/approve`, { body: { concept: { ...FAKE_CONCEPT, title: "Ada's Taps" } }, cookie: ada });
@@ -214,6 +215,7 @@ describe("each Creator's own", () => {
     expect((await call("GET", `${GENERATIONS_PATH}/${id}`, { cookie: bo })).status).toBe(404);
     expect((await call("POST", `${GENERATIONS_PATH}/${id}/approve`, { body: {}, cookie: bo })).status).toBe(404);
     expect((await call("POST", `${GENERATIONS_PATH}/${id}/cancel`, { body: {}, cookie: bo })).status).toBe(404);
+    expect((await call("POST", `${GENERATIONS_PATH}/${id}/redraft`, { body: { note: "Mine now." }, cookie: bo })).status).toBe(404);
     expect((await call("PUT", `${GENERATIONS_PATH}/${id}/concept`, { body: { concept: FAKE_CONCEPT }, cookie: bo })).status).toBe(404);
     expect((await call("GET", GENERATIONS_PATH, { cookie: bo })).body).toEqual([]);
     expect((await call("GET", GENERATIONS_PATH)).status).toBe(401);
@@ -234,8 +236,12 @@ describe("with the maker off", () => {
       ["GET", `${GENERATIONS_PATH}/x`],
       ["POST", `${GENERATIONS_PATH}/x/approve`],
       ["POST", `${GENERATIONS_PATH}/x/cancel`],
+      ["POST", `${GENERATIONS_PATH}/x/redraft`],
+      ["PUT", `${GENERATIONS_PATH}/x/concept`],
+      ["POST", "/api/my/games/x/revisions"],
     ] as const) {
       expect(await call(method, path, { cookie: ada, ...(method === "GET" ? {} : { body: { idea: "Taps" } }) })).toEqual({ status: 503, body: { error: MAKER_OFF } });
     }
+    expect((await call("GET", "/api/config")).body["aiMaker"]).toBe(false);
   });
 });

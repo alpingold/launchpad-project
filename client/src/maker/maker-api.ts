@@ -68,6 +68,8 @@ export interface Generation {
   readonly place: number | null;
   readonly builds: number;
   readonly modelCalls: number;
+  /** How many more calls the AI may make for it: a new draft of the Concept uses some. */
+  readonly callsLeft: number;
   readonly gameId: string | null;
   readonly createdAt: number;
   readonly updatedAt: number;
@@ -86,7 +88,8 @@ export const myGenerations = () => get<Generation[]>(GENERATIONS_PATH);
 export const generation = (id: string) => get<Generation>(one(id));
 export const startGeneration = (idea: string) => post<Generation>(GENERATIONS_PATH, { idea });
 export const editConcept = (id: string, concept: Concept) => put<Generation>(`${one(id)}/concept`, { concept });
-export const redraft = (id: string, note: string) => post<Generation>(`${one(id)}/redraft`, { note });
+/** Sends the Concept back for a new draft, with the Creator's note and their edits to it. */
+export const redraft = (id: string, note: string, concept?: Concept) => post<Generation>(`${one(id)}/redraft`, concept === undefined ? { note } : { note, concept });
 export const approve = (id: string, concept?: Concept) => post<Generation>(`${one(id)}/approve`, concept === undefined ? {} : { concept });
 export const cancelGeneration = (id: string) => post<Generation>(`${one(id)}/cancel`, {});
 /** Asks the AI for a change to a ready Version: a Revision, followed on its own page like a Generation. */

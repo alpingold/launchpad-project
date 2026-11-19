@@ -225,14 +225,19 @@ export class Pipeline {
     return { ok: true };
   }
 
-  /** Sends the Concept in review back to the AI, with the Creator's note on what to change. */
-  redraft(accountId: string, id: string, note: string): { readonly ok: true } | Refusal {
+  /**
+   * Sends the Concept in review back to the AI, with the Creator's note on what to change, and their
+   * edits to it if they made any (checked like any edit).
+   */
+  redraft(accountId: string, id: string, note: string, edited?: unknown): { readonly ok: true } | Refusal | { readonly ok: false; readonly status: 400; readonly error: string; readonly problems: readonly string[] } {
     const generation = this.#owned(accountId, id);
     if (generation === undefined) return { ok: false, status: 404, error: "There is no such Generation." };
     if (generation.state !== "review") return { ok: false, status: 409, error: "This Generation isn't waiting for its Concept to be approved." };
+    const checked = edited === undefined ? undefined : checkConcept(edited);
+    if (checked?.ok === false) return { ok: false, status: 400, error: "The Concept has problems.", problems: checked.problems };
     if (hasWorking(this.#db, accountId)) return { ok: false, status: 409, error: "The AI is already working on one of yours. Wait for it, or cancel it, then ask for a new draft." };
     if (this.#waiting.length >= MAX_WAITING_GENERATIONS) return { ok: false, status: 503, error: "The AI's line is full. Try again in a few minutes." };
-    if (!moveGeneration(this.#db, id, ["review"], "concept", { note: note.trim() }, this.#seconds())) {
+    if (!moveGeneration(this.#db, id, ["review"], "concept", { note: note.trim(), ...(checked === undefined ? {} : { concept: checked.concept }) }, this.#seconds())) {
       return { ok: false, status: 409, error: "This Generation isn't waiting for its Concept to be approved." };
     }
     this.#add(id, accountId);
@@ -301,7 +306,8 @@ export class Pipeline {
 
   /** Ends it as failed or cancelled, if it isn't over already, and stops any work on it. */
   #end(id: string, to: "failed" | "cancelled", reason: string): boolean {
-    const moved = moveGeneration(this.#db, id, ["concept", "review", "build", "playtest"], to, { reason }, this.#seconds());
+    // A note asking for a new draft goes too: it is kept only until it is drafted (the privacy page).
+    const moved = moveGeneration(this.#db, id, ["concept", "review", "build", "playtest"], to, { reason, note: null }, this.#seconds());
     const at = this.#waiting.findIndex((waiting) => waiting.id === id);
     if (at >= 0) this.#waiting.splice(at, 1);
     this.#running.get(id)?.abort.abort();
@@ -329,7 +335,7 @@ export class Pipeline {
         const why = cantCarryOn(generation);
         if (why !== undefined) {
           this.#log(`Generations: ${id} can't carry on after a restart: ${why}`);
-          moveGeneration(this.#db, id, WORKING, "failed", { reason: `This Generation couldn't carry on after the site restarted (${why}). Start it again.` }, at);
+          moveGeneration(this.#db, id, WORKING, "failed", { reason: `This Generation couldn't carry on after the site restarted (${why}). Start it again.`, note: null }, at);
           continue;
         }
         setWaiting(this.#db, id, null, at);
@@ -338,7 +344,7 @@ export class Pipeline {
         // A row that makes no sense must never stop the server from starting.
         this.#log(`Generations: ${id} couldn't be read after a restart: ${(error as Error).message}`);
         try {
-          moveGeneration(this.#db, id, WORKING, "failed", { reason: REASONS.site }, at);
+          moveGeneration(this.#db, id, WORKING, "failed", { reason: REASONS.site, note: null }, at);
         } catch {
           // Left as it is: it is not in the line, and the site carries on.
         }
@@ -401,9 +407,9 @@ export class Pipeline {
       if (!moveGeneration(this.#db, generation.id, ["concept"], "review", { concept: draft.concept, note: null }, this.#seconds())) throw new Stopped();
       return;
     }
-    if (draft.kind === "invalid" && redraft !== undefined) {
-      // A redraft that never came out usable: back to review with the Concept the Creator sent back.
-      // Its Track shows the tries and their problems.
+    // A redraft that never came out usable, or ran out of calls: back to review with the Concept the
+    // Creator sent back, rather than losing it. Its Track shows the tries and their problems.
+    if (redraft !== undefined && (draft.kind === "invalid" || now.modelCalls >= MAX_MODEL_CALLS)) {
       if (!moveGeneration(this.#db, generation.id, ["concept"], "review", { concept: redraft.previous, note: null }, this.#seconds())) throw new Stopped();
       return;
     }

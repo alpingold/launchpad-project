@@ -377,6 +377,39 @@ describe("a Concept sent back for a new draft", () => {
     expect(stepsOf(db, id).map((step) => step.outcome)).toEqual(["invalid", "invalid", "invalid"]);
   });
 
+  test("the Creator's edits go with the note, so the AI redrafts from them", async () => {
+    const ada = account("ada");
+    const model = new GatedModel([CONCEPT_ANSWER]);
+    const pipe = pipeline(model);
+    const id = inReview(ada, "g1");
+    expect(pipe.redraft(ada, id, "More phases.", { ...CONCEPT, title: "My Edit" })).toEqual({ ok: true });
+    await until(() => stateOf(id) === "review");
+    expect(model.calls[0]?.messages.map((message) => message.content).join("\n")).toContain('"title": "My Edit"');
+  });
+
+  test("a redraft that runs out of calls goes back to review with the Concept the Creator sent back", async () => {
+    const ada = account("ada");
+    const pipe = pipeline(new GatedModel([], () => CONCEPT_ANSWER));
+    const id = inReview(ada, "g1");
+    db.prepare("UPDATE generations SET model_calls = ? WHERE id = ?").run(MAX_MODEL_CALLS, id);
+    pipe.redraft(ada, id, "Again.");
+    await until(() => stateOf(id) !== "concept");
+    expect(generation(id)).toMatchObject({ state: "review", concept: CONCEPT, note: null });
+  });
+
+  test("a redraft cancelled before it is drafted keeps no note", async () => {
+    const ada = account("ada");
+    const model = new GatedModel([], () => CONCEPT_ANSWER);
+    model.held = true;
+    const pipe = pipeline(model);
+    const id = inReview(ada, "g1");
+    pipe.redraft(ada, id, "A private note.");
+    await until(() => model.waiting === 1);
+    pipe.cancel(ada, id);
+    await pipe.settled();
+    expect(generation(id)).toMatchObject({ state: "cancelled", note: null });
+  });
+
   test("edits the Creator makes in review are checked, and saved only if they pass", () => {
     const ada = account("ada");
     const pipe = pipeline(new GatedModel());

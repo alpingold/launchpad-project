@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { PlaytestRunner } from "@boilergames/playtest/client";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 import { IN_MEMORY, openDatabase, type Database } from "../db/database.js";
 import { storedKey } from "../db/genai-keys.js";
@@ -46,7 +47,10 @@ afterAll(async () => {
 
 const secretOf = (byte: number) => keySecretFromBytes(Buffer.alloc(SECRET_BYTES, byte));
 
-async function start(options: { model?: ScriptedModel | null; keySecret?: KeySecret | null } = {}): Promise<void> {
+/** A Playtest that is never asked for here: the AI maker needs one to be on. */
+const playtest: PlaytestRunner = { run: () => Promise.reject(new Error("not asked for in these tests")) };
+
+async function start(options: { model?: ScriptedModel | null; keySecret?: KeySecret | null; playtest?: PlaytestRunner | null } = {}): Promise<void> {
   server = createServer({
     clientDist: join(root, "client"),
     gamesDist: join(root, "games"),
@@ -57,6 +61,7 @@ async function start(options: { model?: ScriptedModel | null; keySecret?: KeySec
     database: db,
     model: options.model === undefined ? model : options.model,
     keySecret: options.keySecret === undefined ? secretOf(7) : options.keySecret,
+    playtest: options.playtest === undefined ? playtest : options.playtest,
   });
   await new Promise<void>((resolve) => server.http.listen(0, "127.0.0.1", resolve));
   base = `http://127.0.0.1:${(server.http.address() as AddressInfo).port}`;
@@ -200,6 +205,7 @@ describe("with the AI maker off", () => {
   test.each([
     ["no model", { model: null }],
     ["no key secret", { keySecret: null }],
+    ["no Playtest", { playtest: null }],
   ] as const)("%s: /api/config says so, and saving is refused; seeing and deleting still work", async (_what, options) => {
     await server.close();
     await start(options);
@@ -210,7 +216,7 @@ describe("with the AI maker off", () => {
     expect((await call("DELETE", KEY_PATH, { body: {}, cookie: ada.cookie })).status).toBe(200);
   });
 
-  test("with both, it is on", async () => {
+  test("with all three, it is on", async () => {
     expect((await call("GET", "/api/config")).body["aiMaker"]).toBe(true);
   });
 });

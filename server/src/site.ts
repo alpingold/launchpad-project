@@ -137,17 +137,16 @@ export function createSite(options: SiteOptions & SiteParts): Site {
   app.use(games.router);
   app.use(libraryRoutes({ database: options.database, official }));
   const plays = playCounter({ database: options.database, clock: options.clock, official });
-  // The AI maker is on only with both a model and a key secret: without either, a release runs as
-  // before, and the maker's pages say it isn't available.
-  const aiMaker = options.model !== null && options.keySecret !== null;
-  const keys = keyRoutes({ database: options.database, clock: options.clock, model: options.model, keySecret: options.keySecret, signedIn: signIn.signedIn });
-  app.use(keys.router);
-  // Generations need the Playtest too, which they share with Uploads: without one (a production
-  // server with no PLAYTEST_SOCKET, which refuses Uploads too), their routes refuse.
+  // The AI maker is on only with a model, a key secret and the Playtest (shared with Uploads):
+  // without any of them, a release runs as before, the maker's pages say it isn't available, and its
+  // routes refuse (a key can still be seen and deleted).
   const pipeline =
     options.model !== null && options.keySecret !== null && options.playtest !== null
       ? new Pipeline({ database: options.database, model: options.model, keySecret: options.keySecret, playtest: options.playtest, clock: options.clock })
       : null;
+  const aiMaker = pipeline !== null;
+  const keys = keyRoutes({ database: options.database, clock: options.clock, model: aiMaker ? options.model : null, keySecret: options.keySecret, signedIn: signIn.signedIn });
+  app.use(keys.router);
   app.use(generationRoutes({ database: options.database, pipeline, signedIn: signIn.signedIn }));
 
   // What the pages need to know about this deployment: where the Game frame is served, and the

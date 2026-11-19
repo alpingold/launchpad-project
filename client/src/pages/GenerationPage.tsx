@@ -69,16 +69,23 @@ function whereItIs(generation: Generation): string {
 export function GenerationPage({ id }: { id: string }) {
   const [shown, setShown] = useState<Generation | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [said, setSaid] = useState<string | null>(null);
+  /** What the page last said about a change the Creator made, shown only while it is in the state it was said in. */
+  const [said, setSaid] = useState<{ readonly text: string; readonly state: Generation["state"] } | null>(null);
   const [busy, setBusy] = useState(false);
 
+  const polling = shown !== null && working(shown.state);
   useEffect(() => {
     let stopped = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     async function load(): Promise<void> {
       const reply = await fetchGeneration(id);
       if (stopped || needsACreator(reply.status)) return;
-      if (!reply.ok) return setError(reply.error);
+      if (!reply.ok) {
+        setError(reply.error);
+        // A request that failed (the site restarting, say) is tried again while the AI works.
+        if (polling) timer = setTimeout(() => void load(), POLL_MS);
+        return;
+      }
       setShown(reply.value);
       if (working(reply.value.state)) timer = setTimeout(() => void load(), POLL_MS);
     }
@@ -88,7 +95,7 @@ export function GenerationPage({ id }: { id: string }) {
       clearTimeout(timer);
     };
     // Asked again when a change sets the Generation working again (approve, redraft).
-  }, [id, shown?.state !== undefined && working(shown.state)]);
+  }, [id, polling]);
 
   async function act(action: () => ReturnType<typeof approve>, done: string): Promise<void> {
     setBusy(true);
@@ -96,7 +103,7 @@ export function GenerationPage({ id }: { id: string }) {
     setBusy(false);
     if (!reply.ok) return setError(reply.error);
     setError(null);
-    setSaid(done);
+    setSaid({ text: done, state: reply.value.state });
     setShown(reply.value);
   }
 
@@ -131,7 +138,7 @@ export function GenerationPage({ id }: { id: string }) {
           {error}
         </p>
       )}
-      {said === null ? null : <p className="page-quiet">{said}</p>}
+      {said === null || said.state !== shown.state ? null : <p className="page-quiet">{said.text}</p>}
       <section>
         <h2>{shown.kind === "revision" ? "What you asked for" : "Your idea"}</h2>
         <p className="generation-idea">{shown.idea}</p>
@@ -140,10 +147,11 @@ export function GenerationPage({ id }: { id: string }) {
         <ConceptReview
           key={shown.updatedAt}
           concept={shown.concept}
+          callsLeft={shown.callsLeft}
           busy={busy}
           onSave={(concept) => void act(() => editConcept(id, concept), "Your changes are saved.")}
           onApprove={(concept) => void act(() => approve(id, concept), "Approved: the AI writes the Game now.")}
-          onRedraft={(note) => void act(() => redraft(id, note), "Sent back: the AI drafts it again.")}
+          onRedraft={(note, concept) => void act(() => redraft(id, note, concept), "Sent back: the AI drafts it again.")}
         />
       ) : null}
       {over ? null : (
@@ -166,7 +174,7 @@ function Track({ steps }: { steps: readonly Step[] }) {
       <h2>Its Track</h2>
       <ol className="generation-steps">
         {steps.map((step) => (
-          <li key={step.number} aria-label={`Step ${step.number}`}>
+          <li key={step.number}>
             <span>
               {KINDS[step.kind]}: {step.outcome === null ? "under way" : (OUTCOMES[step.outcome] ?? step.outcome)}
             </span>
@@ -188,7 +196,14 @@ function Track({ steps }: { steps: readonly Step[] }) {
 }
 
 /** The Concept in review, as a form: every field the Creator may change, then approve or send back. */
-function ConceptReview(props: { concept: Concept; busy: boolean; onSave: (concept: Concept) => void; onApprove: (concept: Concept) => void; onRedraft: (note: string) => void }) {
+function ConceptReview(props: {
+  concept: Concept;
+  callsLeft: number;
+  busy: boolean;
+  onSave: (concept: Concept) => void;
+  onApprove: (concept: Concept) => void;
+  onRedraft: (note: string, concept: Concept) => void;
+}) {
   const [concept, setConcept] = useState<Concept>(props.concept);
   const [note, setNote] = useState("");
   const set = (change: Partial<Concept>) => setConcept({ ...concept, ...change });
@@ -197,7 +212,7 @@ function ConceptReview(props: { concept: Concept; busy: boolean; onSave: (concep
 
   function sendBack(event: FormEvent): void {
     event.preventDefault();
-    props.onRedraft(note);
+    props.onRedraft(note, concept);
   }
 
   return (
@@ -273,9 +288,12 @@ function ConceptReview(props: { concept: Concept; busy: boolean; onSave: (concep
       </form>
       <form className="page-form" onSubmit={sendBack}>
         <label>
-          Or ask the AI for a new draft: what should change?
+          Or ask the AI for a new draft (with your changes so far): what should change?
           <textarea rows={3} maxLength={MAX_NOTE_CHARS} value={note} onChange={(event) => setNote(event.target.value)} />
         </label>
+        <p className="page-quiet">
+          The AI may make {props.callsLeft} more calls for this Game. A new draft can take up to 3, and writing the Game needs the rest.
+        </p>
         <button type="submit" className="page-button page-button-quiet" disabled={props.busy || note.trim() === ""}>
           Ask for a new draft
         </button>
