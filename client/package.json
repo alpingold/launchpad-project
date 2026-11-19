@@ -6,6 +6,7 @@
   "scripts": {
     "build": "vite build && vite build -c vite.frame.config.ts",
     "dev": "vite",
+    "sdk-types": "node scripts/sdk-types.ts",
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {

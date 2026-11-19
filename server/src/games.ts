@@ -14,7 +14,7 @@
  * Game is published and the Version is `ready`. Refused and not found look the same from outside.
  */
 import { randomBytes } from "node:crypto";
-import { MAX_SOURCE_BYTES, type PlaytestRunner } from "@boilergames/playtest/client";
+import { LOAD_MS, MAX_BUNDLE_BYTES, MAX_SOURCE_BYTES, RUN_MS, SEEDS, type PlaytestRunner } from "@boilergames/playtest/client";
 import express, { Router, type ErrorRequestHandler, type Request, type Response } from "express";
 import { z } from "zod";
 import { Checks, MAX_WAITING } from "./checks.js";
@@ -71,6 +71,21 @@ export const MAX_UPLOAD_BODY_BYTES = MAX_SOURCE_BYTES + 64 * 1024;
 export const MAX_LISTED_GAMES = 200;
 /** What a Creator is told, on publishing and on the Game's page, while an admin's takedown stands. */
 export const TAKEN_DOWN = "An admin took this Game down. Write to the site's owner if you think that was a mistake.";
+/**
+ * The limits a Game is held to, for the page that tells Creators how to write one (/make), through
+ * /api/config. The Playtest's own numbers and this file's, never copies: the page can't quote a
+ * limit the site doesn't enforce.
+ */
+export const GAME_LIMITS = {
+  maxSourceBytes: MAX_SOURCE_BYTES,
+  maxBundleBytes: MAX_BUNDLE_BYTES,
+  loadMs: LOAD_MS,
+  runMs: RUN_MS,
+  seeds: SEEDS.length,
+  uploadsPerHour: UPLOADS_PER_HOUR,
+  uploadsPerDay: UPLOADS_PER_DAY,
+} as const;
+
 /** The routes that take a Game's source. */
 export const UPLOAD_PATHS = ["/api/my/games", "/api/my/games/:id/versions"];
 

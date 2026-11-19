@@ -35,6 +35,8 @@ import type { Problem } from "./problems.js";
 
 /** The largest source a Playtest takes: the site refuses a larger one before it is queued. */
 export { MAX_SOURCE_BYTES } from "./limits.js";
+/** What the site's page for Creators (/make) quotes, through /api/config: the Playtest's own numbers. */
+export { LOAD_MS, MAX_BUNDLE_BYTES, RUN_MS, SEEDS } from "./limits.js";
 
 /** The runner program, built: playtest/dist/runner.js. The same path from src/ and from dist/. */
 export const RUNNER = fileURLToPath(new URL("../dist/runner.js", import.meta.url));

@@ -94,3 +94,10 @@ body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; ba
 .library-game-head p { margin: 4px 0 0; }
 .library-game p { margin: 0; overflow-wrap: anywhere; }
 .library-game-description { white-space: pre-line; }
+
+/* /make: the prompt box and the SDK's types keep their lines; they scroll inside themselves at phone width. */
+.make-prompt { display: flex; flex-direction: column; gap: 8px; }
+.make-prompt p { margin: 0; }
+.make-prompt textarea { font: 0.85em ui-monospace, monospace; padding: 8px; border: 2px solid #1d3f91; border-radius: 8px; width: 100%; box-sizing: border-box; }
+.make-types { font-size: 0.8em; background: #fff; padding: 12px; border-radius: 8px; overflow-x: auto; max-width: 100%; box-sizing: border-box; }
+.make li { overflow-wrap: anywhere; }

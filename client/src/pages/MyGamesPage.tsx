@@ -48,6 +48,9 @@ export function MyGamesPage() {
       )}
       <section>
         <h2>Upload a new Game</h2>
+        <p>
+          <a href="/make">How to write a Game with any AI, or by hand</a>: the rules, a prompt to copy and the SDK's types.
+        </p>
         <UploadBox label="Upload" send={uploadGame} onSent={(sent) => location.assign(`/my/games/${encodeURIComponent((sent as { game: Game }).game.id)}`)} />
       </section>
     </main>

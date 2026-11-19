@@ -32,6 +32,8 @@ test("a Creator uploads Best Word, plays it from its page, then a broken Version
   const page = context.pages()[0] ?? (await context.newPage());
   await signInFromMyGames(page, email, name);
   await expect(page.getByText("You haven't uploaded a Game yet.")).toBeVisible();
+  // Beside Upload: how to write a Game with any AI (/make).
+  await expect(page.getByRole("link", { name: "How to write a Game with any AI, or by hand" })).toHaveAttribute("href", "/make");
 
   await uploadGame(page, BEST_WORD);
   await expect(versionLine(page, 1)).toContainText("Being checked");

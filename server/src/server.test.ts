@@ -8,7 +8,9 @@ import { join } from "node:path";
 import { MAX_MESSAGE_BYTES } from "@boilergames/protocol";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { WebSocket } from "ws";
+import * as playtest from "@boilergames/playtest";
 import { playsOf } from "./db/plays.js";
+import { UPLOADS_PER_DAY, UPLOADS_PER_HOUR } from "./games.js";
 import { createServer, forwardedAddress, IN_MEMORY, MAX_SOCKETS_PER_ADDRESS, openDatabase, realClock, WEBSOCKET_PATH, type RunningServer } from "./index.js";
 import { MIN_COUNTED_MATCH_MS } from "./plays.js";
 
@@ -92,8 +94,21 @@ describe("HTTP", () => {
   });
 
   test("serves the client's page at /screen and /play too, and tells the pages where the Game frame is", async () => {
-    for (const path of ["/screen", "/play"]) expect(await (await fetch(`http://${base}${path}`)).text(), path).toContain("BoilerGames");
-    expect(await (await fetch(`http://${base}/api/config`)).json()).toEqual({ frameUrl: FRAME_URL });
+    for (const path of ["/screen", "/play", "/make"]) expect(await (await fetch(`http://${base}${path}`)).text(), path).toContain("BoilerGames");
+    expect(await (await fetch(`http://${base}/api/config`)).json()).toEqual({ frameUrl: FRAME_URL, limits: expect.any(Object) });
+  });
+
+  test("the limits /make quotes are the Playtest's own numbers and the site's own Upload limits, not copies", async () => {
+    const { limits } = (await (await fetch(`http://${base}/api/config`)).json()) as { limits: unknown };
+    expect(limits).toEqual({
+      maxSourceBytes: playtest.MAX_SOURCE_BYTES,
+      maxBundleBytes: playtest.MAX_BUNDLE_BYTES,
+      loadMs: playtest.LOAD_MS,
+      runMs: playtest.RUN_MS,
+      seeds: playtest.SEEDS.length,
+      uploadsPerHour: UPLOADS_PER_HOUR,
+      uploadsPerDay: UPLOADS_PER_DAY,
+    });
   });
 
   test("serves no bundle the list doesn't name, and never the frame's page", async () => {

@@ -9,7 +9,7 @@ import { join } from "node:path";
 import type { PlaytestRunner } from "@boilergames/playtest/client";
 import express, { type ErrorRequestHandler, type Express, type RequestHandler } from "express";
 import type { Database } from "./db/database.js";
-import { gameRoutes, UPLOAD_PATHS, uploadBodies, type Listing, type OfficialGames } from "./games.js";
+import { GAME_LIMITS, gameRoutes, UPLOAD_PATHS, uploadBodies, type Listing, type OfficialGames } from "./games.js";
 import { libraryRoutes } from "./library.js";
 import type { Mail } from "./mail.js";
 import { playCounter } from "./plays.js";
@@ -52,7 +52,7 @@ const READING = new Set(["GET", "HEAD", "OPTIONS"]);
 export const MAX_BODY_BYTES = 16 * 1024;
 
 /** The client's pages. Each is the same index.html; the client draws the page its path names. */
-const PAGES = ["/screen", "/play", "/sign-in", "/sign-in/confirm", "/sign-in/name", "/my/games", "/my/games/:id", "/library", "/library/:id"];
+const PAGES = ["/screen", "/play", "/sign-in", "/sign-in/confirm", "/sign-in/name", "/my/games", "/my/games/:id", "/library", "/library/:id", "/make"];
 
 /**
  * Every request that changes something passes here first, before its body is read and before any
@@ -129,9 +129,10 @@ export function createSite(options: SiteOptions & SiteParts): Site {
   app.use(libraryRoutes({ database: options.database, official }));
   const plays = playCounter({ database: options.database, clock: options.clock, official });
 
-  // What the pages need to know about this deployment: where the Game frame is served.
+  // What the pages need to know about this deployment: where the Game frame is served, and the
+  // limits a Game is held to (for /make).
   app.get("/api/config", (_request, response) => {
-    response.json({ frameUrl: options.frameUrl });
+    response.json({ frameUrl: options.frameUrl, limits: GAME_LIMITS });
   });
 
   app.use(express.static(options.clientDist, { index: "index.html", dotfiles: "deny" }));
