@@ -50,6 +50,8 @@ CREATE TABLE generations (
 
 CREATE INDEX generations_by_account ON generations (account_id, created_at);
 CREATE INDEX generations_by_state ON generations (state);
+-- The Generation or Revision that made a Version: the Concept a Revision of it is held to.
+CREATE INDEX generations_by_version ON generations (version_id);
 
 -- Ready, failed and cancelled are final.
 CREATE TRIGGER generations_end_is_final
