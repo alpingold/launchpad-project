@@ -10,13 +10,14 @@
  * there.
  *
  * The site can keep running: the database takes one writer at a time and waits up to 5 seconds for
- * its turn. Each file is opened without migrating it.
+ * its turn. Each file is opened without migrating it. What is removed is overwritten, and each
+ * file's write-ahead log emptied (db/remove-account.ts); if the site is too busy for that, it says so.
  */
 import { readdirSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { DatabaseSync } from "node:sqlite";
-import { removeAccount, type Removed } from "./db/remove-account.js";
+import { emptyLog, removeAccount, type Removed } from "./db/remove-account.js";
 
 const file = process.env["DATABASE_FILE"] ?? "/var/lib/boilergames/boilergames.db";
 const asking = createInterface({ input: process.stdin, output: process.stdout });
@@ -32,11 +33,17 @@ const prefix = `${basename(file)}.backup-`;
 const files = [file, ...readdirSync(dirname(file)).filter((name) => name.startsWith(prefix)).sort().map((name) => join(dirname(file), name))];
 
 let found = false;
+let logsEmptied = true;
 for (const each of files) {
   const db = new DatabaseSync(each, { enableForeignKeyConstraints: true, timeout: 5_000 });
   let removed: Removed | undefined;
   try {
     removed = removeAccount(db, email);
+    // Always, found or not: a second run, with the site stopped, can finish what a busy one couldn't.
+    if (!emptyLog(db)) {
+      logsEmptied = false;
+      console.error(`${each}: the site was too busy to let its write-ahead log be emptied.`);
+    }
   } finally {
     db.close();
   }
@@ -51,5 +58,9 @@ for (const each of files) {
 }
 if (!found) {
   console.error("There is no account with that email address. Nothing was removed.");
+  process.exitCode = 1;
+}
+if (!logsEmptied) {
+  console.error("Stop the site (systemctl stop boilergames), run this again with the same address, then start it (systemctl start boilergames).");
   process.exitCode = 1;
 }

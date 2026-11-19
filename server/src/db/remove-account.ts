@@ -14,9 +14,15 @@
  * 6. Sign-in links sent to its email address.
  * 7. The account.
  *
- * The command runs it on the database and on each copy the server made of it before a migration
+ * Removed means overwritten. By default SQLite only marks a deleted row's space as free, so the code
+ * and the address would stay readable in the file until something else happened to be written
+ * there. So `secure_delete` is turned on first, which makes SQLite overwrite what it deletes with
+ * zeros, and afterwards `emptyLog` empties the write-ahead log, where the database's newest pages
+ * (the deleted rows' old contents among them) wait before they are written into the file.
+ *
+ * The command runs both on the database and on each copy the server made of it before a migration
  * (database.ts, KEPT_COPIES), which would otherwise keep the account. The nightly backups still hold
- * it until each is deleted, 30 days after it was made (README, "The database's backups").
+ * it until each is deleted, within 60 days (README, "The database's backups").
  */
 import { z } from "zod";
 import { transaction, type Database } from "./database.js";
@@ -39,6 +45,8 @@ export interface Removed {
  */
 export function removeAccount(db: Database, email: string): Removed | undefined {
   const address = email.trim().toLowerCase();
+  // For this connection: what is deleted is overwritten with zeros, not only marked as free.
+  db.exec("PRAGMA secure_delete = ON");
   const tables = new Set(db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all().map((row) => String(row["name"])));
   const run = (table: string, sql: string, ...values: string[]) => (tables.has(table) ? Number(db.prepare(sql).run(...values).changes) : 0);
   return transaction(db, () => {
@@ -54,4 +62,15 @@ export function removeAccount(db: Database, email: string): Removed | undefined 
     const accounts = run("accounts", "DELETE FROM accounts WHERE id = ?", account.id);
     return { games, versions, plays, sessions, signInLinks, accounts };
   });
+}
+
+/**
+ * Writes everything in the write-ahead log into the file and empties the log (a truncating
+ * checkpoint), so no older copy of a page is left in it. True if it did; false if the database was
+ * too busy to let it finish within the connection's timeout. A file not in WAL mode (the copies made
+ * before a migration) has no such log, and is done at once.
+ */
+export function emptyLog(db: Database): boolean {
+  const result = one(z.object({ busy: z.number().int() }), db.prepare("PRAGMA wal_checkpoint(TRUNCATE)").get());
+  return result?.busy === 0;
 }

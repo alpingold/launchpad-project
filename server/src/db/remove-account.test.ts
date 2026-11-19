@@ -1,14 +1,15 @@
 // Removing an account by hand: everything of it goes, in an order the keys allow, and nothing of
 // anyone else's. On a database in memory, made by the real migrations.
-import { readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { beforeEach, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { createAccount, createSession, createSignInLink, setDisplayName } from "./accounts.js";
 import { IN_MEMORY, MIGRATIONS, openDatabase, type Database } from "./database.js";
 import { createGame, createVersion, finishCheck, publish } from "./games.js";
 import { addPlay } from "./plays.js";
-import { removeAccount } from "./remove-account.js";
+import { emptyLog, removeAccount } from "./remove-account.js";
 
 let db: Database;
 
@@ -81,4 +82,70 @@ test("works on an older copy of the database, made before the tables for Games a
   expect(removeAccount(old, "ada@purdue.edu")).toEqual({ games: 0, versions: 0, plays: 0, sessions: 1, signInLinks: 1, accounts: 1 });
   expect(old.prepare("SELECT count(*) AS n FROM accounts").get()?.["n"]).toBe(0);
   old.close();
+});
+
+describe("what is removed is overwritten, not only marked as free", () => {
+  /** Text only Ada's account holds, in her code and her address. */
+  const SECRET = "ada-secret-code-7f3a9c";
+  const EMAIL = "ada.secret.7f3a9c@purdue.edu";
+  let folder: string;
+  beforeEach(() => {
+    folder = mkdtempSync(join(tmpdir(), "remove-"));
+  });
+  afterEach(() => {
+    rmSync(folder, { recursive: true, force: true });
+  });
+
+  /** A database file in WAL mode, as the server's is, holding Ada (with SECRET in a Version's code) and Bo. */
+  function fileWithAda(): { file: string; db: Database } {
+    const file = join(folder, "site.db");
+    const db = openDatabase({ file, log: () => undefined });
+    createAccount(db, { id: "ada", email: EMAIL, createdAt: 1 });
+    createGame(db, { id: "g", ownerId: "ada", createdAt: 1 });
+    createVersion(db, { id: "v", gameId: "g", source: `// ${SECRET}\n${"x".repeat(20_000)}`, createdAt: 1 });
+    createAccount(db, { id: "bo", email: "bo@purdue.edu", createdAt: 1 });
+    // Into the file, as a long-running server's rows would be, and the log emptied.
+    expect(emptyLog(db)).toBe(true);
+    return { file, db };
+  }
+
+  /** Whether `text` is anywhere in the file or its write-ahead log, byte for byte. */
+  function onDisk(file: string, text: string): boolean {
+    return [file, `${file}-wal`, `${file}-journal`].some((each) => existsSync(each) && readFileSync(each).includes(Buffer.from(text)));
+  }
+
+  test("the control: a plain delete leaves the code and the address readable in the file", () => {
+    const { file, db } = fileWithAda();
+    db.exec("PRAGMA secure_delete = OFF");
+    db.exec("DELETE FROM versions; DELETE FROM games; DELETE FROM accounts WHERE id = 'ada'");
+    emptyLog(db);
+    db.close();
+    expect(onDisk(file, SECRET)).toBe(true);
+    expect(onDisk(file, EMAIL)).toBe(true);
+  });
+
+  test("removing the account leaves neither in the file nor in its write-ahead log", () => {
+    const { file, db } = fileWithAda();
+    expect(removeAccount(db, EMAIL)?.accounts).toBe(1);
+    expect(emptyLog(db)).toBe(true);
+    db.close();
+    expect(existsSync(`${file}-wal`) ? readFileSync(`${file}-wal`).length : 0).toBe(0);
+    expect(onDisk(file, SECRET)).toBe(false);
+    expect(onDisk(file, EMAIL)).toBe(false);
+    expect(onDisk(file, "bo@purdue.edu")).toBe(true);
+  });
+
+  test("the same in a copy made before a migration, which isn't in WAL mode", () => {
+    const { file, db } = fileWithAda();
+    const copy = `${file}.backup-1800000000-before-0004-plays`;
+    db.prepare("VACUUM INTO ?").run(copy);
+    db.close();
+    expect(onDisk(copy, SECRET)).toBe(true);
+    const old = new DatabaseSync(copy, { enableForeignKeyConstraints: true });
+    expect(removeAccount(old, EMAIL)?.accounts).toBe(1);
+    expect(emptyLog(old)).toBe(true);
+    old.close();
+    expect(onDisk(copy, SECRET)).toBe(false);
+    expect(onDisk(copy, EMAIL)).toBe(false);
+  });
 });

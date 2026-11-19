@@ -244,6 +244,11 @@ It does the same in each copy the server made of the database before a migration
 file it prints how many of each went, or that the account isn't in it. The site can keep running
 while it does.
 
+What it removes is overwritten with zeros, not only marked as free space (SQLite's `secure_delete`),
+and each file's write-ahead log is then emptied, so the code and the address can't be read back out
+of the files. If the site is too busy for the log to be emptied within 5 seconds, it says so: stop
+the site (`systemctl stop boilergames`), run it again with the same address, and start the site.
+
 A published Game of the account's leaves the Library and the Lobby at once, and its code is refused
 from then on. A Room playing it at that moment finishes its Match on the code it already has, but a
 reload of that Screen can't load the code again and says so. Nothing else needs doing.

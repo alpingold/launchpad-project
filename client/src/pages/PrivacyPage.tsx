@@ -56,11 +56,15 @@ export function PrivacyPage() {
 
       <section>
         <h2>The server's logs</h2>
-        <p>The web server in front of the site isn't set to keep a log of the requests it passes on.</p>
+        <p>
+          The web server in front of the site keeps no log of ordinary requests. When a request fails, for example in the few seconds the site takes to restart, it
+          logs that request, with the visitor's network address.
+        </p>
         <p>
           The site's own program writes a line to its log when it starts, when something fails, and when an admin takes a Game down or lifts a takedown. None of these
           lines holds a network address, an email address, a Room Code or a Player's name.
         </p>
+        <p>The server keeps its logs for about a month, five weeks at most.</p>
       </section>
 
       <section>
@@ -97,7 +101,7 @@ export function PrivacyPage() {
 
       <section>
         <h2>Backups</h2>
-        <p>Every night a copy of the whole database is kept at AWS, and each copy is deleted after 30 days. So something removed from the site is gone from those copies 30 days later.</p>
+        <p>Every night a copy of the whole database is kept at AWS, and each copy exists for up to 60 days. So something removed from the site is gone from those copies within 60 days.</p>
         <p>
           Before the database is changed for a new release of the site, the server also keeps a copy of it, so the change can be undone if it fails. It keeps the
           three newest such copies, and an account that is removed is removed from them too.
