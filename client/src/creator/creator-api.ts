@@ -52,6 +52,16 @@ export const uploadGame = (source: string) => post<{ game: Game }>("/api/my/game
 export const uploadVersion = (gameId: string, source: string) => post<{ version: Version }>(`/api/my/games/${encodeURIComponent(gameId)}/versions`, { source });
 export const saveDescription = (gameId: string, description: string) => put<{ game: Game }>(`/api/my/games/${encodeURIComponent(gameId)}`, { description });
 export const publishVersion = (gameId: string, versionId: string) => post<{ game: Game }>(`/api/my/games/${encodeURIComponent(gameId)}/publish`, { versionId });
+/** Where a Version's source is: its owner's only, as plain text (for Download the code). */
+export const sourcePath = (gameId: string, versionId: string) => `/api/my/games/${encodeURIComponent(gameId)}/versions/${encodeURIComponent(versionId)}/source`;
+
+/** A Version's source, for comparing it with another. Throws if it can't be had. */
+export async function versionSource(gameId: string, versionId: string): Promise<string> {
+  const response = await fetch(sourcePath(gameId, versionId));
+  if (!response.ok) throw new Error(`The code of that Version couldn't be loaded (${response.status}).`);
+  return response.text();
+}
+
 export const unpublishGame = (gameId: string) => post<{ game: Game }>(`/api/my/games/${encodeURIComponent(gameId)}/unpublish`, {});
 
 /** The title a Game goes by: its published Version's, or its newest ready one's, or none yet. */

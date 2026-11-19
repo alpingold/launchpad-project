@@ -318,3 +318,8 @@ export function libraryGames(db: Database, most: number): LibraryRow[] {
 export function libraryGame(db: Database, gameId: string): LibraryRow | undefined {
   return one(libraryRow, db.prepare(`${LIBRARY_SELECT} AND games.id = ?`).get(gameId));
 }
+
+/** A Version's source, if the Version belongs to the Game; otherwise undefined. */
+export function versionSource(db: Database, gameId: string, versionId: string): string | undefined {
+  return one(z.object({ source: z.string() }), db.prepare("SELECT source FROM versions WHERE id = ? AND game_id = ?").get(versionId, gameId))?.source;
+}

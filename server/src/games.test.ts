@@ -593,6 +593,38 @@ describe("what a Creator writes is text", () => {
   });
 });
 
+describe("a Version's source", () => {
+  const sourcePath = (gameId: string, versionId: string | undefined) => `/api/my/games/${gameId}/versions/${versionId ?? "none"}/source`;
+
+  test("is served to its Game's owner as plain text, exactly as uploaded, and never kept by a browser", async () => {
+    const ada = await signIn("ada@purdue.edu");
+    const source = `// Line one\nconst x = "<b>é</b>";\r\nexport default x;\n`;
+    const game = await readyGame(ada, source, "Mine");
+    const reply = await call("GET", sourcePath(game.id, game.versions[0]?.id), { cookie: ada });
+    expect(reply.status).toBe(200);
+    expect(reply.text).toBe(source);
+    expect(reply.headers.get("content-type")).toBe("text/plain; charset=utf-8");
+    expect(reply.headers.get("cache-control")).toBe("no-store");
+    expect(reply.headers.get("x-content-type-options")).toBe("nosniff");
+  });
+
+  test("anyone else gets the same 'not found' as for a Version that doesn't exist; signed out, sign in first", async () => {
+    const ada = await signIn("ada@purdue.edu");
+    const bo = await signIn("bo@purdue.edu");
+    const adas = await readyGame(ada, "ada's code", "Ada's");
+    const bos = await readyGame(bo, "bo's code", "Bo's");
+    const notFound = { status: 404, body: { error: "There's no such Game of yours." } };
+    // Another account's Version, by its own Game's id.
+    expect(await call("GET", sourcePath(adas.id, adas.versions[0]?.id), { cookie: bo })).toEqual(expect.objectContaining(notFound));
+    // Another account's Version, named under one's own Game.
+    expect(await call("GET", sourcePath(bos.id, adas.versions[0]?.id), { cookie: bo })).toEqual(expect.objectContaining(notFound));
+    // A Version that doesn't exist.
+    expect(await call("GET", sourcePath(bos.id, "nope"), { cookie: bo })).toEqual(expect.objectContaining(notFound));
+    expect((await call("GET", sourcePath(adas.id, adas.versions[0]?.id))).status).toBe(401);
+    for (const reply of [await call("GET", sourcePath(adas.id, adas.versions[0]?.id), { cookie: bo })]) expect(reply.text).not.toContain("ada's code");
+  });
+});
+
 describe("blocked words, where text becomes public, each refusal naming the word", () => {
   const publishIt = (cookie: string, game: GameSeen) => call("POST", `/api/my/games/${game.id}/publish`, { body: { versionId: game.versions[0]?.id }, cookie });
   const describeIt = (cookie: string, game: GameSeen, description: string) => call("PUT", `/api/my/games/${game.id}`, { body: { description }, cookie });

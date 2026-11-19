@@ -36,6 +36,7 @@ import {
   takeDown,
   unpublish,
   uploadTimesSince,
+  versionSource,
   versionsOf,
   type About,
   type Game,
@@ -263,6 +264,19 @@ export function gameRoutes(options: GameRoutesOptions): GameRoutes {
     const game = ownGame(account, request, response);
     if (game === undefined) return;
     response.json({ game: detail(game, versionsOf(database, game.id)) });
+  });
+
+  // A Version's source, as plain text, to its Game's owner only: for the page's comparison between
+  // Versions and its Download button. Never kept by a browser (the no-store on every /api/my answer).
+  // Another account's Game, a Version of another Game and one that doesn't exist are all "not found".
+  router.get("/api/my/games/:id/versions/:versionId/source", (request, response) => {
+    const account = creator(request, response);
+    if (account === undefined) return;
+    const game = ownGame(account, request, response);
+    if (game === undefined) return;
+    const source = versionSource(database, game.id, String(request.params["versionId"]));
+    if (source === undefined) return void response.status(404).json({ error: "There's no such Game of yours." });
+    response.type("text/plain").send(source);
   });
 
   router.put("/api/my/games/:id", (request, response) => {

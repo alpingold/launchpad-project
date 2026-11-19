@@ -134,3 +134,43 @@ test("a file over the site's size limit is refused before it is sent, quoting th
   await page.getByLabel("Choose a .ts file").setInputFiles({ name: "big.ts", mimeType: "text/plain", buffer: Buffer.alloc(limits.maxSourceBytes + 1, "x") });
   await expect(page.getByRole("alert")).toHaveText(`That file is ${limits.maxSourceBytes / 1024 + 1} KB; a Game's code may be at most ${limits.maxSourceBytes / 1024} KB.`);
 });
+
+test("each Version's code can be downloaded, a Version is compared with the one before it, and an older Version can be published again", async ({ context, signedIn }) => {
+  await context.addCookies(signedIn.cookies);
+  const page = context.pages()[0] ?? (await context.newPage());
+  await page.goto(`${APP}/my/games`);
+  await uploadGame(page, BEST_WORD);
+  await settles(page, 1, "Ready");
+  await uploadVersion(page, NEWER, 2);
+  await settles(page, 2, "Ready");
+
+  // Version 1 has nothing before it to compare with.
+  await expect(versionLine(page, 1).getByRole("button", { name: "See what changed" })).toHaveCount(0);
+  await versionLine(page, 2).getByRole("button", { name: "See what changed" }).click();
+  const changes = page.getByRole("region", { name: "What changed from Version 1 to Version 2" });
+  await expect(changes).toContainText("From Version 1: 1 line added, 1 removed.");
+  const removed = changes.locator('[data-kind="removed"]');
+  const added = changes.locator('[data-kind="added"]');
+  await expect(removed).toHaveCount(1);
+  await expect(removed).toContainText("Removed");
+  await expect(removed).toContainText('"Write your best word"');
+  await expect(added).toHaveCount(1);
+  await expect(added).toContainText("Added");
+  await expect(added).toContainText('"Write your best word, newer"');
+  await expect(changes).toContainText("unchanged lines");
+
+  // Download the code: exactly what was uploaded.
+  const downloading = page.waitForEvent("download");
+  await versionLine(page, 1).getByRole("link", { name: "Download the code" }).click();
+  const download = await downloading;
+  expect(download.suggestedFilename()).toBe("version-1.ts");
+  const { readFile } = await import("node:fs/promises");
+  expect(await readFile((await download.path()) ?? "", "utf8")).toBe(BEST_WORD);
+
+  // Going back (story 29): publish Version 2, then Version 1 again.
+  await versionLine(page, 2).getByRole("button", { name: "Publish" }).click();
+  await expect(versionLine(page, 2)).toContainText("Published");
+  await versionLine(page, 1).getByRole("button", { name: "Publish" }).click();
+  await expect(versionLine(page, 1)).toContainText("Published");
+  await expect(versionLine(page, 2)).not.toContainText("Published");
+});
