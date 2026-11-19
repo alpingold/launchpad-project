@@ -66,6 +66,7 @@ import {
   MAX_MODEL_CALLS,
   MAX_REQUEST_CHARS,
   MAX_WAITING_GENERATIONS,
+  QUICK_FAILURE_MS,
   REVIEW_EXPIRES_MS,
   REVISIONS_PER_DAY,
   RUNNING_AT_ONCE,
@@ -565,8 +566,8 @@ export class Pipeline {
 
   /**
    * One ask of the model: a call, counted and written down before it is made, and made again after
-   * each wait while GenAI Studio fails at once (busy or down). A call whose time ran out isn't made
-   * again, and the whole ask, waits included, ends by ASK_LIMIT_MS: each call gets only the time
+   * each wait while GenAI Studio fails quickly (busy or down, within QUICK_FAILURE_MS). A call whose
+   * time ran out, or that failed only slowly, isn't made again, and the whole ask, waits included, ends by ASK_LIMIT_MS: each call gets only the time
    * left, and no wait runs past it. `judge` says how an answer came out, for its step's row.
    * Undefined when the Generation has used all its calls.
    */
@@ -591,6 +592,7 @@ export class Pipeline {
         return undefined;
       }
       const step = beginStep(this.#db, id, kind, this.#seconds());
+      const began = this.#clock.now();
       const answer = await this.#call(key.key, messages, signal, Math.min(COMPLETION_TIMEOUT_MS, deadline - this.#clock.now()));
       // A call given up (the Generation cancelled, or the server stopping) came out as neither.
       const judged = signal.aborted
@@ -601,7 +603,8 @@ export class Pipeline {
       endStep(this.#db, id, step, judged.outcome, judged.problems, this.#seconds());
       this.#stillWorking(id, signal);
       const ms = UNAVAILABLE_WAITS_MS[wait];
-      if (answer.ok || answer.failure === "keyRejected" || answer.timedOut === true || ms === undefined || this.#clock.now() + ms >= deadline) {
+      const slow = this.#clock.now() - began > QUICK_FAILURE_MS;
+      if (answer.ok || answer.failure === "keyRejected" || answer.timedOut === true || slow || ms === undefined || this.#clock.now() + ms >= deadline) {
         setWaiting(this.#db, id, null, this.#seconds());
         return answer;
       }

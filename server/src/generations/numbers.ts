@@ -62,7 +62,8 @@ export const MAX_WAITING_GENERATIONS = 20;
 
 /**
  * The waits when GenAI Studio is down or busy, before the Generation fails as unavailable. Only a
- * call that failed at once is made again: one whose time ran out isn't.
+ * call that failed quickly (within QUICK_FAILURE_MS) is made again: one whose time ran out, or that
+ * failed only after minutes (a gateway giving up, say), isn't.
  */
 export const UNAVAILABLE_WAITS_MS = [30 * SECOND_MS, 60 * SECOND_MS, 120 * SECOND_MS, 240 * SECOND_MS] as const;
 /**
@@ -71,6 +72,8 @@ export const UNAVAILABLE_WAITS_MS = [30 * SECOND_MS, 60 * SECOND_MS, 120 * SECON
  * (COMPLETION_TIMEOUT_MS), so a slow answer still has its whole time.
  */
 export const ASK_LIMIT_MS = 20 * MINUTE_MS;
+/** A failed call that took longer than this isn't made again: a refusal or a busy answer comes in seconds. */
+export const QUICK_FAILURE_MS = MINUTE_MS;
 
 // --- Keys (default 4) --------------------------------------------------------------------------
 

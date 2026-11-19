@@ -15,7 +15,7 @@ import type { Concept } from "./concept.js";
 import { ScriptedModel, type ScriptedReply } from "./fake-model.js";
 import { keySecretFromBytes, SECRET_BYTES } from "./key-secret.js";
 import type { ChatMessage, CompleteOptions, Completion, Model, ModelFailure } from "./model.js";
-import { ASK_LIMIT_MS, CALLS_LEFT_FOR_A_REDRAFT, CHECK_RETRIES, CHECK_RETRY_WAIT_MS, COMPLETION_TIMEOUT_MS, GENERATIONS_PER_DAY, MAX_BUILDS, MAX_MODEL_CALLS, MAX_REQUEST_CHARS, MAX_WAITING_GENERATIONS, REVIEW_EXPIRES_MS, REVISIONS_PER_DAY, UNAVAILABLE_WAITS_MS } from "./numbers.js";
+import { ASK_LIMIT_MS, QUICK_FAILURE_MS, CALLS_LEFT_FOR_A_REDRAFT, CHECK_RETRIES, CHECK_RETRY_WAIT_MS, COMPLETION_TIMEOUT_MS, GENERATIONS_PER_DAY, MAX_BUILDS, MAX_MODEL_CALLS, MAX_REQUEST_CHARS, MAX_WAITING_GENERATIONS, REVIEW_EXPIRES_MS, REVISIONS_PER_DAY, UNAVAILABLE_WAITS_MS } from "./numbers.js";
 import { Pipeline, REASONS, redraftReason, restartReason } from "./pipeline.js";
 import { VERSIONS_PER_GAME } from "../games.js";
 
@@ -685,29 +685,39 @@ describe("GenAI Studio busy, down, or refusing the key", () => {
     expect(stepsOf(db, id).map((step) => step.outcome)).toEqual(["timedOut"]);
   });
 
-  test(`one ask, waits included, ends by ${ASK_LIMIT_MS / 60_000} minutes: each call gets only the time left, and no wait runs past it`, async () => {
+  /** A model whose every call fails as unavailable after `ms` on the test's clock, keeping each call's time limit. */
+  const failingAfter = (ms: number, limits: number[]): Model => ({
+    async complete(_key, _messages, options: CompleteOptions = {}) {
+      limits.push(options.timeoutMs ?? -1);
+      clock.advance(ms);
+      return { ok: false, failure: "unavailable" };
+    },
+    checkKey: async () => "valid",
+  });
+
+  test(`a call that failed only after more than ${QUICK_FAILURE_MS / 1000} seconds (a gateway giving up, say) isn't made again`, async () => {
     const ada = account("ada");
     const limits: number[] = [];
-    // The first call fails after 14 minutes (but not by running out of time); the rest fail at once.
-    const took = [14 * 60_000];
-    const model: Model = {
-      async complete(_key, _messages, options: CompleteOptions = {}) {
-        limits.push(options.timeoutMs ?? -1);
-        clock.advance(took.shift() ?? 0);
-        return { ok: false, failure: "unavailable" };
-      },
-      checkKey: async () => "valid",
-    };
-    const pipe = pipeline(model);
+    const pipe = pipeline(failingAfter(QUICK_FAILURE_MS + 1, limits));
     const id = started(pipe.start(ada, "taps"));
-    for (const [n, ms] of UNAVAILABLE_WAITS_MS.slice(0, 3).entries()) {
+    await until(() => stateOf(id) === "failed");
+    expect(generation(id)).toMatchObject({ reason: REASONS.unavailable, modelCalls: 1, waiting: null, counted: false });
+  });
+
+  test(`one ask, waits included, ends by ${ASK_LIMIT_MS / 60_000} minutes: each call gets only the time left`, async () => {
+    const ada = account("ada");
+    const limits: number[] = [];
+    // Each call fails quickly, after 50 seconds, so each is made again after its wait.
+    const pipe = pipeline(failingAfter(50_000, limits));
+    const id = started(pipe.start(ada, "taps"));
+    for (const [n, ms] of UNAVAILABLE_WAITS_MS.entries()) {
       await until(() => limits.length === n + 1 && generation(id).waiting !== null, `wait ${n + 1}`);
       clock.advance(ms);
     }
     await until(() => stateOf(id) === "failed");
-    // 14 minutes, then waits of 30, 60 and 120 seconds: 17.5 minutes gone, and the next wait (240 s) would end past 20.
-    expect(limits).toEqual([COMPLETION_TIMEOUT_MS, ASK_LIMIT_MS - 14.5 * 60_000, ASK_LIMIT_MS - 15.5 * 60_000, ASK_LIMIT_MS - 17.5 * 60_000]);
-    expect(generation(id)).toMatchObject({ reason: REASONS.unavailable, modelCalls: 4, waiting: null });
+    // Calls of 50 s and waits of 30, 60, 120 and 240 s: the 4th call starts 360 s in and the 5th 650 s in.
+    expect(limits).toEqual([COMPLETION_TIMEOUT_MS, COMPLETION_TIMEOUT_MS, COMPLETION_TIMEOUT_MS, ASK_LIMIT_MS - 360_000, ASK_LIMIT_MS - 650_000]);
+    expect(generation(id)).toMatchObject({ reason: REASONS.unavailable, modelCalls: UNAVAILABLE_WAITS_MS.length + 1, waiting: null });
   });
 
   test("a rejected key fails it at once, saying to check the key", async () => {
