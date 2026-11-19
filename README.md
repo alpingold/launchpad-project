@@ -90,6 +90,26 @@ which is only for developing; with `NODE_ENV=production` and no `PLAYTEST_SOCKET
 Playtest at all, so Uploads are refused. `deploy/attack-playtest.sh` attacks the wall, on a
 throwaway server only.
 
+The AI maker (a Creator's idea made into a Game, with their own Purdue GenAI Studio key; ADR 0008)
+needs three settings, and the Playtest. `GENAI_BASE_URL` and `GENAI_MODEL` say which model it asks:
+GenAI Studio is `https://genai.rcac.purdue.edu/api`, and `qwen3.8:27b` is the model measured so far.
+`KEY_SECRET_FILE` is a file holding the secret Creators' keys are encrypted with, 64 hexadecimal
+characters made with `openssl rand -hex 32`. Without all three (or without a Playtest) the maker is
+off: its pages say it isn't available yet and its routes refuse, and a Creator can still see and
+delete a saved key. A setting that is wrong stops the server from starting: one of the two model
+settings without the other, an address that isn't https in production, or a key secret file that
+doesn't hold exactly 64 hexadecimal characters.
+
+To try the maker while developing, with a scripted fake model that reaches nothing:
+`openssl rand -hex 32 > dev.key && GENAI_BASE_URL=fake KEY_SECRET_FILE=dev.key npm run dev`
+(`GENAI_BASE_URL=fake` is refused in production). The fake designs every idea as the same small
+Game; an idea holding `[fail]` gets no usable Concept, so a failed Generation can be seen too.
+
+The eval set (12 varied ideas, run through the whole maker one at a time) measures a change to the
+maker's instructions: `npm run build && npm run eval -w @boilergames/server` runs it on the fake and
+writes `eval-report.txt` and `eval-report.json`. Against the real GenAI Studio it needs `--live`
+and the owner's key in `GENAI_KEY`, spends that key on 12 Games, and is the owner's decision each time.
+
 The server also serves the Game frame on the next port up (http://localhost:3001/v1/), from
 `client/dist-frame`, which `npm run build` makes. It is built outside `client/dist` on purpose:
 the site serves `client/dist`, and must never serve the frame's page from its own origin.
@@ -99,8 +119,8 @@ the page on every change.
 
 The type check and the tests read the other packages' TypeScript source directly, so they never
 need a build first. CI (`.github/workflows/test.yml`) runs on every push and pull request: one job
-runs the type check, the build and the tests; another installs the three browsers and runs the
-browser tests, keeping each failed test's trace and screenshot.
+runs the type check, the build and the tests; two more, side by side, install the three browsers
+and each run half of the browser tests (`--shard`), keeping each failed test's trace and screenshot.
 
 ## Playing a Room with real phones
 
@@ -191,6 +211,20 @@ Worth knowing:
 - Both domains' DNS records must point straight at the server (at Cloudflare: "DNS only"). Caddy
   needs that to get certificates, and nothing may sit in front of the game domain that could change
   its Content-Security-Policy header (ADR 0004).
+
+### Turning on the AI maker
+
+The first push of the maker deploys it off. Turning it on is the owner's step, on the server:
+
+1. Make the key secret, readable by the site's user only, outside the database's folder (the
+   nightly backups copy the database alone, so they never hold it):
+   `sudo sh -c 'umask 027 && openssl rand -hex 32 > /etc/boilergames-key-secret && chgrp boilergames /etc/boilergames-key-secret'`
+2. Add to `deploy/boilergames.env`: `KEY_SECRET_FILE=/etc/boilergames-key-secret`,
+   `GENAI_BASE_URL=https://genai.rcac.purdue.edu/api` and `GENAI_MODEL=qwen3.8:27b`, and run
+   `deploy/setup-server.sh` again.
+
+Losing the secret (a server rebuilt from nothing) loses every saved key: the site says so on the key
+page, and each Creator saves theirs again. Never put the secret in the database, a backup or git.
 
 ### The database's backups
 

@@ -238,7 +238,9 @@ the site has no AI game maker.
 
 **Making Games**
 - A Generation is: Concept → the Creator's approval or edits → Build → Playtest, with failures going
-  back to Build. A Revision is the same without a new Concept.
+  back to Build. A Revision is the same without a new Concept, and with no Plan yet: it is checked
+  against the Game's Concept only when the AI made the Version it changes, and keeps that Version's
+  phases and Player count.
 - The Concept's phases are structured data, and the Playtest checks the Game against them (every
   phase reached, every Player offered something to do, scores moving when the Concept has scoring),
   not only that the Match ends. There is no AI code review.
@@ -247,13 +249,14 @@ the site has no AI game maker.
 - Build starts from a typed skeleton and the SDK's reference, never from an example Game.
 - The Playtest runs strict `tsc`, bundles the Game so it can import only the SDK, then plays
   simulated Matches to the end (fewest Players, most Players, most with dropouts, fewest with latecomers). The same checks
-  run on Uploads.
+  run on Uploads, except those against a Concept, which an Upload doesn't have: an Upload's Playtest
+  is what it was before the AI maker.
 - Only the Playtest runs Game code on the server, in a locked-down child process with no network.
   The rest of the pipeline only exchanges text with the model and needs no sandbox.
 - A Generation's progress is rows in the database, resumable at each stage. Creators use their own
   GenAI Studio key, encrypted at rest; a queue runs a few Generations at once.
-- This section is a direction, not a finished design: it gets its own design pass with the owner
-  before milestone 3, as the data model does before milestone 2.
+- Its design is BUILD-PLAN's "Milestone 3: the AI" and ADR 0008, both proposed: every number in
+  them is a default waiting for the owner's yes.
 
 **Accounts**
 - Sign-in is passwordless: an emailed link, sent through SES. The link opens a page with a button,

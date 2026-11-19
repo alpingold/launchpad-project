@@ -121,7 +121,7 @@ The whole process of turning a Creator's idea into a Game: a Concept, the Creato
 _Avoid_: Job, build, prompt
 
 **Concept**:
-The written design of a whole Game (its rules, screens and length) that a Generation drafts and the Creator approves before any code is written.
+The written design of a whole Game that a Generation drafts and the Creator approves (or edits, or sends back with a note) before any code is written. It is structured: a title, a pitch, a Player count, its phases in order (each with an id the Game's state uses), its scoring, its length and its Look, so the Playtest can check the Game against it.
 _Avoid_: Design, idea, spec, pitch
 
 **Build**:
@@ -133,11 +133,11 @@ An automated run of a Game with simulated Players, from start to finish, to chec
 _Avoid_: Test run, validation, QA
 
 **Revision**:
-A change to an existing Game that its Creator asks for in plain words, made without rebuilding from the Concept.
+A change to one ready Version of a Game that its Creator asks for in plain words, made without rebuilding from the Concept. It makes a new Version, which isn't published; a failed one leaves the Game as it was.
 _Avoid_: Edit, patch, tweak
 
 **Plan**:
-The written plan of one Revision, against the Game's Concept. A small fix has no Plan.
+The written plan of one Revision, against the Game's Concept. A small fix has no Plan. Not built yet: for now no Revision has a Plan.
 _Avoid_: Change design, diff
 
 **Upload**:
@@ -149,7 +149,7 @@ A Creator's own copy of someone else's public Game, to play and change as their 
 _Avoid_: Fork, clone
 
 **Track**:
-The board a Creator's page shows for a Version in progress: where it is (Concept, Build, Playtest, ready) and whether it is waiting on the AI, on its Creator, or failed.
+The page a Creator follows a Generation or a Revision on: where it is (Concept, Build, Playtest, ready) and whether it is waiting on the AI, on its Creator, or failed and why, with each step it took and the problems each found.
 _Avoid_: Progress bar, pipeline
 
 **Made by**:

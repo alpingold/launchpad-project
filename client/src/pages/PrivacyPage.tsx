@@ -20,7 +20,8 @@ export function PrivacyPage() {
         <p>The site keeps your email address, the display name you pick, when your account was made, and the Games you upload with the code of every Version of them.</p>
         <p>
           If you save a Purdue GenAI Studio key, the site keeps it encrypted, with its last 4 characters and when you saved it. It never shows the key again, only those
-          4 characters, and you can delete it at any time.
+          4 characters, and you can delete it at any time. The secret it is encrypted with is kept on the server apart from the database, so the database's copies
+          can't reveal your key.
         </p>
         <p>
           If you make a Game with the site's AI maker, the site keeps each Generation: your idea, the Concept the AI drafted with your changes to it, a note asking for a new
@@ -96,6 +97,10 @@ export function PrivacyPage() {
           When you use the AI maker, the site sends GenAI Studio, with your key, what the AI needs to make your Game: your idea, the Concept and any note you write about
           it, the code the AI wrote, and the problems the site's check found in it. When you ask it to change a Version of one of your Games, it also sends what you
           asked for and that Version's code, which may be code you uploaded yourself. Nothing else you write is sent to an AI.
+        </p>
+        <p>
+          Each of those requests is made with your own key, so it counts as your own use of GenAI Studio. GenAI Studio is Purdue's own service, not part of
+          BoilerGames: what it keeps of what it is sent is up to Purdue.
         </p>
       </section>
 
