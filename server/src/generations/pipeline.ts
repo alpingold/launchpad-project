@@ -668,7 +668,9 @@ export class Pipeline {
       const step = beginStep(this.#db, id, "playtest", this.#seconds());
       const result = await this.#playtest.run(source, options);
       const outcome = result.ok ? "passed" : "checkFailed" in result ? "checkFailed" : "problems";
-      endStep(this.#db, id, step, outcome, result.ok ? null : result.problems, this.#seconds());
+      // A failed check found nothing about the Game: no problems, so none go to the Creator's Track
+      // (whose reason says what happens next) or back to the model after a restart.
+      endStep(this.#db, id, step, outcome, outcome === "problems" && !result.ok ? result.problems : null, this.#seconds());
       return result;
     });
     // The next one waits for this one to end, however it ends.

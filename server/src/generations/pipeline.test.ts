@@ -573,6 +573,8 @@ describe("the site's own check failing", () => {
     await until(() => stateOf(id) === "failed");
     expect(generation(id)).toMatchObject({ reason: REASONS.checkFailed, counted: false, gameId: null });
     expect(REASONS.checkFailed).toContain("can't be tried again");
+    // The Playtest's own "try again" message is never shown beside it.
+    expect(stepsOf(db, id).filter((step) => step.kind === "playtest").map((step) => [step.outcome, step.problems])).toEqual(Array(CHECK_RETRIES + 1).fill(["checkFailed", null]));
     expect(playtest.runs).toHaveLength(CHECK_RETRIES + 1);
   });
 
