@@ -16,6 +16,8 @@ import { MAX_IDEA_CHARS, MAX_REQUEST_CHARS } from "./numbers.js";
 import type { Pipeline } from "./pipeline.js";
 
 export const GENERATIONS_PATH = "/api/my/generations";
+/** Where a Creator asks the AI for a change to a Version of their Game: a Revision. */
+export const REVISIONS_PATH = "/api/my/games/:id/revisions";
 /** The most of an account's Generations listed. */
 const MAX_LISTED = 50;
 
@@ -29,7 +31,10 @@ export interface GenerationRoutesOptions {
 /** A Generation as its Creator sees it: never the key, never the code (the Game's page shows that once it is made). */
 export interface GenerationView {
   readonly id: string;
+  /** A Generation (from an idea) or a Revision (a change to a Game). */
+  readonly kind: Generation["kind"];
   readonly state: Generation["state"];
+  /** The idea, or a Revision's request. */
   readonly idea: string;
   readonly concept: unknown;
   readonly reason: string | null;
@@ -50,6 +55,7 @@ const ideaBody = z.object({ idea: z.string().max(MAX_IDEA_CHARS * 2) });
 const noteBody = z.object({ note: z.string().trim().min(1).max(MAX_REQUEST_CHARS) });
 const conceptBody = z.object({ concept: z.unknown() });
 const approveBody = z.object({ concept: z.unknown().optional() });
+const revisionBody = z.object({ versionId: z.string().max(100), request: z.string().max(MAX_REQUEST_CHARS * 2) });
 
 /** A refusal; a Concept's problems are in its text as well as listed, so a page can show them as they come. */
 function refused(response: Response, refusal: { readonly status: number; readonly error: string; readonly problems?: readonly string[] }): void {
@@ -73,6 +79,7 @@ export function generationRoutes(options: GenerationRoutesOptions): Router {
   function view(generation: Generation, maker: Pipeline, withSteps: boolean): GenerationView {
     return {
       id: generation.id,
+      kind: generation.kind,
       state: generation.state,
       idea: generation.idea,
       concept: generation.concept,
@@ -117,6 +124,16 @@ export function generationRoutes(options: GenerationRoutesOptions): Router {
     const started = signed.pipeline.start(signed.account.id, body.data.idea);
     if (!started.ok) return void response.status(started.status).json({ error: started.error });
     current(response, started.generation.id, signed.pipeline, 201);
+  });
+
+  router.post(REVISIONS_PATH, (request, response) => {
+    const signed = creator(request, response);
+    if (signed === undefined) return;
+    const body = revisionBody.safeParse(request.body);
+    if (!body.success) return void response.status(400).json({ error: `Say which Version, and what to change in 1 to ${MAX_REQUEST_CHARS} characters.` });
+    const revised = signed.pipeline.revise(signed.account.id, String(request.params["id"]), body.data.versionId, body.data.request);
+    if (!revised.ok) return void response.status(revised.status).json({ error: revised.error });
+    current(response, revised.generation.id, signed.pipeline, 201);
   });
 
   router.get(`${GENERATIONS_PATH}/:id`, (request, response) => {

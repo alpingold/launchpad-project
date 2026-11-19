@@ -22,6 +22,8 @@ import {
 import { compareVersions, type ComparedLine, type Comparison } from "../creator/compare.js";
 import { needsACreator } from "../creator/needs-a-creator.js";
 import { UploadBox } from "../creator/UploadBox.js";
+import { MAX_NOTE_CHARS, reviseVersion } from "../maker/maker-api.js";
+import { siteConfig } from "../site-config.js";
 
 /** How often a Version being checked is asked about. */
 export const CHECKING_POLL_MS = 2_000;
@@ -29,6 +31,13 @@ export const CHECKING_POLL_MS = 2_000;
 export function MyGamePage({ id }: { id: string }) {
   const [game, setGame] = useState<Game | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [aiMaker, setAiMaker] = useState(false);
+  useEffect(() => {
+    siteConfig().then(
+      (config) => setAiMaker(config.aiMaker),
+      () => undefined,
+    );
+  }, []);
 
   const load = useCallback(async () => {
     const reply = await myGame(id);
@@ -110,6 +119,7 @@ export function MyGamePage({ id }: { id: string }) {
               mayPublish={game.takenDownAt === null}
               publish={() => void change(publishVersion(game.id, version.id))}
               unpublish={() => void change(unpublishGame(game.id))}
+              aiMaker={aiMaker}
             />
           ))}
         </ol>
@@ -154,6 +164,7 @@ function VersionLine({
   mayPublish,
   publish,
   unpublish,
+  aiMaker,
 }: {
   gameId: string;
   version: Version;
@@ -163,8 +174,11 @@ function VersionLine({
   mayPublish: boolean;
   publish: () => void;
   unpublish: () => void;
+  /** Whether the site's AI maker is on: then a ready Version can be changed by asking it. */
+  aiMaker: boolean;
 }) {
   const [comparing, setComparing] = useState(false);
+  const [asking, setAsking] = useState(false);
   return (
     <li className="my-version" data-state={version.state} aria-label={`Version ${version.number}`}>
       <p>
@@ -196,8 +210,14 @@ function VersionLine({
               Publish
             </button>
           ) : null}
+          {aiMaker ? (
+            <button type="button" className="page-button page-button-small page-button-quiet" aria-expanded={asking} onClick={() => setAsking(!asking)}>
+              Ask the AI for a change
+            </button>
+          ) : null}
         </p>
       ) : null}
+      {asking && version.state === "ready" ? <AskForAChange gameId={gameId} versionId={version.id} /> : null}
       <p className="my-version-actions">
         <a className="page-button page-button-small page-button-quiet" href={sourcePath(gameId, version.id)} download={`version-${version.number}.ts`}>
           Download the code
@@ -210,6 +230,37 @@ function VersionLine({
       </p>
       {comparing && before !== undefined ? <Changes gameId={gameId} older={before} newer={version} /> : null}
     </li>
+  );
+}
+
+/** A Revision: the Creator says what to change, and follows it on its own page. */
+function AskForAChange({ gameId, versionId }: { gameId: string; versionId: string }) {
+  const [request, setRequest] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  async function ask(event: FormEvent): Promise<void> {
+    event.preventDefault();
+    setBusy(true);
+    const reply = await reviseVersion(gameId, versionId, request);
+    setBusy(false);
+    if (!reply.ok) return setError(reply.error);
+    location.assign(`/my/generations/${encodeURIComponent(reply.value.id)}`);
+  }
+  return (
+    <form className="page-form my-ask" onSubmit={(event) => void ask(event)}>
+      <label>
+        What should change?
+        <textarea className="prose" rows={3} maxLength={MAX_NOTE_CHARS} value={request} onChange={(event) => setRequest(event.target.value)} />
+      </label>
+      {error === null ? null : (
+        <p className="page-notice" role="alert">
+          {error}
+        </p>
+      )}
+      <button type="submit" className="page-button page-button-small" disabled={busy || request.trim() === ""}>
+        {busy ? "Asking…" : "Ask for the change"}
+      </button>
+    </form>
   );
 }
 

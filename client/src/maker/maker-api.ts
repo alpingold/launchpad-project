@@ -58,6 +58,8 @@ export interface Step {
 
 export interface Generation {
   readonly id: string;
+  /** From an idea, or a Revision: a change the Creator asked for to a Version of their Game. */
+  readonly kind: "generation" | "revision";
   readonly state: GenerationState;
   readonly idea: string;
   readonly concept: Concept | null;
@@ -87,6 +89,9 @@ export const editConcept = (id: string, concept: Concept) => put<Generation>(`${
 export const redraft = (id: string, note: string) => post<Generation>(`${one(id)}/redraft`, { note });
 export const approve = (id: string, concept?: Concept) => post<Generation>(`${one(id)}/approve`, concept === undefined ? {} : { concept });
 export const cancelGeneration = (id: string) => post<Generation>(`${one(id)}/cancel`, {});
+/** Asks the AI for a change to a ready Version: a Revision, followed on its own page like a Generation. */
+export const reviseVersion = (gameId: string, versionId: string, request: string) =>
+  post<Generation>(`/api/my/games/${encodeURIComponent(gameId)}/revisions`, { versionId, request });
 
 /** Whether the AI is working on it (or it waits its turn): the page asks again every few seconds only then. */
 export const working = (state: GenerationState) => state === "concept" || state === "build" || state === "playtest";

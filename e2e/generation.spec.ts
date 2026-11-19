@@ -3,8 +3,8 @@
 // that is published and says AI-made in the Library; and a failed Generation with its reason. At
 // phone width, with no page scrolling sideways.
 import type { Page } from "@playwright/test";
-import { FAKE_FAIL } from "../server/src/generations/dev-fake.js";
-import { signInFromMyGames, someone, versionLine } from "./creator-helpers.js";
+import { FAKE_CHANGED, FAKE_FAIL } from "../server/src/generations/dev-fake.js";
+import { BEST_WORD, signInFromMyGames, someone, uploadGame, versionLine } from "./creator-helpers.js";
 import { expect, test } from "./fixtures.js";
 import { APP } from "./origins.js";
 
@@ -77,4 +77,29 @@ test("a Generation that fails says why, and leaves no Game", async ({ context },
   await page.getByRole("link", { name: "My Games" }).click();
   await expect(page.getByText("You haven't uploaded a Game yet.")).toBeVisible();
   await expect(page.getByRole("listitem")).toContainText(["failed"]);
+});
+
+test("the AI changes an uploaded Game: a new Version, not published, whose changed lines can be seen", async ({ context }, info) => {
+  const page = context.pages()[0] ?? (await context.newPage());
+  await page.setViewportSize({ width: 390, height: 844 });
+  const { email, name } = someone(info.project.name);
+  await signInFromMyGames(page, email, name);
+  await saveAKey(page);
+  await uploadGame(page, BEST_WORD);
+  await expect(versionLine(page, 1)).toContainText("Ready", { timeout: 30_000 });
+
+  await versionLine(page, 1).getByRole("button", { name: "Ask the AI for a change" }).click();
+  await page.getByLabel("What should change?").fill("Give the vote a longer timer.");
+  expect(await scrollsSideways(page)).toBe(false);
+  await page.getByRole("button", { name: "Ask for the change" }).click();
+  await expect(page).toHaveURL(/\/my\/generations\/[^/]+$/);
+  await expect(page.getByRole("heading", { name: "A change to your Game" })).toBeVisible();
+  await expect(page.getByRole("status")).toHaveText("Ready: the Game passed its check.", { timeout: 60_000 });
+
+  await page.getByRole("link", { name: "Go to the Game" }).click();
+  await expect(versionLine(page, 2)).toContainText("Ready");
+  await expect(versionLine(page, 2)).not.toContainText("Published");
+  await versionLine(page, 2).getByRole("button", { name: "See what changed" }).click();
+  await expect(versionLine(page, 2).getByText(`${FAKE_CHANGED}Give the vote a longer timer.`)).toBeVisible();
+  expect(await scrollsSideways(page)).toBe(false);
 });

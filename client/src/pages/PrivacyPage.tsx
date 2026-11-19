@@ -24,8 +24,8 @@ export function PrivacyPage() {
         </p>
         <p>
           If you make a Game with the site's AI maker, the site keeps each Generation: your idea, the Concept the AI drafted with your changes to it, a note asking for a new
-          draft until the AI has drafted it again, the code the AI wrote, and each step it took with the problems the site's check found. They stay until your account is
-          removed.
+          draft until the AI has drafted it again, the code the AI wrote, and each step it took with the problems the site's check found. It keeps each change you ask
+          the AI to make to a Game the same way, with what you asked for. They stay until your account is removed.
         </p>
         <p>Your display name is public: it is shown with every Game you publish. Your email address is never shown on the site.</p>
         <p>
@@ -94,7 +94,8 @@ export function PrivacyPage() {
         <p>When you save a GenAI Studio key, the site sends it to Purdue's GenAI Studio to check that it works.</p>
         <p>
           When you use the AI maker, the site sends GenAI Studio, with your key, what the AI needs to make your Game: your idea, the Concept and any note you write about
-          it, the code the AI wrote, and the problems the site's check found in it. Nothing else you write is sent to an AI.
+          it, the code the AI wrote, and the problems the site's check found in it. When you ask it to change a Version of one of your Games, it also sends what you
+          asked for and that Version's code, which may be code you uploaded yourself. Nothing else you write is sent to an AI.
         </p>
       </section>
 

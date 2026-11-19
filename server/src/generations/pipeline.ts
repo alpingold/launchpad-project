@@ -21,10 +21,11 @@
 import { randomBytes } from "node:crypto";
 import type { PlaytestRunner, RunOptions, RunResult } from "@boilergames/playtest/client";
 import type { Database } from "../db/database.js";
-import { countGames } from "../db/games.js";
+import { countGames, countVersions, gameById, versionSource, versionsOf } from "../db/games.js";
 import { storedKey } from "../db/genai-keys.js";
 import {
   beginStep,
+  conceptOfGame,
   countModelCall,
   countStartedSince,
   createGeneration,
@@ -44,13 +45,23 @@ import {
   type GenerationState,
   type StepKind,
 } from "../db/generations.js";
-import { GAMES_PER_ACCOUNT } from "../games.js";
+import { GAMES_PER_ACCOUNT, VERSIONS_PER_GAME } from "../games.js";
 import type { Clock } from "../rooms.js";
-import { buildGame, buildMessages, expectOf, generationContext, type BuildProgress } from "./build.js";
+import { buildGame, buildMessages, expectOf, generationContext, revisionContext, revisionMessages, type BuildProgress } from "./build.js";
 import { checkConcept, draftConcept, invalidConceptsReason, readConcept, type Concept } from "./concept.js";
 import type { KeySecret } from "./key-secret.js";
 import { longestCodeBlock, type ChatMessage, type Completion, type Model, type ModelFailure } from "./model.js";
-import { GENERATIONS_PER_DAY, MAX_IDEA_CHARS, MAX_MODEL_CALLS, MAX_WAITING_GENERATIONS, REVIEW_EXPIRES_MS, RUNNING_AT_ONCE, UNAVAILABLE_WAITS_MS } from "./numbers.js";
+import {
+  GENERATIONS_PER_DAY,
+  MAX_IDEA_CHARS,
+  MAX_MODEL_CALLS,
+  MAX_REQUEST_CHARS,
+  MAX_WAITING_GENERATIONS,
+  REVIEW_EXPIRES_MS,
+  REVISIONS_PER_DAY,
+  RUNNING_AT_ONCE,
+  UNAVAILABLE_WAITS_MS,
+} from "./numbers.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** How often Concepts left waiting are looked for. */
@@ -64,6 +75,8 @@ export const REASONS = {
   cancelled: "You cancelled it.",
   expired: "Nobody approved the Concept within 7 days.",
   tooManyGames: `You have ${GAMES_PER_ACCOUNT} Games, the most an account may have. Delete one, then start again.`,
+  tooManyVersions: `This Game has ${VERSIONS_PER_GAME} Versions, the most one Game may have. Start a new Game for more.`,
+  baseGone: "The Version this Revision changes can't be read any more. Ask for the change again.",
   callsUsed: "The Generation used all the model calls it may make.",
   site: "Something went wrong on the site's side. Start the Generation again.",
 } as const;
@@ -141,6 +154,44 @@ export class Pipeline {
     this.#add(id, accountId);
     const generation = generationById(this.#db, id);
     if (generation === undefined) throw new Error("the Generation just made can't be read");
+    return { ok: true, generation };
+  }
+
+  /**
+   * Asks the AI for a change to one ready Version of the Creator's Game (story 29): a Revision. It
+   * waits in the line, then is built and checked like a Generation's Build, and a pass makes a new
+   * Version, which isn't published. A Game a Generation made is checked against its Concept too.
+   */
+  revise(accountId: string, gameId: string, versionId: string, request: string): { readonly ok: true; readonly generation: Generation } | Refusal {
+    const text = request.trim();
+    if (text === "" || text.length > MAX_REQUEST_CHARS) return { ok: false, status: 400, error: `Say what to change, in 1 to ${MAX_REQUEST_CHARS} characters.` };
+    if (gameById(this.#db, gameId)?.ownerId !== accountId) return { ok: false, status: 404, error: "There's no such Game of yours." };
+    const version = versionsOf(this.#db, gameId).find((each) => each.id === versionId);
+    if (version?.state !== "ready" || versionSource(this.#db, gameId, versionId) === undefined) return { ok: false, status: 409, error: "Only a Version that passed its check can be changed." };
+    if (!this.#key(accountId).ok) return { ok: false, status: 409, error: "Save your GenAI Studio key first: the AI uses it to make the change." };
+    if (hasWorking(this.#db, accountId)) return { ok: false, status: 409, error: "The AI is already working on one of yours. Wait for it, or cancel it, then ask for this change." };
+    if (countVersions(this.#db, gameId) >= VERSIONS_PER_GAME) return { ok: false, status: 409, error: REASONS.tooManyVersions };
+    const since = Math.floor((this.#clock.now() - DAY_MS) / 1000);
+    if (countStartedSince(this.#db, accountId, "revision", since) >= REVISIONS_PER_DAY) {
+      return { ok: false, status: 429, error: `You can ask for ${REVISIONS_PER_DAY} changes a day. Try again tomorrow.` };
+    }
+    if (this.#waiting.length >= MAX_WAITING_GENERATIONS) return { ok: false, status: 503, error: "The AI's line is full. Try again in a few minutes." };
+    const id = this.#newId();
+    const concept = conceptOfGame(this.#db, gameId);
+    createGeneration(this.#db, {
+      id,
+      accountId,
+      kind: "revision",
+      revises: { gameId, versionId },
+      ...(concept === undefined ? {} : { concept }),
+      idea: text,
+      state: "build",
+      builds: 1,
+      at: this.#seconds(),
+    });
+    this.#add(id, accountId);
+    const generation = generationById(this.#db, id);
+    if (generation === undefined) throw new Error("the Revision just made can't be read");
     return { ok: true, generation };
   }
 
@@ -361,15 +412,28 @@ export class Pipeline {
   }
 
   async #build(generation: Generation, signal: AbortSignal): Promise<void> {
-    const checked = checkConcept(generation.concept);
-    if (!checked.ok) return void this.#end(generation.id, "failed", "Its Concept can't be read any more. Start the Generation again.");
-    const concept = checked.concept;
+    // A Generation always has its Concept; a Revision has its Game's, if a Generation made the Game.
+    const checked = generation.concept === null && generation.kind === "revision" ? undefined : checkConcept(generation.concept);
+    if (checked?.ok === false) return void this.#end(generation.id, "failed", "Its Concept can't be read any more. Start the Generation again.");
+    const concept = checked?.concept;
+    let first: readonly ChatMessage[];
+    let context: string;
+    if (generation.kind === "revision") {
+      const source = generation.gameId === null || generation.baseVersionId === null ? undefined : versionSource(this.#db, generation.gameId, generation.baseVersionId);
+      if (source === undefined) return void this.#end(generation.id, "failed", REASONS.baseGone);
+      first = revisionMessages(concept, source, generation.idea);
+      context = revisionContext(concept, generation.idea);
+    } else {
+      if (concept === undefined) return void this.#end(generation.id, "failed", "Its Concept can't be read any more. Start the Generation again.");
+      first = buildMessages(concept);
+      context = generationContext(concept);
+    }
     const result = await buildGame({
       ask: (messages, kind) => this.#ask(generation, kind, messages, signal, buildOutcome),
       playtest: { run: (source, options) => this.#playtestStep(generation.id, source, options, signal) },
-      first: buildMessages(concept),
-      context: generationContext(concept),
-      expect: expectOf(concept),
+      first,
+      context,
+      ...(concept === undefined ? {} : { expect: expectOf(concept) }),
       from: this.#progressOf(generation),
       onProgress: (stage, progress) => {
         this.#stillWorking(generation.id, signal);
@@ -394,7 +458,8 @@ export class Pipeline {
       const reason = result.failure === undefined ? result.reason : failureReason(result.failure);
       return void this.#end(generation.id, "failed", reason);
     }
-    if (countGames(this.#db, generation.accountId) >= GAMES_PER_ACCOUNT) return void this.#end(generation.id, "failed", REASONS.tooManyGames);
+    if (generation.kind === "generation" && countGames(this.#db, generation.accountId) >= GAMES_PER_ACCOUNT) return void this.#end(generation.id, "failed", REASONS.tooManyGames);
+    if (generation.kind === "revision" && countVersions(this.#db, generation.gameId ?? "") >= VERSIONS_PER_GAME) return void this.#end(generation.id, "failed", REASONS.tooManyVersions);
     const current = generationById(this.#db, generation.id);
     if (current === undefined) throw new Stopped();
     const finished = finishGeneration(this.#db, {
@@ -503,9 +568,14 @@ export class Pipeline {
 
 /** Why a row in a working state can't carry on, or undefined if it can. */
 function cantCarryOn(generation: Generation): string | undefined {
-  if (generation.kind !== "generation") return "Revisions aren't built yet";
-  if (generation.state === "concept") return undefined;
-  if (!checkConcept(generation.concept).ok) return "its Concept can't be read";
+  if (generation.kind === "revision") {
+    if (generation.state === "concept") return "a Revision has no Concept to draft";
+    if (generation.gameId === null || generation.baseVersionId === null) return "it doesn't say which Version it changes";
+    if (generation.concept !== null && !checkConcept(generation.concept).ok) return "its Concept can't be read";
+  } else {
+    if (generation.state === "concept") return undefined;
+    if (!checkConcept(generation.concept).ok) return "its Concept can't be read";
+  }
   if (generation.state === "playtest" && generation.code === null) return "it has no code to check";
   if (generation.builds < 1) return "it never began its Build";
   return undefined;

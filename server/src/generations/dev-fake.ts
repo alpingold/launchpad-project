@@ -6,18 +6,23 @@
  * It answers the maker's prompts with canned answers, so the whole maker can be tried without a
  * model: a Concept prompt with FAKE_CONCEPT, and a Build prompt with FAKE_GAME, titled as the
  * Concept the prompt holds (so a Creator who edits the title sees it in the Game). An idea that
- * holds FAKE_FAIL gets no usable Concept, so a failed Generation can be seen too.
+ * holds FAKE_FAIL gets no usable Concept, so a failed Generation can be seen too. A Revision gets
+ * its file back with one line added, a comment saying what was asked (FAKE_CHANGED), so its changed
+ * lines can be seen.
  *
  * These answers are the fake model's side of the conversation: none of them is ever put in a prompt.
  */
 import type { Concept } from "./concept.js";
 import { ScriptedModel } from "./fake-model.js";
-import type { ChatMessage } from "./model.js";
+import { longestCodeBlock, type ChatMessage } from "./model.js";
 
 /** The one key the fake GenAI Studio refuses. */
 export const FAKE_REJECTED_KEY = "rejected-key-0000";
 /** In an idea, makes every Concept the fake drafts unusable. */
 export const FAKE_FAIL = "[fail]";
+/** The line the fake adds to a file it is asked to change, before the request's first line. */
+export const FAKE_CHANGED = "// Changed by the AI, as asked: ";
+const ASKED_FOR = "The Creator asked for this change to their Game:\n";
 
 export const FAKE_CONCEPT: Concept = {
   title: "Tap Vote",
@@ -81,6 +86,13 @@ export default defineGame<State, Action>({
 export function fakeAnswer(messages: readonly ChatMessage[]): string {
   const system = messages[0]?.content ?? "";
   const asked = messages.map((message) => message.content).join("\n");
+  if (system.startsWith("You write party games") && asked.includes(ASKED_FOR)) {
+    // A Revision: the file it was given (or its own last one), with the change written in as a comment.
+    const file = longestCodeBlock(messages.at(-1)?.content ?? "") ?? "";
+    if (file.includes(FAKE_CHANGED)) return `\`\`\`ts\n${file}\`\`\``;
+    const request = (asked.split(ASKED_FOR)[1] ?? "").split("\n")[0] ?? "";
+    return `\`\`\`ts\n${FAKE_CHANGED}${request}\n${file}\`\`\``;
+  }
   if (system.startsWith("You write party games")) {
     // The skeleton (or the last file) names the Concept's title; keep it.
     const title = /"title": ("(?:[^"\\]|\\.)*")/.exec(asked)?.[1] ?? JSON.stringify(FAKE_CONCEPT.title);

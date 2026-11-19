@@ -26,6 +26,8 @@ export interface Generation {
   readonly accountId: string;
   readonly kind: GenerationKind;
   readonly gameId: string | null;
+  /** A Revision's: the Version it changes. */
+  readonly baseVersionId: string | null;
   readonly idea: string;
   readonly state: GenerationState;
   /** The Concept as JSON text was parsed: still to be checked (concept.ts) before it is trusted. */
@@ -61,6 +63,7 @@ const generationRow = z
     account_id: z.string(),
     kind: z.enum(["generation", "revision"]),
     game_id: z.string().nullable(),
+    base_version_id: z.string().nullable(),
     idea: z.string(),
     state: z.enum(["concept", "review", "build", "playtest", "ready", "failed", "cancelled"]),
     concept: json.nullable(),
@@ -82,6 +85,7 @@ const generationRow = z
       accountId: row.account_id,
       kind: row.kind,
       gameId: row.game_id,
+      baseVersionId: row.base_version_id,
       idea: row.idea,
       state: row.state,
       concept: row.concept,
@@ -98,7 +102,7 @@ const generationRow = z
     }),
   );
 
-const COLUMNS = "id, account_id, kind, game_id, idea, state, concept, note, code, builds, type_fixes, model_calls, version_id, reason, waiting_why, waiting_until, created_at, updated_at";
+const COLUMNS = "id, account_id, kind, game_id, base_version_id, idea, state, concept, note, code, builds, type_fixes, model_calls, version_id, reason, waiting_why, waiting_until, created_at, updated_at";
 
 const stepRow = z
   .object({
@@ -115,18 +119,40 @@ const placeholders = (items: readonly unknown[]) => items.map(() => "?").join(",
 
 export function createGeneration(
   db: Database,
-  generation: { readonly id: string; readonly accountId: string; readonly kind: GenerationKind; readonly gameId?: string; readonly idea: string; readonly state: GenerationState; readonly at: number },
+  generation: {
+    readonly id: string;
+    readonly accountId: string;
+    readonly kind: GenerationKind;
+    /** A Revision's Game and the Version it changes. */
+    readonly revises?: { readonly gameId: string; readonly versionId: string };
+    /** A Revision's Concept: its Game's, if a Generation made it. */
+    readonly concept?: unknown;
+    readonly idea: string;
+    readonly state: GenerationState;
+    /** A Revision starts at its first Build. */
+    readonly builds?: number;
+    readonly at: number;
+  },
 ): void {
-  db.prepare("INSERT INTO generations (id, account_id, kind, game_id, idea, state, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run(
+  db.prepare("INSERT INTO generations (id, account_id, kind, game_id, base_version_id, idea, state, concept, builds, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run(
     generation.id,
     generation.accountId,
     generation.kind,
-    generation.gameId ?? null,
+    generation.revises?.gameId ?? null,
+    generation.revises?.versionId ?? null,
     generation.idea,
     generation.state,
+    generation.concept === undefined ? null : JSON.stringify(generation.concept),
+    generation.builds ?? 0,
     generation.at,
     generation.at,
   );
+}
+
+/** The Concept a Generation made this Game from, if one did: what its Revisions are checked against too. */
+export function conceptOfGame(db: Database, gameId: string): unknown {
+  const row = one(z.object({ concept: json }), db.prepare("SELECT concept FROM generations WHERE game_id = ? AND kind = 'generation' AND state = 'ready' AND concept IS NOT NULL LIMIT 1").get(gameId));
+  return row?.concept;
 }
 
 export function generationById(db: Database, id: string): Generation | undefined {

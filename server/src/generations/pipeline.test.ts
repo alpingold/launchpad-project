@@ -6,7 +6,7 @@ import { childProcessRunner, type PlaytestRunner, type RunOptions, type RunResul
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { createAccount } from "../db/accounts.js";
 import { IN_MEMORY, openDatabase, type Database } from "../db/database.js";
-import { countGames, gamesOwnedBy, uploadTimesSince, versionsOf } from "../db/games.js";
+import { countGames, createGame, createVersion, finishCheck, gamesOwnedBy, uploadTimesSince, versionsOf } from "../db/games.js";
 import { saveKey } from "../db/genai-keys.js";
 import { beginStep, createGeneration, endStep, generationById, moveGeneration, stepsOf, type Generation } from "../db/generations.js";
 import { GAMES_PER_ACCOUNT } from "../games.js";
@@ -15,7 +15,7 @@ import type { Concept } from "./concept.js";
 import { ScriptedModel, type ScriptedReply } from "./fake-model.js";
 import { keySecretFromBytes, SECRET_BYTES } from "./key-secret.js";
 import type { ChatMessage, CompleteOptions, Completion, Model, ModelFailure } from "./model.js";
-import { GENERATIONS_PER_DAY, MAX_BUILDS, MAX_MODEL_CALLS, MAX_WAITING_GENERATIONS, REVIEW_EXPIRES_MS, UNAVAILABLE_WAITS_MS } from "./numbers.js";
+import { GENERATIONS_PER_DAY, MAX_BUILDS, MAX_MODEL_CALLS, MAX_REQUEST_CHARS, MAX_WAITING_GENERATIONS, REVIEW_EXPIRES_MS, REVISIONS_PER_DAY, UNAVAILABLE_WAITS_MS } from "./numbers.js";
 import { Pipeline, REASONS } from "./pipeline.js";
 
 const keySecret = keySecretFromBytes(Buffer.alloc(SECRET_BYTES, 9));
@@ -245,6 +245,111 @@ describe("a whole Generation", () => {
     expect(generation(id)).toMatchObject({ builds: 2, modelCalls: 2 });
     expect(model.calls[1]?.messages[1]?.content).toContain("- play: With 2 Players (seed 1): it never ends");
     expect(playtest.runs[0]?.options).toEqual({ expect: { phases: ["write", "vote"], scoring: true, players: { min: 2, max: 4 } } });
+  });
+});
+
+/** An uploaded Game of `accountId`'s, with one ready Version of `source`. Its Game and Version ids. */
+function uploaded(accountId: string, id: string, source = "// an uploaded Game\n"): { gameId: string; versionId: string } {
+  createGame(db, { id, ownerId: accountId, createdAt: 1 });
+  createVersion(db, { id: `${id}-v1`, gameId: id, source, createdAt: 1 });
+  finishCheck(db, `${id}-v1`, { ok: true, bundle: "//", about: { title: "Uploaded", players: { min: 1, max: 4 } } }, 1);
+  return { gameId: id, versionId: `${id}-v1` };
+}
+
+const madeBy = (gameId: string) => db.prepare("SELECT number, made_by FROM versions WHERE game_id = ? ORDER BY number").all(gameId);
+
+describe("a Revision: a change to a ready Version", () => {
+  test("of a Game a Generation made: a new Version made by a Revision, checked against the Game's Concept, and not published", async () => {
+    const ada = account("ada");
+    const pipe = pipeline(new GatedModel([], ANSWER));
+    const id = inReview(ada, "g1");
+    pipe.approve(ada, id);
+    await until(() => stateOf(id) === "ready");
+    const { gameId, versionId } = generation(id) as { gameId: string; versionId: string };
+
+    const model = new GatedModel([CODE_ANSWER]);
+    const revising = pipeline(model);
+    const revised = revising.revise(ada, gameId, versionId, "  Make the vote longer.  ");
+    if (!revised.ok) throw new Error(revised.error);
+    expect(revised.generation).toMatchObject({ kind: "revision", state: "build", idea: "Make the vote longer.", gameId, baseVersionId: versionId, concept: CONCEPT });
+    await until(() => stateOf(revised.generation.id) === "ready");
+    expect(madeBy(gameId)).toEqual([
+      { number: 1, made_by: "generation" },
+      { number: 2, made_by: "revision" },
+    ]);
+    expect(db.prepare("SELECT published_version_id FROM games WHERE id = ?").get(gameId)).toEqual({ published_version_id: null });
+    expect(playtest.runs.at(-1)?.options).toEqual({ expect: { phases: ["write", "vote"], scoring: true, players: { min: 2, max: 4 } } });
+    const asked = model.calls[0]?.messages[1]?.content ?? "";
+    expect(asked).toContain("Make the vote longer.");
+    expect(asked).toContain("// the Game");
+    expect(asked).toContain('"title": "Tap Vote"');
+  });
+
+  test("of an uploaded Game: no Concept, so its Playtest checks none, and the AI isn't told it will", async () => {
+    const ada = account("ada");
+    const { gameId, versionId } = uploaded(ada, "up", "// Ada's own code\n");
+    const model = new GatedModel([CODE_ANSWER]);
+    const pipe = pipeline(model);
+    const revised = pipe.revise(ada, gameId, versionId, "Add a timer.");
+    if (!revised.ok) throw new Error(revised.error);
+    await until(() => stateOf(revised.generation.id) === "ready");
+    expect(playtest.runs.at(-1)?.options).toEqual({});
+    expect(model.calls[0]?.messages[0]?.content).not.toContain("Concept");
+    expect(model.calls[0]?.messages[1]?.content).toContain("// Ada's own code");
+    expect(madeBy(gameId)).toEqual([
+      { number: 1, made_by: "upload" },
+      { number: 2, made_by: "revision" },
+    ]);
+  });
+
+  test("a failed one leaves the Game as it was", async () => {
+    const ada = account("ada");
+    const { gameId, versionId } = uploaded(ada, "up");
+    playtest.results.push(...Array(MAX_BUILDS).fill(PLAY_PROBLEM));
+    const pipe = pipeline(new GatedModel([], () => CODE_ANSWER));
+    const revised = pipe.revise(ada, gameId, versionId, "Break it.");
+    if (!revised.ok) throw new Error(revised.error);
+    await until(() => stateOf(revised.generation.id) === "failed");
+    expect(madeBy(gameId)).toEqual([{ number: 1, made_by: "upload" }]);
+  });
+
+  test("its limits: the Creator's own ready Version, a request of 1 to 1,000 characters, one at a time, and 10 a day", async () => {
+    const [ada, bo] = ["ada", "bo"].map(account) as [string, string];
+    const { gameId, versionId } = uploaded(ada, "up");
+    createVersion(db, { id: "checking", gameId, source: "//", createdAt: 2 });
+    const model = new GatedModel([], () => ({ failure: "keyRejected" }));
+    const pipe = pipeline(model);
+    expect(pipe.revise(bo, gameId, versionId, "Mine now.")).toMatchObject({ ok: false, status: 404 });
+    expect(pipe.revise(ada, gameId, "checking", "Change it.")).toMatchObject({ ok: false, status: 409 });
+    expect(pipe.revise(ada, gameId, versionId, " ")).toMatchObject({ ok: false, status: 400 });
+    expect(pipe.revise(ada, gameId, versionId, "x".repeat(MAX_REQUEST_CHARS + 1))).toMatchObject({ ok: false, status: 400 });
+    model.held = true;
+    const first = pipe.revise(ada, gameId, versionId, "One.");
+    expect(first.ok).toBe(true);
+    expect(pipe.revise(ada, gameId, versionId, "Two at once.")).toMatchObject({ ok: false, status: 409 });
+    model.release();
+    for (let n = 1; n < REVISIONS_PER_DAY; n += 1) {
+      await until(() => !db.prepare("SELECT 1 FROM generations WHERE state IN ('build', 'playtest')").get());
+      expect(pipe.revise(ada, gameId, versionId, `Change ${n}.`).ok).toBe(true);
+    }
+    await until(() => !db.prepare("SELECT 1 FROM generations WHERE state IN ('build', 'playtest')").get());
+    expect(pipe.revise(ada, gameId, versionId, "One too many.")).toMatchObject({ ok: false, status: 429 });
+  });
+
+  test("carried on after a restart, from its Build", async () => {
+    const ada = account("ada");
+    const { gameId, versionId } = uploaded(ada, "up");
+    const first = new GatedModel([], () => CODE_ANSWER);
+    first.held = true;
+    const before = pipeline(first);
+    const revised = before.revise(ada, gameId, versionId, "Add a timer.");
+    if (!revised.ok) throw new Error(revised.error);
+    await until(() => first.waiting === 1);
+    before.stop();
+    await before.settled();
+    pipeline(new GatedModel([CODE_ANSWER]));
+    await until(() => stateOf(revised.generation.id) === "ready");
+    expect(madeBy(gameId)).toHaveLength(2);
   });
 });
 

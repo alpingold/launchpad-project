@@ -79,7 +79,7 @@ export default defineGame<State, Action>({
 
 // --- The prompts ---------------------------------------------------------------------------------
 
-function systemText(): string {
+function systemText(withConcept = true): string {
   return [
     "You write party games for BoilerGames, a site where a group plays together in one room: one shared screen (the Screen) shows the Game to everyone, and each Player uses their own phone (the Controller). A Game is one TypeScript file, written against the site's SDK.",
     "",
@@ -88,7 +88,9 @@ function systemText(): string {
     "",
     "What the site's Playtest does with the file:",
     playtestText(),
-    "For this Game it also checks that every one of the Concept's phases is reached (state.phase), that state.phase is never anything else, that scores move when the Concept has scoring, and that about.players is the Concept's.",
+    ...(withConcept
+      ? ["For this Game it also checks that every one of the Concept's phases is reached (state.phase), that state.phase is never anything else, that scores move when the Concept has scoring, and that about.players is the Concept's."]
+      : []),
     "",
     'The SDK\'s types, everything "@boilergames/sdk/v1" offers. Use only these:',
     "",
@@ -118,9 +120,9 @@ function problemLine(problem: { readonly stage: string; readonly message: string
 }
 
 /** A failed check: the Concept (or the Revision's own context), the last file, and every problem. Only the latest attempt. */
-export function fixMessages(context: string, lastFile: string, problems: readonly { readonly stage: string; readonly message: string; readonly line?: number }[]): ChatMessage[] {
+export function fixMessages(context: string, lastFile: string, problems: readonly { readonly stage: string; readonly message: string; readonly line?: number }[], withConcept = true): ChatMessage[] {
   return [
-    { role: "system", content: systemText() },
+    { role: "system", content: systemText(withConcept) },
     {
       role: "user",
       content: `${context}\n\nThis is the file as it stands:\n\n\`\`\`ts\n${lastFile}\n\`\`\`\n\nThe site's check found these problems. Fix every one, and answer with the whole corrected file in one TypeScript code block:\n${problems.map(problemLine).join("\n")}`,
@@ -190,7 +192,7 @@ const NO_CODE = { stage: "source", message: "The answer has no code block. Answe
 
 /** What goes to the model next: the first messages, or the last file with what its check found. */
 function messagesFor(options: BuildOptions, progress: BuildProgress): readonly ChatMessage[] {
-  if (progress.lastFile !== undefined) return fixMessages(options.context, progress.lastFile, progress.problems ?? []);
+  if (progress.lastFile !== undefined) return fixMessages(options.context, progress.lastFile, progress.problems ?? [], options.expect !== undefined);
   // No file yet: the first messages, and if an answer came back with no code, a note saying so.
   return progress.problems === undefined ? options.first : withNote(options.first, "Answer with the whole file, in one TypeScript code block.");
 }
@@ -263,6 +265,27 @@ function withNote(messages: readonly ChatMessage[], note: string): ChatMessage[]
   const last = messages.at(-1);
   if (last === undefined) return [];
   return [...messages.slice(0, -1), { ...last, content: `${last.content}\n\nYour last answer had no code block. ${note}` }];
+}
+
+// --- A Revision ------------------------------------------------------------------------------------
+
+/** What a Revision's failed check goes back with: the Game's Concept, if it has one, and the Creator's request. */
+export function revisionContext(concept: Concept | undefined, request: string): string {
+  return `${concept === undefined ? "" : `${conceptText(concept)}\n\n`}The Creator asked for this change to their Game:\n${request}`;
+}
+
+/**
+ * A Revision's first messages: the reference text, the Game's Concept if it has one, the Version's
+ * code and the Creator's request, asking for the whole changed file. No example Game.
+ */
+export function revisionMessages(concept: Concept | undefined, source: string, request: string): ChatMessage[] {
+  return [
+    { role: "system", content: systemText(concept !== undefined) },
+    {
+      role: "user",
+      content: `${revisionContext(concept, request)}\n\nThis is the Game's file as it stands:\n\n\`\`\`ts\n${source}\n\`\`\`\n\nMake the change, and keep everything else as it is and working. Answer with the whole changed file, in one TypeScript code block.`,
+    },
+  ];
 }
 
 /** What a failed check goes back with for a Generation: its Concept. */

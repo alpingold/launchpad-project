@@ -116,13 +116,14 @@ export function GenerationPage({ id }: { id: string }) {
       <p>
         <a href="/my/games">My Games</a>
       </p>
-      <h1>{shown.concept?.title ?? "A new Game"}</h1>
+      <h1>{shown.kind === "revision" ? `A change to ${shown.concept?.title ?? "your Game"}` : (shown.concept?.title ?? "A new Game")}</h1>
       <p className="generation-where" role="status" data-state={shown.state}>
         {whereItIs(shown)}
       </p>
       {shown.state === "ready" && shown.gameId !== null ? (
         <p>
-          <a href={`/my/games/${encodeURIComponent(shown.gameId)}`}>Go to the Game</a>: play it, and publish it when you like.
+          <a href={`/my/games/${encodeURIComponent(shown.gameId)}`}>Go to the Game</a>
+          {shown.kind === "revision" ? ": its new Version isn't published. Play it, and publish it when you like." : ": play it, and publish it when you like."}
         </p>
       ) : null}
       {error === null ? null : (
@@ -132,7 +133,7 @@ export function GenerationPage({ id }: { id: string }) {
       )}
       {said === null ? null : <p className="page-quiet">{said}</p>}
       <section>
-        <h2>Your idea</h2>
+        <h2>{shown.kind === "revision" ? "What you asked for" : "Your idea"}</h2>
         <p className="generation-idea">{shown.idea}</p>
       </section>
       {shown.state === "review" && shown.concept !== null ? (

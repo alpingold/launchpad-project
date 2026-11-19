@@ -135,3 +135,4 @@ body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; ba
 .generation-phase { border: 1px solid #ccc; border-radius: 8px; padding: 8px 12px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .generation-steps { margin: 0; padding-left: 24px; display: flex; flex-direction: column; gap: 6px; }
 .generation-steps li { overflow-wrap: anywhere; }
+.my-ask { margin-top: 8px; }

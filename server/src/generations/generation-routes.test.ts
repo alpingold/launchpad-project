@@ -183,6 +183,28 @@ describe("a Generation, from idea to a published Game", () => {
   });
 });
 
+describe("a Revision", () => {
+  test("asked for a ready Version of the Creator's own Game, followed like a Generation, to a new Version; never for someone else's", async () => {
+    const ada = await creator("ada@purdue.edu");
+    const id = String((await call("POST", GENERATIONS_PATH, { body: { idea: "Taps" }, cookie: ada })).body["id"]);
+    await until(ada, id, (generation) => generation["state"] === "review");
+    await call("POST", `${GENERATIONS_PATH}/${id}/approve`, { body: {}, cookie: ada });
+    const made = await until(ada, id, (generation) => generation["state"] === "ready");
+    const gameId = String(made["gameId"]);
+    const game = await call("GET", `/api/my/games/${gameId}`, { cookie: ada });
+    const versionId = String((game.body["game"] as { versions: { id: string }[] }).versions[0]?.id);
+
+    const bo = await creator("bo@purdue.edu");
+    expect((await call("POST", `/api/my/games/${gameId}/revisions`, { body: { versionId, request: "Mine." }, cookie: bo })).status).toBe(404);
+
+    const revised = await call("POST", `/api/my/games/${gameId}/revisions`, { body: { versionId, request: "Longer, please." }, cookie: ada });
+    expect(revised).toMatchObject({ status: 201, body: { kind: "revision", idea: "Longer, please.", gameId } });
+    await until(ada, String(revised.body["id"]), (generation) => generation["state"] === "ready");
+    const after = await call("GET", `/api/my/games/${gameId}`, { cookie: ada });
+    expect((after.body["game"] as { versions: { number: number }[] }).versions.map((version) => version.number)).toEqual([2, 1]);
+  });
+});
+
 describe("each Creator's own", () => {
   test("another Creator can't see, change or cancel it; a visitor must sign in", async () => {
     const ada = await creator("ada@purdue.edu");

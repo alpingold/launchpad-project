@@ -12,6 +12,8 @@ CREATE TABLE generations (
   kind TEXT NOT NULL CHECK (kind IN ('generation', 'revision')),
   -- The Game: none for a Generation until its Build passes; a Revision's from the start.
   game_id TEXT REFERENCES games (id),
+  -- A Revision's: the Version of the Game it changes.
+  base_version_id TEXT REFERENCES versions (id),
   -- The Creator's idea (a Generation) or request (a Revision), as they wrote it.
   idea TEXT NOT NULL,
   -- concept (the AI drafts) -> review (the Creator approves) -> build -> playtest -> build... or
@@ -38,7 +40,7 @@ CREATE TABLE generations (
   updated_at INTEGER NOT NULL,
   CHECK ((state = 'ready') = (version_id IS NOT NULL)),
   CHECK (state NOT IN ('failed', 'cancelled') OR reason IS NOT NULL),
-  CHECK (kind = 'generation' OR game_id IS NOT NULL),
+  CHECK (kind = 'generation' OR (game_id IS NOT NULL AND base_version_id IS NOT NULL)),
   CHECK ((waiting_why IS NULL) = (waiting_until IS NULL))
 ) STRICT;
 
