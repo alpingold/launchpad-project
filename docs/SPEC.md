@@ -39,12 +39,14 @@ the site has no AI game maker.
 1. **Play.** A Room plays a Match of an **Official game** on real phones, on the deployed site.
    Stories 1–14.
 2. **Uploads.** Accounts, the database, the **Playtest**, and Games that Creators upload, publish
-   and browse. Stories 15–16, 19–23, 29–30, 35–36, 40–42, 45–47. Built in two parts: **2a** is
+   and browse. Stories 15–16, 20–22, 29–30, 35–36, 40–42, 45–47. Built in two parts: **2a** is
    accounts, the database, the Playtest, and uploading, privately playing and publishing a Game;
-   **2b** is the Library's pages, the page of SDK types for Creators' own AIs, and the privacy page.
+   **2b** is the Library and each Game's page with its count of plays, blocked words, the
+   changed-lines view, the page of SDK types for Creators' own AIs, the privacy page and the
+   reminder on the phone. Of story 15, tags and "top voted" wait for milestone 4.
 3. **The AI.** **Generations** and **Revisions**, and the eval set. Stories 24–28, 31–34, 53.
 4. **The community.** Votes, reports, Remixes, the admin page and backups.
-   Stories 17–18, 37–39, 43–44, 48–52, 54.
+   Stories 17–19, 23, 37–39, 43–44, 48–52, 54.
 
 ## User Stories
 

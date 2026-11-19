@@ -588,14 +588,14 @@ Still open:
 
 # After milestone 1
 
-Milestone 2a is designed and planned step by step. Each later one starts with a design session
+Milestones 2a and 2b are designed and planned step by step. Each later one starts with a design session
 between the owner and whoever builds it; its bullets are the direction the spec sets, not a design.
 
 ## Milestone 2: Uploads
 
 Designed with the owner on 2026-11-17 and built in two parts. **2a** (steps 10 to 16, planned
 below) is accounts, the database, the Playtest, and uploading, privately playing and publishing a
-Game. **2b** (outlined after it) is the Library's pages, the page for Creators' own AIs and the
+Game. **2b** (steps 17 to 24, after it) is the Library's pages, the page for Creators' own AIs and the
 privacy page.
 
 The owner's four decisions for 2a:
@@ -927,14 +927,212 @@ way to send email, so nothing can be pushed until this is done):
   file can miss the latest changes): losing the file loses people's accounts and Games. Done
   2026-11-18: nightly, to S3 (`deploy/backup-database.sh`, the README's "The database's backups").
 
-### Milestone 2b, outlined
+## Milestone 2b: the Library
 
-- The Library (`/library`) and each Game's page: description, Player count, who made it and how,
-  and how often it was played (which needs a count of Matches, and a decision on what counts).
-- A page with the SDK's types and a ready-made prompt for Creators using their own AI (story 36).
-- The privacy page: what is stored (an email address, a display name, Games), for how long, and
-  how to have it removed until account deletion exists.
-- A changed-lines view between Versions (story 29).
+Designed 2026-11-18. 2a made Games; 2b lets everyone else find them. Steps 17 to 24.
+
+**What 2b ships, against the spec's stories:**
+
+- Story 15, in part: a Library with search, a Player-count filter, and sorting A–Z, newest and
+  most played. **Tags and "top voted" wait**: nothing stores tags yet, and Votes are milestone 4.
+- Story 16: a page for each Game.
+- Story 29's missing half: a changed-lines view between Versions. (Going back already works: any
+  `ready` Version can be published.)
+- Story 36: the page for Creators using their own AI.
+- Story 41: blocked words. It was in no step until now, and 2b is what puts strangers' titles,
+  descriptions and names on public pages.
+- Story 45: the privacy page. Story 46: the reminder on the phone.
+- Stories 19 (Profiles) and 23 (account deletion) stay in milestone 4.
+
+**The owner's decisions for 2b** (asked 2026-11-18; a step marked "waits" is not to be started
+until its answer is written here):
+
+1. **A counted play.** Decided: a Match that reaches its end with at least the Game's fewest
+   Players. **That the count can only be approximate: waits** (it doesn't hold Step 18 up, only the
+   wording on the pages). The Engine runs in the Host's browser (ADR 0005), so it is the Host's
+   browser that says a Match finished, and a Room needs no account. The server can make cheating
+   slow (Step 18's rules) but can't make it impossible. Proposed: the Library says "about".
+2. **Blocked words** (Step 20): waits.
+3. **The changed-lines view** may use the `diff` package (Step 22): waits. Without it, the step
+   writes its own line comparison.
+4. **The address people write to** (Step 23): waits.
+
+No new dependency is approved for 2b yet.
+
+## Step 17: what the first real Upload showed (`playtest`, `client`)
+
+- A file whose import is refused reports only that. Today the one refused import is followed by
+  a line for every parameter that lost its type ("implicitly has an 'any' type"): 16 lines of noise
+  under the one that matters. When the type stage finds a refused import, it reports the refused
+  imports first and leaves out only the "implicitly has an 'any' type" lines, which the refused
+  import caused. Every other problem is still reported: a Creator has 10 Uploads an hour, and each
+  hidden problem would cost one more.
+- A Game that calls `require()` gets a plain message that names the rule (a Game may import only
+  `@boilergames/sdk/v1`, with `import`), not an empty "[plugin game-imports]".
+- A file with no default export already says so. Check the message also appears when the file is
+  somebody's test helper: `sdk/src/v1/best-word.fixture.ts` with its import corrected is the case.
+- Story 46: the phone's Lobby says, in one quiet line, that BoilerGames never asks for a password
+  or an email address inside a Game. It is the site's page that says it, never a Game's View.
+
+**Done when:** tests show each message, and a browser test finds the line on a phone in the Lobby.
+
+## Step 18: counting plays (`server`)
+
+**The table** (`0004-plays.sql`, a new file; nothing shipped is edited): `plays`, one row per Game
+that has been played: `subject` (a Game's id, or `official:<name>` for an Official game, which has
+no row in `games`), and `count`. It stores no time, no Room and no person: only a number.
+
+**Rooms stay out of the database** (ADR 0005). `Rooms` gets one more option, a function it calls
+when a Match ends, with: the `gameId` the Match was started with, the reason, how many Seats were
+in the Room when it ended, how long the Match lasted, and the Screen's visitor address. `Rooms`
+records when a Match started; it decides nothing about plays.
+
+**A play is counted when all of these hold** (a new module, `server/src/plays.ts`, with tests):
+
+- The reason is `finished`. Stopped, broken and too-few-Players Matches don't count.
+- The `gameId` is an Official game's name, or a `ready` Version of a Game that is published now.
+  A Creator's private plays of an unpublished Game don't count. A play of an older Version of a
+  published Game counts for the Game: the count belongs to the Game, not the Version.
+- The Room had at least the Game's fewest Players when it ended, by the server's own list of Seats
+  and the Player count the server reads from the Version's `about`, never a number from the Screen.
+- The Match lasted at least 30 seconds. A Room plays one Match at a time, so this alone caps a
+  Room at 120 counted plays an hour.
+- The Screen's visitor address has had fewer than 60 counted plays today (in memory, like
+  `limits.ts`; a campus network can put many people behind one address, so the cap is generous).
+
+A play that isn't counted is not an error and nobody is told. Counting never delays or breaks the
+Room: a database error is logged and the Match's end goes ahead.
+
+**Done when:** tests show each rule on its own, that a taken-down or unpublished Game's plays
+aren't counted, and that `rooms.ts` still imports nothing from `db/`.
+
+## Step 19: the Library and a Game's page (`server`, `client`, `games`)
+
+**Addresses that last.** The Lobby's list names an uploaded Game by its published Version's id,
+which changes with every publish. A page people link to can't. So the Library names a Game by its
+**Game id** (an Official game by its name).
+
+- `GET /api/library`: every Official game, then every published Game (up to 500). Each: `id`,
+  `playId` (what `/screen?play=` takes: the published Version's id, or the Official game's name),
+  title, Player count, Look, description, the Creator's display name, how it was made (`Official`
+  or `Uploaded`; `AI-made` comes with milestone 3), when the published Version was made, and
+  `plays`. Never the source, the bundle, an email address or an account's id.
+- `GET /api/library/<id>`: one of them. An unpublished or taken-down Game, and an id that never
+  existed, get the same "not found", so nobody learns which private Games exist.
+- Both are read-only and public. `/api/games` and the Lobby don't change.
+- The server serves the site's page at `/library`, `/library/<id>`, and at Step 21's and 23's
+  addresses when those are built (`PAGES` in `site.ts`).
+- Each Official game gets a description, written beside its code in `games` and carried in
+  `games.json`. Write them plainly: what the Players do, in two sentences.
+
+**The pages.**
+
+- `/library`: a card for each Game (title, Player count, Creator, "about N plays"), a search box
+  over titles, descriptions and Creators' names, a "how many of you are there?" filter, and the
+  three sort orders. The browser holds the whole list and filters it there: with a few hundred
+  Games that is one small response and no search code on the server. If the Library ever nears the
+  500 cap, searching moves to the server; say so in a comment where the cap is.
+- `/library/<id>`: the title, the description, the Player count, who made it and how, about how
+  often it was played, and **Host this Game**, which opens `/screen?play=<playId>`.
+- The front page links to the Library. A Creator's page for a published Game links to its public
+  page.
+- A Game's title, description and Creator's name are a stranger's text: rendered as text, never as
+  HTML, and long ones wrap or are cut off without breaking the page. A card may use the Game's
+  Look for its colours: a `ready` Version's Look has already been checked for readable contrast.
+
+**Done when:** unit tests cover both routes, including that a private or taken-down Game is "not
+found" by its Game id and that no listing carries an email address; browser tests search, filter,
+sort, open a Game's page and host it from there; the page works at phone width.
+
+## Step 20: blocked words (`server`, `client`) — waits for decision 2
+
+- One list, in one file in `server`, of words the site refuses. Matching is on whole words, after
+  lower-casing and removing accents, so that a harmless word that merely contains a blocked one is
+  not refused (the classic mistake). It will miss deliberate misspellings; admins' takedowns are
+  for those.
+- Checked where text becomes public: a display name when it is chosen; a Game's title (from its
+  Version's `about`) and description when it is published; a description changed while published.
+- A refusal names the word, so the Creator knows what to change (story 41).
+
+**Done when:** tests show a refusal at each of the three places with the word named, and that a
+harmless word containing a blocked one passes.
+
+## Step 21: the page for Creators' own AIs (`client`, `sdk`)
+
+`/make`: how to write a Game for the site with any AI, or by hand (story 36).
+
+- **The rules a file must follow**, the ones the Playtest enforces: one `.ts` file; its only import
+  is `@boilergames/sdk/v1`; it ends with `export default defineGame({ ... })`; the size limit; what
+  the Playtest will do to it.
+- **The SDK's types**, as text, made from the SDK's own declarations, so the page can't say
+  something the SDK doesn't. Unit tests run without a build (see "Where things stand"), so decide
+  where the text is made so that the test below needs none: say how in the report.
+- The limits the page quotes (the source's size and so on) are the Playtest's own numbers. The
+  `client` must not import the `playtest` package, which brings TypeScript and Vite with it: give
+  the numbers a home both can read (the `sdk`, or `/api/config`).
+- **A ready-made prompt** with a Copy button: the rules, the types, and a place for the Creator's
+  idea. **No example Game in it**: the owner's rule for the site's own AI applies here too, since
+  an example is what every Game then copies.
+- Linked from `/my/games`, beside Upload.
+
+**Done when:** a test type-checks the three Official games against the page's types text as the
+only declaration of `@boilergames/sdk/v1` (so the text is complete), and a test fails if the
+page's rules and the Playtest's limits disagree.
+
+## Step 22: what changed between Versions (`server`, `client`) — the package waits for decision 3
+
+- `GET /api/my/games/<id>/versions/<versionId>/source`: the Version's source, as plain text, to its
+  Game's owner only, never kept by a browser. Anyone else gets "not found".
+- On `/my/games/<id>`, each Version after the first has **See what changed**: its lines against the
+  Version before it, added and removed lines marked by a sign and a word as well as a colour. And
+  **Download the code** for any Version.
+- The comparison runs in the browser. Source is at most 256 KB; a comparison that would take too
+  long says so and offers the two downloads.
+- Check that a Creator can publish an older `ready` Version from this page ("go back", story 29).
+  The server allows it already.
+
+**Done when:** tests cover the route (owner only) and the comparison (added, removed, unchanged,
+identical files, one empty file); a browser test opens a comparison.
+
+## Step 23: the privacy page (`client`) — the address waits for decision 4
+
+`/privacy`, linked from every page's foot and from the sign-in page. **Write it from what the
+system does, checked in the code and on the server's settings, not from memory.** It must say:
+
+- **What is kept about an account:** the email address, the display name, the Games and every
+  Version's code, and a record of being signed in (not the email's link or the cookie's value, only
+  a scrambled form of each).
+- **What is kept about playing:** nothing about a person. A Room and its Players' names live in
+  memory and are gone when the Room closes. A Game's count of plays is a number.
+- **What the server's logs hold**, and for how long: find out (`deploy/Caddyfile`, what the server
+  writes to its journal) and say it truthfully.
+- **Who else handles it:** the site runs on a rented AWS server in Ohio, and AWS sends the sign-in
+  email. Nothing is sent to an AI (milestone 3 changes this page).
+- **What a browser keeps:** one cookie, to stay signed in. On a phone, the Seat's token, so a
+  reload returns to the same Seat. On the Screen, the Match in progress, so a reload resumes it.
+  Find every use of the browser's storage and list each. No tracking, no adverts.
+- **Visitor addresses** are held in the server's memory for the limits (sign-in emails, Room Code
+  guessing, counted plays) and are gone at a restart. Check each limit and say so.
+- **Games are not reviewed before they are public.** A stranger wrote them; they run walled off in
+  the Host's browser (story 42); an admin can take one down.
+- **Backups** are kept 30 days, so something removed is gone from them 30 days later.
+- **How to have an account and its Games removed**, until account deletion exists (milestone 4):
+  write to the address from decision 4.
+
+**Removal has to be real.** The README gets "Removing an account by hand": the commands that
+delete an account's sessions, sign-in links, Versions, Games and the account itself, in the order
+the tables' keys allow, and what to do about a published Game people are playing. Test the same
+SQL on a database in memory.
+
+**Done when:** every sentence on the page has been checked against the code or the server, and the
+check is written in the step's report, sentence by sentence; the removal commands are tested.
+
+## Step 24: deploy 2b, with the owner
+
+- `0004-plays.sql` only adds a table, so the release before it still runs (ADR 0007).
+- No change in AWS is expected. If the address from decision 4 is at the site's own domain, its
+  forwarding is set up at the DNS host first, and a test message sent to it.
+- The owner opens the Library on a phone, hosts a Game from its page, and sees its count go up.
 
 ## Milestone 3: the AI
 

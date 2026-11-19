@@ -162,6 +162,10 @@ _Avoid_: Source, origin
 The shared collection of published Games that any Host can choose from. A Game is private to its Creator until they publish it.
 _Avoid_: Catalog, games page, store
 
+**Counted play**:
+A Match of a published or Official game that reached its end with at least the Game's fewest Players. A Game's page shows how many it has had, as "about N plays": the Host's browser reports a Match's end, so the number is approximate.
+_Avoid_: Hit, visit, session
+
 **Profile**:
 A Creator's public page: their name, description and published Games.
 _Avoid_: Account page, user page, bio
