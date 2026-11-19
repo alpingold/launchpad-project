@@ -52,7 +52,7 @@ begins with a design session with the owner that this plan does not replace.
 
 Branch `rewrite`. Six npm workspace packages, each a folder at the root, and the browser tests:
 
-| Folder     | Holds                                                                 | State (milestone 2a done) |
+| Folder     | Holds                                                                 | State (milestone 2b done) |
 | ---------- | --------------------------------------------------------------------- | ------------------------- |
 | `sdk`      | The Game contract, the Kit, the Engine, the checkers, the simulator   | Built and tested          |
 | `protocol` | The room messages and their Zod schemas                               | Built and tested          |
@@ -64,9 +64,10 @@ Branch `rewrite`. Six npm workspace packages, each a folder at the root, and the
 | `deploy`   | The server's setup, service and release scripts (not a package)       | Running the live site     |
 
 Milestone 1 is live at boilergames.party since 2026-11-17, with the Game frame on
-boilergames-play.party. Milestone 2a (steps 10 to 16) is live since 2026-11-18: the owner signed in
-with a real Purdue address and uploaded and played a Game, and the database is copied to S3 every
-night. The README's "How the site is deployed" says how a push reaches it.
+boilergames-play.party. Milestone 2a (steps 10 to 16) is live since 2026-11-18 and 2b (steps 17 to
+24) since 2026-11-19: accounts, Uploads, the Playtest behind its wall, the Library, counted plays,
+the page for Creators' own AIs, blocked words, the changed-lines view and the privacy page. The
+database is copied to S3 every night. Milestone 3 (steps 25 to 37) is next. The README's "How the site is deployed" says how a push reaches it.
 
 Packages import each other's TypeScript source through the `@boilergames/source` export condition
 (see `tsconfig.base.json`), so nothing needs building before a type check or a unit test. The
@@ -588,7 +589,7 @@ Still open:
 
 # After milestone 1
 
-Milestones 2a and 2b are designed and planned step by step. Each later one starts with a design session
+Milestones 2a, 2b and 3 are planned step by step. Milestone 4 starts with a design session
 between the owner and whoever builds it; its bullets are the direction the spec sets, not a design.
 
 ## Milestone 2: Uploads
@@ -1153,18 +1154,299 @@ check is written in the step's report, sentence by sentence; the removal command
 
 ## Milestone 3: the AI
 
-- **Design first, with the owner:** the pipeline. The spec's direction: a Concept whose phases are
-  structured data; Build from a typed skeleton and the SDK's reference, never an example Game; a
-  fast loop for type errors that doesn't use up Builds; a Playtest that reports every problem and
-  checks the Game against the Concept's phases; progress as database rows, resumable per stage.
-- The evidence to design from: the experiment's eval (`packages/backend/eval-results/` there) passed
-  10 of 12 Games on a 27B model, with 2 to 4 Builds each and 4 to 14 minutes per Game. Almost
-  nothing passed first time.
-- Creators' own GenAI Studio keys, encrypted. The queue. The Track. Revisions.
-- The Playtest refuses a generated Game whose Look isn't readable, with checkLook's problems, as the
-  games build does for Official games (games/scripts/build.ts): a Look must be checked, not trusted.
-- The eval set, so every change to the instructions or the Kit is measured. A live run costs real
-  model calls and needs the owner's yes each time.
+Drafted 2026-11-19, the night the owner asked for it to be built unattended. **Every choice below
+is a default the owner has not yet confirmed**; the ones most likely to change are listed first.
+ADR 0008 (proposed) records the shape. Steps 25 to 36 are for the building agent; Step 37 is not.
+
+A **Generation** turns a Creator's idea into a Game: the AI drafts a Concept, the Creator approves
+or edits it, the AI writes the code (a Build), and the Playtest checks it; a failed check goes back
+to Build with every problem found. A **Revision** changes an existing Game the same way, without a
+new Concept. Creators use their own Purdue GenAI Studio key. Stories 24–28, 31–34, 53.
+
+### Defaults waiting for the owner's yes
+
+| # | Default | Why this one |
+| - | ------- | ------------ |
+| 1 | The model is `qwen3.8:27b` at `https://genai.rcac.purdue.edu/api`, both settings (`GENAI_MODEL`, `GENAI_BASE_URL`). | It is what the experiment measured. |
+| 2 | At most 4 Builds per Generation, 4 type fixes per Build, 3 invalid Concepts per draft, 16 model calls in all. | The experiment needed 2 to 4 Builds for every Game. |
+| 3 | An account may start 5 Generations and 10 Revisions a day, and has one running at a time. 2 run at once on the site; 20 may wait. | A Generation takes 4 to 14 minutes and holds a Playtest slot. |
+| 4 | Keys are encrypted with a secret kept in a file on the server, outside the database and its backups. | No AWS service and no dependency. A stolen backup can't reveal a key. Losing the server loses the secret, and Creators enter their keys again. |
+| 5 | A Revision has no written Plan yet (the glossary's Plan). | A Plan is a second approval step; build the simple path first and see if it is missed. |
+| 6 | No example Game is ever shown to the model. | The owner's standing rule. |
+| 7 | A Concept waiting for its Creator for 7 days is cancelled. | So the list doesn't fill with abandoned drafts. |
+
+Every number is a named constant in one file, with this table's reason beside it. **The
+experiment's numbers are weak evidence here:** it had a different SDK, a Playtest that stopped at
+the first problem, and an eval that began at Build. The eval set (Step 35) is what will tell.
+
+### What must stay true
+
+- **Off unless configured.** A release must start, and pass the installer's check, with no model
+  settings and no key secret: then the AI maker is off, its pages say so, and its routes answer "not
+  available". The same way Uploads are refused without `PLAYTEST_SOCKET`. Tomorrow's push must
+  deploy with the maker off.
+- **No new dependency.** Nothing is approved for milestone 3. The model client uses `node:https`,
+  the encryption `node:crypto`.
+- **No live model call.** Nothing in this plan's steps, tests or scripts calls GenAI Studio. Tests
+  use a scripted fake model, and the real client is tested against a small server the test starts
+  itself. A live call needs the owner's yes each time (Step 37).
+- **Only the Playtest runs a Game's code.** What the model writes is a stranger's code, exactly as
+  an Upload is: it runs in the walled runner and in the Game frame, nowhere else. The pipeline only
+  passes text.
+- **A key is a secret.** It is never logged, never sent back to a browser (only its last 4
+  characters), never put in an error message, and never in a test's snapshot.
+- **2b's promises hold.** Removing an account removes its key, its Generations and their text, with
+  the same proof (the raw bytes). The privacy page stops saying nothing is sent to an AI in the
+  same commit that makes it untrue.
+- **Uploads are untouched.** A Game uploaded today passes tomorrow. Anything added to the SDK or
+  the Playtest for Generations is an addition, off unless asked for.
+
+### The data
+
+Two new migration files. Shipped files are never edited.
+
+- `0005-genai-keys.sql`: `genai_keys`, one row per account: the encrypted key, what the decryption
+  needs (nonce, tag), its last 4 characters, when saved.
+- `0006-generations.sql`:
+  - `generations`: id, account, kind (`generation` or `revision`), the Game (none until a Build
+    passes, for a Generation), the idea or the request, its state, the Concept (JSON), the latest
+    Build's code, how many Builds and model calls it has used, the Version it produced, why it
+    failed, a notice (waiting on GenAI Studio until a time), when made and when last changed.
+  - `generation_steps`: one row per thing the pipeline did (a Concept draft, a Build, a type fix, a
+    Playtest): which Generation, its number, what kind, when it began and ended, how it came out,
+    and every problem found. This is what makes a restart resume, what the Track shows, and what
+    the eval reads. (The experiment kept none of it, so nobody can say why its Builds failed.)
+- `versions.made_by` gains `generation` and `revision` (the row schema checks the value, so no
+  table changes).
+
+A Generation's states: `concept` (the AI is drafting) → `review` (waiting on the Creator) →
+`build` → `playtest` → back to `build`, or → `ready`. From any of them: `failed` or `cancelled`.
+The Track says which, and whether it waits on the AI, on the Creator, or failed and why.
+
+**Only a Build that passes becomes a Version.** The Game and its first Version are made, already
+`ready`, in one transaction when the Playtest passes. A failed Generation leaves no Game behind.
+
+### How the Playtest sees a Concept's phases
+
+The spec asks the Playtest to check a generated Game against its Concept: every phase reached,
+scores moving when the Concept has scoring. SDK v1 has no notion of a phase, and must not gain one
+that Uploads have to follow. So:
+
+- A Concept's phases each have an id (`write`, `vote`). The Build's typed skeleton declares
+  `type Phase = "write" | "vote"` and a state with `phase: Phase`. That is a convention of
+  generated Games, held by the type check, not a rule of the SDK.
+- A Playtest request may carry `expect`: the phases' ids, whether there is scoring, and the Player
+  count. Given it, the Playtest also reports: a phase no simulated Match ever reached; a `phase`
+  that isn't one of the ids; a Game with scoring whose Matches all end without scores or with every
+  score equal in every run; a Player count that differs from the Concept's.
+- Without `expect` (every Upload) the Playtest does exactly what it does today.
+- The simulator needs one addition to let the harness see the state as a Match goes: additive, and
+  not part of what a Game author sees. If it can't be done without changing what a Game author
+  sees, take the conservative path: skip the phase check, keep the scoring and Player-count checks,
+  and say so.
+
+**The wall.** This changes the runner's request and harness, so the attack test is run again on a
+throwaway server before it goes live (Step 37).
+
+## Step 25: split the browser tests in CI (`.github`, `e2e`)
+
+The browser job took 21 of its 30 minutes on the last push. A night of new tests would fail a
+good push.
+
+- Run the browser tests as two jobs side by side (Playwright's `--shard`, or by project), each with
+  the 30-minute limit. The release job waits for both.
+- Keep every action pinned by commit, as now.
+
+**Done when:** the workflow file is valid and the two halves together run every test (count them
+locally with `--list`). **It can't be proven until the owner pushes**: say so.
+
+## Step 26: one reference text (`sdk`, `client`, `server`)
+
+`/make` holds the rules a Game's file must follow and the SDK's types as text, in `client`. The
+Build prompt needs the same text, in `server`, and the two must never disagree.
+
+- Give the rules and the types text one home both can read. Default: the `sdk` package, under a
+  new export for text only (`@boilergames/sdk/v1/reference`). A Game still can't import it: a Game
+  may import `@boilergames/sdk/v1` and nothing else, and the test of that stays.
+- `/make` reads it from there and looks the same as today.
+
+**Done when:** `/make`'s tests pass unchanged in what they assert; a test shows the server and the
+client get the same text; `sdk` still has zero dependencies.
+
+## Step 27: talking to the model (`server`)
+
+One small interface, like `Mail`: `complete(messages, options) → text`, or a failure of a known
+kind. Two makers of it: the real client and a scripted fake for tests.
+
+- **The real client uses `node:https`.** GenAI Studio sends nothing, not even headers, until the
+  whole answer is written, which takes minutes. `fetch` gives up after 5 minutes of no headers and
+  can't be told otherwise without a dependency. The experiment lost a night of runs to this.
+- `POST <base>/chat/completions` with `{ model, messages, stream: false }` and
+  `authorization: Bearer <key>`. One call may take 12 minutes. The base address comes from the
+  settings only, never from a request. A redirect is a failure, never followed.
+- **Failures, by kind:** `keyRejected` (401, 403); `rateLimited` (429, or a JSON `null` body, which
+  is how GenAI Studio says it); `unavailable` (no connection, a timeout, any other status, an
+  answer that isn't the expected JSON, a web page). The Creator is told which (story 32).
+- **Checking a key:** `GET <base>/models` within 5 seconds; valid only if the answer is JSON with a
+  list in `data`.
+- **Reading an answer:** drop `<think>...</think>`; for code, the longest fenced block; for a
+  Concept, from the first `{` to the last `}`.
+
+**Done when:** the real client is tested against a server the test starts on this machine: a good
+answer, 401, 429, a `null` body, a web page with status 200, a redirect, headers that arrive after
+a long wait, a connection that never answers. No test and no script reaches the internet. The key
+appears in no log line and no error (a test looks).
+
+## Step 28: a Creator's key (`server`, `client`)
+
+- `0005-genai-keys.sql`. The key is encrypted with AES-256-GCM (`node:crypto`), a new random nonce
+  each time, bound to the account's id so one account's row can't be moved to another. The secret
+  is 32 random bytes in a file named by the setting `KEY_SECRET_FILE`. Behind a small interface, so
+  the secret's home can change later without touching the rest.
+- No `KEY_SECRET_FILE`: the maker is off (see "What must stay true"). `/api/config` says whether it
+  is on.
+- Routes for the signed-in Creator: save a key (checked against GenAI Studio first; saved only if
+  valid), see whether one is saved and its last 4 characters, delete it. Saving is limited (10 in
+  15 minutes per account).
+- A page to do those three things, reached from My Games. It says plainly whose key it is, what it
+  is used for, and that it is kept encrypted and never shown again.
+
+**Done when:** tests show the key never leaves the server once saved (every response is searched
+for it), that a row copied to another account won't decrypt, that a wrong secret fails cleanly,
+that the maker is off without the setting; a browser test saves and deletes a key against the fake.
+
+## Step 29: the Concept (`server`)
+
+A Concept is structured data, checked by a function, never free text:
+
+- title (60 characters at most), pitch (400), Player count (1 to 16, min ≤ max);
+- 1 to 8 phases, each: an id (lower-case letters, unique), a name (40), what the Screen shows
+  (300), what each Player does on their phone (300), what ends it (200);
+- scoring: `none`, `points` or `winner`, and how (400). `none` is a real choice: the AI adds a
+  score only when the idea asks for one (story 33);
+- how long a Match is (200); a Look (the SDK's own type, and it must pass `checkLook`; story 34).
+
+The prompt says what the site is, what a phone and the Screen can show (the Kit's Parts, by name
+and purpose, from the reference text), and the fields. **No example Concept and no example Game.**
+An invalid answer goes back with every problem listed, at most 3 times a draft. The Creator can
+approve it, edit any field (checked the same way), or ask for a redraft with a note.
+
+**Done when:** tests cover the checker field by field; a draft that is invalid twice then valid;
+three invalid ones failing the Generation with a reason a person can read; an edit that breaks a
+rule being refused with the rule named.
+
+## Step 30: the Playtest checks a Game against its Concept (`playtest`, `sdk`)
+
+As "How the Playtest sees a Concept's phases" says. Additive only.
+
+**Done when:** tests show each new problem on a small Game written for the test; every existing
+Playtest test passes unchanged; a request without `expect` gives byte-for-byte the result it gave
+before; the Official games still build; `/make`'s types test still passes.
+
+## Step 31: the Build (`server`)
+
+- **The skeleton** is made from the Concept, not written by the model: the import, the `Phase`
+  type, a state with `phase`, `about` filled in (title, Player count, Look), and each function
+  declared and empty. It type-checks as it stands except for what is left to fill in.
+- **The prompt:** the reference text (rules and types), how the Playtest will test the file, the
+  Concept, the skeleton. It asks for the whole file in one code block. No example Game.
+- **A failed check goes back** as: the Concept, the model's last file, and every problem with its
+  line, asking for the whole corrected file. Only the latest attempt is sent, so the conversation
+  stays within the model's memory.
+- **Two kinds of failure.** Problems from the source, type or bundle stages are a *type fix*: cheap,
+  and they don't use up a Build. Problems from playing are a *Build*. Both have a cap (the table
+  above), and so does the Generation's total of model calls.
+- An answer with no code block is itself a problem that goes back.
+
+**Done when:** tests, with the fake model and the real Playtest in a child process, show: a Build
+that passes first time; type errors fixed without using a Build; a play failure using one; each cap
+ending the Generation with a reason; the skeleton of a Concept type-checking against the SDK.
+
+## Step 32: the pipeline and its queue (`server`)
+
+- `0006-generations.sql`, and the state machine above. Every step writes its row before and after,
+  so a restart finds where each Generation was and carries on from the start of that stage. A
+  Generation in `review` just waits.
+- **The queue:** 2 Generations at once on the site, 1 per account, 20 waiting, the daily limits in
+  the table. A Generation that can't start says where it is in the line (story 31).
+- **Sharing the Playtest's two slots.** Generations' Playtests take at most one slot at a time, so
+  an Upload's check never waits behind more than one of them.
+- **GenAI Studio down or busy:** wait 30, 60, 120 then 240 seconds, showing the Creator why and
+  until when; after that the Generation fails as `unavailable`, and can be started again.
+- **A rejected key** fails the Generation at once and says to check the key.
+- A passing Build makes the Game and its Version as "The data" says. The Version's `made_by` is
+  `generation`.
+- Nothing here blocks the server's other work: a model call is minutes of waiting, not of work.
+
+**Done when:** tests with the fake model and a clock the test moves show: a whole Generation from
+idea to a `ready` Version; a restart in each state resuming; the queue's limits; the waits and the
+`unavailable` failure; cancelling at each state; that a failed Generation leaves no Game.
+
+## Step 33: the Creator's pages (`server`, `client`)
+
+- Routes: start a Generation from an idea (2,000 characters at most); list mine; one, with its
+  Track; edit the Concept; redraft with a note; approve; cancel.
+- Pages: describe an idea; read, edit, redraft or approve the Concept; **the Track**: where it is,
+  whether it waits on the AI, on me, or failed, and why, with each step and its problems. It asks
+  again every few seconds while the AI is working, and not otherwise.
+- With the maker off, the pages say it isn't available yet and the routes refuse.
+- A Game made this way shows on My Games like any other: play it privately, publish it.
+- The Library and a Game's page say **AI-made** when any of its Versions was (the glossary's
+  "Made by").
+- Plain pages in the site's current style. The owner has mockups for a later restyle; don't design.
+
+**Done when:** browser tests, against the fake model, take an idea to a published Game and show a
+failed Generation's reason; the pages work at phone width.
+
+## Step 34: Revisions (`server`, `client`)
+
+A Creator asks, in plain words (1,000 characters at most), for a change to one `ready` Version of
+their Game. The prompt holds the reference text, the Concept if the Game has one, that Version's
+code and the request. It is checked like a Build, with the same caps, and a pass makes a new
+Version with `made_by` `revision`. Nothing is published by it (story 29). An uploaded Game can be
+revised too; it has no Concept, so its Playtest carries no `expect`.
+
+**Done when:** tests show a Revision making a new Version, a failed one leaving the Game as it
+was, and the limits; a browser test asks for one and sees the changed lines.
+
+## Step 35: the eval set (`server`)
+
+So that every change to the instructions or the Kit can be measured (story 53).
+
+- A list of 12 ideas, each one or two sentences, as a Creator would type them. Make them varied:
+  drawing, words, bluffing, a board, speed, a co-operative one, one with no scoring. Do not copy the
+  Official games or any published game.
+- A script that runs each idea through the whole pipeline (approving the first valid Concept),
+  one at a time, and writes a report: per idea, pass or fail, Builds, type fixes, model calls, time,
+  and **every problem from every step**; and totals.
+- **It refuses to run against the real GenAI Studio unless given `--live` and a key in the
+  environment.** Its tests use the fake. Never run it live: that is the owner's decision each time.
+
+**Done when:** a test runs the script on the fake model and checks the report's numbers.
+
+## Step 36: promises and paperwork (`server`, `client`, docs)
+
+- Removing an account removes its key, its Generations and their steps, in the main file and each
+  copy, with the raw-bytes test extended to them.
+- The privacy page: what the maker sends to GenAI Studio (the idea, the Concept, the code and the
+  Playtest's problems), that it is Purdue's own service, that the Creator's own key is used and how
+  it is kept. Every sentence checked against the code, as in Step 23.
+- The README: the new settings, how the maker is turned on, how the key secret is made.
+- `docs/SPEC.md` and `GLOSSARY.md` where this plan changed a meaning. ADR 0008 stays "proposed".
+
+**Done when:** the tests pass and the report lists each privacy sentence with where it was checked.
+
+## Step 37: turn it on, with the owner
+
+Not for the building agent: this is the live server, a secret, and real model calls.
+
+- The owner goes through "Defaults waiting for the owner's yes" and changes what they want.
+- The attack test is run again on a throwaway server (Step 30 changed the runner's request).
+- The key secret is made on the server, readable by the site's user only, and left out of every
+  backup. `KEY_SECRET_FILE`, `GENAI_BASE_URL` and `GENAI_MODEL` go in the settings.
+- The owner saves their own key and makes one Game. Then, with the owner's yes, one live eval run.
+- The server can reach GenAI Studio from AWS: checked 2026-11-19, `GET /api/models` without a key
+  answers 401 as JSON in a tenth of a second. So no other route to the model is needed.
 
 ## Milestone 4: the community
 
