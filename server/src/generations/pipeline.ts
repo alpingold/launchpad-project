@@ -56,6 +56,8 @@ import type { KeySecret } from "./key-secret.js";
 import { longestCodeBlock, type ChatMessage, type Completion, type Model, type ModelFailure } from "./model.js";
 import {
   ASK_LIMIT_MS,
+  CHECK_RETRIES,
+  CHECK_RETRY_WAIT_MS,
   MAX_INVALID_CONCEPTS,
   COMPLETION_TIMEOUT_MS,
   GENERATIONS_PER_DAY,
@@ -88,6 +90,7 @@ export const REASONS = {
   baseGone: "The Version this Revision changes can't be read any more. Ask for the change again.",
   callsUsed: "The Generation used all the model calls it may make.",
   site: `Something went wrong on the site's side. Start again: ${NOT_COUNTED}`,
+  checkFailed: `The site's own check failed ${CHECK_RETRIES + 1} times, not your Game. This one can't be tried again, so start again: ${NOT_COUNTED}`,
   conceptUnreadable: `Its Concept can't be read any more. Start again: ${NOT_COUNTED}`,
 } as const;
 
@@ -514,7 +517,7 @@ export class Pipeline {
     });
     this.#stillWorking(generation.id, signal);
     if (!result.ok) {
-      const reason = result.failure === undefined ? result.reason : failureReason(result.failure);
+      const reason = result.checkFailed === true ? REASONS.checkFailed : result.failure === undefined ? result.reason : failureReason(result.failure);
       // GenAI Studio busy or down, or the site's own check failing: nothing the Creator did.
       const counted = !(result.checkFailed === true || (result.failure !== undefined && result.failure !== "keyRejected"));
       return void this.#end(generation.id, "failed", reason, counted);
@@ -641,8 +644,20 @@ export class Pipeline {
     });
   }
 
-  /** One Playtest, written down before and after, taking its turn: the pipeline runs one at a time. */
+  /**
+   * One Playtest of a file. When the site's own check fails, it is made again CHECK_RETRIES more
+   * times, CHECK_RETRY_WAIT_MS apart, each taking its own turn: no turn is held while it waits.
+   */
   async #playtestStep(id: string, source: string, options: RunOptions | undefined, signal: AbortSignal): Promise<RunResult> {
+    for (let again = 0; ; again += 1) {
+      const result = await this.#playtestOnce(id, source, options, signal);
+      if (result.ok || !("checkFailed" in result) || again >= CHECK_RETRIES) return result;
+      await this.#sleep(CHECK_RETRY_WAIT_MS, signal);
+    }
+  }
+
+  /** One Playtest, written down before and after, taking its turn: the pipeline runs one at a time. */
+  async #playtestOnce(id: string, source: string, options: RunOptions | undefined, signal: AbortSignal): Promise<RunResult> {
     const turn = this.#playtestTurn.then(async () => {
       this.#stillWorking(id, signal);
       const step = beginStep(this.#db, id, "playtest", this.#seconds());

@@ -31,6 +31,12 @@ export const MAX_ANSWER_BYTES = 2 * 1024 * 1024;
 export const MAX_BUILDS = 4;
 /** Type fixes per Build: type errors are cheap to fix and don't use up a Build. */
 export const MAX_TYPE_FIXES_PER_BUILD = 4;
+/**
+ * When the site's own check fails (the Playtest, not the Game: a runner that died, say), it is made
+ * again this many more times, after CHECK_RETRY_WAIT_MS each, before the Generation fails.
+ */
+export const CHECK_RETRIES = 2;
+export const CHECK_RETRY_WAIT_MS = 10 * SECOND_MS;
 /** Invalid Concepts per draft before the Generation fails. */
 export const MAX_INVALID_CONCEPTS = 3;
 /** Model calls in all, for one Generation or Revision: so nothing can spend a Creator's key without end. */

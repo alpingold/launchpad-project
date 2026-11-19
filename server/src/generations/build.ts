@@ -256,7 +256,7 @@ export async function buildGame(options: BuildOptions): Promise<BuildResult> {
       }
       if ("checkFailed" in result) {
         await options.onStep?.({ kind, build: progress.builds, outcome: "checkFailed", problems: result.problems });
-        return ended("The site's check itself failed, not the Game. Try again in a minute.", "checkFailed");
+        return ended("The site's check itself failed, not the Game.", "checkFailed");
       }
       problems = result.problems;
       await options.onStep?.({ kind, build: progress.builds, outcome: "problems", problems });

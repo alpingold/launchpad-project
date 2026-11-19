@@ -209,7 +209,7 @@ describe("each cap ends the Build with a reason", () => {
     const broken = childProcessRunner({ command: [process.execPath, "-e", "process.exit(3)"], log: () => undefined });
     const model = new ScriptedModel([GOOD]);
     const result = await buildGame({ ask: (messages) => model.complete("key", messages), playtest: broken, first: buildMessages(CONCEPT), context: generationContext(CONCEPT) });
-    expect(result).toMatchObject({ ok: false, reason: "The site's check itself failed, not the Game. Try again in a minute." });
+    expect(result).toMatchObject({ ok: false, reason: "The site's check itself failed, not the Game.", checkFailed: true });
   });
 });
 

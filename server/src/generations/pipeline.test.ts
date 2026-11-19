@@ -15,7 +15,7 @@ import type { Concept } from "./concept.js";
 import { ScriptedModel, type ScriptedReply } from "./fake-model.js";
 import { keySecretFromBytes, SECRET_BYTES } from "./key-secret.js";
 import type { ChatMessage, CompleteOptions, Completion, Model, ModelFailure } from "./model.js";
-import { ASK_LIMIT_MS, COMPLETION_TIMEOUT_MS, GENERATIONS_PER_DAY, MAX_BUILDS, MAX_MODEL_CALLS, MAX_REQUEST_CHARS, MAX_WAITING_GENERATIONS, REVIEW_EXPIRES_MS, REVISIONS_PER_DAY, UNAVAILABLE_WAITS_MS } from "./numbers.js";
+import { ASK_LIMIT_MS, CHECK_RETRIES, CHECK_RETRY_WAIT_MS, COMPLETION_TIMEOUT_MS, GENERATIONS_PER_DAY, MAX_BUILDS, MAX_MODEL_CALLS, MAX_REQUEST_CHARS, MAX_WAITING_GENERATIONS, REVIEW_EXPIRES_MS, REVISIONS_PER_DAY, UNAVAILABLE_WAITS_MS } from "./numbers.js";
 import { Pipeline, REASONS, redraftReason, restartReason } from "./pipeline.js";
 import { VERSIONS_PER_GAME } from "../games.js";
 
@@ -70,6 +70,7 @@ class GatedModel implements Model {
 
 const PASSED: RunResult = { ok: true, bundle: "var BoilerGamesGame = (function() {})();", about: { title: "Tap Vote", players: { min: 2, max: 4 } }, sdkVersion: "v1" };
 const PLAY_PROBLEM: RunResult = { ok: false, problems: [{ stage: "play", message: "With 2 Players (seed 1): it never ends" }] };
+const CHECK_FAILED: RunResult = { ok: false, checkFailed: true, problems: [{ stage: "play", message: "The check itself failed, not your Game. Try again in a minute." }] };
 
 /** A Playtest that answers from a list (passing when it runs out), and can be held like the model. */
 class FakePlaytest implements PlaytestRunner {
@@ -515,6 +516,57 @@ describe("a Concept sent back for a new draft", () => {
   });
 });
 
+describe("the site's own check failing", () => {
+  test(`is made again up to ${CHECK_RETRIES} more times, ${CHECK_RETRY_WAIT_MS / 1000} seconds apart, without asking the model again; a pass carries on`, async () => {
+    const ada = account("ada");
+    playtest.results.push(...Array(CHECK_RETRIES).fill(CHECK_FAILED));
+    const model = new GatedModel([], () => CODE_ANSWER);
+    const pipe = pipeline(model);
+    const id = inReview(ada, "g1");
+    pipe.approve(ada, id);
+    for (let n = 1; n <= CHECK_RETRIES; n += 1) {
+      await until(() => playtest.runs.length === n);
+      clock.advance(CHECK_RETRY_WAIT_MS - 1);
+      await new Promise((go) => setTimeout(go, 5));
+      expect(playtest.runs).toHaveLength(n);
+      clock.advance(1);
+    }
+    await until(() => stateOf(id) === "ready");
+    expect(model.calls).toHaveLength(1);
+    expect(stepsOf(db, id).map((step) => step.outcome)).toEqual(["answered", ...Array(CHECK_RETRIES).fill("checkFailed"), "passed"]);
+  });
+
+  test(`failing ${CHECK_RETRIES + 1} times fails the Generation, saying it can't be tried again and doesn't count`, async () => {
+    const ada = account("ada");
+    playtest.results.push(...Array(CHECK_RETRIES + 1).fill(CHECK_FAILED));
+    const pipe = pipeline(new GatedModel([], () => CODE_ANSWER));
+    const id = inReview(ada, "g1");
+    pipe.approve(ada, id);
+    for (let n = 1; n <= CHECK_RETRIES; n += 1) {
+      await until(() => playtest.runs.length === n);
+      clock.advance(CHECK_RETRY_WAIT_MS);
+    }
+    await until(() => stateOf(id) === "failed");
+    expect(generation(id)).toMatchObject({ reason: REASONS.checkFailed, counted: false, gameId: null });
+    expect(REASONS.checkFailed).toContain("can't be tried again");
+    expect(playtest.runs).toHaveLength(CHECK_RETRIES + 1);
+  });
+
+  test("a Generation cancelled while it waits to check again isn't checked again", async () => {
+    const ada = account("ada");
+    playtest.results.push(CHECK_FAILED);
+    const pipe = pipeline(new GatedModel([], () => CODE_ANSWER));
+    const id = inReview(ada, "g1");
+    pipe.approve(ada, id);
+    await until(() => playtest.runs.length === 1 && stepsOf(db, id).at(-1)?.outcome === "checkFailed");
+    pipe.cancel(ada, id);
+    clock.advance(CHECK_RETRY_WAIT_MS);
+    await pipe.settled();
+    expect(stateOf(id)).toBe("cancelled");
+    expect(playtest.runs).toHaveLength(1);
+  });
+});
+
 describe("a failed Generation leaves no Game", () => {
   test(`every Build failing in play, ${MAX_BUILDS} times: failed, with the reason, and no Game or Version`, async () => {
     const ada = account("ada");
@@ -731,12 +783,16 @@ describe("the queue", () => {
     await until(() => stateOf(a) === "failed");
     expect(generation(a).counted).toBe(true);
 
-    playtest.results.push({ ok: false, checkFailed: true, problems: [{ stage: "play", message: "The check itself failed, not your Game. Try again in a minute." }] });
+    playtest.results.push(...Array(CHECK_RETRIES + 1).fill(CHECK_FAILED));
     const checking = pipeline(new GatedModel([], () => CODE_ANSWER));
     const b = inReview(bo, "b");
     checking.approve(bo, b);
+    for (let n = 1; n <= CHECK_RETRIES; n += 1) {
+      await until(() => playtest.runs.length === n);
+      clock.advance(CHECK_RETRY_WAIT_MS);
+    }
     await until(() => stateOf(b) === "failed");
-    expect(generation(b).counted).toBe(false);
+    expect(generation(b)).toMatchObject({ reason: REASONS.checkFailed, counted: false });
 
     const broken = pipeline(
       new GatedModel([], () => {
