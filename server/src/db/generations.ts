@@ -149,10 +149,13 @@ export function createGeneration(
   );
 }
 
-/** The Concept a Generation made this Game from, if one did: what its Revisions are checked against too. */
-export function conceptOfGame(db: Database, gameId: string): unknown {
-  const row = one(z.object({ concept: json }), db.prepare("SELECT concept FROM generations WHERE game_id = ? AND kind = 'generation' AND state = 'ready' AND concept IS NOT NULL LIMIT 1").get(gameId));
-  return row?.concept;
+/**
+ * The Concept a Version was made against: its Generation's, or the one the Revision that made it was
+ * held to. Undefined for an upload, and for a Revision made from one (held to none).
+ */
+export function conceptOfVersion(db: Database, versionId: string): unknown {
+  const row = one(z.object({ concept: json.nullable() }), db.prepare("SELECT concept FROM generations WHERE version_id = ? AND state = 'ready'").get(versionId));
+  return row?.concept ?? undefined;
 }
 
 export function generationById(db: Database, id: string): Generation | undefined {

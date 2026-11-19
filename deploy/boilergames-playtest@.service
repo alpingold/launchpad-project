@@ -55,7 +55,7 @@ ProtectHome=yes
 # settings; the boot files; snaps (the Systems Manager agent is one on Ubuntu); Caddy's, SSH's and
 # the Systems Manager agent's settings; and /dev/shm, the shared-memory folder, which the server's
 # other programs share and a run could otherwise write to (found by the attack run, 2026-11-18).
-InaccessiblePaths=-/etc/boilergames.env -/boot -/snap -/etc/caddy -/etc/ssh -/etc/amazon /dev/shm
+InaccessiblePaths=-/etc/boilergames.env -/etc/boilergames-key-secret -/boot -/snap -/etc/caddy -/etc/ssh -/etc/amazon /dev/shm
 # /tmp and /var/tmp: empty, its own, and gone when the run ends.
 PrivateTmp=yes
 UMask=0077

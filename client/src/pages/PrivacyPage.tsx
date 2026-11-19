@@ -25,7 +25,8 @@ export function PrivacyPage() {
         </p>
         <p>
           If you make a Game with the site's AI maker, the site keeps each Generation: your idea, the Concept the AI drafted with your changes to it, a note asking for a new
-          draft until the AI has drafted it again, the code the AI wrote, and each step it took with the problems the site's check found. It keeps each change you ask
+          draft until the AI has drafted it again, the code the AI wrote, each step it took with the problems the site's check found, when each step began and ended,
+          how many tries it took, and why it failed if it did. It keeps each change you ask
           the AI to make to a Game the same way, with what you asked for. They stay until your account is removed.
         </p>
         <p>Your display name is public: it is shown with every Game you publish. Your email address is never shown on the site.</p>

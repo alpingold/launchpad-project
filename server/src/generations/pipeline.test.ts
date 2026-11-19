@@ -321,6 +321,32 @@ describe("a Revision: a change to a ready Version", () => {
     expect(versionsOf(db, gameId)[0]).toMatchObject({ number: 3, madeBy: "revision", revisedFrom: "ada-upload" });
   });
 
+  test("a Revision of a Revision is held to what the Version it changes was: the Concept after the AI's Versions, none after an upload", async () => {
+    const ada = account("ada");
+    const pipe = pipeline(new GatedModel([], ANSWER));
+    const id = inReview(ada, "g1");
+    pipe.approve(ada, id);
+    await until(() => stateOf(id) === "ready");
+    const gameId = generation(id).gameId ?? "";
+    const revise = async (versionId: string) => {
+      const revised = pipe.revise(ada, gameId, versionId, "Again.");
+      if (!revised.ok) throw new Error(revised.error);
+      await until(() => stateOf(revised.generation.id) === "ready");
+      return generation(revised.generation.id);
+    };
+    // From the AI's Version, and again from that Revision: the Concept both times.
+    const first = await revise(generation(id).versionId ?? "");
+    expect(first.concept).toEqual(CONCEPT);
+    expect((await revise(first.versionId ?? "")).concept).toEqual(CONCEPT);
+    // From an upload, and again from that Revision: none either time.
+    createVersion(db, { id: "ada-upload", gameId, source: "// uploaded\n", createdAt: 5 });
+    finishCheck(db, "ada-upload", { ok: true, bundle: "//", about: { title: "Mine", players: { min: 1, max: 8 } } }, 5);
+    const fromUpload = await revise("ada-upload");
+    expect(fromUpload.concept).toBeNull();
+    expect((await revise(fromUpload.versionId ?? "")).concept).toBeNull();
+    expect(playtest.runs.at(-1)?.options).toEqual({});
+  });
+
   test("a failed one leaves the Game as it was", async () => {
     const ada = account("ada");
     const { gameId, versionId } = uploaded(ada, "up");

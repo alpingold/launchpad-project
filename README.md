@@ -108,7 +108,9 @@ Game; an idea holding `[fail]` gets no usable Concept, so a failed Generation ca
 The eval set (12 varied ideas, run through the whole maker one at a time) measures a change to the
 maker's instructions: `npm run build && npm run eval -w @boilergames/server` runs it on the fake and
 writes `eval-report.txt` and `eval-report.json`. Against the real GenAI Studio it needs `--live`
-and the owner's key in `GENAI_KEY`, spends that key on 12 Games, and is the owner's decision each time.
+and the owner's key in `GENAI_KEY` (type it with `read -rs GENAI_KEY && export GENAI_KEY`, so it stays
+out of the shell's history), spends that key on 12 Games, and is the owner's decision each time. It
+sends the key only to a `purdue.edu` https address, and stops at a rejected key or an outage.
 
 The server also serves the Game frame on the next port up (http://localhost:3001/v1/), from
 `client/dist-frame`, which `npm run build` makes. It is built outside `client/dist` on purpose:
@@ -207,7 +209,8 @@ Worth knowing:
   `aws ssm send-command --document-name boilergames-deploy --instance-ids <server> --parameters releaseId=<commit id>`.
 - A release that fails to install is not retried every minute; fix it with a new commit.
 - The server's settings are `deploy/boilergames.env`, installed as `/etc/boilergames.env`. A changed
-  setting, service file or Caddyfile is not deployed by a push: run `deploy/setup-server.sh` again.
+  setting, service file or Caddyfile is not deployed by a push: run `deploy/setup-server.sh` again,
+  then `sudo systemctl restart boilergames`, since the site reads its settings only when it starts.
 - Both domains' DNS records must point straight at the server (at Cloudflare: "DNS only"). Caddy
   needs that to get certificates, and nothing may sit in front of the game domain that could change
   its Content-Security-Policy header (ADR 0004).
@@ -217,14 +220,18 @@ Worth knowing:
 The first push of the maker deploys it off. Turning it on is the owner's step, on the server:
 
 1. Make the key secret, readable by the site's user only, outside the database's folder (the
-   nightly backups copy the database alone, so they never hold it):
-   `sudo sh -c 'umask 027 && openssl rand -hex 32 > /etc/boilergames-key-secret && chgrp boilergames /etc/boilergames-key-secret'`
+   nightly backups copy the database alone, so they never hold it). The command refuses to replace
+   a secret that is already there (`set -C`): a new secret makes every saved key unusable.
+   `sudo sh -c 'set -C && umask 027 && openssl rand -hex 32 > /etc/boilergames-key-secret && chgrp boilergames /etc/boilergames-key-secret'`
 2. Add to `deploy/boilergames.env`: `KEY_SECRET_FILE=/etc/boilergames-key-secret`,
-   `GENAI_BASE_URL=https://genai.rcac.purdue.edu/api` and `GENAI_MODEL=qwen3.8:27b`, and run
-   `deploy/setup-server.sh` again.
+   `GENAI_BASE_URL=https://genai.rcac.purdue.edu/api` and `GENAI_MODEL=qwen3.8:27b`. Run
+   `deploy/setup-server.sh` again (it also hides the secret from the Playtest's runs), then
+   `sudo systemctl restart boilergames`: the settings are read only when the site starts.
+3. Check: `curl -s https://boilergames.party/api/config` says `"aiMaker":true`.
 
-Losing the secret (a server rebuilt from nothing) loses every saved key: the site says so on the key
-page, and each Creator saves theirs again. Never put the secret in the database, a backup or git.
+With `KEY_SECRET_FILE` set, a missing or damaged secret file stops the site from starting, on
+purpose: make it again (step 1) and restart. A new secret loses every saved key: the key page says
+so, and each Creator saves theirs again. Never put the secret in the database, a backup or git.
 
 ### The database's backups
 

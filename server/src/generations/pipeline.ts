@@ -25,7 +25,7 @@ import { countGames, countVersions, gameById, versionSource, versionsOf } from "
 import { storedKey } from "../db/genai-keys.js";
 import {
   beginStep,
-  conceptOfGame,
+  conceptOfVersion,
   countModelCall,
   countStartedSince,
   createGeneration,
@@ -74,7 +74,7 @@ export const REASONS = {
   noKey: "Your GenAI Studio key is gone, or can't be read any more. Save it again, then start again.",
   cancelled: "You cancelled it.",
   expired: "Nobody approved the Concept within 7 days.",
-  tooManyGames: `You have ${GAMES_PER_ACCOUNT} Games, the most an account may have. Delete one, then start again.`,
+  tooManyGames: `You have ${GAMES_PER_ACCOUNT} Games, the most one account may have. Ask the AI for a change to one of them instead.`,
   tooManyVersions: `This Game has ${VERSIONS_PER_GAME} Versions, the most one Game may have. Start a new Game for more.`,
   baseGone: "The Version this Revision changes can't be read any more. Ask for the change again.",
   callsUsed: "The Generation used all the model calls it may make.",
@@ -178,9 +178,10 @@ export class Pipeline {
     }
     if (this.#waiting.length >= MAX_WAITING_GENERATIONS) return { ok: false, status: 503, error: "The AI's line is full. Try again in a few minutes." };
     const id = this.#newId();
-    // Checked against the Game's Concept only when the AI made the Version being changed: one the
-    // Creator uploaded is their own design now, and may have other phases or Player counts.
-    const concept = version.madeBy === "upload" ? undefined : conceptOfGame(this.#db, gameId);
+    // Checked against the Concept the Version being changed was made against, if any: the Concept of
+    // the Generation that made it, or the one the Revision that made it was held to. A Version the
+    // Creator uploaded, and every Revision made from it, is their own design and held to none.
+    const concept = version.madeBy === "upload" ? undefined : conceptOfVersion(this.#db, versionId);
     createGeneration(this.#db, {
       id,
       accountId,

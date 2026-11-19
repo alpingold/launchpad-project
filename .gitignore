@@ -6,6 +6,10 @@ dist-frame/
 *.db
 *.db-journal
 .env
+# A development key secret (README, "The AI maker"), and the eval's reports.
+dev.key
+eval-report.txt
+eval-report.json
 e2e/test-results/
 e2e/.build/
 e2e/playwright-report/
