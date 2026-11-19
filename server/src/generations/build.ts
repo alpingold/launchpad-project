@@ -169,7 +169,17 @@ export interface BuildProgress {
 
 export type BuildResult =
   | { readonly ok: true; readonly source: string; readonly bundle: string; readonly about: Extract<RunResult, { ok: true }>["about"]; readonly builds: number; readonly typeFixes: number }
-  | { readonly ok: false; readonly reason: string; readonly failure?: ModelFailure; readonly lastFile?: string; readonly builds: number; readonly typeFixes: number };
+  | {
+      readonly ok: false;
+      readonly reason: string;
+      /** How GenAI Studio failed, if that ended it. */
+      readonly failure?: ModelFailure;
+      /** True if the site's own check failed (the Playtest, not the Game). */
+      readonly checkFailed?: true;
+      readonly lastFile?: string;
+      readonly builds: number;
+      readonly typeFixes: number;
+    };
 
 export interface BuildOptions {
   /**
@@ -208,12 +218,12 @@ export async function buildGame(options: BuildOptions): Promise<BuildResult> {
   // A file waiting for its check is also the last file the model wrote.
   let progress: BuildProgress = from.toCheck !== undefined && from.lastFile === undefined ? { ...from, lastFile: from.toCheck } : from;
   const kindOf = (at: BuildProgress): BuildStep["kind"] => (at.typeFixes === 0 ? "build" : "typeFix");
-  const ended = (reason: string, failure?: ModelFailure): BuildResult => ({
+  const ended = (reason: string, cause?: ModelFailure | "checkFailed"): BuildResult => ({
     ok: false,
     reason,
     builds: progress.builds,
     typeFixes: progress.typeFixes,
-    ...(failure === undefined ? {} : { failure }),
+    ...(cause === undefined ? {} : cause === "checkFailed" ? { checkFailed: true } : { failure: cause }),
     ...(progress.lastFile === undefined ? {} : { lastFile: progress.lastFile }),
   });
   for (;;) {
@@ -246,7 +256,7 @@ export async function buildGame(options: BuildOptions): Promise<BuildResult> {
       }
       if ("checkFailed" in result) {
         await options.onStep?.({ kind, build: progress.builds, outcome: "checkFailed", problems: result.problems });
-        return ended("The site's check itself failed, not the Game. Try again in a minute.");
+        return ended("The site's check itself failed, not the Game. Try again in a minute.", "checkFailed");
       }
       problems = result.problems;
       await options.onStep?.({ kind, build: progress.builds, outcome: "problems", problems });

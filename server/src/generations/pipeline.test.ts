@@ -16,7 +16,7 @@ import { ScriptedModel, type ScriptedReply } from "./fake-model.js";
 import { keySecretFromBytes, SECRET_BYTES } from "./key-secret.js";
 import type { ChatMessage, CompleteOptions, Completion, Model, ModelFailure } from "./model.js";
 import { GENERATIONS_PER_DAY, MAX_BUILDS, MAX_MODEL_CALLS, MAX_REQUEST_CHARS, MAX_WAITING_GENERATIONS, REVIEW_EXPIRES_MS, REVISIONS_PER_DAY, UNAVAILABLE_WAITS_MS } from "./numbers.js";
-import { Pipeline, REASONS } from "./pipeline.js";
+import { Pipeline, REASONS, restartReason } from "./pipeline.js";
 import { VERSIONS_PER_GAME } from "../games.js";
 
 const keySecret = keySecretFromBytes(Buffer.alloc(SECRET_BYTES, 9));
@@ -533,7 +533,7 @@ describe("GenAI Studio busy, down, or refusing the key", () => {
       clock.advance(1);
     }
     await until(() => stateOf(id) === "failed");
-    expect(generation(id)).toMatchObject({ reason: REASONS.unavailable, waiting: null, modelCalls: UNAVAILABLE_WAITS_MS.length + 1 });
+    expect(generation(id)).toMatchObject({ reason: REASONS.unavailable, waiting: null, modelCalls: UNAVAILABLE_WAITS_MS.length + 1, counted: false });
   });
 
   test("down, then back: the notice goes as the call is made again, and the Generation carries on", async () => {
@@ -556,7 +556,7 @@ describe("GenAI Studio busy, down, or refusing the key", () => {
     const pipe = pipeline(model);
     const id = started(pipe.start(ada, "taps"));
     await until(() => stateOf(id) === "failed");
-    expect(generation(id).reason).toBe(REASONS.keyRejected);
+    expect(generation(id)).toMatchObject({ reason: REASONS.keyRejected, counted: true });
     expect(model.calls).toHaveLength(1);
   });
 
@@ -612,7 +612,7 @@ describe("the queue", () => {
     model.release();
   });
 
-  test(`${GENERATIONS_PER_DAY} started a day, whatever became of them; a day later, more`, async () => {
+  test(`${GENERATIONS_PER_DAY} started a day, failed ones included (here, a rejected key); a day later, more`, async () => {
     const ada = account("ada");
     const pipe = pipeline(new GatedModel([], () => ({ failure: "keyRejected" })));
     for (let n = 0; n < GENERATIONS_PER_DAY; n += 1) {
@@ -622,6 +622,48 @@ describe("the queue", () => {
     expect(pipe.start(ada, "one more")).toMatchObject({ ok: false, status: 429 });
     clock.advance(24 * 60 * 60 * 1000 + 1000);
     expect(pipe.start(ada, "one more").ok).toBe(true);
+  });
+
+  test("one that failed for nothing its Creator did (GenAI Studio busy or down, the site's check or code failing) doesn't count against the day's limit", async () => {
+    const ada = account("ada");
+    const at = Math.floor(clock.now() / 1000);
+    for (let n = 0; n < GENERATIONS_PER_DAY; n += 1) {
+      createGeneration(db, { id: `g${n}`, accountId: ada, kind: "generation", idea: "taps", state: "concept", at });
+      moveGeneration(db, `g${n}`, ["concept"], "failed", { reason: REASONS.unavailable, counted: false }, at);
+    }
+    const game = uploaded(ada, "game");
+    for (let n = 0; n < REVISIONS_PER_DAY; n += 1) {
+      createGeneration(db, { id: `r${n}`, accountId: ada, kind: "revision", revises: game, idea: "longer", state: "build", builds: 1, at });
+      moveGeneration(db, `r${n}`, ["build"], "failed", { reason: REASONS.site, counted: false }, at);
+    }
+    const pipe = pipeline(new GatedModel([], ANSWER));
+    expect(pipe.revise(ada, game.gameId, game.versionId, "Longer.").ok).toBe(true);
+    await pipe.settled();
+    expect(pipe.start(ada, "taps").ok).toBe(true);
+  });
+
+  test("which failures count: a rejected key does; GenAI Studio down, the site's check failing, or the site's own error don't", async () => {
+    const [ada, bo, cy] = ["ada", "bo", "cy"].map(account) as [string, string, string];
+    const rejected = pipeline(new GatedModel([{ failure: "keyRejected" }]));
+    const a = started(rejected.start(ada, "taps"));
+    await until(() => stateOf(a) === "failed");
+    expect(generation(a).counted).toBe(true);
+
+    playtest.results.push({ ok: false, checkFailed: true, problems: [{ stage: "play", message: "The check itself failed, not your Game. Try again in a minute." }] });
+    const checking = pipeline(new GatedModel([], () => CODE_ANSWER));
+    const b = inReview(bo, "b");
+    checking.approve(bo, b);
+    await until(() => stateOf(b) === "failed");
+    expect(generation(b).counted).toBe(false);
+
+    const broken = pipeline(
+      new GatedModel([], () => {
+        throw new Error("a bug of the site's");
+      }),
+    );
+    const c = started(broken.start(cy, "taps"));
+    await until(() => stateOf(c) === "failed");
+    expect(generation(c)).toMatchObject({ reason: REASONS.site, counted: false });
   });
 
   test("no key saved, an empty idea, or the most Games already: refused before anything is made", () => {
@@ -801,6 +843,6 @@ describe("a restart carries each Generation on from the start of its stage", () 
     createGeneration(db, { id: "broken", accountId: ada, kind: "generation", idea: "x", state: "concept", at: 1 });
     db.prepare("UPDATE generations SET state = 'build', concept = '{\"not\": \"a Concept\"}', builds = 1 WHERE id = 'broken'").run();
     expect(() => pipeline(new GatedModel())).not.toThrow();
-    expect(generation("broken")).toMatchObject({ state: "failed", reason: "This Generation couldn't carry on after the site restarted (its Concept can't be read). Start it again." });
+    expect(generation("broken")).toMatchObject({ state: "failed", reason: restartReason("its Concept can't be read"), counted: false });
   });
 });

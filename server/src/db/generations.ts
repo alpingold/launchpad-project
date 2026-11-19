@@ -40,6 +40,8 @@ export interface Generation {
   readonly modelCalls: number;
   readonly versionId: string | null;
   readonly reason: string | null;
+  /** Whether it counts against its account's daily limit: not if it failed for nothing its Creator did. */
+  readonly counted: boolean;
   readonly waiting: { readonly why: "rateLimited" | "unavailable"; readonly until: number } | null;
   readonly createdAt: number;
   readonly updatedAt: number;
@@ -74,6 +76,7 @@ const generationRow = z
     model_calls: z.number().int(),
     version_id: z.string().nullable(),
     reason: z.string().nullable(),
+    counted: z.union([z.literal(0), z.literal(1)]),
     waiting_why: z.enum(["rateLimited", "unavailable"]).nullable(),
     waiting_until: z.number().int().nullable(),
     created_at: z.number().int(),
@@ -96,13 +99,14 @@ const generationRow = z
       modelCalls: row.model_calls,
       versionId: row.version_id,
       reason: row.reason,
+      counted: row.counted === 1,
       waiting: row.waiting_why === null || row.waiting_until === null ? null : { why: row.waiting_why, until: row.waiting_until },
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     }),
   );
 
-const COLUMNS = "id, account_id, kind, game_id, base_version_id, idea, state, concept, note, code, builds, type_fixes, model_calls, version_id, reason, waiting_why, waiting_until, created_at, updated_at";
+const COLUMNS = "id, account_id, kind, game_id, base_version_id, idea, state, concept, note, code, builds, type_fixes, model_calls, version_id, reason, counted, waiting_why, waiting_until, created_at, updated_at";
 
 const stepRow = z
   .object({
@@ -173,9 +177,12 @@ export function workingGenerations(db: Database): { readonly id: string; readonl
   return all(z.object({ id: z.string(), account_id: z.string() }), rows).map((row) => ({ id: row.id, accountId: row.account_id }));
 }
 
-/** How many of this kind the account started since `since`, whatever became of them. */
+/**
+ * How many of this kind the account started since `since` that count against its daily limit: every
+ * one, unless it failed for nothing its Creator did (`counted`).
+ */
 export function countStartedSince(db: Database, accountId: string, kind: GenerationKind, since: number): number {
-  const row = one(z.object({ n: z.number().int() }), db.prepare("SELECT count(*) AS n FROM generations WHERE account_id = ? AND kind = ? AND created_at >= ?").get(accountId, kind, since));
+  const row = one(z.object({ n: z.number().int() }), db.prepare("SELECT count(*) AS n FROM generations WHERE account_id = ? AND kind = ? AND created_at >= ? AND counted = 1").get(accountId, kind, since));
   return row?.n ?? 0;
 }
 
@@ -197,6 +204,8 @@ export interface Change {
   readonly builds?: number;
   readonly typeFixes?: number;
   readonly reason?: string;
+  /** False when it fails for nothing its Creator did: then it doesn't count against the daily limit. */
+  readonly counted?: boolean;
 }
 
 /**
@@ -213,6 +222,7 @@ export function moveGeneration(db: Database, id: string, from: readonly Generati
   if (change.builds !== undefined) (sets.push("builds = ?"), values.push(change.builds));
   if (change.typeFixes !== undefined) (sets.push("type_fixes = ?"), values.push(change.typeFixes));
   if (change.reason !== undefined) (sets.push("reason = ?"), values.push(change.reason));
+  if (change.counted !== undefined) (sets.push("counted = ?"), values.push(change.counted ? 1 : 0));
   const result = db.prepare(`UPDATE generations SET ${sets.join(", ")} WHERE id = ? AND state IN (${placeholders(from)})`).run(...values, id, ...from);
   return Number(result.changes) === 1;
 }

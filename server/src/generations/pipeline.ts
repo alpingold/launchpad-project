@@ -7,7 +7,8 @@
  *   carries on from the start of that stage. A Generation in `review` waits for its Creator and holds
  *   no place.
  * - **The queue:** RUNNING_AT_ONCE worked on at once, one per account, MAX_WAITING_GENERATIONS
- *   waiting; and GENERATIONS_PER_DAY started per account (numbers.ts).
+ *   waiting; and GENERATIONS_PER_DAY started per account (numbers.ts). One that fails for nothing its
+ *   Creator did (GenAI Studio busy or down, the site's own check or code failing) doesn't count.
  * - **The Playtest's slots are shared with Uploads.** Generations' Playtests take one at a time, so
  *   an Upload's check never waits behind more than one of them.
  * - **GenAI Studio busy or down:** the call is made again after each of UNAVAILABLE_WAITS_MS, the
@@ -67,10 +68,13 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 /** How often Concepts left waiting are looked for. */
 const SWEEP_MS = 60 * 60 * 1000;
 
+/** Said of one that failed for nothing its Creator did. */
+const NOT_COUNTED = "this one doesn't count against your day's limit.";
+
 /** What the Creator is told, for each way a Generation can end without a Game. */
 export const REASONS = {
   keyRejected: "GenAI Studio refused your key. Check it on your key page, save it again if it changed, and start again.",
-  unavailable: "GenAI Studio was busy or down for too long. Start the Generation again later.",
+  unavailable: `GenAI Studio was busy or down for too long. Start again later: ${NOT_COUNTED}`,
   noKey: "Your GenAI Studio key is gone, or can't be read any more. Save it again, then start again.",
   cancelled: "You cancelled it.",
   expired: "Nobody approved the Concept within 7 days.",
@@ -78,8 +82,12 @@ export const REASONS = {
   tooManyVersions: `This Game has ${VERSIONS_PER_GAME} Versions, the most one Game may have. Start a new Game for more.`,
   baseGone: "The Version this Revision changes can't be read any more. Ask for the change again.",
   callsUsed: "The Generation used all the model calls it may make.",
-  site: "Something went wrong on the site's side. Try again.",
+  site: `Something went wrong on the site's side. Start again: ${NOT_COUNTED}`,
+  conceptUnreadable: `Its Concept can't be read any more. Start again: ${NOT_COUNTED}`,
 } as const;
+
+/** Why one couldn't carry on after a restart: the site's own doing. */
+export const restartReason = (why: string) => `This couldn't carry on after the site restarted (${why}). Start again: ${NOT_COUNTED}`;
 
 export type Refusal = { readonly ok: false; readonly status: number; readonly error: string };
 
@@ -308,10 +316,13 @@ export class Pipeline {
     }
   }
 
-  /** Ends it as failed or cancelled, if it isn't over already, and stops any work on it. */
-  #end(id: string, to: "failed" | "cancelled", reason: string): boolean {
+  /**
+   * Ends it as failed or cancelled, if it isn't over already, and stops any work on it. `counted`
+   * false: it failed for nothing its Creator did, and doesn't count against their daily limit.
+   */
+  #end(id: string, to: "failed" | "cancelled", reason: string, counted = true): boolean {
     // A note asking for a new draft goes too: it is kept only until it is drafted (the privacy page).
-    const moved = moveGeneration(this.#db, id, ["concept", "review", "build", "playtest"], to, { reason, note: null }, this.#seconds());
+    const moved = moveGeneration(this.#db, id, ["concept", "review", "build", "playtest"], to, { reason, note: null, ...(counted ? {} : { counted: false }) }, this.#seconds());
     const at = this.#waiting.findIndex((waiting) => waiting.id === id);
     if (at >= 0) this.#waiting.splice(at, 1);
     this.#running.get(id)?.abort.abort();
@@ -339,7 +350,7 @@ export class Pipeline {
         const why = cantCarryOn(generation);
         if (why !== undefined) {
           this.#log(`Generations: ${id} can't carry on after a restart: ${why}`);
-          moveGeneration(this.#db, id, WORKING, "failed", { reason: `This Generation couldn't carry on after the site restarted (${why}). Start it again.`, note: null }, at);
+          moveGeneration(this.#db, id, WORKING, "failed", { reason: restartReason(why), note: null, counted: false }, at);
           continue;
         }
         setWaiting(this.#db, id, null, at);
@@ -348,7 +359,7 @@ export class Pipeline {
         // A row that makes no sense must never stop the server from starting.
         this.#log(`Generations: ${id} couldn't be read after a restart: ${(error as Error).message}`);
         try {
-          moveGeneration(this.#db, id, WORKING, "failed", { reason: REASONS.site, note: null }, at);
+          moveGeneration(this.#db, id, WORKING, "failed", { reason: REASONS.site, note: null, counted: false }, at);
         } catch {
           // Left as it is: it is not in the line, and the site carries on.
         }
@@ -380,7 +391,7 @@ export class Pipeline {
       if (error instanceof Stopped) return;
       this.#log(`Generations: ${id} failed on the site's side: ${(error as Error).message}`);
       try {
-        this.#end(id, "failed", REASONS.site);
+        this.#end(id, "failed", REASONS.site, false);
       } catch (again) {
         // The database itself is failing (or closed after a stop): the row stays as it was, and the
         // next start carries it on. Never an unhandled rejection, which would stop the server.
@@ -397,34 +408,38 @@ export class Pipeline {
   }
 
   async #concept(generation: Generation, signal: AbortSignal): Promise<void> {
+    let outOfCalls = false;
     const ask = async (messages: readonly ChatMessage[]): Promise<Completion> => {
       const answer = await this.#ask(generation, "concept", messages, signal, conceptOutcome);
-      // No calls left: a failure here, and the reason below says which.
-      return answer ?? { ok: false, failure: "unavailable" };
+      if (answer !== undefined) return answer;
+      // No calls left: a failure to draftConcept, and the reason below says which.
+      outOfCalls = true;
+      return { ok: false, failure: "unavailable" };
     };
     // A redraft: the Concept the Creator sent back, and their note on what to change.
     const previous = generation.note === null ? undefined : checkConcept(generation.concept);
     const redraft = previous?.ok === true && generation.note !== null ? { previous: previous.concept, note: generation.note } : undefined;
     const draft = await draftConcept(ask, generation.idea, redraft === undefined ? {} : { redraft });
-    const now = this.#stillWorking(generation.id, signal);
+    this.#stillWorking(generation.id, signal);
     if (draft.kind === "valid") {
       if (!moveGeneration(this.#db, generation.id, ["concept"], "review", { concept: draft.concept, note: null }, this.#seconds())) throw new Stopped();
       return;
     }
     // A redraft that never came out usable, or ran out of calls: back to review with the Concept the
     // Creator sent back, rather than losing it. Its Track shows the tries and their problems.
-    if (redraft !== undefined && (draft.kind === "invalid" || now.modelCalls >= MAX_MODEL_CALLS)) {
+    if (redraft !== undefined && (draft.kind === "invalid" || outOfCalls)) {
       if (!moveGeneration(this.#db, generation.id, ["concept"], "review", { concept: redraft.previous, note: null }, this.#seconds())) throw new Stopped();
       return;
     }
     if (draft.kind === "invalid") return void this.#end(generation.id, "failed", invalidConceptsReason(draft.attempts));
-    this.#end(generation.id, "failed", now.modelCalls >= MAX_MODEL_CALLS ? REASONS.callsUsed : failureReason(draft.failure));
+    if (outOfCalls) return void this.#end(generation.id, "failed", REASONS.callsUsed);
+    this.#end(generation.id, "failed", failureReason(draft.failure), draft.failure === "keyRejected");
   }
 
   async #build(generation: Generation, signal: AbortSignal): Promise<void> {
     // A Generation always has its Concept; a Revision has its Game's, if a Generation made the Game.
     const checked = generation.concept === null && generation.kind === "revision" ? undefined : checkConcept(generation.concept);
-    if (checked?.ok === false) return void this.#end(generation.id, "failed", "Its Concept can't be read any more. Try again.");
+    if (checked?.ok === false) return void this.#end(generation.id, "failed", REASONS.conceptUnreadable, false);
     const concept = checked?.concept;
     let first: readonly ChatMessage[];
     let context: string;
@@ -434,7 +449,7 @@ export class Pipeline {
       first = revisionMessages(concept, source, generation.idea);
       context = revisionContext(concept, generation.idea);
     } else {
-      if (concept === undefined) return void this.#end(generation.id, "failed", "Its Concept can't be read any more. Try again.");
+      if (concept === undefined) return void this.#end(generation.id, "failed", REASONS.conceptUnreadable, false);
       first = buildMessages(concept);
       context = generationContext(concept);
     }
@@ -470,7 +485,9 @@ export class Pipeline {
     this.#stillWorking(generation.id, signal);
     if (!result.ok) {
       const reason = result.failure === undefined ? result.reason : failureReason(result.failure);
-      return void this.#end(generation.id, "failed", reason);
+      // GenAI Studio busy or down, or the site's own check failing: nothing the Creator did.
+      const counted = !(result.checkFailed === true || (result.failure !== undefined && result.failure !== "keyRejected"));
+      return void this.#end(generation.id, "failed", reason, counted);
     }
     if (generation.kind === "generation" && countGames(this.#db, generation.accountId) >= GAMES_PER_ACCOUNT) return void this.#end(generation.id, "failed", REASONS.tooManyGames);
     if (generation.kind === "revision" && countVersions(this.#db, generation.gameId ?? "") >= VERSIONS_PER_GAME) return void this.#end(generation.id, "failed", REASONS.tooManyVersions);

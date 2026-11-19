@@ -33,6 +33,9 @@ CREATE TABLE generations (
   version_id TEXT REFERENCES versions (id),
   -- Why it failed or was cancelled, for the Creator.
   reason TEXT,
+  -- Whether it counts against its account's daily limit: 0 only for one that failed for nothing its
+  -- Creator did (GenAI Studio busy or down, the site's own check or code failing).
+  counted INTEGER NOT NULL DEFAULT 1 CHECK (counted IN (0, 1)),
   -- While GenAI Studio is busy or down: why ('rateLimited' or 'unavailable') and until when it waits.
   waiting_why TEXT CHECK (waiting_why IS NULL OR waiting_why IN ('rateLimited', 'unavailable')),
   waiting_until INTEGER,
@@ -40,6 +43,7 @@ CREATE TABLE generations (
   updated_at INTEGER NOT NULL,
   CHECK ((state = 'ready') = (version_id IS NOT NULL)),
   CHECK (state NOT IN ('failed', 'cancelled') OR reason IS NOT NULL),
+  CHECK (counted = 1 OR state = 'failed'),
   CHECK (kind = 'generation' OR (game_id IS NOT NULL AND base_version_id IS NOT NULL)),
   CHECK ((waiting_why IS NULL) = (waiting_until IS NULL))
 ) STRICT;
