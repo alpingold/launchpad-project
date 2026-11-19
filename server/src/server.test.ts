@@ -94,7 +94,7 @@ describe("HTTP", () => {
   });
 
   test("serves the client's page at /screen and /play too, and tells the pages where the Game frame is", async () => {
-    for (const path of ["/screen", "/play", "/make"]) expect(await (await fetch(`http://${base}${path}`)).text(), path).toContain("BoilerGames");
+    for (const path of ["/screen", "/play", "/make", "/privacy"]) expect(await (await fetch(`http://${base}${path}`)).text(), path).toContain("BoilerGames");
     expect(await (await fetch(`http://${base}/api/config`)).json()).toEqual({ frameUrl: FRAME_URL, limits: expect.any(Object) });
   });
 

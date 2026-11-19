@@ -111,3 +111,10 @@ body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; ba
 .make-prompt textarea { font: 0.85em ui-monospace, monospace; padding: 8px; border: 2px solid #1d3f91; border-radius: 8px; width: 100%; box-sizing: border-box; }
 .make-types { font-size: 0.8em; background: #fff; padding: 12px; border-radius: 8px; overflow-x: auto; max-width: 100%; box-sizing: border-box; }
 .make li { overflow-wrap: anywhere; }
+
+/* Every page's foot: the privacy page's link. */
+.site-foot { max-width: 720px; margin: 24px auto 0; padding: 12px 16px 24px; border-top: 1px solid #d0d0cb; font-size: 0.9em; }
+.screen-lobby .site-foot, .page .site-foot { margin: 12px 0 0; padding: 12px 0 0; max-width: none; }
+.privacy section p, .privacy li { overflow-wrap: anywhere; }
+.privacy section { display: flex; flex-direction: column; gap: 8px; }
+.privacy section p { margin: 0; }

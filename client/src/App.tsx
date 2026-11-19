@@ -1,7 +1,7 @@
 // The site's pages, chosen by the address: /, /screen (the Host's Screen), /play (a phone),
 // signing in: /sign-in, /sign-in/confirm (the emailed link's page) and /sign-in/name, and the
 // Creator's: /my/games, /my/games/<id> and /make (writing a Game with any AI); the Library:
-// /library and /library/<id>.
+// /library and /library/<id>; /privacy. Every page has the privacy page's link at its foot.
 import "./pages/pages.css";
 import { ConfirmPage } from "./pages/ConfirmPage.js";
 import { HomePage } from "./pages/HomePage.js";
@@ -12,17 +12,30 @@ import { MyGamePage } from "./pages/MyGamePage.js";
 import { MyGamesPage } from "./pages/MyGamesPage.js";
 import { NamePage } from "./pages/NamePage.js";
 import { PlayPage } from "./pages/PlayPage.js";
+import { PrivacyPage, SiteFoot } from "./pages/PrivacyPage.js";
 import { ScreenPage } from "./pages/ScreenPage.js";
 import { SignInPage } from "./pages/SignInPage.js";
 
 export function App({ path = typeof location === "undefined" ? "/" : location.pathname }: { path?: string }) {
+  // The Screen and a phone are filled by a Match while one is on: their own Lobby and join pages
+  // carry the foot themselves. Every other page gets it here.
   if (path.startsWith("/screen")) return <ScreenPage />;
   if (path.startsWith("/play")) return <PlayPage />;
+  return (
+    <>
+      <Page path={path} />
+      <SiteFoot />
+    </>
+  );
+}
+
+function Page({ path }: { path: string }) {
   if (path === "/sign-in/confirm") return <ConfirmPage />;
   if (path === "/sign-in/name") return <NamePage />;
   if (path === "/sign-in") return <SignInPage />;
   if (path === "/my/games") return <MyGamesPage />;
   if (path === "/make") return <MakePage />;
+  if (path === "/privacy") return <PrivacyPage />;
   const game = /^\/my\/games\/([^/]+)$/.exec(path)?.[1];
   if (game !== undefined) return <MyGamePage id={decodeURIComponent(game)} />;
   if (path === "/library") return <LibraryPage />;

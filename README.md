@@ -213,6 +213,43 @@ Then on the server, as root: stop the site (`systemctl stop boilergames`), move 
 `/var/lib/boilergames/boilergames.db`, `.db-wal` and `.db-shm` aside, put the unpacked file there as
 `boilergames.db` owned by `boilergames`, and start the site again.
 
+### Removing an account by hand
+
+Until account deletion exists (milestone 4), someone who wants their account gone writes to
+hello@boilergames.party (the privacy page says so). Check that the message comes from the address
+the account signs in with. Then, on the server, as the site's user:
+
+    sudo -u boilergames /usr/local/bin/node /opt/boilergames/current/server/dist/remove-account.js
+
+It asks for the email address and reads it as you type it, rather than taking it on the command
+line: sudo writes every command line to the server's log, and the address of someone who asked to
+be removed mustn't stay there. (The command that makes an admin, below, does put the admin's address
+on its command line.)
+
+It removes everything the database keeps about the account, in one transaction per file, in the
+order the tables' keys allow (`server/src/db/remove-account.ts`, tested on a database in memory):
+
+1. its Games are unpublished (a Game and its published Version point at each other, so that link
+   goes first);
+2. every Version of its Games, with their code;
+3. its Games' counts of plays;
+4. its Games;
+5. its sessions;
+6. sign-in links sent to its address;
+7. the account.
+
+It does the same in each copy the server made of the database before a migration (up to three,
+`/var/lib/boilergames/boilergames.db.backup-*`), which would otherwise keep the account. For each
+file it prints how many of each went, or that the account isn't in it. The site can keep running
+while it does.
+
+A published Game of the account's leaves the Library and the Lobby at once, and its code is refused
+from then on. A Room playing it at that moment finishes its Match on the code it already has, but a
+reload of that Screen can't load the code again and says so. Nothing else needs doing.
+
+The nightly copies still hold the account until each is deleted, 30 days after it was made: tell the
+person so in the reply.
+
 ### Admins, and taking a Game down
 
 Uploaded Games are public as soon as their Creator publishes them, without review, so an admin can

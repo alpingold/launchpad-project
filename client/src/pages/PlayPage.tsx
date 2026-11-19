@@ -3,6 +3,7 @@ import { MAX_NAME_LENGTH } from "@boilergames/protocol";
 import { useEffect, useMemo, useState, useSyncExternalStore, type FormEvent } from "react";
 import { View } from "../kit/View.js";
 import { PhoneSeat } from "../play/phone-seat.js";
+import { SiteFoot } from "./PrivacyPage.js";
 
 export function PlayPage() {
   const seat = useMemo(() => new PhoneSeat(), []);
@@ -18,6 +19,7 @@ export function PlayPage() {
       <main className="page">
         {state.notice === null ? null : <p className="page-notice">{state.notice}</p>}
         {state.phase === "gone" ? null : <JoinForm onJoin={(code, name) => seat.join(code, name)} />}
+        <SiteFoot />
       </main>
     );
   }
@@ -52,6 +54,7 @@ export function PlayPage() {
       {/* Story 46. The site's own page says it, in the Lobby, never a Game's View: a Game written
           by a stranger could put up a form that asks, and this is what a Player has to go on. */}
       <p className="page-quiet">BoilerGames never asks for a password or an email address inside a Game.</p>
+      <SiteFoot />
     </main>
   );
 }

@@ -54,6 +54,9 @@ export function SignInPage() {
         </>
       )}
       <p>
+        What the site keeps about an account, and how to have one removed: <a href="/privacy">the privacy page</a>.
+      </p>
+      <p>
         <a href="/">Back to the home page</a>
       </p>
     </main>

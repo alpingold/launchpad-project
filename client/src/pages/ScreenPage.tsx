@@ -6,6 +6,7 @@ import { withDefaults } from "@boilergames/sdk/v1/check";
 import { View } from "../kit/View.js";
 import { ScreenStage } from "../screen/ScreenStage.js";
 import { ScreenRoom, type GameListing } from "../screen/screen-room.js";
+import { SiteFoot } from "./PrivacyPage.js";
 
 export function ScreenPage() {
   const frames = useRef<HTMLDivElement>(null);
@@ -153,6 +154,7 @@ function Lobby({
             ))}
         </ul>
       </section>
+      <SiteFoot />
     </main>
   );
 }
