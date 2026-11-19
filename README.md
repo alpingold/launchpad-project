@@ -88,7 +88,7 @@ and `boilergames-playtest@.service`, whose runs share one budget in `boilergames
 inside `boilergames.slice` beside the site). Without it, a Playtest runs in a child process with no wall,
 which is only for developing; with `NODE_ENV=production` and no `PLAYTEST_SOCKET`, there is no
 Playtest at all, so Uploads are refused. `deploy/attack-playtest.sh` attacks the wall, on a
-throwaway server only.
+throwaway server only: 32 attacks, last run 2026-11-19.
 
 The AI maker (a Creator's idea made into a Game, with their own Purdue GenAI Studio key; ADR 0008)
 needs three settings, and the Playtest. `GENAI_BASE_URL` and `GENAI_MODEL` say which model it asks:

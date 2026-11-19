@@ -59,7 +59,7 @@ Branch `rewrite`. Six npm workspace packages, each a folder at the root, and the
 | `server`   | The one server process: Rooms, the site's HTTP, the game domain       | Built and tested          |
 | `client`   | The site's pages (React, Vite), the Kit renderer, the Game frame      | Built and tested          |
 | `games`    | The three Official games and their build                              | Built and tested          |
-| `playtest` | The Playtest, its walled runner's program, and how a bundle is made   | Built and tested; its wall held against 31 attacks |
+| `playtest` | The Playtest, its walled runner's program, and how a bundle is made   | Built and tested; its wall held against 32 attacks (last run 2026-11-19) |
 | `e2e`      | Playwright tests: the walls, the frame, the real site                 | Six projects, all passing |
 | `deploy`   | The server's setup, service and release scripts (not a package)       | Running the live site     |
 

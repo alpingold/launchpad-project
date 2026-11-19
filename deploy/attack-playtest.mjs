@@ -216,6 +216,13 @@ const attacks = [
     judge: (seen) => failed(seen?.env),
   },
   {
+    name: "read the key secret",
+    tries: "read /etc/boilergames-key-secret, the secret the Creators' GenAI Studio keys are encrypted with",
+    contained: "the read fails",
+    source: attackGame(`report({ secret: attempt(() => require("node:fs").readFileSync("/etc/boilergames-key-secret", "utf8")) });`),
+    judge: (seen) => failed(seen?.secret),
+  },
+  {
     name: "read another process's environment",
     tries: "read /proc/1/environ, and list the processes it can see",
     contained: "the read fails, and it sees no process but its own (ProtectProc=invisible)",
@@ -306,7 +313,13 @@ const attacks = [
     tries: "write 200 MB to standard output, the connection back to the site",
     contained: "the site stops reading at its limit, hears the check failed, and holds none of it",
     // Written synchronously to the connection (fd 1): with process.stdout, exiting could drop most of it.
-    source: attackGame(`const fs = require("node:fs"); const chunk = "x".repeat(1 << 20); try { for (let i = 0; i < 200; i++) fs.writeSync(1, chunk); } catch { /* the site hung up: that is the containment */ } process.exit(0);`),
+    // The connection doesn't block: when the site reads slower than this writes, its buffer fills and
+    // a write fails with EAGAIN ("try again"), which isn't the site hanging up. So the Game tries
+    // again until each write goes through, minding a write that took only part of what it was given,
+    // and stops only when the site really hangs up (EPIPE, ECONNRESET or the like). Its own limit, 1.5 s,
+    // keeps it inside the 2 s the Playtest gives a Game's load (LOAD_MS), so it can't spin for ever; a
+    // run that hit it would show as "isn't JSON" in the site's log, and be judged not contained.
+    source: attackGame(`const fs = require("node:fs"); const chunk = new Uint8Array(1 << 20).fill(120); const until = Date.now() + 1500; let going = true; for (let i = 0; going && i < 200; i++) { for (let at = 0; going && at < chunk.length; ) { if (Date.now() > until) { going = false; break; } try { at += fs.writeSync(1, chunk, at, chunk.length - at); } catch (error) { if ((error as { code?: string }).code !== "EAGAIN") going = false; /* else: the buffer is full, so try again */ } } } /* the site hung up: that is the containment */ process.exit(0);`),
     end: async (result) => "checkFailed" in result && logged.some((line) => /wrote more than/.test(line)),
   },
   {
