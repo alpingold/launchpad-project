@@ -39,12 +39,24 @@ export function fileRules(limits: GameLimits): string[] {
   ];
 }
 
-/** What the Playtest does with the file, in order. Each is one sentence. */
-export function playtestSteps(limits: GameLimits): string[] {
+/**
+ * What the Playtest does with the file, in order. Each is one sentence. These are the steps a Build
+ * of the site's own AI is told about; /make adds the Upload limits after them (playtestSteps).
+ */
+export function checkSteps(limits: GameLimits): string[] {
   return [
     "It type-checks the file with strict TypeScript against the SDK's types and nothing else. Every problem it finds is reported with its line.",
     `It bundles the file, loads it (its top-level code must finish within ${seconds(limits.loadMs)}) and reads its about: the title, the Player count and the Look, whose colours must be readable.`,
     `It plays simulated Matches to their end: with the fewest Players, with the most, with the most and half of them leaving, and with the fewest and more joining, each with ${limits.seeds} different random seeds. Each Match must finish within ${seconds(limits.runMs)}, every Player must be offered something to do, and the Match must end.`,
-    `If anything fails, the Version is marked failed, with every problem found. You can upload ${limits.uploadsPerHour} times an hour and ${limits.uploadsPerDay} times a day, so fix all you can before uploading again.`,
   ];
+}
+
+/** What happens to an Upload that fails, and how many a Creator has: for a person uploading by hand. */
+export function uploadLimits(limits: GameLimits): string {
+  return `If anything fails, the Version is marked failed, with every problem found. You can upload ${limits.uploadsPerHour} times an hour and ${limits.uploadsPerDay} times a day, so fix all you can before uploading again.`;
+}
+
+/** What /make says the Playtest does: the checks, then the Upload limits. */
+export function playtestSteps(limits: GameLimits): string[] {
+  return [...checkSteps(limits), uploadLimits(limits)];
 }

@@ -4,7 +4,7 @@
  * the same one the page for Creators' own AIs shows (/make), with the site's own limits, so the two
  * can never disagree.
  */
-import { fileRules, playtestSteps, SDK_TYPES } from "@boilergames/sdk/v1/reference";
+import { checkSteps, fileRules, SDK_TYPES } from "@boilergames/sdk/v1/reference";
 import { GAME_LIMITS } from "../games.js";
 
 /** The rules a file must follow, with the site's limits, one per line. */
@@ -15,12 +15,11 @@ export function rulesText(): string {
 }
 
 /**
- * What the Playtest does with the file, one step per line. The last of /make's steps is about a
- * Creator's own Uploads (how many an hour), which a Build doesn't use, so it is left out here.
+ * What the Playtest does with the file, one step per line: the checks, without /make's last step,
+ * which is about a Creator's own Uploads (how many an hour) and means nothing to a Build.
  */
 export function playtestText(): string {
-  return playtestSteps(GAME_LIMITS)
-    .slice(0, -1)
+  return checkSteps(GAME_LIMITS)
     .map((step) => `- ${step}`)
     .join("\n");
 }
