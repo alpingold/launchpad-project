@@ -17,6 +17,7 @@ import { keySecretFromBytes, SECRET_BYTES } from "./key-secret.js";
 import type { ChatMessage, CompleteOptions, Completion, Model, ModelFailure } from "./model.js";
 import { GENERATIONS_PER_DAY, MAX_BUILDS, MAX_MODEL_CALLS, MAX_REQUEST_CHARS, MAX_WAITING_GENERATIONS, REVIEW_EXPIRES_MS, REVISIONS_PER_DAY, UNAVAILABLE_WAITS_MS } from "./numbers.js";
 import { Pipeline, REASONS } from "./pipeline.js";
+import { VERSIONS_PER_GAME } from "../games.js";
 
 const keySecret = keySecretFromBytes(Buffer.alloc(SECRET_BYTES, 9));
 const keyOf = (accountId: string) => `sk-test-${accountId}-0123456789`;
@@ -302,6 +303,24 @@ describe("a Revision: a change to a ready Version", () => {
     ]);
   });
 
+  test("of a Version the Creator uploaded to a Game the AI made: their design now, so no Concept checks", async () => {
+    const ada = account("ada");
+    const pipe = pipeline(new GatedModel([], ANSWER));
+    const id = inReview(ada, "g1");
+    pipe.approve(ada, id);
+    await until(() => stateOf(id) === "ready");
+    const gameId = generation(id).gameId ?? "";
+    createVersion(db, { id: "ada-upload", gameId, source: "// uploaded over it\n", createdAt: 5 });
+    finishCheck(db, "ada-upload", { ok: true, bundle: "//", about: { title: "Mine", players: { min: 1, max: 8 } } }, 5);
+    const revised = pipe.revise(ada, gameId, "ada-upload", "Faster.");
+    if (!revised.ok) throw new Error(revised.error);
+    expect(revised.generation.concept).toBeNull();
+    await until(() => stateOf(revised.generation.id) === "ready");
+    expect(playtest.runs.at(-1)?.options).toEqual({});
+    // The Version it changed is what its changes are shown against.
+    expect(versionsOf(db, gameId)[0]).toMatchObject({ number: 3, madeBy: "revision", revisedFrom: "ada-upload" });
+  });
+
   test("a failed one leaves the Game as it was", async () => {
     const ada = account("ada");
     const { gameId, versionId } = uploaded(ada, "up");
@@ -320,6 +339,8 @@ describe("a Revision: a change to a ready Version", () => {
     const model = new GatedModel([], () => ({ failure: "keyRejected" }));
     const pipe = pipeline(model);
     expect(pipe.revise(bo, gameId, versionId, "Mine now.")).toMatchObject({ ok: false, status: 404 });
+    const other = uploaded(ada, "other");
+    expect(pipe.revise(ada, gameId, other.versionId, "Not this Game's.")).toMatchObject({ ok: false, status: 404 });
     expect(pipe.revise(ada, gameId, "checking", "Change it.")).toMatchObject({ ok: false, status: 409 });
     expect(pipe.revise(ada, gameId, versionId, " ")).toMatchObject({ ok: false, status: 400 });
     expect(pipe.revise(ada, gameId, versionId, "x".repeat(MAX_REQUEST_CHARS + 1))).toMatchObject({ ok: false, status: 400 });
@@ -334,6 +355,23 @@ describe("a Revision: a change to a ready Version", () => {
     }
     await until(() => !db.prepare("SELECT 1 FROM generations WHERE state IN ('build', 'playtest')").get());
     expect(pipe.revise(ada, gameId, versionId, "One too many.")).toMatchObject({ ok: false, status: 429 });
+  });
+
+  test(`a Game with ${VERSIONS_PER_GAME} Versions takes no more, and a Revision under way when it gets there ends before its next call`, async () => {
+    const ada = account("ada");
+    const { gameId, versionId } = uploaded(ada, "up");
+    const model = new GatedModel([], () => CODE_ANSWER);
+    const pipe = pipeline(model);
+    playtest.results.push({ ok: false, problems: [{ stage: "types", message: "Type 'string' is not assignable to type 'number'.", line: 1 }] });
+    playtest.held = true;
+    const revised = pipe.revise(ada, gameId, versionId, "Change.");
+    if (!revised.ok) throw new Error(revised.error);
+    await until(() => playtest.running === 1);
+    for (let n = 2; n <= VERSIONS_PER_GAME; n += 1) createVersion(db, { id: `fill-${n}`, gameId, source: "//", createdAt: n });
+    playtest.release();
+    await until(() => stateOf(revised.generation.id) === "failed");
+    expect(generation(revised.generation.id)).toMatchObject({ reason: REASONS.tooManyVersions, modelCalls: 1 });
+    expect(pipe.revise(ada, gameId, versionId, "Again.")).toEqual({ ok: false, status: 409, error: REASONS.tooManyVersions });
   });
 
   test("carried on after a restart, from its Build", async () => {

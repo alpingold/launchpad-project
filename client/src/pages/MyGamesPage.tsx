@@ -79,7 +79,9 @@ export function MyGamesPage() {
             <ul className="my-games">
               {generations.map((made) => (
                 <li key={made.id}>
-                  <a href={`/my/generations/${encodeURIComponent(made.id)}`}>{made.concept?.title ?? [...made.idea].slice(0, 40).join("")}</a>
+                  <a href={`/my/generations/${encodeURIComponent(made.id)}`}>
+                    {made.kind === "revision" ? `A change: ${[...made.idea].slice(0, 40).join("")}` : (made.concept?.title ?? [...made.idea].slice(0, 40).join(""))}
+                  </a>
                   <span>{MADE[made.state]}</span>
                 </li>
               ))}

@@ -87,9 +87,10 @@ export function fakeAnswer(messages: readonly ChatMessage[]): string {
   const system = messages[0]?.content ?? "";
   const asked = messages.map((message) => message.content).join("\n");
   if (system.startsWith("You write party games") && asked.includes(ASKED_FOR)) {
-    // A Revision: the file it was given (or its own last one), with the change written in as a comment.
+    // A Revision: the file it was given, with the change written in as a comment. Sent its own file
+    // back with problems (a fix), it answers that file as it is.
     const file = longestCodeBlock(messages.at(-1)?.content ?? "") ?? "";
-    if (file.includes(FAKE_CHANGED)) return `\`\`\`ts\n${file}\`\`\``;
+    if (asked.includes("The site's check found these problems")) return `\`\`\`ts\n${file}\`\`\``;
     const request = (asked.split(ASKED_FOR)[1] ?? "").split("\n")[0] ?? "";
     return `\`\`\`ts\n${FAKE_CHANGED}${request}\n${file}\`\`\``;
   }

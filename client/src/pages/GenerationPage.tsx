@@ -123,7 +123,7 @@ export function GenerationPage({ id }: { id: string }) {
       <p>
         <a href="/my/games">My Games</a>
       </p>
-      <h1>{shown.kind === "revision" ? `A change to ${shown.concept?.title ?? "your Game"}` : (shown.concept?.title ?? "A new Game")}</h1>
+      <h1>{shown.kind === "revision" ? "A change to your Game" : (shown.concept?.title ?? "A new Game")}</h1>
       <p className="generation-where" role="status" data-state={shown.state}>
         {whereItIs(shown)}
       </p>
@@ -157,7 +157,7 @@ export function GenerationPage({ id }: { id: string }) {
       {over ? null : (
         <p>
           <button type="button" className="page-button page-button-quiet" disabled={busy} onClick={() => void act(() => cancelGeneration(id), "Cancelled.")}>
-            Cancel this Generation
+            {shown.kind === "revision" ? "Cancel this change" : "Cancel this Generation"}
           </button>
         </p>
       )}

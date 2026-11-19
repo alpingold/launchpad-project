@@ -34,6 +34,10 @@ export interface Version {
   readonly about: About | null;
   readonly createdAt: number;
   readonly checkedAt: number | null;
+  /** How it was made: uploaded, or by the site's AI (a Generation, or a Revision of another Version). */
+  readonly madeBy: "upload" | "generation" | "revision";
+  /** A Revision's: the Version it changed, which is what its changes are shown against. */
+  readonly revisedFrom: string | null;
 }
 
 export interface Game {
@@ -88,12 +92,24 @@ const versionRow = z
     sdk_version: z.literal("v1"),
     created_at: z.number().int(),
     checked_at: z.number().int().nullable(),
+    revised_from: z.string().nullable(),
   })
   .transform(
-    (row): Version => ({ id: row.id, number: row.number, state: row.state, problems: row.problems, about: row.about, createdAt: row.created_at, checkedAt: row.checked_at }),
+    (row): Version => ({
+      id: row.id,
+      number: row.number,
+      state: row.state,
+      problems: row.problems,
+      about: row.about,
+      createdAt: row.created_at,
+      checkedAt: row.checked_at,
+      madeBy: row.made_by,
+      revisedFrom: row.revised_from,
+    }),
   );
 
-const VERSION_COLUMNS = "versions.id, versions.number, versions.state, versions.problems, versions.about, versions.made_by, versions.sdk_version, versions.created_at, versions.checked_at";
+const VERSION_COLUMNS = `versions.id, versions.number, versions.state, versions.problems, versions.about, versions.made_by, versions.sdk_version, versions.created_at, versions.checked_at,
+  (SELECT base_version_id FROM generations WHERE generations.version_id = versions.id AND generations.kind = 'revision') AS revised_from`;
 
 export function createGame(db: Database, game: { readonly id: string; readonly ownerId: string; readonly createdAt: number }): void {
   db.prepare("INSERT INTO games (id, owner_id, created_at) VALUES (?, ?, ?)").run(game.id, game.ownerId, game.createdAt);
@@ -110,7 +126,7 @@ export function createVersion(db: Database, version: { readonly id: string; read
     version.source,
     version.createdAt,
   );
-  return { id: version.id, number, state: "checking", problems: null, about: null, createdAt: version.createdAt, checkedAt: null };
+  return { id: version.id, number, state: "checking", problems: null, about: null, createdAt: version.createdAt, checkedAt: null, madeBy: "upload", revisedFrom: null };
 }
 
 export function gameById(db: Database, gameId: string): Game | undefined {

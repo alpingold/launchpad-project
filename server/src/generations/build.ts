@@ -114,6 +114,11 @@ export function buildMessages(concept: Concept): ChatMessage[] {
   ];
 }
 
+/** A file in a TypeScript code block, ending with exactly the newlines it has (at least one). */
+function fenced(code: string): string {
+  return `\`\`\`ts\n${code}${code.endsWith("\n") ? "" : "\n"}\`\`\``;
+}
+
 /** One problem, as the model is told it: its stage and line, then what is wrong. */
 function problemLine(problem: { readonly stage: string; readonly message: string; readonly line?: number }): string {
   return `- ${problem.stage}${problem.line === undefined ? "" : `, line ${problem.line}`}: ${problem.message}`;
@@ -125,7 +130,7 @@ export function fixMessages(context: string, lastFile: string, problems: readonl
     { role: "system", content: systemText(withConcept) },
     {
       role: "user",
-      content: `${context}\n\nThis is the file as it stands:\n\n\`\`\`ts\n${lastFile}\n\`\`\`\n\nThe site's check found these problems. Fix every one, and answer with the whole corrected file in one TypeScript code block:\n${problems.map(problemLine).join("\n")}`,
+      content: `${context}\n\nThis is the file as it stands:\n\n${fenced(lastFile)}\n\nThe site's check found these problems. Fix every one, and answer with the whole corrected file in one TypeScript code block:\n${problems.map(problemLine).join("\n")}`,
     },
   ];
 }
@@ -283,7 +288,7 @@ export function revisionMessages(concept: Concept | undefined, source: string, r
     { role: "system", content: systemText(concept !== undefined) },
     {
       role: "user",
-      content: `${revisionContext(concept, request)}\n\nThis is the Game's file as it stands:\n\n\`\`\`ts\n${source}\n\`\`\`\n\nMake the change, and keep everything else as it is and working. Answer with the whole changed file, in one TypeScript code block.`,
+      content: `${revisionContext(concept, request)}\n\nThis is the Game's file as it stands:\n\n${fenced(source)}\n\nMake the change, and keep everything else as it is and working${concept === undefined ? "" : ", its phases and its Player count (about.players) included"}. Answer with the whole changed file, in one TypeScript code block.`,
     },
   ];
 }

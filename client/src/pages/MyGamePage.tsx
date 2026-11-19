@@ -114,7 +114,12 @@ export function MyGamePage({ id }: { id: string }) {
               key={version.id}
               gameId={game.id}
               version={version}
-              before={game.versions.find((other) => other.number === version.number - 1)}
+              before={
+                // A Revision is compared with the Version it changed; any other with the one before it.
+                version.revisedFrom === undefined || version.revisedFrom === null
+                  ? game.versions.find((other) => other.number === version.number - 1)
+                  : game.versions.find((other) => other.id === version.revisedFrom)
+              }
               published={version.id === game.publishedVersionId}
               mayPublish={game.takenDownAt === null}
               publish={() => void change(publishVersion(game.id, version.id))}
@@ -184,6 +189,8 @@ function VersionLine({
       <p>
         <strong>Version {version.number}</strong>
         {version.about === null ? null : <> · {version.about.title}</>} · <span>{STATE_WORDS[version.state]}</span>
+        {version.madeBy === "generation" ? <span> · made by the AI</span> : null}
+        {version.madeBy === "revision" ? <span> · changed by the AI</span> : null}
         {published ? <strong className="my-published"> · Published</strong> : null}
       </p>
       {version.state === "failed" && version.problems !== null ? (

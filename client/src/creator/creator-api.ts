@@ -18,6 +18,10 @@ export interface Version {
   readonly problems: readonly Problem[] | null;
   readonly about: { readonly title: string; readonly players: { readonly min: number; readonly max: number } } | null;
   readonly createdAt: number;
+  /** How it was made: uploaded, or by the site's AI. */
+  readonly madeBy?: "upload" | "generation" | "revision";
+  /** A Revision's: the Version it changed. */
+  readonly revisedFrom?: string | null;
 }
 
 export interface Game {
