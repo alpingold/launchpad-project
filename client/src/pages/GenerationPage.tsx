@@ -151,6 +151,7 @@ export function GenerationPage({ id }: { id: string }) {
           key={shown.updatedAt}
           concept={shown.concept}
           callsLeft={shown.callsLeft}
+          canRedraft={shown.canRedraft}
           busy={busy}
           onSave={(concept) => void act(() => editConcept(id, concept), "Your changes are saved.")}
           onApprove={(concept) => void act(() => approve(id, concept), "Approved: the AI writes the Game now.")}
@@ -202,6 +203,7 @@ function Track({ steps }: { steps: readonly Step[] }) {
 function ConceptReview(props: {
   concept: Concept;
   callsLeft: number;
+  canRedraft: boolean;
   busy: boolean;
   onSave: (concept: Concept) => void;
   onApprove: (concept: Concept) => void;
@@ -289,18 +291,24 @@ function ConceptReview(props: {
           </button>
         </div>
       </form>
-      <form className="page-form" onSubmit={sendBack}>
-        <label>
-          Or ask the AI for a new draft (with your changes so far): what should change?
-          <textarea rows={3} maxLength={MAX_NOTE_CHARS} value={note} onChange={(event) => setNote(event.target.value)} />
-        </label>
+      {props.canRedraft ? (
+        <form className="page-form" onSubmit={sendBack}>
+          <label>
+            Or ask the AI for a new draft (with your changes so far): what should change?
+            <textarea rows={3} maxLength={MAX_NOTE_CHARS} value={note} onChange={(event) => setNote(event.target.value)} />
+          </label>
+          <p className="page-quiet">
+            The AI may make {props.callsLeft} more calls for this Game. A new draft can take up to 3, and writing the Game needs the rest.
+          </p>
+          <button type="submit" className="page-button page-button-quiet" disabled={props.busy || note.trim() === ""}>
+            Ask for a new draft
+          </button>
+        </form>
+      ) : (
         <p className="page-quiet">
-          The AI may make {props.callsLeft} more calls for this Game. A new draft can take up to 3, and writing the Game needs the rest.
+          The AI may make only {props.callsLeft} more calls for this Game: too few for a new draft and then writing the Game. Approve this Concept, or cancel it.
         </p>
-        <button type="submit" className="page-button page-button-quiet" disabled={props.busy || note.trim() === ""}>
-          Ask for a new draft
-        </button>
-      </form>
+      )}
     </section>
   );
 }

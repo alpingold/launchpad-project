@@ -15,7 +15,7 @@ import type { Concept } from "./concept.js";
 import { ScriptedModel, type ScriptedReply } from "./fake-model.js";
 import { keySecretFromBytes, SECRET_BYTES } from "./key-secret.js";
 import type { ChatMessage, CompleteOptions, Completion, Model, ModelFailure } from "./model.js";
-import { ASK_LIMIT_MS, CHECK_RETRIES, CHECK_RETRY_WAIT_MS, COMPLETION_TIMEOUT_MS, GENERATIONS_PER_DAY, MAX_BUILDS, MAX_MODEL_CALLS, MAX_REQUEST_CHARS, MAX_WAITING_GENERATIONS, REVIEW_EXPIRES_MS, REVISIONS_PER_DAY, UNAVAILABLE_WAITS_MS } from "./numbers.js";
+import { ASK_LIMIT_MS, CALLS_LEFT_FOR_A_REDRAFT, CHECK_RETRIES, CHECK_RETRY_WAIT_MS, COMPLETION_TIMEOUT_MS, GENERATIONS_PER_DAY, MAX_BUILDS, MAX_MODEL_CALLS, MAX_REQUEST_CHARS, MAX_WAITING_GENERATIONS, REVIEW_EXPIRES_MS, REVISIONS_PER_DAY, UNAVAILABLE_WAITS_MS } from "./numbers.js";
 import { Pipeline, REASONS, redraftReason, restartReason } from "./pipeline.js";
 import { VERSIONS_PER_GAME } from "../games.js";
 
@@ -482,13 +482,37 @@ describe("a Concept sent back for a new draft", () => {
     expect(model.calls[0]?.messages.map((message) => message.content).join("\n")).toContain('"title": "My Edit"');
   });
 
-  test("a redraft that runs out of calls goes back to review with the Concept the Creator sent back", async () => {
+  test(`a redraft is refused when fewer than ${CALLS_LEFT_FOR_A_REDRAFT} calls are left, too few for a draft and a Build: approve or cancel`, () => {
     const ada = account("ada");
     const pipe = pipeline(new GatedModel([], () => CONCEPT_ANSWER));
     const id = inReview(ada, "g1");
-    db.prepare("UPDATE generations SET model_calls = ? WHERE id = ?").run(MAX_MODEL_CALLS, id);
+    db.prepare("UPDATE generations SET model_calls = ? WHERE id = ?").run(MAX_MODEL_CALLS - CALLS_LEFT_FOR_A_REDRAFT + 1, id);
+    expect(pipe.redraft(ada, id, "Again.")).toEqual({
+      ok: false,
+      status: 409,
+      error: `Only ${CALLS_LEFT_FOR_A_REDRAFT - 1} model calls are left for this Game: too few for a new draft and then writing the Game. Approve this Concept, or cancel it.`,
+    });
+    expect(generation(id)).toMatchObject({ state: "review", note: null });
+    db.prepare("UPDATE generations SET model_calls = ? WHERE id = ?").run(MAX_MODEL_CALLS - CALLS_LEFT_FOR_A_REDRAFT, id);
+    expect(pipe.redraft(ada, id, "Again.")).toEqual({ ok: true });
+  });
+
+  test("a redraft that runs out of calls (calls made again while GenAI Studio is busy) goes back to review with the Concept the Creator sent back", async () => {
+    const ada = account("ada");
+    const busy = { failure: "rateLimited" } as const;
+    // The first answer after 4 waits (5 calls), the second after 2 (3 calls): then none are left.
+    const model = new GatedModel([busy, busy, busy, busy, "no Concept here", busy, busy, "no Concept here"], () => CONCEPT_ANSWER);
+    const pipe = pipeline(model);
+    const id = inReview(ada, "g1");
+    db.prepare("UPDATE generations SET model_calls = ? WHERE id = ?").run(MAX_MODEL_CALLS - CALLS_LEFT_FOR_A_REDRAFT, id);
     pipe.redraft(ada, id, "Again.");
+    // A wait after each busy answer: the 1st to 4th calls, and the 6th and 7th.
+    for (const calls of [1, 2, 3, 4, 6, 7]) {
+      await until(() => model.calls.length === calls && generation(id).waiting !== null, `the wait after call ${calls}`);
+      clock.advance((generation(id).waiting?.until ?? 0) * 1000 - clock.now());
+    }
     await until(() => stateOf(id) !== "concept");
+    expect(generation(id).modelCalls).toBe(MAX_MODEL_CALLS);
     expect(generation(id)).toMatchObject({ state: "review", concept: CONCEPT, note: null, reason: redraftReason("callsUsed") });
   });
 

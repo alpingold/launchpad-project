@@ -56,6 +56,7 @@ import type { KeySecret } from "./key-secret.js";
 import { longestCodeBlock, type ChatMessage, type Completion, type Model, type ModelFailure } from "./model.js";
 import {
   ASK_LIMIT_MS,
+  CALLS_LEFT_FOR_A_REDRAFT,
   CHECK_RETRIES,
   CHECK_RETRY_WAIT_MS,
   MAX_INVALID_CONCEPTS,
@@ -269,6 +270,10 @@ export class Pipeline {
     if (generation.state !== "review") return { ok: false, status: 409, error: "This Generation isn't waiting for its Concept to be approved." };
     const checked = edited === undefined ? undefined : checkConcept(edited);
     if (checked?.ok === false) return { ok: false, status: 400, error: "The Concept has problems.", problems: checked.problems };
+    if (!canRedraft(generation)) {
+      const left = MAX_MODEL_CALLS - generation.modelCalls;
+      return { ok: false, status: 409, error: `Only ${left} model calls are left for this Game: too few for a new draft and then writing the Game. Approve this Concept, or cancel it.` };
+    }
     if (hasWorking(this.#db, accountId)) return { ok: false, status: 409, error: "The AI is already working on one of yours. Wait for it, or cancel it, then ask for a new draft." };
     if (this.#waiting.length >= MAX_WAITING_GENERATIONS) return { ok: false, status: 503, error: "The AI's line is full. Try again in a few minutes." };
     if (!moveGeneration(this.#db, id, ["review"], "concept", { note: note.trim(), reason: null, ...(checked === undefined ? {} : { concept: checked.concept }) }, this.#seconds())) {
@@ -670,6 +675,11 @@ export class Pipeline {
     this.#playtestTurn = turn.catch(() => undefined);
     return turn;
   }
+}
+
+/** Whether enough model calls are left for a new draft of the Concept and then a whole Build (CALLS_LEFT_FOR_A_REDRAFT). */
+export function canRedraft(generation: Generation): boolean {
+  return MAX_MODEL_CALLS - generation.modelCalls >= CALLS_LEFT_FOR_A_REDRAFT;
 }
 
 /** Why a row in a working state can't carry on, or undefined if it can. */

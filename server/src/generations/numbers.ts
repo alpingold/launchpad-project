@@ -41,6 +41,13 @@ export const CHECK_RETRY_WAIT_MS = 10 * SECOND_MS;
 export const MAX_INVALID_CONCEPTS = 3;
 /** Model calls in all, for one Generation or Revision: so nothing can spend a Creator's key without end. */
 export const MAX_MODEL_CALLS = 16;
+/**
+ * A new draft of the Concept is refused unless this many calls are left: as many as a draft can
+ * take (MAX_INVALID_CONCEPTS answers, 3) and then one whole Build (its first file and every type fix,
+ * 1 + MAX_TYPE_FIXES_PER_BUILD = 5): 8. Calls made again while GenAI Studio is busy aren't counted in
+ * it, so a redraft can still run out (it then goes back to review).
+ */
+export const CALLS_LEFT_FOR_A_REDRAFT = MAX_INVALID_CONCEPTS + 1 + MAX_TYPE_FIXES_PER_BUILD;
 
 // --- The queue and the daily limits (default 3) -------------------------------------------------
 

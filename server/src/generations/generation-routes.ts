@@ -13,7 +13,7 @@ import type { Database } from "../db/database.js";
 import { generationById, generationsOf, stepsOf, type Generation, type Step } from "../db/generations.js";
 import { MAKER_OFF } from "./key-routes.js";
 import { MAX_IDEA_CHARS, MAX_MODEL_CALLS, MAX_REQUEST_CHARS } from "./numbers.js";
-import type { Pipeline } from "./pipeline.js";
+import { canRedraft, type Pipeline } from "./pipeline.js";
 
 export const GENERATIONS_PATH = "/api/my/generations";
 /** Where a Creator asks the AI for a change to a Version of their Game: a Revision. */
@@ -46,6 +46,8 @@ export interface GenerationView {
   readonly modelCalls: number;
   /** How many more calls the AI may make for it (MAX_MODEL_CALLS in all): a redraft uses some. */
   readonly callsLeft: number;
+  /** Whether a new draft of its Concept may be asked for: enough calls are left for one and a Build. */
+  readonly canRedraft: boolean;
   readonly gameId: string | null;
   readonly createdAt: number;
   readonly updatedAt: number;
@@ -91,6 +93,7 @@ export function generationRoutes(options: GenerationRoutesOptions): Router {
       builds: generation.builds,
       modelCalls: generation.modelCalls,
       callsLeft: Math.max(0, MAX_MODEL_CALLS - generation.modelCalls),
+      canRedraft: canRedraft(generation),
       gameId: generation.gameId,
       createdAt: generation.createdAt,
       updatedAt: generation.updatedAt,

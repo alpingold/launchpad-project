@@ -70,6 +70,8 @@ export interface Generation {
   readonly modelCalls: number;
   /** How many more calls the AI may make for it: a new draft of the Concept uses some. */
   readonly callsLeft: number;
+  /** Whether a new draft may be asked for: enough calls are left for one and then writing the Game. */
+  readonly canRedraft: boolean;
   readonly gameId: string | null;
   readonly createdAt: number;
   readonly updatedAt: number;

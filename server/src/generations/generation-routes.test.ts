@@ -141,7 +141,7 @@ describe("a Generation, from idea to a published Game", () => {
 
     // Sent back with a note: drafted again, and back for review.
     expect((await call("POST", `${GENERATIONS_PATH}/${id}/redraft`, { body: { note: "Make it longer.", concept: { ...FAKE_CONCEPT, players: { min: 4, max: 2 } } }, cookie: ada })).status).toBe(400);
-    expect((await call("POST", `${GENERATIONS_PATH}/${id}/redraft`, { body: { note: "Make it longer." }, cookie: ada })).body).toMatchObject({ state: "concept", callsLeft: expect.any(Number) });
+    expect((await call("POST", `${GENERATIONS_PATH}/${id}/redraft`, { body: { note: "Make it longer." }, cookie: ada })).body).toMatchObject({ state: "concept", callsLeft: expect.any(Number), canRedraft: true });
     await until(ada, id, (generation) => generation["state"] === "review");
 
     const approved = await call("POST", `${GENERATIONS_PATH}/${id}/approve`, { body: { concept: { ...FAKE_CONCEPT, title: "Ada's Taps" } }, cookie: ada });
