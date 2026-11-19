@@ -58,10 +58,16 @@ export function keyRoutes(options: KeyRoutesOptions): { readonly router: Router;
     return account;
   }
 
-  /** What a page may know about the account's key: whether there is one, and its last 4 characters. */
+  /**
+   * What a page may know about the account's key: whether there is one, its last 4 characters, and
+   * whether it can still be used. A key saved under another secret (the server was rebuilt, and its
+   * secret lost) can't be decrypted any more: the page says to save it again.
+   */
   function status(accountId: string): object {
     const stored = storedKey(database, accountId);
-    return stored === undefined ? { saved: false } : { saved: true, last4: stored.last4, savedAt: stored.savedAt };
+    if (stored === undefined) return { saved: false };
+    const usable = options.keySecret === null ? undefined : options.keySecret.open(accountId, stored.sealed) !== undefined;
+    return { saved: true, last4: stored.last4, savedAt: stored.savedAt, ...(usable === false ? { usable: false } : {}) };
   }
 
   router.get(KEY_PATH, (request, response) => {

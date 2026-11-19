@@ -73,6 +73,11 @@ export function KeyPage() {
         <section>
           <h2>Saved</h2>
           <p>Your key ending in {status.last4} is saved.</p>
+          {status.usable === false ? (
+            <p className="page-notice" role="status">
+              The site can't use it any more (its server was rebuilt since). Save your key again.
+            </p>
+          ) : null}
           <button type="button" className="page-button page-button-quiet" disabled={busy} onClick={() => void remove()}>
             Delete my key
           </button>
@@ -84,7 +89,9 @@ export function KeyPage() {
         <form className="page-form" onSubmit={(event) => void save(event)}>
           <label>
             {status?.saved === true ? "Replace it with a new key" : "GenAI Studio key"}
-            <input type="password" autoComplete="off" spellCheck={false} value={key} onChange={(event) => setKey(event.target.value)} />
+            {/* Not a password field: browsers offer to save those in their password manager, and
+                ignore "off". The site has no passwords, and the key must not be copied there. */}
+            <input className="key-input" type="text" autoComplete="off" autoCapitalize="off" spellCheck={false} data-1p-ignore data-lpignore="true" value={key} onChange={(event) => setKey(event.target.value)} />
           </label>
           <button className="page-button" type="submit" disabled={busy || key.trim() === ""}>
             {busy ? "Checking it with GenAI Studio…" : "Save the key"}

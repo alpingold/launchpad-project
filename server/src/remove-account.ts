@@ -53,7 +53,7 @@ for (const each of files) {
   }
   found = true;
   console.log(
-    `${each}: removed the account, ${removed.games} Game(s), ${removed.versions} Version(s), ${removed.plays} count(s) of plays, ${removed.sessions} session(s) and ${removed.signInLinks} sign-in link(s).`,
+    `${each}: removed the account, ${removed.games} Game(s), ${removed.versions} Version(s), ${removed.plays} count(s) of plays, ${removed.sessions} session(s), ${removed.genaiKeys} GenAI Studio key(s) and ${removed.signInLinks} sign-in link(s).`,
   );
 }
 if (!found) {

@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { createAccount, createSession, createSignInLink, setDisplayName } from "./accounts.js";
 import { IN_MEMORY, MIGRATIONS, openDatabase, type Database } from "./database.js";
 import { createGame, createVersion, finishCheck, publish } from "./games.js";
+import { saveKey } from "./genai-keys.js";
 import { addPlay } from "./plays.js";
 import { emptyLog, removeAccount } from "./remove-account.js";
 
@@ -28,6 +29,7 @@ function someone(id: string, email: string): void {
   addPlay(db, { gameId: `${id}-published` });
   for (const n of [1, 2]) createSession(db, { tokenHash: `${id}-session-${n}`, accountId: id, createdAt: 1, expiresAt: 9e9 });
   for (const n of [1, 2]) createSignInLink(db, { tokenHash: `${id}-link-${n}`, email, createdAt: 1, expiresAt: 9e9 });
+  saveKey(db, id, { sealed: { ciphertext: Buffer.from(`${id}-sealed-key`), nonce: Buffer.alloc(12, 1), tag: Buffer.alloc(16, 2) }, last4: "Zq9#", savedAt: 1 });
 }
 
 /** Every row in every table that names `id` or `email`, by table. */
@@ -39,6 +41,7 @@ function rowsOf(id: string, email: string): Record<string, number> {
     versions: count("SELECT count(*) AS n FROM versions WHERE game_id LIKE ? || '-%'", id),
     plays: count("SELECT count(*) AS n FROM plays WHERE subject LIKE ? || '-%'", id),
     sessions: count("SELECT count(*) AS n FROM sessions WHERE account_id = ?", id),
+    genaiKeys: count("SELECT count(*) AS n FROM genai_keys WHERE account_id = ?", id),
     signInLinks: count("SELECT count(*) AS n FROM sign_in_links WHERE email = ?", email),
   };
 }
@@ -50,8 +53,8 @@ beforeEach(() => {
 });
 
 test("removes the account, its Games, every Version's code, its counts of plays, its sessions and its sign-in links", () => {
-  expect(removeAccount(db, "ada@purdue.edu")).toEqual({ games: 2, versions: 4, plays: 1, sessions: 2, signInLinks: 2, accounts: 1 });
-  expect(rowsOf("ada", "ada@purdue.edu")).toEqual({ accounts: 0, games: 0, versions: 0, plays: 0, sessions: 0, signInLinks: 0 });
+  expect(removeAccount(db, "ada@purdue.edu")).toEqual({ games: 2, versions: 4, plays: 1, sessions: 2, genaiKeys: 1, signInLinks: 2, accounts: 1 });
+  expect(rowsOf("ada", "ada@purdue.edu")).toEqual({ accounts: 0, games: 0, versions: 0, plays: 0, sessions: 0, genaiKeys: 0, signInLinks: 0 });
   // No row is left pointing at something gone.
   expect(db.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
 });
@@ -60,7 +63,7 @@ test("leaves everyone else's alone", () => {
   const before = rowsOf("bo", "bo@purdue.edu");
   removeAccount(db, "ada@purdue.edu");
   expect(rowsOf("bo", "bo@purdue.edu")).toEqual(before);
-  expect(before).toEqual({ accounts: 1, games: 2, versions: 4, plays: 1, sessions: 2, signInLinks: 2 });
+  expect(before).toEqual({ accounts: 1, games: 2, versions: 4, plays: 1, sessions: 2, genaiKeys: 1, signInLinks: 2 });
 });
 
 test("finds the account however the address is typed", () => {
@@ -79,7 +82,7 @@ test("works on an older copy of the database, made before the tables for Games a
   createAccount(old, { id: "ada", email: "ada@purdue.edu", createdAt: 1 });
   createSession(old, { tokenHash: "s", accountId: "ada", createdAt: 1, expiresAt: 9e9 });
   createSignInLink(old, { tokenHash: "l", email: "ada@purdue.edu", createdAt: 1, expiresAt: 9e9 });
-  expect(removeAccount(old, "ada@purdue.edu")).toEqual({ games: 0, versions: 0, plays: 0, sessions: 1, signInLinks: 1, accounts: 1 });
+  expect(removeAccount(old, "ada@purdue.edu")).toEqual({ games: 0, versions: 0, plays: 0, sessions: 1, genaiKeys: 0, signInLinks: 1, accounts: 1 });
   expect(old.prepare("SELECT count(*) AS n FROM accounts").get()?.["n"]).toBe(0);
   old.close();
 });
@@ -88,6 +91,8 @@ describe("what is removed is overwritten, not only marked as free", () => {
   /** Text only Ada's account holds, in her code and her address. */
   const SECRET = "ada-secret-code-7f3a9c";
   const EMAIL = "ada.secret.7f3a9c@purdue.edu";
+  /** Stands for the encrypted key's bytes. */
+  const SEALED = "ada-sealed-key-bytes-4e2b1d";
   let folder: string;
   beforeEach(() => {
     folder = mkdtempSync(join(tmpdir(), "remove-"));
@@ -103,6 +108,8 @@ describe("what is removed is overwritten, not only marked as free", () => {
     createAccount(db, { id: "ada", email: EMAIL, createdAt: 1 });
     createGame(db, { id: "g", ownerId: "ada", createdAt: 1 });
     createVersion(db, { id: "v", gameId: "g", source: `// ${SECRET}\n${"x".repeat(20_000)}`, createdAt: 1 });
+    // An encrypted key, whose bytes are as distinctive as the code's.
+    saveKey(db, "ada", { sealed: { ciphertext: Buffer.from(SEALED), nonce: Buffer.alloc(12, 3), tag: Buffer.alloc(16, 4) }, last4: "Kq7%", savedAt: 1 });
     createAccount(db, { id: "bo", email: "bo@purdue.edu", createdAt: 1 });
     // Into the file, as a long-running server's rows would be, and the log emptied.
     expect(emptyLog(db)).toBe(true);
@@ -117,9 +124,10 @@ describe("what is removed is overwritten, not only marked as free", () => {
   test("the control: a plain delete leaves the code and the address readable in the file", () => {
     const { file, db } = fileWithAda();
     db.exec("PRAGMA secure_delete = OFF");
-    db.exec("DELETE FROM versions; DELETE FROM games; DELETE FROM accounts WHERE id = 'ada'");
+    db.exec("DELETE FROM versions; DELETE FROM games; DELETE FROM genai_keys; DELETE FROM accounts WHERE id = 'ada'");
     emptyLog(db);
     db.close();
+    expect(onDisk(file, SEALED)).toBe(true);
     expect(onDisk(file, SECRET)).toBe(true);
     expect(onDisk(file, EMAIL)).toBe(true);
   });
@@ -132,6 +140,7 @@ describe("what is removed is overwritten, not only marked as free", () => {
     expect(existsSync(`${file}-wal`) ? readFileSync(`${file}-wal`).length : 0).toBe(0);
     expect(onDisk(file, SECRET)).toBe(false);
     expect(onDisk(file, EMAIL)).toBe(false);
+    expect(onDisk(file, SEALED)).toBe(false);
     expect(onDisk(file, "bo@purdue.edu")).toBe(true);
   });
 
@@ -147,5 +156,6 @@ describe("what is removed is overwritten, not only marked as free", () => {
     old.close();
     expect(onDisk(copy, SECRET)).toBe(false);
     expect(onDisk(copy, EMAIL)).toBe(false);
+    expect(onDisk(copy, SEALED)).toBe(false);
   });
 });

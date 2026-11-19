@@ -236,8 +236,9 @@ order the tables' keys allow (`server/src/db/remove-account.ts`, tested on a dat
 3. its Games' counts of plays;
 4. its Games;
 5. its sessions;
-6. sign-in links sent to its address;
-7. the account.
+6. its GenAI Studio key, encrypted;
+7. sign-in links sent to its address;
+8. the account.
 
 It does the same in each copy the server made of the database before a migration (up to three,
 `/var/lib/boilergames/boilergames.db.backup-*`), which would otherwise keep the account. For each

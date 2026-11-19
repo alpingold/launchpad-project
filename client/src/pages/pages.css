@@ -118,3 +118,7 @@ body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; ba
 .privacy section p, .privacy li { overflow-wrap: anywhere; }
 .privacy section { display: flex; flex-direction: column; gap: 8px; }
 .privacy section p { margin: 0; }
+
+/* The GenAI Studio key's box: its characters hidden where the browser can, without being a password
+   field (which a password manager would offer to save). */
+.key-input { -webkit-text-security: disc; }

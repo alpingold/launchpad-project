@@ -11,8 +11,9 @@
  * 3. Its Games' counts of plays (only numbers, but they name the Game).
  * 4. Its Games.
  * 5. Its sessions (which would go with the account anyway: their key says ON DELETE CASCADE).
- * 6. Sign-in links sent to its email address.
- * 7. The account.
+ * 6. Its GenAI Studio key, encrypted (the same).
+ * 7. Sign-in links sent to its email address.
+ * 8. The account.
  *
  * Removed means overwritten. By default SQLite only marks a deleted row's space as free, so the code
  * and the address would stay readable in the file until something else happened to be written
@@ -34,6 +35,7 @@ export interface Removed {
   readonly versions: number;
   readonly plays: number;
   readonly sessions: number;
+  readonly genaiKeys: number;
   readonly signInLinks: number;
   readonly accounts: number;
 }
@@ -58,9 +60,10 @@ export function removeAccount(db: Database, email: string): Removed | undefined 
     const plays = run("plays", `DELETE FROM plays WHERE subject IN (${theirGames})`, account.id);
     const games = run("games", "DELETE FROM games WHERE owner_id = ?", account.id);
     const sessions = run("sessions", "DELETE FROM sessions WHERE account_id = ?", account.id);
+    const genaiKeys = run("genai_keys", "DELETE FROM genai_keys WHERE account_id = ?", account.id);
     const signInLinks = run("sign_in_links", "DELETE FROM sign_in_links WHERE email = ?", address);
     const accounts = run("accounts", "DELETE FROM accounts WHERE id = ?", account.id);
-    return { games, versions, plays, sessions, signInLinks, accounts };
+    return { games, versions, plays, sessions, genaiKeys, signInLinks, accounts };
   });
 }
 

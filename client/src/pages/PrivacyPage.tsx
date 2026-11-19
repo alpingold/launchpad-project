@@ -18,6 +18,10 @@ export function PrivacyPage() {
         <h2>If you have an account</h2>
         <p>To make Games you sign in with your Purdue email address: the site emails you a link, and there is no password.</p>
         <p>The site keeps your email address, the display name you pick, when your account was made, and the Games you upload with the code of every Version of them.</p>
+        <p>
+          If you save a Purdue GenAI Studio key, the site keeps it encrypted, with its last 4 characters and when you saved it. It never shows the key again, only those
+          4 characters, and you can delete it at any time.
+        </p>
         <p>Your display name is public: it is shown with every Game you publish. Your email address is never shown on the site.</p>
         <p>
           While a Game is published, anyone can see its title and description, and load the built code of each of its Versions that passed the check: your code made
@@ -82,7 +86,7 @@ export function PrivacyPage() {
         <p>The site runs on a server rented from Amazon Web Services (AWS), in its Ohio region. AWS also sends the sign-in emails and keeps the database's nightly copies.</p>
         <p>The site's addresses are looked up through Cloudflare, but your visits go straight to the server, not through Cloudflare.</p>
         <p>Mail to {CONTACT} is passed on by Cloudflare to the site owner's own inbox.</p>
-        <p>Nothing you write is sent to an AI.</p>
+        <p>When you save a GenAI Studio key, the site sends it to Purdue's GenAI Studio to check that it works. Nothing else you write is sent to an AI.</p>
       </section>
 
       <section>
@@ -112,7 +116,7 @@ export function PrivacyPage() {
         <h2>Having your account removed</h2>
         <p>
           Until you can do it yourself, write to <a href={`mailto:${CONTACT}`}>{CONTACT}</a> from the address you sign in with. Your account, your Games, the code of every Version
-          of them and their counts of plays will be removed by hand. A published Game of yours leaves the Library at once.
+          of them, their counts of plays and your GenAI Studio key will be removed by hand. A published Game of yours leaves the Library at once.
         </p>
       </section>
     </main>

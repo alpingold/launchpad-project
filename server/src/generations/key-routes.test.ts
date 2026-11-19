@@ -153,6 +153,14 @@ test("deleting a key: gone from the database", async () => {
   expect(storedKey(db, ada.id)).toBeUndefined();
 });
 
+test("a key saved under another secret (the server was rebuilt) shows as saved but not usable", async () => {
+  const ada = await signIn("ada@purdue.edu");
+  await call("PUT", KEY_PATH, { body: { key: KEY }, cookie: ada.cookie });
+  await server.close();
+  await start({ keySecret: secretOf(9) });
+  expect((await call("GET", KEY_PATH, { cookie: ada.cookie })).body).toEqual({ saved: true, last4: "WXYZ", savedAt: 1_800_000_000, usable: false });
+});
+
 describe("the encryption", () => {
   test("a row copied to another account won't decrypt", async () => {
     const ada = await signIn("ada@purdue.edu");

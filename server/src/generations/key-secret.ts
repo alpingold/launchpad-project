@@ -25,6 +25,9 @@ export interface KeySecret {
   open(accountId: string, sealed: SealedKey): string | undefined;
 }
 
+/** GCM's tag: the full 16 bytes. */
+const TAG_BYTES = 16;
+
 /** The secret's length: AES-256 takes a 32-byte key. */
 export const SECRET_BYTES = 32;
 
@@ -34,14 +37,15 @@ export function keySecretFromBytes(secret: Uint8Array): KeySecret {
   return {
     seal(accountId, key) {
       const nonce = randomBytes(12);
-      const cipher = createCipheriv("aes-256-gcm", bytes, nonce);
+      const cipher = createCipheriv("aes-256-gcm", bytes, nonce, { authTagLength: TAG_BYTES });
       cipher.setAAD(Buffer.from(accountId, "utf8"));
       const ciphertext = Buffer.concat([cipher.update(key, "utf8"), cipher.final()]);
       return { ciphertext, nonce, tag: cipher.getAuthTag() };
     },
     open(accountId, sealed) {
       try {
-        const decipher = createDecipheriv("aes-256-gcm", bytes, sealed.nonce);
+        // The tag's length is fixed here, not left to what the row holds: a shortened tag is refused.
+        const decipher = createDecipheriv("aes-256-gcm", bytes, sealed.nonce, { authTagLength: TAG_BYTES });
         decipher.setAAD(Buffer.from(accountId, "utf8"));
         decipher.setAuthTag(sealed.tag);
         return Buffer.concat([decipher.update(sealed.ciphertext), decipher.final()]).toString("utf8");

@@ -8,6 +8,8 @@ export interface KeyStatus {
   readonly saved: boolean;
   readonly last4?: string;
   readonly savedAt?: number;
+  /** False when the site can no longer decrypt it (its secret was lost): save it again. */
+  readonly usable?: false;
 }
 
 const KEY_PATH = "/api/my/genai-key";
