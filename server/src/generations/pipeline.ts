@@ -16,7 +16,11 @@
  *   whose time ran out isn't made again, and one ask, waits included, ends by ASK_LIMIT_MS. A
  *   rejected key fails it at once.
  * - **The Creator's key** is decrypted for each call and goes nowhere but the call. Each call is
- *   counted, and the count written, before it is made: a restart can't spend a key past the cap.
+ *   counted, and the count written, before it is made: a restart can't spend a key past the cap. A
+ *   call GenAI Studio turned away as busy at once is given back as its step ends, so a busy day
+ *   doesn't use up the calls meant for real work; those have a cap of their own (MAX_BUSY_RETRIES),
+ *   and reaching it fails the Generation without counting against the Creator's day. A restart
+ *   between counting a call and giving it back leaves it counted: the safe side.
  *
  * It only passes text: the model's code runs in the Playtest, nowhere else. Nothing here blocks the
  * server: a call to the model is minutes of waiting, not of work.
@@ -32,6 +36,7 @@ import {
   countModelCall,
   countStartedSince,
   createGeneration,
+  endBusyStep,
   endStep,
   FINAL,
   finishGeneration,
@@ -59,6 +64,7 @@ import {
   CALLS_LEFT_FOR_A_REDRAFT,
   CHECK_RETRIES,
   CHECK_RETRY_WAIT_MS,
+  MAX_BUSY_RETRIES,
   MAX_INVALID_CONCEPTS,
   COMPLETION_TIMEOUT_MS,
   GENERATIONS_PER_DAY,
@@ -84,6 +90,7 @@ const NOT_COUNTED = "this one doesn't count against your day's limit.";
 export const REASONS = {
   keyRejected: "GenAI Studio refused your key. Check it on your key page, save it again if it changed, and start again.",
   unavailable: `GenAI Studio was busy or down for too long. Start again later: ${NOT_COUNTED}`,
+  busy: `GenAI Studio turned the AI away as busy ${MAX_BUSY_RETRIES + 1} times. Start again later: ${NOT_COUNTED}`,
   noKey: "Your GenAI Studio key is gone, or can't be read any more. Save it again, then start again.",
   cancelled: "You cancelled it.",
   expired: "Nobody approved the Concept within 7 days.",
@@ -102,6 +109,7 @@ const NO_REDRAFT = {
   callsUsed: "the AI has used all the calls it may make.",
   keyRejected: "GenAI Studio refused your key. Check it on your key page.",
   unavailable: "GenAI Studio was busy or down for too long.",
+  busy: `GenAI Studio turned the AI away as busy ${MAX_BUSY_RETRIES + 1} times.`,
   noKey: "your GenAI Studio key is gone, or can't be read any more. Save it again.",
   site: "something went wrong on the site's side.",
 } as const;
@@ -567,9 +575,11 @@ export class Pipeline {
   /**
    * One ask of the model: a call, counted and written down before it is made, and made again after
    * each wait while GenAI Studio fails quickly (busy or down, within QUICK_FAILURE_MS). A call whose
-   * time ran out, or that failed only slowly, isn't made again, and the whole ask, waits included, ends by ASK_LIMIT_MS: each call gets only the time
-   * left, and no wait runs past it. `judge` says how an answer came out, for its step's row.
-   * Undefined when the Generation has used all its calls.
+   * time ran out, or that failed only slowly, isn't made again, and the whole ask, waits included,
+   * ends by ASK_LIMIT_MS: each call gets only the time left, and no wait runs past it. A quick busy
+   * answer is given back (MAX_MODEL_CALLS in numbers.ts); one past MAX_BUSY_RETRIES fails the
+   * Generation. `judge` says how an answer came out, for its step's row. Undefined when the
+   * Generation has used all its calls.
    */
   async #ask(
     generation: Generation,
@@ -594,16 +604,29 @@ export class Pipeline {
       const step = beginStep(this.#db, id, kind, this.#seconds());
       const began = this.#clock.now();
       const answer = await this.#call(key.key, messages, signal, Math.min(COMPLETION_TIMEOUT_MS, deadline - this.#clock.now()));
-      // A call given up (the Generation cancelled, or the server stopping) came out as neither.
-      const judged = signal.aborted
-        ? { outcome: "interrupted", problems: null }
-        : answer.ok
-          ? judge(answer.text)
-          : { outcome: answer.timedOut === true ? "timedOut" : answer.failure, problems: null };
-      endStep(this.#db, id, step, judged.outcome, judged.problems, this.#seconds());
-      this.#stillWorking(id, signal);
-      const ms = UNAVAILABLE_WAITS_MS[wait];
       const slow = this.#clock.now() - began > QUICK_FAILURE_MS;
+      // Busy at once: GenAI Studio turned the call away before the model saw it, so it is given back,
+      // in the same write that ends its step. Only rateLimited: a quick `unavailable` (a 502, say) may
+      // have reached the model, so it stays counted. A busy answer that took minutes stays counted too.
+      const busy = !signal.aborted && !answer.ok && answer.failure === "rateLimited" && answer.timedOut !== true && !slow;
+      let givenBack = false;
+      if (busy) givenBack = endBusyStep(this.#db, id, step, MAX_BUSY_RETRIES, this.#seconds());
+      else {
+        // A call given up (the Generation cancelled, or the server stopping) came out as neither.
+        const judged = signal.aborted
+          ? { outcome: "interrupted", problems: null }
+          : answer.ok
+            ? judge(answer.text)
+            : { outcome: answer.timedOut === true ? "timedOut" : answer.failure, problems: null };
+        endStep(this.#db, id, step, judged.outcome, judged.problems, this.#seconds());
+      }
+      this.#stillWorking(id, signal);
+      if (busy && !givenBack) {
+        // Busy too many times: nothing the Creator did. A redraft goes back to review (#fail).
+        this.#fail(id, REASONS.busy, false, "busy");
+        throw new Stopped();
+      }
+      const ms = UNAVAILABLE_WAITS_MS[wait];
       if (answer.ok || answer.failure === "keyRejected" || answer.timedOut === true || slow || ms === undefined || this.#clock.now() + ms >= deadline) {
         setWaiting(this.#db, id, null, this.#seconds());
         return answer;

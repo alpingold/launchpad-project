@@ -2,7 +2,7 @@
  * The eval set (BUILD-PLAN Step 35, story 53): 12 ideas as a Creator would type them, run one at a
  * time through the whole pipeline, approving the first usable Concept, so that every change to the
  * instructions or the Kit can be measured. The report says, per idea, whether it passed, its Builds,
- * type fixes, model calls, waits for GenAI Studio and time, and every problem from every step; and
+ * type fixes, model calls, busy answers given back, waits for GenAI Studio and time, and every problem from every step; and
  * the totals. It is written again as each idea ends, so a run cut short keeps what it found.
  *
  * It runs against the development fake unless told otherwise. Against the real GenAI Studio only
@@ -82,7 +82,10 @@ export interface IdeaReport {
   readonly builds: number;
   /** Type fixes in all its Builds. */
   readonly typeFixes: number;
+  /** The calls counted against the Generation's MAX_MODEL_CALLS: busy answers given back aren't among them. */
   readonly modelCalls: number;
+  /** Calls GenAI Studio turned away as busy at once, given back: counted against MAX_BUSY_RETRIES instead. */
+  readonly busyRetries: number;
   /** Calls GenAI Studio answered busy or not at all: each was waited out, and counts in its time. */
   readonly waits: number;
   readonly seconds: number;
@@ -100,6 +103,7 @@ export interface EvalReport {
     readonly builds: number;
     readonly typeFixes: number;
     readonly modelCalls: number;
+    readonly busyRetries: number;
     readonly waits: number;
     /** The whole run, start to end. */
     readonly seconds: number;
@@ -133,7 +137,7 @@ const systemClock: Clock = {
 };
 
 /** The reasons that say GenAI Studio itself can't be used now: the run stops, rather than spend calls on the rest. */
-const STOPS_THE_RUN: readonly string[] = [REASONS.keyRejected, REASONS.unavailable];
+const STOPS_THE_RUN: readonly string[] = [REASONS.keyRejected, REASONS.unavailable, REASONS.busy];
 
 /** Runs each idea through the pipeline, one at a time, in a database of its own in memory. */
 export async function runEval(options: EvalOptions): Promise<EvalReport> {
@@ -178,6 +182,7 @@ export async function runEval(options: EvalOptions): Promise<EvalReport> {
         builds: done?.builds ?? 0,
         typeFixes: steps.filter((step) => step.kind === "typeFix").length,
         modelCalls: done?.modelCalls ?? 0,
+        busyRetries: done?.busyRetries ?? 0,
         waits: steps.filter((step) => step.outcome === "rateLimited" || step.outcome === "unavailable").length,
         seconds: Math.round((clock.now() - started) / 1000),
         steps,
@@ -208,6 +213,7 @@ function summed(reports: readonly IdeaReport[], notRun: number, why: string | nu
       builds: sum((report) => report.builds),
       typeFixes: sum((report) => report.typeFixes),
       modelCalls: sum((report) => report.modelCalls),
+      busyRetries: sum((report) => report.busyRetries),
       waits: sum((report) => report.waits),
       seconds,
       problems: sum((report) => report.steps.reduce((total, step) => total + (step.problems?.length ?? 0), 0)),
@@ -219,13 +225,13 @@ function summed(reports: readonly IdeaReport[], notRun: number, why: string | nu
 export function reportText(report: EvalReport): string {
   const { totals } = report;
   const lines = [
-    `Passed ${totals.passed} of ${report.ideas.length}. Builds ${totals.builds}, type fixes ${totals.typeFixes}, model calls ${totals.modelCalls}, waits ${totals.waits}, ${totals.seconds} s, ${totals.problems} problems in all.`,
+    `Passed ${totals.passed} of ${report.ideas.length}. Builds ${totals.builds}, type fixes ${totals.typeFixes}, model calls ${totals.modelCalls}, busy answers given back ${totals.busyRetries}, waits ${totals.waits}, ${totals.seconds} s, ${totals.problems} problems in all.`,
     ...(report.notRun.count === 0 ? [] : [`Stopped early, ${report.notRun.count} ideas not run: ${report.notRun.why ?? ""}`]),
     "",
   ];
   for (const [n, idea] of report.ideas.entries()) {
     lines.push(`${n + 1}. ${idea.passed ? "PASSED" : "FAILED"}: ${idea.idea}`);
-    lines.push(`   Builds ${idea.builds}, type fixes ${idea.typeFixes}, model calls ${idea.modelCalls}, waits ${idea.waits}, ${idea.seconds} s.${idea.reason === null ? "" : ` ${idea.reason}`}`);
+    lines.push(`   Builds ${idea.builds}, type fixes ${idea.typeFixes}, model calls ${idea.modelCalls}, busy answers given back ${idea.busyRetries}, waits ${idea.waits}, ${idea.seconds} s.${idea.reason === null ? "" : ` ${idea.reason}`}`);
     for (const step of idea.steps) {
       lines.push(`   Step ${step.number} (${step.kind}): ${step.outcome ?? "under way"}`);
       for (const problem of step.problems ?? []) lines.push(`     - ${problem.stage}${problem.line === undefined ? "" : `, line ${problem.line}`}: ${problem.message}`);

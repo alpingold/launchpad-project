@@ -1168,7 +1168,7 @@ new Concept. Creators use their own Purdue GenAI Studio key. Stories 24–28, 31
 | # | Default | Why this one |
 | - | ------- | ------------ |
 | 1 | The model is `qwen3.8:27b` at `https://genai.rcac.purdue.edu/api`, both settings (`GENAI_MODEL`, `GENAI_BASE_URL`). | It is what the experiment measured. |
-| 2 | At most 4 Builds per Generation, 4 type fixes per Build, 3 invalid Concepts per draft, 16 model calls in all. | The experiment needed 2 to 4 Builds for every Game. |
+| 2 | At most 4 Builds per Generation, 4 type fixes per Build, 3 invalid Concepts per draft, 16 model calls in all. A call GenAI Studio turns away as busy at once is given back, up to 12 per Generation. | The experiment needed 2 to 4 Builds for every Game, and every Concept in it needed at least one call made again. |
 | 3 | An account may start 5 Generations and 10 Revisions a day, and has one running at a time. 2 run at once on the site; 20 may wait. | A Generation takes 4 to 14 minutes and holds a Playtest slot. |
 | 4 | Keys are encrypted with a secret kept in a file on the server, outside the database and its backups. | No AWS service and no dependency. A stolen backup can't reveal a key. Losing the server loses the secret, and Creators enter their keys again. |
 | 5 | A Revision has no written Plan yet (the glossary's Plan). | A Plan is a second approval step; build the simple path first and see if it is missed. |
@@ -1210,7 +1210,7 @@ Two new migration files. Shipped files are never edited.
 - `0006-generations.sql`:
   - `generations`: id, account, kind (`generation` or `revision`), the Game (none until a Build
     passes, for a Generation), the idea or the request, its state, the Concept (JSON), the latest
-    Build's code, how many Builds and model calls it has used, the Version it produced, why it
+    Build's code, how many Builds and model calls it has used (and busy calls given back), the Version it produced, why it
     failed, a notice (waiting on GenAI Studio until a time), when made and when last changed.
   - `generation_steps`: one row per thing the pipeline did (a Concept draft, a Build, a type fix, a
     Playtest): which Generation, its number, what kind, when it began and ended, how it came out,
@@ -1383,6 +1383,12 @@ ending the Generation with a reason; the skeleton of a Concept type-checking aga
   an Upload's check never waits behind more than one of them.
 - **GenAI Studio down or busy:** wait 30, 60, 120 then 240 seconds, showing the Creator why and
   until when; after that the Generation fails as `unavailable`, and can be started again.
+- **A busy answer doesn't use up a call.** Each call is still counted before it is made. One that
+  GenAI Studio answers as busy (`rateLimited`) within a minute is given back in the same write that
+  ends its step, and counted as a busy retry instead: 12 per Generation, and the 13th fails it,
+  saying GenAI Studio was busy, without counting against the Creator's day (a redraft goes back to
+  review). A quick `unavailable` (a 502, say) may have reached the model, so it stays counted; so
+  does a call a restart cut short.
 - **A rejected key** fails the Generation at once and says to check the key.
 - A passing Build makes the Game and its Version as "The data" says. The Version's `made_by` is
   `generation`.
@@ -1430,7 +1436,8 @@ So that every change to the instructions or the Kit can be measured (story 53).
   drawing, words, bluffing, a board, speed, a co-operative one, one with no scoring. Do not copy the
   Official games or any published game.
 - A script that runs each idea through the whole pipeline (approving the first valid Concept),
-  one at a time, and writes a report: per idea, pass or fail, Builds, type fixes, model calls, time,
+  one at a time, and writes a report: per idea, pass or fail, Builds, type fixes, model calls (busy
+  calls given back shown apart), time,
   and **every problem from every step**; and totals.
 - **It refuses to run against the real GenAI Studio unless given `--live` and a key in the
   environment.** Its tests use the fake. Never run it live: that is the owner's decision each time.

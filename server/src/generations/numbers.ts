@@ -39,13 +39,26 @@ export const CHECK_RETRIES = 2;
 export const CHECK_RETRY_WAIT_MS = 10 * SECOND_MS;
 /** Invalid Concepts per draft before the Generation fails. */
 export const MAX_INVALID_CONCEPTS = 3;
-/** Model calls in all, for one Generation or Revision: so nothing can spend a Creator's key without end. */
+/**
+ * Model calls in all, for one Generation or Revision: so nothing can spend a Creator's key without
+ * end. Each is counted before it is made. A call GenAI Studio answers as busy (rateLimited) within
+ * QUICK_FAILURE_MS is given back once it ends: it was turned away before the model saw it. It counts
+ * against MAX_BUSY_RETRIES instead. Every other call stays counted, a quick `unavailable` (a 502, say)
+ * included, since it may have reached the model.
+ */
 export const MAX_MODEL_CALLS = 16;
+/**
+ * Busy answers given back, for one Generation or Revision, before it fails as busy (not counted
+ * against the Creator's day). In the owner's experiment every Concept needed at least one call made
+ * again; 12 is three whole asks of waits (UNAVAILABLE_WAITS_MS has 4) and more, without letting a
+ * busy GenAI Studio keep one going without end.
+ */
+export const MAX_BUSY_RETRIES = 12;
 /**
  * A new draft of the Concept is refused unless this many calls are left: as many as a draft can
  * take (MAX_INVALID_CONCEPTS answers, 3) and then one whole Build (its first file and every type fix,
- * 1 + MAX_TYPE_FIXES_PER_BUILD = 5): 8. Calls made again while GenAI Studio is busy aren't counted in
- * it, so a redraft can still run out (it then goes back to review).
+ * 1 + MAX_TYPE_FIXES_PER_BUILD = 5): 8. Busy answers are given back, but calls made again while
+ * GenAI Studio is down are counted, so a redraft can still run out (it then goes back to review).
  */
 export const CALLS_LEFT_FOR_A_REDRAFT = MAX_INVALID_CONCEPTS + 1 + MAX_TYPE_FIXES_PER_BUILD;
 
@@ -63,7 +76,8 @@ export const MAX_WAITING_GENERATIONS = 20;
 /**
  * The waits when GenAI Studio is down or busy, before the Generation fails as unavailable. Only a
  * call that failed quickly (within QUICK_FAILURE_MS) is made again: one whose time ran out, or that
- * failed only after minutes (a gateway giving up, say), isn't.
+ * failed only after minutes (a gateway giving up, say), isn't. A quick busy answer is given back
+ * (MAX_MODEL_CALLS); a quick down answer stays counted.
  */
 export const UNAVAILABLE_WAITS_MS = [30 * SECOND_MS, 60 * SECOND_MS, 120 * SECOND_MS, 240 * SECOND_MS] as const;
 /**
@@ -72,7 +86,10 @@ export const UNAVAILABLE_WAITS_MS = [30 * SECOND_MS, 60 * SECOND_MS, 120 * SECON
  * (COMPLETION_TIMEOUT_MS), so a slow answer still has its whole time.
  */
 export const ASK_LIMIT_MS = 20 * MINUTE_MS;
-/** A failed call that took longer than this isn't made again: a refusal or a busy answer comes in seconds. */
+/**
+ * A failed call that took longer than this isn't made again, and a busy answer that took longer isn't
+ * given back: a refusal or a busy answer comes in seconds.
+ */
 export const QUICK_FAILURE_MS = MINUTE_MS;
 
 // --- Keys (default 4) --------------------------------------------------------------------------

@@ -81,11 +81,11 @@ describe("the report", () => {
       ["playtest", "passed", 0],
     ]);
     // 3 Concept problems, and the third idea's 3 check problems.
-    expect(report.totals).toEqual({ passed: 2, failed: 1, builds: 3, typeFixes: 2, modelCalls: 10, waits: 0, seconds: expect.any(Number), problems: 6 });
+    expect(report.totals).toEqual({ passed: 2, failed: 1, builds: 3, typeFixes: 2, modelCalls: 10, busyRetries: 0, waits: 0, seconds: expect.any(Number), problems: 6 });
     expect(report.notRun).toEqual({ count: 0, why: null });
 
     const text = reportText(report);
-    expect(text).toMatch(/^Passed 2 of 3\. Builds 3, type fixes 2, model calls 10, waits 0/);
+    expect(text).toMatch(/^Passed 2 of 3\. Builds 3, type fixes 2, model calls 10, busy answers given back 0, waits 0/);
     expect(text).toContain("3. PASSED: three");
     expect(text).toContain("     - types, line 4: Cannot find name 'tap'.");
     // The key is the model's to use, never the report's.
@@ -99,15 +99,27 @@ describe("the report", () => {
     expect(report.totals.seconds).toBeGreaterThanOrEqual(report.ideas.reduce((total, idea) => total + idea.seconds, 0));
   });
 
-  test("busy GenAI Studio: each wait is counted; a rejected key stops the run, saying how many ideas weren't run", async () => {
+  test("busy GenAI Studio: each wait is counted, and each busy answer given back is shown apart from the model calls; a rejected key stops the run, saying how many ideas weren't run", async () => {
     const model = new ScriptedModel([{ failure: "rateLimited" }, CONCEPT, CODE, { failure: "keyRejected" }]);
     const report = await runEval({ model, playtest: playtestOf([]), key: KEY, ideas: ["one", "two", "three", "four"], clock: tickingClock() });
-    expect(report.ideas.map((idea) => [idea.passed, idea.waits])).toEqual([
-      [true, 1],
-      [false, 0],
+    expect(report.ideas.map((idea) => [idea.passed, idea.waits, idea.busyRetries, idea.modelCalls])).toEqual([
+      [true, 1, 1, 2],
+      [false, 0, 0, 1],
     ]);
+    expect(report.totals).toMatchObject({ modelCalls: 3, busyRetries: 1, waits: 1 });
+    expect(reportText(report)).toContain("model calls 2, busy answers given back 1, waits 1");
     expect(report.notRun).toEqual({ count: 2, why: REASONS.keyRejected });
     expect(reportText(report)).toContain(`Stopped early, 2 ideas not run: ${REASONS.keyRejected}`);
+  });
+
+  test("GenAI Studio busy too many times stops the run too, rather than spend calls on the ideas left", async () => {
+    const busy = { failure: "rateLimited" } as const;
+    const four = [busy, busy, busy, busy];
+    // 4 busy answers before the Concept, 4 before each of two Builds that fail in play, then the 13th.
+    const model = new ScriptedModel([...four, CONCEPT, ...four, CODE, ...four, CODE, busy]);
+    const report = await runEval({ model, playtest: playtestOf([PLAY_PROBLEM, PLAY_PROBLEM]), key: KEY, ideas: ["one", "two"], clock: tickingClock() });
+    expect(report.ideas.map((idea) => [idea.passed, idea.reason, idea.busyRetries])).toEqual([[false, REASONS.busy, 12]]);
+    expect(report.notRun).toEqual({ count: 1, why: REASONS.busy });
   });
 
   test("the whole set passes on the development fake through the real Playtest; and its 12 ideas are different, of one or two sentences", async () => {

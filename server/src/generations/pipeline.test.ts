@@ -15,7 +15,7 @@ import type { Concept } from "./concept.js";
 import { ScriptedModel, type ScriptedReply } from "./fake-model.js";
 import { keySecretFromBytes, SECRET_BYTES } from "./key-secret.js";
 import type { ChatMessage, CompleteOptions, Completion, Model, ModelFailure } from "./model.js";
-import { ASK_LIMIT_MS, QUICK_FAILURE_MS, CALLS_LEFT_FOR_A_REDRAFT, CHECK_RETRIES, CHECK_RETRY_WAIT_MS, COMPLETION_TIMEOUT_MS, GENERATIONS_PER_DAY, MAX_BUILDS, MAX_MODEL_CALLS, MAX_REQUEST_CHARS, MAX_WAITING_GENERATIONS, REVIEW_EXPIRES_MS, REVISIONS_PER_DAY, UNAVAILABLE_WAITS_MS } from "./numbers.js";
+import { ASK_LIMIT_MS, QUICK_FAILURE_MS, CALLS_LEFT_FOR_A_REDRAFT, MAX_BUSY_RETRIES, CHECK_RETRIES, CHECK_RETRY_WAIT_MS, COMPLETION_TIMEOUT_MS, GENERATIONS_PER_DAY, MAX_BUILDS, MAX_MODEL_CALLS, MAX_REQUEST_CHARS, MAX_WAITING_GENERATIONS, REVIEW_EXPIRES_MS, REVISIONS_PER_DAY, UNAVAILABLE_WAITS_MS } from "./numbers.js";
 import { Pipeline, REASONS, redraftReason, restartReason } from "./pipeline.js";
 import { VERSIONS_PER_GAME } from "../games.js";
 
@@ -177,6 +177,17 @@ function inReview(accountId: string, id: string): string {
   createGeneration(db, { id, accountId, kind: "generation", idea: "an idea", state: "concept", at: Math.floor(clock.now() / 1000) });
   moveGeneration(db, id, ["concept"], "review", { concept: CONCEPT }, Math.floor(clock.now() / 1000));
   return id;
+}
+
+/**
+ * Moves the clock past each wait for a busy or down GenAI Studio: the one after each call numbered in
+ * `after` (1 for the first call the model gets).
+ */
+async function waitOut(model: GatedModel, id: string, after: readonly number[]): Promise<void> {
+  for (const calls of after) {
+    await until(() => model.calls.length === calls && generation(id).waiting !== null, `the wait after call ${calls}`);
+    clock.advance((generation(id).waiting?.until ?? 0) * 1000 - clock.now());
+  }
 }
 
 beforeEach(() => {
@@ -497,16 +508,17 @@ describe("a Concept sent back for a new draft", () => {
     expect(pipe.redraft(ada, id, "Again.")).toEqual({ ok: true });
   });
 
-  test("a redraft that runs out of calls (calls made again while GenAI Studio is busy) goes back to review with the Concept the Creator sent back", async () => {
+  test("a redraft that runs out of calls (calls made again while GenAI Studio is down) goes back to review with the Concept the Creator sent back", async () => {
     const ada = account("ada");
-    const busy = { failure: "rateLimited" } as const;
+    // Down, not busy: a quick `unavailable` may have reached the model, so it stays counted.
+    const down = { failure: "unavailable" } as const;
     // The first answer after 4 waits (5 calls), the second after 2 (3 calls): then none are left.
-    const model = new GatedModel([busy, busy, busy, busy, "no Concept here", busy, busy, "no Concept here"], () => CONCEPT_ANSWER);
+    const model = new GatedModel([down, down, down, down, "no Concept here", down, down, "no Concept here"], () => CONCEPT_ANSWER);
     const pipe = pipeline(model);
     const id = inReview(ada, "g1");
     db.prepare("UPDATE generations SET model_calls = ? WHERE id = ?").run(MAX_MODEL_CALLS - CALLS_LEFT_FOR_A_REDRAFT, id);
     pipe.redraft(ada, id, "Again.");
-    // A wait after each busy answer: the 1st to 4th calls, and the 6th and 7th.
+    // A wait after each down answer: the 1st to 4th calls, and the 6th and 7th.
     for (const calls of [1, 2, 3, 4, 6, 7]) {
       await until(() => model.calls.length === calls && generation(id).waiting !== null, `the wait after call ${calls}`);
       clock.advance((generation(id).waiting?.until ?? 0) * 1000 - clock.now());
@@ -514,6 +526,18 @@ describe("a Concept sent back for a new draft", () => {
     await until(() => stateOf(id) !== "concept");
     expect(generation(id).modelCalls).toBe(MAX_MODEL_CALLS);
     expect(generation(id)).toMatchObject({ state: "review", concept: CONCEPT, note: null, reason: redraftReason("callsUsed") });
+  });
+
+  test("a redraft that GenAI Studio turns away as busy once too often goes back to review with the Concept the Creator sent back", async () => {
+    const ada = account("ada");
+    const model = new GatedModel([{ failure: "rateLimited" }], () => CONCEPT_ANSWER);
+    const pipe = pipeline(model);
+    const id = inReview(ada, "g1");
+    db.prepare("UPDATE generations SET model_calls = 1, busy_retries = ? WHERE id = ?").run(MAX_BUSY_RETRIES, id);
+    pipe.redraft(ada, id, "Again.");
+    await until(() => stateOf(id) !== "concept");
+    expect(model.calls).toHaveLength(1);
+    expect(generation(id)).toMatchObject({ state: "review", concept: CONCEPT, note: null, reason: redraftReason("busy"), busyRetries: MAX_BUSY_RETRIES, modelCalls: 2 });
   });
 
   test("a redraft cancelled before it is drafted keeps no note", async () => {
@@ -641,7 +665,8 @@ describe("GenAI Studio busy, down, or refusing the key", () => {
       clock.advance(1);
     }
     await until(() => stateOf(id) === "failed");
-    expect(generation(id)).toMatchObject({ reason: REASONS.unavailable, waiting: null, modelCalls: UNAVAILABLE_WAITS_MS.length + 1, counted: false });
+    // Every busy answer came at once, so each was given back: none of the 16 calls is used.
+    expect(generation(id)).toMatchObject({ reason: REASONS.unavailable, waiting: null, modelCalls: 0, busyRetries: UNAVAILABLE_WAITS_MS.length + 1, counted: false });
   });
 
   test("down, then back: the notice goes as the call is made again, and the Generation carries on", async () => {
@@ -686,11 +711,11 @@ describe("GenAI Studio busy, down, or refusing the key", () => {
   });
 
   /** A model whose every call fails as unavailable after `ms` on the test's clock, keeping each call's time limit. */
-  const failingAfter = (ms: number, limits: number[]): Model => ({
+  const failingAfter = (ms: number, limits: number[], failure: ModelFailure = "unavailable"): Model => ({
     async complete(_key, _messages, options: CompleteOptions = {}) {
       limits.push(options.timeoutMs ?? -1);
       clock.advance(ms);
-      return { ok: false, failure: "unavailable" };
+      return { ok: false, failure };
     },
     checkKey: async () => "valid",
   });
@@ -718,6 +743,90 @@ describe("GenAI Studio busy, down, or refusing the key", () => {
     // Calls of 50 s and waits of 30, 60, 120 and 240 s: the 4th call starts 360 s in and the 5th 650 s in.
     expect(limits).toEqual([COMPLETION_TIMEOUT_MS, COMPLETION_TIMEOUT_MS, COMPLETION_TIMEOUT_MS, ASK_LIMIT_MS - 360_000, ASK_LIMIT_MS - 650_000]);
     expect(generation(id)).toMatchObject({ reason: REASONS.unavailable, modelCalls: UNAVAILABLE_WAITS_MS.length + 1, waiting: null });
+  });
+
+  test("busy answers that came at once are given back: a Generation that meets many still has all its calls for real work, and ends ready", async () => {
+    const ada = account("ada");
+    const busy = { failure: "rateLimited" } as const;
+    const id = inReview(ada, "g1");
+    // Two calls left: exactly the two Builds' files. Counted, the 8 busy answers would use them up.
+    db.prepare("UPDATE generations SET model_calls = ? WHERE id = ?").run(MAX_MODEL_CALLS - 2, id);
+    playtest.results.push(PLAY_PROBLEM);
+    const model = new GatedModel([busy, busy, busy, busy, CODE_ANSWER, busy, busy, busy, busy, CODE_ANSWER]);
+    const pipe = pipeline(model);
+    pipe.approve(ada, id);
+    await waitOut(model, id, [1, 2, 3, 4, 6, 7, 8, 9]);
+    await until(() => stateOf(id) === "ready" || stateOf(id) === "failed");
+    expect(generation(id)).toMatchObject({ state: "ready", builds: 2, modelCalls: MAX_MODEL_CALLS, busyRetries: 8, waiting: null });
+    expect(stepsOf(db, id).filter((step) => step.outcome === "rateLimited")).toHaveLength(8);
+  });
+
+  test(`the busy answer after ${MAX_BUSY_RETRIES} given back fails the Generation, saying GenAI Studio was busy; it doesn't count against the day`, async () => {
+    const ada = account("ada");
+    const busy = { failure: "rateLimited" } as const;
+    const four = [busy, busy, busy, busy];
+    // 4 busy answers before the Concept, 4 before each of two Builds that fail in play: 12. Then one more.
+    playtest.results.push(PLAY_PROBLEM, PLAY_PROBLEM);
+    const model = new GatedModel([...four, CONCEPT_ANSWER, ...four, CODE_ANSWER, ...four, CODE_ANSWER, busy], ANSWER);
+    const pipe = pipeline(model);
+    const id = started(pipe.start(ada, "taps"));
+    await waitOut(model, id, [1, 2, 3, 4]);
+    await until(() => stateOf(id) === "review");
+    pipe.approve(ada, id);
+    await waitOut(model, id, [6, 7, 8, 9, 11, 12, 13, 14]);
+    await until(() => stateOf(id) === "failed");
+    expect(model.calls).toHaveLength(16);
+    // The 12 given back aren't counted; the one past the cap is, with the Concept's and the two files.
+    expect(generation(id)).toMatchObject({ reason: REASONS.busy, counted: false, busyRetries: MAX_BUSY_RETRIES, modelCalls: 4, waiting: null });
+    expect(REASONS.busy).toContain("doesn't count against your day's limit");
+    expect(countGames(db, ada)).toBe(0);
+  });
+
+  test("a quick down answer (a 502, say) may have reached the model, so it stays counted", async () => {
+    const ada = account("ada");
+    const model = new GatedModel([{ failure: "unavailable" }, CONCEPT_ANSWER]);
+    const pipe = pipeline(model);
+    const id = started(pipe.start(ada, "taps"));
+    await waitOut(model, id, [1]);
+    await until(() => stateOf(id) === "review");
+    expect(generation(id)).toMatchObject({ modelCalls: 2, busyRetries: 0 });
+  });
+
+  test(`a busy answer that came only after more than ${QUICK_FAILURE_MS / 1000} seconds isn't given back, and isn't made again`, async () => {
+    const ada = account("ada");
+    const limits: number[] = [];
+    const pipe = pipeline(failingAfter(QUICK_FAILURE_MS + 1, limits, "rateLimited"));
+    const id = started(pipe.start(ada, "taps"));
+    await until(() => stateOf(id) === "failed");
+    expect(limits).toHaveLength(1);
+    expect(generation(id)).toMatchObject({ reason: REASONS.unavailable, modelCalls: 1, busyRetries: 0, counted: false });
+  });
+
+  test("a restart between counting a call and its answer leaves it counted: never fewer calls than were really made, never more than the cap", async () => {
+    const ada = account("ada");
+    const busy = { failure: "rateLimited" } as const;
+    const first = new GatedModel([busy, busy], () => CONCEPT_ANSWER);
+    const before = pipeline(first);
+    const id = started(before.start(ada, "taps"));
+    await waitOut(first, id, [1]);
+    await until(() => first.calls.length === 2 && generation(id).waiting !== null, "the second wait");
+    first.held = true;
+    clock.advance(UNAVAILABLE_WAITS_MS[1]);
+    await until(() => first.waiting === 1, "the third call, held");
+    // Two busy answers given back; the third call counted before it was made.
+    expect(generation(id)).toMatchObject({ modelCalls: 1, busyRetries: 2 });
+    before.stop();
+    await before.settled();
+    expect(generation(id)).toMatchObject({ state: "concept", modelCalls: 1, busyRetries: 2 });
+
+    const after = new GatedModel([busy, CONCEPT_ANSWER]);
+    pipeline(after);
+    await waitOut(after, id, [1]);
+    await until(() => stateOf(id) === "review");
+    expect(stepsOf(db, id).map((step) => step.outcome)).toEqual(["rateLimited", "rateLimited", "interrupted", "rateLimited", "valid"]);
+    // The call cut short and the one that answered: each counted, and no busy answer.
+    expect(generation(id)).toMatchObject({ modelCalls: 2, busyRetries: 3 });
+    expect(generation(id).modelCalls).toBeLessThanOrEqual(MAX_MODEL_CALLS);
   });
 
   test("a rejected key fails it at once, saying to check the key", async () => {

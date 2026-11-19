@@ -38,6 +38,8 @@ export interface Generation {
   readonly builds: number;
   readonly typeFixes: number;
   readonly modelCalls: number;
+  /** Calls GenAI Studio turned away as busy at once, given back (not in modelCalls). */
+  readonly busyRetries: number;
   readonly versionId: string | null;
   readonly reason: string | null;
   /** Whether it counts against its account's daily limit: not if it failed for nothing its Creator did. */
@@ -74,6 +76,7 @@ const generationRow = z
     builds: z.number().int(),
     type_fixes: z.number().int(),
     model_calls: z.number().int(),
+    busy_retries: z.number().int(),
     version_id: z.string().nullable(),
     reason: z.string().nullable(),
     counted: z.union([z.literal(0), z.literal(1)]),
@@ -97,6 +100,7 @@ const generationRow = z
       builds: row.builds,
       typeFixes: row.type_fixes,
       modelCalls: row.model_calls,
+      busyRetries: row.busy_retries,
       versionId: row.version_id,
       reason: row.reason,
       counted: row.counted === 1,
@@ -106,7 +110,7 @@ const generationRow = z
     }),
   );
 
-const COLUMNS = "id, account_id, kind, game_id, base_version_id, idea, state, concept, note, code, builds, type_fixes, model_calls, version_id, reason, counted, waiting_why, waiting_until, created_at, updated_at";
+const COLUMNS = "id, account_id, kind, game_id, base_version_id, idea, state, concept, note, code, builds, type_fixes, model_calls, busy_retries, version_id, reason, counted, waiting_why, waiting_until, created_at, updated_at";
 
 const stepRow = z
   .object({
@@ -269,6 +273,22 @@ export function endStep(db: Database, generationId: string, number: number, outc
     generationId,
     number,
   );
+}
+
+/**
+ * Ends a call's step that GenAI Studio answered as busy at once, and gives the call back: one fewer
+ * model call and one more busy retry, in the same write as the step's end, so the two never disagree.
+ * False, with the step ended but the call still counted, when the Generation already has `maxBusy`
+ * busy retries.
+ */
+export function endBusyStep(db: Database, generationId: string, number: number, maxBusy: number, at: number): boolean {
+  return transaction(db, () => {
+    endStep(db, generationId, number, "rateLimited", null, at);
+    const result = db
+      .prepare("UPDATE generations SET model_calls = model_calls - 1, busy_retries = busy_retries + 1, updated_at = ? WHERE id = ? AND busy_retries < ? AND model_calls > 0")
+      .run(at, generationId, maxBusy);
+    return Number(result.changes) === 1;
+  });
 }
 
 /** Ends every step a restart cut short, as `interrupted`. How many. */
