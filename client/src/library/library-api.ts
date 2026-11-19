@@ -18,7 +18,7 @@ export interface LibraryEntry {
   readonly description: string;
   /** Null for an Official game. */
   readonly creator: string | null;
-  readonly madeBy: "Official" | "Uploaded";
+  readonly madeBy: "Official" | "Uploaded" | "AI-made";
   /** Seconds since 1970; null for an Official game. */
   readonly publishedAt: number | null;
   readonly plays: number;
@@ -47,5 +47,7 @@ export function playerCount(players: LibraryEntry["players"]): string {
 
 /** Who made it, and how. */
 export function madeBy(entry: LibraryEntry): string {
-  return entry.madeBy === "Official" ? "An Official game, made by BoilerGames" : `Uploaded by ${entry.creator ?? "a Creator"}`;
+  if (entry.madeBy === "Official") return "An Official game, made by BoilerGames";
+  if (entry.madeBy === "AI-made") return `AI-made by ${entry.creator ?? "a Creator"}`;
+  return `Uploaded by ${entry.creator ?? "a Creator"}`;
 }

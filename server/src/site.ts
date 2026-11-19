@@ -10,9 +10,11 @@ import type { PlaytestRunner } from "@boilergames/playtest/client";
 import express, { type ErrorRequestHandler, type Express, type RequestHandler } from "express";
 import type { Database } from "./db/database.js";
 import { GAME_LIMITS, gameRoutes, UPLOAD_PATHS, uploadBodies, type Listing, type OfficialGames } from "./games.js";
+import { generationRoutes } from "./generations/generation-routes.js";
 import { keyRoutes } from "./generations/key-routes.js";
 import type { KeySecret } from "./generations/key-secret.js";
 import type { Model } from "./generations/model.js";
+import { Pipeline } from "./generations/pipeline.js";
 import { libraryRoutes } from "./library.js";
 import type { Mail } from "./mail.js";
 import { playCounter } from "./plays.js";
@@ -59,7 +61,7 @@ const READING = new Set(["GET", "HEAD", "OPTIONS"]);
 export const MAX_BODY_BYTES = 16 * 1024;
 
 /** The client's pages. Each is the same index.html; the client draws the page its path names. */
-const PAGES = ["/screen", "/play", "/sign-in", "/sign-in/confirm", "/sign-in/name", "/my/games", "/my/games/:id", "/library", "/library/:id", "/make", "/privacy", "/my/genai-key"];
+const PAGES = ["/screen", "/play", "/sign-in", "/sign-in/confirm", "/sign-in/name", "/my/games", "/my/games/:id", "/library", "/library/:id", "/make", "/privacy", "/my/genai-key", "/make/ai", "/my/generations/:id"];
 
 /**
  * Every request that changes something passes here first, before its body is read and before any
@@ -140,6 +142,13 @@ export function createSite(options: SiteOptions & SiteParts): Site {
   const aiMaker = options.model !== null && options.keySecret !== null;
   const keys = keyRoutes({ database: options.database, clock: options.clock, model: options.model, keySecret: options.keySecret, signedIn: signIn.signedIn });
   app.use(keys.router);
+  // Generations need the Playtest too, which they share with Uploads: without one (a production
+  // server with no PLAYTEST_SOCKET, which refuses Uploads too), their routes refuse.
+  const pipeline =
+    options.model !== null && options.keySecret !== null && options.playtest !== null
+      ? new Pipeline({ database: options.database, model: options.model, keySecret: options.keySecret, playtest: options.playtest, clock: options.clock })
+      : null;
+  app.use(generationRoutes({ database: options.database, pipeline, signedIn: signIn.signedIn }));
 
   // What the pages need to know about this deployment: where the Game frame is served, and the
   // limits a Game is held to (for /make), and whether the AI maker is on.
@@ -163,6 +172,7 @@ export function createSite(options: SiteOptions & SiteParts): Site {
       games.stop();
       plays.stop();
       keys.stop();
+      pipeline?.stop();
     },
   };
 }

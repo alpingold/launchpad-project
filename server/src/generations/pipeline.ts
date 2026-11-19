@@ -162,6 +162,32 @@ export class Pipeline {
     return { ok: true };
   }
 
+  /** Saves the Creator's edits to the Concept in review, if they pass every rule; otherwise every problem. */
+  editConcept(accountId: string, id: string, edited: unknown): { readonly ok: true } | Refusal | { readonly ok: false; readonly status: 400; readonly error: string; readonly problems: readonly string[] } {
+    const generation = this.#owned(accountId, id);
+    if (generation === undefined) return { ok: false, status: 404, error: "There is no such Generation." };
+    const checked = checkConcept(edited);
+    if (!checked.ok) return { ok: false, status: 400, error: "The Concept has problems.", problems: checked.problems };
+    if (!moveGeneration(this.#db, id, ["review"], "review", { concept: checked.concept }, this.#seconds())) {
+      return { ok: false, status: 409, error: "This Generation isn't waiting for its Concept to be approved." };
+    }
+    return { ok: true };
+  }
+
+  /** Sends the Concept in review back to the AI, with the Creator's note on what to change. */
+  redraft(accountId: string, id: string, note: string): { readonly ok: true } | Refusal {
+    const generation = this.#owned(accountId, id);
+    if (generation === undefined) return { ok: false, status: 404, error: "There is no such Generation." };
+    if (generation.state !== "review") return { ok: false, status: 409, error: "This Generation isn't waiting for its Concept to be approved." };
+    if (hasWorking(this.#db, accountId)) return { ok: false, status: 409, error: "The AI is already working on one of yours. Wait for it, or cancel it, then ask for a new draft." };
+    if (this.#waiting.length >= MAX_WAITING_GENERATIONS) return { ok: false, status: 503, error: "The AI's line is full. Try again in a few minutes." };
+    if (!moveGeneration(this.#db, id, ["review"], "concept", { note: note.trim() }, this.#seconds())) {
+      return { ok: false, status: 409, error: "This Generation isn't waiting for its Concept to be approved." };
+    }
+    this.#add(id, accountId);
+    return { ok: true };
+  }
+
   /** Cancels it, whatever it is doing: a call to the model is given up at once. False if there was nothing to cancel. */
   cancel(accountId: string, id: string): boolean {
     const generation = this.#owned(accountId, id);
@@ -315,10 +341,19 @@ export class Pipeline {
       // No calls left: a failure here, and the reason below says which.
       return answer ?? { ok: false, failure: "unavailable" };
     };
-    const draft = await draftConcept(ask, generation.idea);
+    // A redraft: the Concept the Creator sent back, and their note on what to change.
+    const previous = generation.note === null ? undefined : checkConcept(generation.concept);
+    const redraft = previous?.ok === true && generation.note !== null ? { previous: previous.concept, note: generation.note } : undefined;
+    const draft = await draftConcept(ask, generation.idea, redraft === undefined ? {} : { redraft });
     const now = this.#stillWorking(generation.id, signal);
     if (draft.kind === "valid") {
-      if (!moveGeneration(this.#db, generation.id, ["concept"], "review", { concept: draft.concept }, this.#seconds())) throw new Stopped();
+      if (!moveGeneration(this.#db, generation.id, ["concept"], "review", { concept: draft.concept, note: null }, this.#seconds())) throw new Stopped();
+      return;
+    }
+    if (draft.kind === "invalid" && redraft !== undefined) {
+      // A redraft that never came out usable: back to review with the Concept the Creator sent back.
+      // Its Track shows the tries and their problems.
+      if (!moveGeneration(this.#db, generation.id, ["concept"], "review", { concept: redraft.previous, note: null }, this.#seconds())) throw new Stopped();
       return;
     }
     if (draft.kind === "invalid") return void this.#end(generation.id, "failed", invalidConceptsReason(draft.attempts));

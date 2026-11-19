@@ -30,6 +30,8 @@ export interface Generation {
   readonly state: GenerationState;
   /** The Concept as JSON text was parsed: still to be checked (concept.ts) before it is trusted. */
   readonly concept: unknown;
+  /** What the Creator asked to change in the Concept, while it is redrafted. */
+  readonly note: string | null;
   readonly code: string | null;
   readonly builds: number;
   readonly typeFixes: number;
@@ -62,6 +64,7 @@ const generationRow = z
     idea: z.string(),
     state: z.enum(["concept", "review", "build", "playtest", "ready", "failed", "cancelled"]),
     concept: json.nullable(),
+    note: z.string().nullable(),
     code: z.string().nullable(),
     builds: z.number().int(),
     type_fixes: z.number().int(),
@@ -82,6 +85,7 @@ const generationRow = z
       idea: row.idea,
       state: row.state,
       concept: row.concept,
+      note: row.note,
       code: row.code,
       builds: row.builds,
       typeFixes: row.type_fixes,
@@ -94,7 +98,7 @@ const generationRow = z
     }),
   );
 
-const COLUMNS = "id, account_id, kind, game_id, idea, state, concept, code, builds, type_fixes, model_calls, version_id, reason, waiting_why, waiting_until, created_at, updated_at";
+const COLUMNS = "id, account_id, kind, game_id, idea, state, concept, note, code, builds, type_fixes, model_calls, version_id, reason, waiting_why, waiting_until, created_at, updated_at";
 
 const stepRow = z
   .object({
@@ -159,6 +163,7 @@ export function reviewsWaitingSince(db: Database, before: number): string[] {
 /** What may change along with the state. Left out, unchanged. */
 export interface Change {
   readonly concept?: unknown;
+  readonly note?: string | null;
   readonly code?: string | null;
   readonly builds?: number;
   readonly typeFixes?: number;
@@ -174,6 +179,7 @@ export function moveGeneration(db: Database, id: string, from: readonly Generati
   const sets = ["state = ?", "updated_at = ?", "waiting_why = NULL", "waiting_until = NULL"];
   const values: (string | number | null)[] = [to, at];
   if (change.concept !== undefined) (sets.push("concept = ?"), values.push(JSON.stringify(change.concept)));
+  if (change.note !== undefined) (sets.push("note = ?"), values.push(change.note));
   if (change.code !== undefined) (sets.push("code = ?"), values.push(change.code));
   if (change.builds !== undefined) (sets.push("builds = ?"), values.push(change.builds));
   if (change.typeFixes !== undefined) (sets.push("type_fixes = ?"), values.push(change.typeFixes));

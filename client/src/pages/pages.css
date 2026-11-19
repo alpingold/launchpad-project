@@ -122,3 +122,16 @@ body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; ba
 /* The GenAI Studio key's box: its characters hidden where the browser can, without being a password
    field (which a password manager would offer to save). */
 .key-input { -webkit-text-security: disc; }
+
+/* The AI maker: an idea, a Generation's Track and its Concept (AiMakePage, GenerationPage). */
+.generation-where { margin: 0; font-weight: 600; }
+.generation-where[data-state="failed"] { color: #b3261e; }
+.generation-idea { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.generation textarea, .page-form textarea.prose { font-family: inherit; font-size: 1em; }
+.generation select { font: inherit; padding: 8px; border: 2px solid #1d3f91; border-radius: 8px; }
+.generation .page-form input { min-width: 0; }
+.generation-players { display: flex; flex-wrap: wrap; gap: 12px; }
+.generation-players label { flex: 1 1 8em; }
+.generation-phase { border: 1px solid #ccc; border-radius: 8px; padding: 8px 12px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.generation-steps { margin: 0; padding-left: 24px; display: flex; flex-direction: column; gap: 6px; }
+.generation-steps li { overflow-wrap: anywhere; }

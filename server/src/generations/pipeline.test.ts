@@ -248,6 +248,41 @@ describe("a whole Generation", () => {
   });
 });
 
+describe("a Concept sent back for a new draft", () => {
+  test("is drafted again from the idea, the Concept sent back and the Creator's note; the note goes once drafted", async () => {
+    const ada = account("ada");
+    const model = new GatedModel([JSON.stringify({ ...CONCEPT, title: "Tap Vote Two" })]);
+    const pipe = pipeline(model);
+    const id = inReview(ada, "g1");
+    expect(pipe.redraft(ada, id, "  Give it a better name.  ")).toEqual({ ok: true });
+    await until(() => stateOf(id) === "review");
+    expect(generation(id)).toMatchObject({ concept: { title: "Tap Vote Two" }, note: null });
+    const asked = model.calls[0]?.messages.map((message) => message.content).join("\n") ?? "";
+    expect(asked).toContain("Give it a better name.");
+    expect(asked).toContain('"title": "Tap Vote"');
+  });
+
+  test("a redraft that never comes out usable goes back to review with the Concept the Creator sent back", async () => {
+    const ada = account("ada");
+    const pipe = pipeline(new GatedModel([], () => "no Concept here"));
+    const id = inReview(ada, "g1");
+    pipe.redraft(ada, id, "Shorter, please.");
+    await until(() => stateOf(id) === "review" && stepsOf(db, id).length === 3);
+    expect(generation(id)).toMatchObject({ state: "review", concept: CONCEPT, note: null, reason: null });
+    expect(stepsOf(db, id).map((step) => step.outcome)).toEqual(["invalid", "invalid", "invalid"]);
+  });
+
+  test("edits the Creator makes in review are checked, and saved only if they pass", () => {
+    const ada = account("ada");
+    const pipe = pipeline(new GatedModel());
+    const id = inReview(ada, "g1");
+    expect(pipe.editConcept(ada, id, { ...CONCEPT, players: { min: 5, max: 2 } })).toMatchObject({ ok: false, status: 400, problems: ["players.min must not be more than players.max."] });
+    expect(pipe.editConcept(ada, id, { ...CONCEPT, title: "Edited" })).toEqual({ ok: true });
+    expect(generation(id).concept).toMatchObject({ title: "Edited" });
+    expect(pipe.editConcept("bo", id, CONCEPT)).toMatchObject({ ok: false, status: 404 });
+  });
+});
+
 describe("a failed Generation leaves no Game", () => {
   test(`every Build failing in play, ${MAX_BUILDS} times: failed, with the reason, and no Game or Version`, async () => {
     const ada = account("ada");

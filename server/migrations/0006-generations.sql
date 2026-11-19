@@ -19,6 +19,8 @@ CREATE TABLE generations (
   state TEXT NOT NULL CHECK (state IN ('concept', 'review', 'build', 'playtest', 'ready', 'failed', 'cancelled')),
   -- The Concept, as JSON: the AI's draft, then what the Creator approved.
   concept TEXT CHECK (concept IS NULL OR json_valid(concept)),
+  -- What the Creator asked to change when they sent a Concept back for a new draft, until it is drafted.
+  note TEXT,
   -- The latest file the AI wrote, and where the Build stands: which Build, and type fixes in it.
   code TEXT,
   builds INTEGER NOT NULL DEFAULT 0 CHECK (builds >= 0),

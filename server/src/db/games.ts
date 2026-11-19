@@ -289,10 +289,21 @@ export interface LibraryRow {
   readonly publishedAt: number;
   /** Its counted plays (plays.ts). */
   readonly plays: number;
+  /** Whether the site's AI (a Generation or a Revision) made any of its Versions. */
+  readonly aiMade: boolean;
 }
 
 const libraryRow = z
-  .object({ game_id: z.string(), version_id: z.string(), about: aboutJson, description: z.string(), display_name: z.string(), published_at: z.number().int(), plays: z.number().int() })
+  .object({
+    game_id: z.string(),
+    version_id: z.string(),
+    about: aboutJson,
+    description: z.string(),
+    display_name: z.string(),
+    published_at: z.number().int(),
+    plays: z.number().int(),
+    ai_made: z.number().int(),
+  })
   .transform(
     (row): LibraryRow => ({
       gameId: row.game_id,
@@ -302,12 +313,14 @@ const libraryRow = z
       creator: row.display_name,
       publishedAt: row.published_at,
       plays: row.plays,
+      aiMade: row.ai_made === 1,
     }),
   );
 
 /** Published Games only: a taken-down Game is unpublished, so it isn't here either. */
 const LIBRARY_SELECT = `SELECT games.id AS game_id, versions.id AS version_id, versions.about, games.description, accounts.display_name,
-  versions.created_at AS published_at, coalesce(plays.count, 0) AS plays
+  versions.created_at AS published_at, coalesce(plays.count, 0) AS plays,
+  EXISTS (SELECT 1 FROM versions AS made WHERE made.game_id = games.id AND made.made_by <> 'upload') AS ai_made
   FROM games JOIN versions ON versions.id = games.published_version_id JOIN accounts ON accounts.id = games.owner_id
   LEFT JOIN plays ON plays.subject = games.id
   WHERE versions.state = 'ready'`;

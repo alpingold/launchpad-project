@@ -34,8 +34,8 @@ export interface LibraryEntry {
   readonly description: string;
   /** The Creator's display name; null for an Official game, which the site made. */
   readonly creator: string | null;
-  /** How it was made. "AI-made" comes with milestone 3. */
-  readonly madeBy: "Official" | "Uploaded";
+  /** How it was made (the glossary's "Made by"): "AI-made" when the site's AI made any of its Versions. */
+  readonly madeBy: "Official" | "Uploaded" | "AI-made";
   /**
    * When the published Version was made, in seconds since 1970; null for an Official game, which
    * has no Versions. "Newest" sorts these last: they came with the site.
@@ -75,7 +75,7 @@ function uploadedEntry(row: LibraryRow): LibraryEntry {
     ...(look === undefined ? {} : { look }),
     description: row.description,
     creator: row.creator,
-    madeBy: "Uploaded",
+    madeBy: row.aiMade ? "AI-made" : "Uploaded",
     publishedAt: row.publishedAt,
     plays: row.plays,
   };

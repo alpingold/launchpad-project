@@ -22,6 +22,11 @@ export function PrivacyPage() {
           If you save a Purdue GenAI Studio key, the site keeps it encrypted, with its last 4 characters and when you saved it. It never shows the key again, only those
           4 characters, and you can delete it at any time.
         </p>
+        <p>
+          If you make a Game with the site's AI maker, the site keeps each Generation: your idea, the Concept the AI drafted with your changes to it, a note asking for a new
+          draft until the AI has drafted it again, the code the AI wrote, and each step it took with the problems the site's check found. They stay until your account is
+          removed.
+        </p>
         <p>Your display name is public: it is shown with every Game you publish. Your email address is never shown on the site.</p>
         <p>
           While a Game is published, anyone can see its title and description, and load the built code of each of its Versions that passed the check: your code made
@@ -86,7 +91,11 @@ export function PrivacyPage() {
         <p>The site runs on a server rented from Amazon Web Services (AWS), in its Ohio region. AWS also sends the sign-in emails and keeps the database's nightly copies.</p>
         <p>The site's addresses are looked up through Cloudflare, but your visits go straight to the server, not through Cloudflare.</p>
         <p>Mail to {CONTACT} is passed on by Cloudflare to the site owner's own inbox.</p>
-        <p>When you save a GenAI Studio key, the site sends it to Purdue's GenAI Studio to check that it works. Nothing else you write is sent to an AI.</p>
+        <p>When you save a GenAI Studio key, the site sends it to Purdue's GenAI Studio to check that it works.</p>
+        <p>
+          When you use the AI maker, the site sends GenAI Studio, with your key, what the AI needs to make your Game: your idea, the Concept and any note you write about
+          it, the code the AI wrote, and the problems the site's check found in it. Nothing else you write is sent to an AI.
+        </p>
       </section>
 
       <section>
@@ -116,7 +125,7 @@ export function PrivacyPage() {
         <h2>Having your account removed</h2>
         <p>
           Until you can do it yourself, write to <a href={`mailto:${CONTACT}`}>{CONTACT}</a> from the address you sign in with. Your account, your Games, the code of every Version
-          of them, their counts of plays and your GenAI Studio key will be removed by hand. A published Game of yours leaves the Library at once.
+          of them, their counts of plays, your GenAI Studio key and your Generations will be removed by hand. A published Game of yours leaves the Library at once.
         </p>
       </section>
     </main>

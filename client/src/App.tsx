@@ -1,9 +1,12 @@
 // The site's pages, chosen by the address: /, /screen (the Host's Screen), /play (a phone),
 // signing in: /sign-in, /sign-in/confirm (the emailed link's page) and /sign-in/name, and the
-// Creator's: /my/games, /my/games/<id> and /make (writing a Game with any AI); the Library:
+// Creator's: /my/games, /my/games/<id> and /make (writing a Game with any AI); the site's own AI
+// maker: /make/ai (an idea), /my/generations/<id> (its Concept and Track), /my/genai-key; the Library:
 // /library and /library/<id>; /privacy. Every page has the privacy page's link at its foot.
 import "./pages/pages.css";
+import { AiMakePage } from "./pages/AiMakePage.js";
 import { ConfirmPage } from "./pages/ConfirmPage.js";
+import { GenerationPage } from "./pages/GenerationPage.js";
 import { HomePage } from "./pages/HomePage.js";
 import { KeyPage } from "./pages/KeyPage.js";
 import { LibraryGamePage } from "./pages/LibraryGamePage.js";
@@ -36,6 +39,9 @@ function Page({ path }: { path: string }) {
   if (path === "/sign-in") return <SignInPage />;
   if (path === "/my/games") return <MyGamesPage />;
   if (path === "/make") return <MakePage />;
+  if (path === "/make/ai") return <AiMakePage />;
+  const made = /^\/my\/generations\/([^/]+)$/.exec(path)?.[1];
+  if (made !== undefined) return <GenerationPage id={decodeURIComponent(made)} />;
   if (path === "/my/genai-key") return <KeyPage />;
   if (path === "/privacy") return <PrivacyPage />;
   const game = /^\/my\/games\/([^/]+)$/.exec(path)?.[1];

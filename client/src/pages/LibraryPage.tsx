@@ -90,6 +90,7 @@ function LibraryCard({ game }: { game: LibraryEntry }) {
       <p className="library-card-facts">
         <span>{playerCount(game.players)}</span>
         <span>{game.creator === null ? "Official" : `by ${game.creator}`}</span>
+        {game.madeBy === "AI-made" ? <span>AI-made</span> : null}
         <span>{aboutPlays(game.plays)}</span>
       </p>
       {game.description === "" ? null : <p className="library-card-description">{game.description}</p>}
