@@ -47,8 +47,17 @@ export const RUNNING_AT_ONCE = 2;
 /** Waiting in the queue, in all, before the site says it is busy. */
 export const MAX_WAITING_GENERATIONS = 20;
 
-/** The waits when GenAI Studio is down or busy, before the Generation fails as unavailable. */
+/**
+ * The waits when GenAI Studio is down or busy, before the Generation fails as unavailable. Only a
+ * call that failed at once is made again: one whose time ran out isn't.
+ */
 export const UNAVAILABLE_WAITS_MS = [30 * SECOND_MS, 60 * SECOND_MS, 120 * SECOND_MS, 240 * SECOND_MS] as const;
+/**
+ * The longest one ask of the model may take, its waits and calls made again included: a later call
+ * gets only the time left, and no wait runs past it. More than one call's limit
+ * (COMPLETION_TIMEOUT_MS), so a slow answer still has its whole time.
+ */
+export const ASK_LIMIT_MS = 20 * MINUTE_MS;
 
 // --- Keys (default 4) --------------------------------------------------------------------------
 

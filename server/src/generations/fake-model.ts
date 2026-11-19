@@ -9,11 +9,13 @@
  */
 import type { ChatMessage, CompleteOptions, Completion, Model, ModelFailure } from "./model.js";
 
-export type ScriptedReply = string | { readonly failure: ModelFailure } | ((messages: readonly ChatMessage[]) => string | { readonly failure: ModelFailure });
+/** A failure; `timedOut` as when the call's time ran out. */
+export type ScriptedFailure = { readonly failure: ModelFailure; readonly timedOut?: true };
+export type ScriptedReply = string | ScriptedFailure | ((messages: readonly ChatMessage[]) => string | ScriptedFailure);
 
 export interface ScriptedModelOptions {
   /** Answers once the script has run out. */
-  readonly respond?: (messages: readonly ChatMessage[]) => string | { readonly failure: ModelFailure };
+  readonly respond?: (messages: readonly ChatMessage[]) => string | ScriptedFailure;
   /** Keys the fake GenAI Studio refuses. Every other key is valid. */
   readonly rejectedKeys?: readonly string[];
   /** Makes each answer wait for this promise first: a test's way to hold a call open. */
@@ -26,7 +28,7 @@ export interface ScriptedModelOptions {
 }
 
 export class ScriptedModel implements Model {
-  readonly calls: { readonly key: string; readonly messages: readonly ChatMessage[] }[] = [];
+  readonly calls: { readonly key: string; readonly messages: readonly ChatMessage[]; readonly timeoutMs?: number }[] = [];
   readonly keyChecks: string[] = [];
   readonly #script: ScriptedReply[];
   readonly #options: ScriptedModelOptions;
@@ -48,13 +50,14 @@ export class ScriptedModel implements Model {
   }
 
   async complete(key: string, messages: readonly ChatMessage[], options: CompleteOptions = {}): Promise<Completion> {
-    if (this.#options.record !== false) this.calls.push({ key, messages });
+    if (this.#options.record !== false) this.calls.push({ key, messages, ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }) });
     await this.#options.hold?.();
     if (options.signal?.aborted === true) return { ok: false, failure: "unavailable" };
     const next = this.#script.shift() ?? this.#options.respond;
     if (next === undefined) return { ok: false, failure: "unavailable" };
     const reply = typeof next === "function" ? next(messages) : next;
-    return typeof reply === "string" ? { ok: true, text: reply } : { ok: false, failure: reply.failure };
+    if (typeof reply === "string") return { ok: true, text: reply };
+    return reply.timedOut === true ? { ok: false, failure: reply.failure, timedOut: true } : { ok: false, failure: reply.failure };
   }
 
   async checkKey(key: string): Promise<"valid" | ModelFailure> {

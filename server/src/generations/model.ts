@@ -24,11 +24,17 @@ export interface ChatMessage {
  */
 export type ModelFailure = "keyRejected" | "rateLimited" | "unavailable";
 
-export type Completion = { readonly ok: true; readonly text: string } | { readonly ok: false; readonly failure: ModelFailure };
+/**
+ * The whole answer, or how the call failed. `timedOut`: it failed (as unavailable) because its time
+ * ran out, not at once: such a call isn't made again (the pipeline).
+ */
+export type Completion = { readonly ok: true; readonly text: string } | { readonly ok: false; readonly failure: ModelFailure; readonly timedOut?: true };
 
 export interface CompleteOptions {
   /** Gives the call up (a cancelled Generation): it then fails as unavailable, at once. */
   readonly signal?: AbortSignal;
+  /** This call's time limit, if less than the client's own (COMPLETION_TIMEOUT_MS). */
+  readonly timeoutMs?: number;
 }
 
 export interface Model {
@@ -49,7 +55,7 @@ export interface GenaiOptions {
   readonly keyCheckTimeoutMs?: number;
 }
 
-type Answer = { readonly status: number; readonly body: string } | { readonly failed: true };
+type Answer = { readonly status: number; readonly body: string } | { readonly failed: true; readonly timedOut?: true };
 
 /**
  * One request, with `node:http` or `node:https` rather than fetch: GenAI Studio sends nothing, not
@@ -87,7 +93,7 @@ function send(url: URL, method: "GET" | "POST", key: string, body: string | unde
     // is never passed on anyway: only "failed".
     deadline = setTimeout(() => {
       outgoing?.destroy();
-      finish({ failed: true });
+      finish({ failed: true, timedOut: true });
     }, timeoutMs);
     outgoing.on("error", () => finish({ failed: true }));
     outgoing.end(body);
@@ -145,8 +151,9 @@ export function genaiModel(options: GenaiOptions): Model {
   return {
     async complete(key, messages, call = {}) {
       const body = JSON.stringify({ model: options.model, messages, stream: false });
-      const answer = await send(new URL(`${base}/chat/completions`), "POST", key, body, options.completionTimeoutMs ?? COMPLETION_TIMEOUT_MS, call.signal);
-      if ("failed" in answer) return { ok: false, failure: "unavailable" };
+      const limit = Math.min(options.completionTimeoutMs ?? COMPLETION_TIMEOUT_MS, call.timeoutMs ?? Number.POSITIVE_INFINITY);
+      const answer = await send(new URL(`${base}/chat/completions`), "POST", key, body, limit, call.signal);
+      if ("failed" in answer) return answer.timedOut === true ? { ok: false, failure: "unavailable", timedOut: true } : { ok: false, failure: "unavailable" };
       if (answer.status !== 200) return { ok: false, failure: failureOf(answer.status) };
       const parsed = parseJson(answer.body);
       if (!parsed.ok) return { ok: false, failure: "unavailable" };

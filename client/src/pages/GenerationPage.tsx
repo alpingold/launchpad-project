@@ -38,6 +38,7 @@ const OUTCOMES: Readonly<Record<string, string>> = {
   interrupted: "cut short",
   rateLimited: "GenAI Studio was busy",
   unavailable: "GenAI Studio couldn't be reached",
+  timedOut: "GenAI Studio took too long to answer",
   keyRejected: "GenAI Studio refused the key",
 };
 

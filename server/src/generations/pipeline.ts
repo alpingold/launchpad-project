@@ -11,8 +11,10 @@
  *   Creator did (GenAI Studio busy or down, the site's own check or code failing) doesn't count.
  * - **The Playtest's slots are shared with Uploads.** Generations' Playtests take one at a time, so
  *   an Upload's check never waits behind more than one of them.
- * - **GenAI Studio busy or down:** the call is made again after each of UNAVAILABLE_WAITS_MS, the
- *   Creator shown why and until when; then the Generation fails. A rejected key fails it at once.
+ * - **GenAI Studio busy or down:** a call that failed at once is made again after each of
+ *   UNAVAILABLE_WAITS_MS, the Creator shown why and until when; then the Generation fails. A call
+ *   whose time ran out isn't made again, and one ask, waits included, ends by ASK_LIMIT_MS. A
+ *   rejected key fails it at once.
  * - **The Creator's key** is decrypted for each call and goes nowhere but the call. Each call is
  *   counted, and the count written, before it is made: a restart can't spend a key past the cap.
  *
@@ -53,6 +55,8 @@ import { checkConcept, draftConcept, invalidConceptsReason, readConcept, type Co
 import type { KeySecret } from "./key-secret.js";
 import { longestCodeBlock, type ChatMessage, type Completion, type Model, type ModelFailure } from "./model.js";
 import {
+  ASK_LIMIT_MS,
+  COMPLETION_TIMEOUT_MS,
   GENERATIONS_PER_DAY,
   MAX_IDEA_CHARS,
   MAX_MODEL_CALLS,
@@ -526,8 +530,10 @@ export class Pipeline {
   }
 
   /**
-   * One call to the model, counted and written down before it is made, and again after each wait
-   * while GenAI Studio is busy or down. `judge` says how the answer came out, for its step's row.
+   * One ask of the model: a call, counted and written down before it is made, and made again after
+   * each wait while GenAI Studio fails at once (busy or down). A call whose time ran out isn't made
+   * again, and the whole ask, waits included, ends by ASK_LIMIT_MS: each call gets only the time
+   * left, and no wait runs past it. `judge` says how an answer came out, for its step's row.
    * Undefined when the Generation has used all its calls.
    */
   async #ask(
@@ -538,6 +544,7 @@ export class Pipeline {
     judge: (text: string) => { readonly outcome: string; readonly problems: readonly { readonly stage: string; readonly message: string }[] | null },
   ): Promise<Completion | undefined> {
     const id = generation.id;
+    const deadline = this.#clock.now() + ASK_LIMIT_MS;
     for (let wait = 0; ; wait += 1) {
       this.#stillWorking(id, signal);
       const key = this.#key(generation.accountId);
@@ -550,21 +557,48 @@ export class Pipeline {
         return undefined;
       }
       const step = beginStep(this.#db, id, kind, this.#seconds());
-      const answer = await this.#model.complete(key.key, messages, { signal });
+      const answer = await this.#call(key.key, messages, signal, Math.min(COMPLETION_TIMEOUT_MS, deadline - this.#clock.now()));
       // A call given up (the Generation cancelled, or the server stopping) came out as neither.
-      const judged = signal.aborted ? { outcome: "interrupted", problems: null } : answer.ok ? judge(answer.text) : { outcome: answer.failure, problems: null };
+      const judged = signal.aborted
+        ? { outcome: "interrupted", problems: null }
+        : answer.ok
+          ? judge(answer.text)
+          : { outcome: answer.timedOut === true ? "timedOut" : answer.failure, problems: null };
       endStep(this.#db, id, step, judged.outcome, judged.problems, this.#seconds());
       this.#stillWorking(id, signal);
-      if (answer.ok || answer.failure === "keyRejected" || wait >= UNAVAILABLE_WAITS_MS.length) {
+      const ms = UNAVAILABLE_WAITS_MS[wait];
+      if (answer.ok || answer.failure === "keyRejected" || answer.timedOut === true || ms === undefined || this.#clock.now() + ms >= deadline) {
         setWaiting(this.#db, id, null, this.#seconds());
         return answer;
       }
-      const ms = UNAVAILABLE_WAITS_MS[wait] ?? 0;
       setWaiting(this.#db, id, { why: answer.failure, until: Math.floor((this.#clock.now() + ms) / 1000) }, this.#seconds());
       await this.#sleep(ms, signal);
       // Calling again: no longer waiting.
       this.#stillWorking(id, signal);
       setWaiting(this.#db, id, null, this.#seconds());
+    }
+  }
+
+  /**
+   * One call, given `ms` at most (on the site's clock, and as the call's own limit). One whose time
+   * ran out comes back as timed out, however the model said it.
+   */
+  async #call(key: string, messages: readonly ChatMessage[], signal: AbortSignal, ms: number): Promise<Completion> {
+    if (ms <= 0) return { ok: false, failure: "unavailable", timedOut: true };
+    const call = new AbortController();
+    let late = false;
+    const giveUp = () => call.abort();
+    signal.addEventListener("abort", giveUp, { once: true });
+    const cancelTimer = this.#clock.setTimeout(() => {
+      late = true;
+      call.abort();
+    }, ms);
+    try {
+      const answer = await this.#model.complete(key, messages, { signal: call.signal, timeoutMs: ms });
+      return late && !answer.ok && !signal.aborted ? { ok: false, failure: "unavailable", timedOut: true } : answer;
+    } finally {
+      cancelTimer();
+      signal.removeEventListener("abort", giveUp);
     }
   }
 

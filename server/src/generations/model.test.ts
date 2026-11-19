@@ -119,12 +119,12 @@ describe("asking the model", () => {
     expect(await client(base, { completionTimeoutMs: 15_000 }).complete(KEY, MESSAGES)).toEqual({ ok: true, text: "Slow but here." });
   });
 
-  test("an answer that stops after its headers: unavailable, once the time is up", async () => {
+  test("an answer that stops after its headers: unavailable, and timed out, once the time is up", async () => {
     const { base } = await stand((_request, response) => {
       response.writeHead(200, { "content-type": "application/json" });
       response.write('{"choices": [');
     });
-    expect(await client(base, { completionTimeoutMs: 400 }).complete(KEY, MESSAGES)).toEqual({ ok: false, failure: "unavailable" });
+    expect(await client(base, { completionTimeoutMs: 400 }).complete(KEY, MESSAGES)).toEqual({ ok: false, failure: "unavailable", timedOut: true });
   });
 
   test("an answer larger than the client reads: unavailable", async () => {
@@ -157,10 +157,17 @@ describe("asking the model", () => {
     expect(seen).toHaveLength(1);
   });
 
-  test("a connection that never answers: unavailable, once the time is up", async () => {
+  test("a connection that never answers: unavailable, and timed out, once the time is up", async () => {
     const { base } = await stand(() => undefined);
     const started = Date.now();
-    expect(await client(base, { completionTimeoutMs: 300 }).complete(KEY, MESSAGES)).toEqual({ ok: false, failure: "unavailable" });
+    expect(await client(base, { completionTimeoutMs: 300 }).complete(KEY, MESSAGES)).toEqual({ ok: false, failure: "unavailable", timedOut: true });
+    expect(Date.now() - started).toBeLessThan(3_000);
+  });
+
+  test("a call's own time limit, when less than the client's, is the one kept", async () => {
+    const { base } = await stand(() => undefined);
+    const started = Date.now();
+    expect(await client(base, { completionTimeoutMs: 60_000 }).complete(KEY, MESSAGES, { timeoutMs: 300 })).toEqual({ ok: false, failure: "unavailable", timedOut: true });
     expect(Date.now() - started).toBeLessThan(3_000);
   });
 
