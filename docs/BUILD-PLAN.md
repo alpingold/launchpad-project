@@ -1183,8 +1183,8 @@ the first problem, and an eval that began at Build. The eval set (Step 35) is wh
 
 - **Off unless configured.** A release must start, and pass the installer's check, with no model
   settings and no key secret: then the AI maker is off, its pages say so, and its routes answer "not
-  available". The same way Uploads are refused without `PLAYTEST_SOCKET`. Tomorrow's push must
-  deploy with the maker off.
+  available". The same way Uploads are refused without `PLAYTEST_SOCKET`. The first push after
+  these steps deploys with the maker off.
 - **No new dependency.** Nothing is approved for milestone 3. The model client uses `node:https`,
   the encryption `node:crypto`.
 - **No live model call.** Nothing in this plan's steps, tests or scripts calls GenAI Studio. Tests
@@ -1245,8 +1245,9 @@ that Uploads have to follow. So:
   sees, take the conservative path: skip the phase check, keep the scoring and Player-count checks,
   and say so.
 
-**The wall.** This changes the runner's request and harness, so the attack test is run again on a
-throwaway server before it goes live (Step 37).
+**The wall.** This changes the runner's request and harness, and they ship in the release whether
+the maker is on or off: every Upload runs through them. So the attack test is run again on a
+throwaway server **before the push that carries Step 30**, not when the maker is turned on.
 
 ## Step 25: split the browser tests in CI (`.github`, `e2e`)
 
@@ -1270,8 +1271,13 @@ Build prompt needs the same text, in `server`, and the two must never disagree.
   may import `@boilergames/sdk/v1` and nothing else, and the test of that stays.
 - `/make` reads it from there and looks the same as today.
 
+- If the server reads the text from a file as it runs, that file must be in the release
+  (`deploy/package-release.sh` packs what a release holds). A workspace test would pass without it
+  and the deploy would roll back.
+
 **Done when:** `/make`'s tests pass unchanged in what they assert; a test shows the server and the
-client get the same text; `sdk` still has zero dependencies.
+client get the same text; the built form is checked as well as the source (as `check-built` does
+for the Playtest); `sdk` still has zero dependencies.
 
 ## Step 27: talking to the model (`server`)
 
@@ -1291,6 +1297,10 @@ kind. Two makers of it: the real client and a scripted fake for tests.
   list in `data`.
 - **Reading an answer:** drop `<think>...</think>`; for code, the longest fenced block; for a
   Concept, from the first `{` to the last `}`.
+- **Which model the server uses is a setting**, as `MAIL` is: the real client, or the scripted fake
+  for development and the browser tests. A test's stand-in server speaks plain `http`, so the client
+  can; but **in production the server refuses to start with the fake or with a base address that
+  isn't `https`**. Otherwise one mistyped setting would send a Creator's key unprotected.
 
 **Done when:** the real client is tested against a server the test starts on this machine: a good
 answer, 401, 429, a `null` body, a web page with status 200, a redirect, headers that arrive after
@@ -1377,6 +1387,9 @@ ending the Generation with a reason; the skeleton of a Concept type-checking aga
 - A passing Build makes the Game and its Version as "The data" says. The Version's `made_by` is
   `generation`.
 - Nothing here blocks the server's other work: a model call is minutes of waiting, not of work.
+- **Every push restarts the server.** The count of model calls is written before each call, so
+  restarts can't spend a Creator's key past the cap. A Generation that can't be resumed (a row that
+  no longer makes sense) is marked failed with a reason; it never stops the server from starting.
 
 **Done when:** tests with the fake model and a clock the test moves show: a whole Generation from
 idea to a `ready` Version; a restart in each state resuming; the queue's limits; the waits and the
@@ -1441,7 +1454,7 @@ So that every change to the instructions or the Kit can be measured (story 53).
 Not for the building agent: this is the live server, a secret, and real model calls.
 
 - The owner goes through "Defaults waiting for the owner's yes" and changes what they want.
-- The attack test is run again on a throwaway server (Step 30 changed the runner's request).
+- The attack test was already run again before Step 30 was pushed (see "The wall").
 - The key secret is made on the server, readable by the site's user only, and left out of every
   backup. `KEY_SECRET_FILE`, `GENAI_BASE_URL` and `GENAI_MODEL` go in the settings.
 - The owner saves their own key and makes one Game. Then, with the owner's yes, one live eval run.
