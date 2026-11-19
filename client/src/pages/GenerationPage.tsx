@@ -128,6 +128,8 @@ export function GenerationPage({ id }: { id: string }) {
       <p className="generation-where" role="status" data-state={shown.state}>
         {whereItIs(shown)}
       </p>
+      {/* In review, why a new draft the Creator asked for didn't come. */}
+      {shown.state === "review" && shown.reason !== null ? <p className="page-notice">{shown.reason}</p> : null}
       {shown.state === "ready" && shown.gameId !== null ? (
         <p>
           <a href={`/my/games/${encodeURIComponent(shown.gameId)}`}>Go to the Game</a>

@@ -31,7 +31,7 @@ CREATE TABLE generations (
   model_calls INTEGER NOT NULL DEFAULT 0 CHECK (model_calls >= 0),
   -- The Version it made, once ready.
   version_id TEXT REFERENCES versions (id),
-  -- Why it failed or was cancelled, for the Creator.
+  -- Why it failed or was cancelled, for the Creator; in review, why a new draft it asked for didn't come.
   reason TEXT,
   -- Whether it counts against its account's daily limit: 0 only for one that failed for nothing its
   -- Creator did (GenAI Studio busy or down, the site's own check or code failing).

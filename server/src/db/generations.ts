@@ -203,7 +203,8 @@ export interface Change {
   readonly code?: string | null;
   readonly builds?: number;
   readonly typeFixes?: number;
-  readonly reason?: string;
+  /** Why it failed or was cancelled; in review, why a new draft didn't come (null: none). */
+  readonly reason?: string | null;
   /** False when it fails for nothing its Creator did: then it doesn't count against the daily limit. */
   readonly counted?: boolean;
 }

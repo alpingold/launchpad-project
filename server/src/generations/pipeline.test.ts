@@ -16,7 +16,7 @@ import { ScriptedModel, type ScriptedReply } from "./fake-model.js";
 import { keySecretFromBytes, SECRET_BYTES } from "./key-secret.js";
 import type { ChatMessage, CompleteOptions, Completion, Model, ModelFailure } from "./model.js";
 import { ASK_LIMIT_MS, COMPLETION_TIMEOUT_MS, GENERATIONS_PER_DAY, MAX_BUILDS, MAX_MODEL_CALLS, MAX_REQUEST_CHARS, MAX_WAITING_GENERATIONS, REVIEW_EXPIRES_MS, REVISIONS_PER_DAY, UNAVAILABLE_WAITS_MS } from "./numbers.js";
-import { Pipeline, REASONS, restartReason } from "./pipeline.js";
+import { Pipeline, REASONS, redraftReason, restartReason } from "./pipeline.js";
 import { VERSIONS_PER_GAME } from "../games.js";
 
 const keySecret = keySecretFromBytes(Buffer.alloc(SECRET_BYTES, 9));
@@ -437,8 +437,38 @@ describe("a Concept sent back for a new draft", () => {
     const id = inReview(ada, "g1");
     pipe.redraft(ada, id, "Shorter, please.");
     await until(() => stateOf(id) === "review" && stepsOf(db, id).length === 3);
-    expect(generation(id)).toMatchObject({ state: "review", concept: CONCEPT, note: null, reason: null });
+    expect(generation(id)).toMatchObject({ state: "review", concept: CONCEPT, note: null, reason: redraftReason("invalid") });
     expect(stepsOf(db, id).map((step) => step.outcome)).toEqual(["invalid", "invalid", "invalid"]);
+    // The reason goes when the Creator acts on the Concept again.
+    expect(pipe.editConcept(ada, id, CONCEPT)).toEqual({ ok: true });
+    expect(generation(id).reason).toBeNull();
+  });
+
+  test.each([
+    ["GenAI Studio refusing the key", [{ failure: "keyRejected" }] as ScriptedReply[], "keyRejected"],
+    ["a call whose time ran out", [{ failure: "unavailable", timedOut: true }] as ScriptedReply[], "unavailable"],
+    ["a bug of the site's", [() => { throw new Error("a bug of the site's"); }] as ScriptedReply[], "site"],
+  ] as const)("a redraft that fails for %s goes back to review with the Concept sent back, saying why; approving clears the reason", async (_what, script, why) => {
+    const ada = account("ada");
+    const pipe = pipeline(new GatedModel([...script], ANSWER));
+    const id = inReview(ada, "g1");
+    const edited = { ...CONCEPT, title: "Mine" };
+    pipe.redraft(ada, id, "A private note.", edited);
+    await until(() => stateOf(id) !== "concept");
+    expect(generation(id)).toMatchObject({ state: "review", concept: edited, note: null, reason: redraftReason(why) });
+    expect(pipe.approve(ada, id)).toEqual({ ok: true });
+    expect(generation(id).reason).toBeNull();
+    await until(() => stateOf(id) === "ready");
+  });
+
+  test("a redraft whose key is gone goes back to review, saying to save it again", async () => {
+    const ada = account("ada");
+    const pipe = pipeline(new GatedModel([], ANSWER));
+    const id = inReview(ada, "g1");
+    db.prepare("DELETE FROM genai_keys WHERE account_id = ?").run(ada);
+    pipe.redraft(ada, id, "Again.");
+    await until(() => stateOf(id) !== "concept");
+    expect(generation(id)).toMatchObject({ state: "review", concept: CONCEPT, note: null, reason: redraftReason("noKey"), modelCalls: 0 });
   });
 
   test("the Creator's edits go with the note, so the AI redrafts from them", async () => {
@@ -458,7 +488,7 @@ describe("a Concept sent back for a new draft", () => {
     db.prepare("UPDATE generations SET model_calls = ? WHERE id = ?").run(MAX_MODEL_CALLS, id);
     pipe.redraft(ada, id, "Again.");
     await until(() => stateOf(id) !== "concept");
-    expect(generation(id)).toMatchObject({ state: "review", concept: CONCEPT, note: null });
+    expect(generation(id)).toMatchObject({ state: "review", concept: CONCEPT, note: null, reason: redraftReason("callsUsed") });
   });
 
   test("a redraft cancelled before it is drafted keeps no note", async () => {
