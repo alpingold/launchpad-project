@@ -151,6 +151,8 @@ export class Pipeline {
     if (generation.state !== "review") return { ok: false, status: 409, error: "This Generation isn't waiting for its Concept to be approved." };
     const checked = checkConcept(edited ?? generation.concept);
     if (!checked.ok) return { ok: false, status: 400, error: "The Concept has problems.", problems: checked.problems };
+    // One at a time for an account, in the line or worked on: approving one counts as starting it.
+    if (hasWorking(this.#db, accountId)) return { ok: false, status: 409, error: "The AI is already working on one of yours. Wait for it, or cancel it, then approve this one." };
     if (countGames(this.#db, accountId) >= GAMES_PER_ACCOUNT) return { ok: false, status: 409, error: REASONS.tooManyGames };
     if (this.#waiting.length >= MAX_WAITING_GENERATIONS) return { ok: false, status: 503, error: "The AI's line is full. Try again in a few minutes." };
     if (!moveGeneration(this.#db, id, ["review"], "build", { concept: checked.concept, code: null, builds: 1, typeFixes: 0 }, this.#seconds())) {
@@ -234,8 +236,16 @@ export class Pipeline {
   /** Every Generation that was being worked on goes back in the line; one that can't carry on fails, saying why. */
   #resume(): void {
     const at = this.#seconds();
-    interruptSteps(this.#db, at);
-    for (const { id, accountId } of workingGenerations(this.#db)) {
+    let working: { readonly id: string; readonly accountId: string }[];
+    try {
+      interruptSteps(this.#db, at);
+      working = workingGenerations(this.#db);
+    } catch (error) {
+      // Never stops the server from starting: the Generations wait for the next start.
+      this.#log(`Generations: couldn't read what was under way: ${(error as Error).message}`);
+      return;
+    }
+    for (const { id, accountId } of working) {
       try {
         const generation = generationById(this.#db, id);
         if (generation === undefined) continue;
@@ -263,7 +273,11 @@ export class Pipeline {
   #sweep(): void {
     if (this.#stopped) return;
     const before = Math.floor((this.#clock.now() - REVIEW_EXPIRES_MS) / 1000);
-    for (const id of reviewsWaitingSince(this.#db, before)) this.#end(id, "cancelled", REASONS.expired);
+    try {
+      for (const id of reviewsWaitingSince(this.#db, before)) this.#end(id, "cancelled", REASONS.expired);
+    } catch (error) {
+      this.#log(`Generations: couldn't cancel the Concepts left waiting: ${(error as Error).message}`);
+    }
     this.#cancelSweep = this.#clock.setTimeout(() => this.#sweep(), SWEEP_MS);
   }
 
@@ -278,7 +292,13 @@ export class Pipeline {
     } catch (error) {
       if (error instanceof Stopped) return;
       this.#log(`Generations: ${id} failed on the site's side: ${(error as Error).message}`);
-      this.#end(id, "failed", REASONS.site);
+      try {
+        this.#end(id, "failed", REASONS.site);
+      } catch (again) {
+        // The database itself is failing (or closed after a stop): the row stays as it was, and the
+        // next start carries it on. Never an unhandled rejection, which would stop the server.
+        this.#log(`Generations: ${id} couldn't be marked failed: ${(again as Error).message}`);
+      }
     }
   }
 
@@ -318,6 +338,11 @@ export class Pipeline {
       from: this.#progressOf(generation),
       onProgress: (stage, progress) => {
         this.#stillWorking(generation.id, signal);
+        // Before spending a call of the Creator's key on a Game that couldn't be kept.
+        if (stage === "build" && generation.kind === "generation" && countGames(this.#db, generation.accountId) >= GAMES_PER_ACCOUNT) {
+          this.#end(generation.id, "failed", REASONS.tooManyGames);
+          throw new Stopped();
+        }
         const moved = moveGeneration(
           this.#db,
           generation.id,
@@ -354,9 +379,11 @@ export class Pipeline {
     const base = { builds: Math.max(1, generation.builds), typeFixes: generation.typeFixes };
     if (generation.state === "playtest" && generation.code !== null) return { ...base, lastFile: generation.code, toCheck: generation.code };
     // In build: the last file, and what the last step that found problems found, to send back.
-    const lastProblems = stepsOf(this.#db, generation.id)
-      .filter((step) => step.kind !== "concept" && step.problems !== null && step.problems.length > 0)
-      .at(-1)?.problems ?? undefined;
+    // After answers with no code, what the last file's check found goes back too (build.ts does the same).
+    const found = stepsOf(this.#db, generation.id).filter((step) => step.kind !== "concept" && step.problems !== null && step.problems.length > 0);
+    const last = found.at(-1);
+    const checked = found.filter((step) => step.kind === "playtest").at(-1)?.problems ?? [];
+    const lastProblems = last === undefined ? undefined : last.outcome === "noCode" ? [...checked, ...(last.problems ?? [])] : (last.problems ?? undefined);
     return { ...base, ...(generation.code === null ? {} : { lastFile: generation.code }), ...(lastProblems === undefined ? {} : { problems: lastProblems }) };
   }
 
@@ -393,7 +420,8 @@ export class Pipeline {
       }
       const step = beginStep(this.#db, id, kind, this.#seconds());
       const answer = await this.#model.complete(key.key, messages, { signal });
-      const judged = answer.ok ? judge(answer.text) : { outcome: answer.failure, problems: null };
+      // A call given up (the Generation cancelled, or the server stopping) came out as neither.
+      const judged = signal.aborted ? { outcome: "interrupted", problems: null } : answer.ok ? judge(answer.text) : { outcome: answer.failure, problems: null };
       endStep(this.#db, id, step, judged.outcome, judged.problems, this.#seconds());
       this.#stillWorking(id, signal);
       if (answer.ok || answer.failure === "keyRejected" || wait >= UNAVAILABLE_WAITS_MS.length) {
@@ -403,6 +431,9 @@ export class Pipeline {
       const ms = UNAVAILABLE_WAITS_MS[wait] ?? 0;
       setWaiting(this.#db, id, { why: answer.failure, until: Math.floor((this.#clock.now() + ms) / 1000) }, this.#seconds());
       await this.#sleep(ms, signal);
+      // Calling again: no longer waiting.
+      this.#stillWorking(id, signal);
+      setWaiting(this.#db, id, null, this.#seconds());
     }
   }
 

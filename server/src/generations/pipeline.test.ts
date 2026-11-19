@@ -6,9 +6,9 @@ import { childProcessRunner, type PlaytestRunner, type RunOptions, type RunResul
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { createAccount } from "../db/accounts.js";
 import { IN_MEMORY, openDatabase, type Database } from "../db/database.js";
-import { countGames, gamesOwnedBy, versionsOf } from "../db/games.js";
+import { countGames, gamesOwnedBy, uploadTimesSince, versionsOf } from "../db/games.js";
 import { saveKey } from "../db/genai-keys.js";
-import { createGeneration, generationById, moveGeneration, stepsOf, type Generation } from "../db/generations.js";
+import { beginStep, createGeneration, endStep, generationById, moveGeneration, stepsOf, type Generation } from "../db/generations.js";
 import { GAMES_PER_ACCOUNT } from "../games.js";
 import type { Clock } from "../rooms.js";
 import type { Concept } from "./concept.js";
@@ -214,6 +214,8 @@ describe("a whole Generation", () => {
     ]);
     // The Creator's own key, on every call.
     expect(model.calls.map((call) => call.key)).toEqual([keyOf(ada), keyOf(ada)]);
+    // A Version the AI made isn't an Upload: it uses none of the Creator's Uploads for the hour or the day.
+    expect(uploadTimesSince(db, ada, 0)).toEqual([]);
   });
 
   test("each call is counted and written down before it is made", async () => {
@@ -297,15 +299,18 @@ describe("GenAI Studio busy, down, or refusing the key", () => {
     expect(generation(id)).toMatchObject({ reason: REASONS.unavailable, waiting: null, modelCalls: UNAVAILABLE_WAITS_MS.length + 1 });
   });
 
-  test("down, then back: the Generation carries on and the notice goes", async () => {
+  test("down, then back: the notice goes as the call is made again, and the Generation carries on", async () => {
     const ada = account("ada");
     const model = new GatedModel([{ failure: "unavailable" }, CONCEPT_ANSWER]);
     const pipe = pipeline(model);
     const id = started(pipe.start(ada, "taps"));
     await until(() => generation(id).waiting?.why === "unavailable");
+    model.held = true;
     clock.advance(UNAVAILABLE_WAITS_MS[0]);
-    await until(() => stateOf(id) === "review");
+    await until(() => model.waiting === 1, "the call made again");
     expect(generation(id).waiting).toBeNull();
+    model.release();
+    await until(() => stateOf(id) === "review");
   });
 
   test("a rejected key fails it at once, saying to check the key", async () => {
@@ -343,7 +348,7 @@ describe("the queue", () => {
     await until(() => ids.every((id) => stateOf(id) === "review"));
   });
 
-  test("one at a time for an account: a second it starts is refused, and one it approves waits for its first", async () => {
+  test("one at a time for an account: while one is in the line or worked on, starting or approving another is refused", async () => {
     const ada = account("ada");
     const model = new GatedModel([], ANSWER);
     model.held = true;
@@ -351,11 +356,12 @@ describe("the queue", () => {
     const review = inReview(ada, "earlier");
     const first = started(pipe.start(ada, "taps"));
     expect(pipe.start(ada, "more taps")).toMatchObject({ ok: false, status: 409 });
-    expect(pipe.approve(ada, review)).toEqual({ ok: true });
-    await until(() => model.waiting === 1);
-    // A slot is free, but the account's first is being worked on: its second waits.
-    expect([pipe.place(first), pipe.place(review)]).toEqual([0, 1]);
+    expect(pipe.approve(ada, review)).toMatchObject({ ok: false, status: 409 });
+    expect(stateOf(review)).toBe("review");
     model.release();
+    await until(() => stateOf(first) === "review");
+    // The first now waits on its Creator, so the other may go.
+    expect(pipe.approve(ada, review)).toEqual({ ok: true });
     await until(() => stateOf(review) === "ready");
   });
 
@@ -472,7 +478,6 @@ describe("a restart carries each Generation on from the start of its stage", () 
     // As a restart: the old pipeline's work ends where it is, mid-call.
     before.stop();
     await before.settled();
-    db.prepare("UPDATE generation_steps SET ended_at = NULL, outcome = NULL").run();
     expect(stateOf(id)).toBe("concept");
     pipeline(new GatedModel([CONCEPT_ANSWER]));
     await until(() => stateOf(id) === "review");
@@ -521,7 +526,37 @@ describe("a restart carries each Generation on from the start of its stage", () 
     await until(() => stateOf(id) === "ready");
     expect(next.calls).toHaveLength(0);
     expect(fresh.runs.map((run) => run.source)).toEqual(["// the Game\n"]);
+    // The stopped pipeline's Playtest ends too, late: it makes nothing.
     playtest.release();
+    await before.settled();
+    expect(countGames(db, ada)).toBe(1);
+    expect(db.prepare("SELECT count(*) AS n FROM versions").get()?.["n"]).toBe(1);
+  });
+
+  test("in build, after an answer with no code: what the last file's check found goes back too", async () => {
+    const ada = account("ada");
+    const id = inReview(ada, "g1");
+    moveGeneration(db, id, ["review"], "build", { code: "// the last file", builds: 1, typeFixes: 2 }, 1);
+    endStep(db, id, beginStep(db, id, "playtest", 1), "problems", [{ stage: "types", message: "Cannot find name 'tap'.", line: 7 }], 1);
+    endStep(db, id, beginStep(db, id, "typeFix", 1), "noCode", [{ stage: "source", message: "The answer has no code block." }], 1);
+    const next = new GatedModel([CODE_ANSWER]);
+    pipeline(next);
+    await until(() => stateOf(id) === "ready");
+    const asked = next.calls[0]?.messages[1]?.content ?? "";
+    expect(asked).toContain("// the last file");
+    expect(asked).toContain("- types, line 7: Cannot find name 'tap'.\n- source: The answer has no code block.");
+  });
+
+  test("a Build carried on after its Creator reached the most Games ends before spending a call", async () => {
+    const ada = account("ada");
+    const id = inReview(ada, "g1");
+    moveGeneration(db, id, ["review"], "build", { builds: 1, typeFixes: 0 }, 1);
+    for (let n = 0; n < GAMES_PER_ACCOUNT; n += 1) db.prepare("INSERT INTO games (id, owner_id, created_at) VALUES (?, ?, 1)").run(`game-${n}`, ada);
+    const next = new GatedModel([CODE_ANSWER]);
+    pipeline(next);
+    await until(() => stateOf(id) === "failed");
+    expect(generation(id)).toMatchObject({ reason: REASONS.tooManyGames, modelCalls: 0 });
+    expect(next.calls).toHaveLength(0);
   });
 
   test("a row that makes no sense fails, saying why, and never stops the pipeline from starting", () => {

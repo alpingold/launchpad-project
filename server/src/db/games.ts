@@ -140,9 +140,12 @@ export function countVersions(db: Database, gameId: string): number {
  * themselves, so a restart (every deploy is one) forgets none of them.
  */
 export function uploadTimesSince(db: Database, ownerId: string, since: number): number[] {
+  // Uploads only: a Version the site's AI made is held to its own limits (generations/numbers.ts).
   return all(
     z.object({ created_at: z.number().int() }),
-    db.prepare("SELECT versions.created_at FROM versions JOIN games ON games.id = versions.game_id WHERE games.owner_id = ? AND versions.created_at > ? ORDER BY versions.created_at").all(ownerId, since),
+    db
+      .prepare("SELECT versions.created_at FROM versions JOIN games ON games.id = versions.game_id WHERE games.owner_id = ? AND versions.made_by = 'upload' AND versions.created_at > ? ORDER BY versions.created_at")
+      .all(ownerId, since),
   ).map((row) => row.created_at);
 }
 
