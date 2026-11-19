@@ -16,6 +16,12 @@ test("in production without MAIL=ses, or with a MAIL it doesn't know, the server
   await expect(start({ ...ports, MAIL: "carrier-pigeon" })).rejects.toThrow(/MAIL must be "ses" or unset/);
 });
 
+test("in production with the fake model, or a model address that isn't https, the server refuses to start", async () => {
+  const production = { ...ports, NODE_ENV: "production", DATABASE_FILE: "/nowhere/site.db", MAIL: "ses" };
+  await expect(start({ ...production, GENAI_BASE_URL: "fake" })).rejects.toThrow(/GENAI_BASE_URL=fake is for development/);
+  await expect(start({ ...production, GENAI_BASE_URL: "http://genai.example/api", GENAI_MODEL: "m" })).rejects.toThrow(/must be an https address in production/);
+});
+
 test("with DATABASE_FILE, the server makes the database there, brings it up to date and answers", async () => {
   const folder = mkdtempSync(join(tmpdir(), "start-"));
   const log = vi.spyOn(console, "log").mockImplementation(() => undefined);

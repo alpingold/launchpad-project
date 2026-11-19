@@ -3,6 +3,8 @@
  */
 import { childProcessRunner, socketRunner, type PlaytestRunner } from "@boilergames/playtest/client";
 import { IN_MEMORY } from "./db/database.js";
+import { devFakeModel } from "./generations/dev-fake.js";
+import { genaiModel, type Model } from "./generations/model.js";
 import { DEFAULT_MAX_ROOMS } from "./rooms.js";
 
 /** How many Rooms may be open at once: MAX_ROOMS, a whole number above 0, or DEFAULT_MAX_ROOMS if unset. */
@@ -39,4 +41,36 @@ export function playtestFrom(env: Readonly<Record<string, string | undefined>>):
   if (socket !== undefined && socket !== "") return socketRunner(socket);
   if (env["NODE_ENV"] === "production") return null;
   return childProcessRunner();
+}
+
+/**
+ * Which model the AI maker talks to, as MAIL chooses how email is sent:
+ * - GENAI_BASE_URL and GENAI_MODEL unset: none. The AI maker is off, its pages say so and its routes
+ *   answer "not available". A release starts this way.
+ * - GENAI_BASE_URL=fake: the scripted fake, for development and the browser tests. Refused in
+ *   production.
+ * - GENAI_BASE_URL=<address> with GENAI_MODEL: GenAI Studio. In production the address must be
+ *   https, or a mistyped setting would send Creators' keys unprotected.
+ * Anything else stops the server from starting, so a mistake is seen at once.
+ */
+export function modelFrom(env: Readonly<Record<string, string | undefined>>): Model | null {
+  const base = env["GENAI_BASE_URL"] ?? "";
+  const model = env["GENAI_MODEL"] ?? "";
+  const production = env["NODE_ENV"] === "production";
+  if (base === "" && model === "") return null;
+  if (base === "fake") {
+    if (production) throw new Error("GENAI_BASE_URL=fake is for development and tests: production must use GenAI Studio, or leave it unset");
+    return devFakeModel();
+  }
+  if (base === "" || model === "") throw new Error("GENAI_BASE_URL and GENAI_MODEL go together: set both, or neither to leave the AI maker off");
+  let url: URL;
+  try {
+    url = new URL(base);
+  } catch {
+    throw new Error(`GENAI_BASE_URL must be an address, not "${base}"`);
+  }
+  if (url.protocol !== "https:" && (production || url.protocol !== "http:")) {
+    throw new Error(`GENAI_BASE_URL must be an https address${production ? " in production" : ""}, not "${base}"`);
+  }
+  return genaiModel({ baseUrl: base, model });
 }

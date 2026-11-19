@@ -4,6 +4,7 @@
  */
 import { createServer as createHttpServer, type IncomingMessage, type Server } from "node:http";
 import type { PlaytestRunner } from "@boilergames/playtest/client";
+import type { Model } from "./generations/model.js";
 import { IN_MEMORY, openDatabase, type Database } from "./db/database.js";
 import { RecordedMail, type Mail } from "./mail.js";
 import type { Clock } from "./rooms.js";
@@ -30,6 +31,11 @@ export interface ServerOptions extends SiteOptions {
    * and Uploads are refused.
    */
   readonly playtest?: PlaytestRunner | null;
+  /**
+   * The model the AI maker talks to (config.ts, modelFrom). Null or left out: none, and the AI maker
+   * is off.
+   */
+  readonly model?: Model | null;
 }
 
 export interface RunningServer {
