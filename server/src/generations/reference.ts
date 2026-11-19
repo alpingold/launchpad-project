@@ -33,53 +33,62 @@ export function typesText(): string {
 export interface KitPart {
   /** Its `kind`, as a View names it: "text", "button"... */
   readonly kind: string;
-  /** The first sentence of its doc comment. */
+  /** Its doc comment's first paragraph: what it is and what it is for. */
   readonly purpose: string;
   readonly on: "screen and phone" | "phone only";
 }
 
-/** The doc comment just before `index` in `text`, as plain words, or "" if there is none. */
+/** The doc comment just before `index` in `text`, its first paragraph as plain words, or "" if there is none. */
 function commentBefore(text: string, index: number): string {
   const end = text.lastIndexOf("*/", index);
   if (end === -1 || text.slice(end + 2, index).trim() !== "") return "";
   const start = text.lastIndexOf("/**", end);
-  return text
-    .slice(start + 3, end)
-    .replace(/^\s*\*\s?/gm, "")
-    .replace(/\s+/g, " ")
-    .trim();
+  const lines = text.slice(start + 3, end).split("\n").map((line) => line.replace(/^\s*\*\s?/, "").trim());
+  const blank = lines.findIndex((line, at) => at > 0 && line === "" && lines.slice(0, at).some((before) => before !== ""));
+  return (blank === -1 ? lines : lines.slice(0, blank)).join(" ").replace(/\s+/g, " ").trim();
+}
+
+/** The names in a type alias's union, such as `ShowPart | PicturePart<Action>`, without type arguments. */
+function unionOf(text: string, alias: string): string[] {
+  const found = new RegExp(`type ${alias}(?:<[^>]*>)? = ([^;]+);`).exec(text);
+  if (found === null) throw new Error(`The SDK's types text has no ${alias}: kitParts must be taught the Kit's new shape`);
+  return (found[1] ?? "").split("|").map((name) => name.trim().replace(/<.*$/, ""));
 }
 
 /**
  * The Kit's Parts by name and purpose, read from the SDK's types text itself, so what the Concept's
- * prompt says a Screen or a phone can show is what the SDK has. A Part is on the Screen if the
- * Screen's own list of Parts (`ScreenLeaf`) holds it; otherwise only a phone shows it.
+ * prompt says a Screen or a phone can show is what the SDK has. Every Part a Controller can hold
+ * (`ControllerLeaf`, with `ShowPart` opened up) must be found, with a kind and a purpose, or this
+ * throws: a Part can't silently go missing from the prompt. A Part is on the Screen when the
+ * Screen's own list (`ScreenLeaf`) holds it.
  */
 export function kitParts(): KitPart[] {
   const text = SDK_TYPES;
-  const screenLeaf = /type ScreenLeaf = ([^;]+);/.exec(text)?.[1] ?? "";
-  const showPart = /type ShowPart = ([^;]+);/.exec(text)?.[1] ?? "";
-  const onScreen = new Set(`${screenLeaf} | ${showPart}`.split("|").map((name) => name.trim().replace(/<.*$/, "")));
-  const parts: KitPart[] = [];
-  for (const match of text.matchAll(/^export interface (\w+Part)\b[^{]*\{([\s\S]*?)^\}/gm)) {
-    const [, name = "", body = ""] = match;
-    const kind = /readonly kind: "(\w+)"/.exec(body)?.[1];
-    if (kind === undefined || name === "RowPart") continue;
-    const purpose = (commentBefore(text, match.index).split(/(?<=\.)\s/)[0] ?? "").trim();
-    parts.push({ kind, purpose, on: onScreen.has(name) ? "screen and phone" : "phone only" });
-  }
-  return parts;
+  const open = (names: readonly string[]) => names.flatMap((name) => (name === "ShowPart" ? unionOf(text, "ShowPart") : [name]));
+  const everyPart = open(unionOf(text, "ControllerLeaf"));
+  const onScreen = new Set(open(unionOf(text, "ScreenLeaf")));
+  return everyPart.map((name): KitPart => {
+    const declared = new RegExp(`^export interface ${name}\\b[^{]*\\{([\\s\\S]*?)^\\}`, "m").exec(text);
+    const kind = declared === null ? undefined : /readonly kind: "(\w+)"/.exec(declared[1] ?? "")?.[1];
+    const purpose = declared === null ? "" : commentBefore(text, declared.index);
+    if (kind === undefined || purpose === "") throw new Error(`The SDK's types text has no kind or no doc comment for ${name}: kitParts must be taught it`);
+    return { kind, purpose, on: onScreen.has(name) ? "screen and phone" : "phone only" };
+  });
 }
 
-/** The declarations of the SDK's Look, from the types text: what a Concept's `look` must be. */
+/**
+ * The SDK's Look as the types text declares it, with the doc comments that give its rules (a colour
+ * is "#rgb" or "#rrggbb"; the contrast each pair needs): what a Concept's `look` must be. Only what a
+ * Look uses: the colour names a picture may use instead of a hex aren't allowed in a Look.
+ */
 export function lookTypesText(): string {
   const text = SDK_TYPES;
-  const pieces: string[] = [];
-  for (const name of ["Hex", "LookColor", "Color"]) {
-    const found = new RegExp(`^export type ${name}\\b[^;]*;`, "m").exec(text);
-    if (found !== null) pieces.push(found[0]);
-  }
-  const look = /^export interface Look \{[\s\S]*?^\}/m.exec(text);
-  if (look !== null) pieces.push(look[0]);
-  return pieces.join("\n");
+  const withComment = (pattern: RegExp, name: string): string => {
+    const found = pattern.exec(text);
+    if (found === null) throw new Error(`The SDK's types text has no ${name}: lookTypesText must be taught it`);
+    const end = text.lastIndexOf("*/", found.index);
+    const start = end === -1 || text.slice(end + 2, found.index).trim() !== "" ? found.index : text.lastIndexOf("/**", end);
+    return text.slice(start, found.index + found[0].length);
+  };
+  return [withComment(/^export type Hex\b[^;]*;/m, "Hex"), withComment(/^export interface Look \{[\s\S]*?^\}/m, "Look")].join("\n");
 }

@@ -11,7 +11,7 @@
 import type { Look } from "@boilergames/sdk/v1";
 import { checkLook } from "@boilergames/sdk/v1/check";
 import type { ChatMessage, Completion, ModelFailure } from "./model.js";
-import { jsonObjectText } from "./model.js";
+import { jsonObjectText, withoutThinking } from "./model.js";
 import { MAX_INVALID_CONCEPTS } from "./numbers.js";
 import { kitParts, lookTypesText } from "./reference.js";
 
@@ -49,6 +49,7 @@ export const CONCEPT_LIMITS = {
   maxPlayers: 16,
   minPhases: 1,
   maxPhases: 8,
+  phaseId: 30,
   phaseName: 40,
   phaseScreen: 300,
   phasePhone: 300,
@@ -58,6 +59,8 @@ export const CONCEPT_LIMITS = {
 } as const;
 
 const SCORINGS: readonly Scoring[] = ["none", "points", "winner"];
+/** The most problems one check lists. */
+const MAX_CONCEPT_PROBLEMS = 50;
 const FIELDS = ["title", "pitch", "players", "phases", "scoring", "length", "look"];
 const PHASE_FIELDS = ["id", "name", "screen", "phone", "ends"];
 
@@ -72,7 +75,11 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
 export function checkConcept(value: unknown): ConceptCheck {
   const problems: string[] = [];
   if (!isRecord(value)) return { ok: false, problems: ["The Concept must be one JSON object with the fields title, pitch, players, phases, scoring, length and look."] };
-  for (const key of Object.keys(value)) if (!FIELDS.includes(key)) problems.push(`${key} is not a field of a Concept: leave it out.`);
+  /** Fields it doesn't know, named (cut short: a name is the answer's own text). */
+  const unknown = (where: string, record: Record<string, unknown>, known: readonly string[], of: string) => {
+    for (const key of Object.keys(record)) if (!known.includes(key)) problems.push(`${where}${JSON.stringify(key.slice(0, 40))} is not a field of ${of}: leave it out.`);
+  };
+  unknown("", value, FIELDS, "a Concept");
 
   const text = (where: string, field: unknown, most: number): string => {
     if (typeof field !== "string" || field.trim() === "") {
@@ -93,6 +100,7 @@ export function checkConcept(value: unknown): ConceptCheck {
   if (!isRecord(rawPlayers) || !Number.isInteger(rawPlayers["min"]) || !Number.isInteger(rawPlayers["max"])) {
     problems.push(`players must be { "min": a whole number, "max": a whole number }, from ${CONCEPT_LIMITS.minPlayers} to ${CONCEPT_LIMITS.maxPlayers}.`);
   } else {
+    unknown("players.", rawPlayers, ["min", "max"], "players");
     players = { min: rawPlayers["min"] as number, max: rawPlayers["max"] as number };
     if (players.min < CONCEPT_LIMITS.minPlayers || players.max > CONCEPT_LIMITS.maxPlayers) problems.push(`players.min and players.max must be from ${CONCEPT_LIMITS.minPlayers} to ${CONCEPT_LIMITS.maxPlayers}.`);
     if (players.min > players.max) problems.push("players.min must not be more than players.max.");
@@ -102,14 +110,16 @@ export function checkConcept(value: unknown): ConceptCheck {
   const rawPhases = value["phases"];
   if (!Array.isArray(rawPhases) || rawPhases.length < CONCEPT_LIMITS.minPhases || rawPhases.length > CONCEPT_LIMITS.maxPhases) {
     problems.push(`phases must be a list of ${CONCEPT_LIMITS.minPhases} to ${CONCEPT_LIMITS.maxPhases} phases.`);
-  } else {
+  }
+  // Each phase is checked even when there are too many, so one answer can fix everything at once.
+  if (Array.isArray(rawPhases)) {
     const seen = new Set<string>();
-    rawPhases.forEach((phase: unknown, at) => {
+    rawPhases.slice(0, CONCEPT_LIMITS.maxPhases + 4).forEach((phase: unknown, at) => {
       const where = `phases[${at}]`;
       if (!isRecord(phase)) return void problems.push(`${where} must be an object with the fields id, name, screen, phone and ends.`);
-      for (const key of Object.keys(phase)) if (!PHASE_FIELDS.includes(key)) problems.push(`${where}.${key} is not a field of a phase: leave it out.`);
+      unknown(`${where}.`, phase, PHASE_FIELDS, "a phase");
       const id = phase["id"];
-      if (typeof id !== "string" || !/^[a-z]+$/.test(id)) problems.push(`${where}.id must be lower-case letters only, such as "vote".`);
+      if (typeof id !== "string" || !/^[a-z]+$/.test(id) || id.length > CONCEPT_LIMITS.phaseId) problems.push(`${where}.id must be 1 to ${CONCEPT_LIMITS.phaseId} lower-case letters only, such as "vote".`);
       else if (seen.has(id)) problems.push(`${where}.id "${id}" is used by another phase: each id must be different.`);
       else seen.add(id);
       phases.push({
@@ -124,9 +134,11 @@ export function checkConcept(value: unknown): ConceptCheck {
 
   let scoring: Concept["scoring"] = { kind: "none", how: "" };
   const rawScoring = value["scoring"];
-  if (!isRecord(rawScoring) || !SCORINGS.includes(rawScoring["kind"] as Scoring)) {
+  if (!isRecord(rawScoring)) {
     problems.push('scoring must be { "kind": "none", "points" or "winner", "how": text }.');
   } else {
+    unknown("scoring.", rawScoring, ["kind", "how"], "scoring");
+    if (!SCORINGS.includes(rawScoring["kind"] as Scoring)) problems.push('scoring.kind must be "none", "points" or "winner".');
     scoring = { kind: rawScoring["kind"] as Scoring, how: text("scoring.how", rawScoring["how"], CONCEPT_LIMITS.scoringHow) };
   }
 
@@ -135,6 +147,8 @@ export function checkConcept(value: unknown): ConceptCheck {
   if (lookChecked.ok) look = lookChecked.look;
   else for (const problem of lookChecked.problems) problems.push(problem.startsWith("look") ? `${problem}.` : `look: ${problem}.`);
 
+  // At most MAX_PROBLEMS, as the SDK's own checks do: an answer full of junk gets a short list back.
+  if (problems.length > MAX_CONCEPT_PROBLEMS) return { ok: false, problems: [...problems.slice(0, MAX_CONCEPT_PROBLEMS - 1), `...and ${problems.length - MAX_CONCEPT_PROBLEMS + 1} more problems. Fix these first.`] };
   if (problems.length > 0) return { ok: false, problems };
   return { ok: true, concept: { title, pitch, players, phases, scoring, length, look } };
 }
@@ -156,14 +170,14 @@ function systemText(): string {
     `- "pitch": what the Game is, in a few sentences, at most ${CONCEPT_LIMITS.pitch} characters.`,
     `- "players": { "min": whole number, "max": whole number }, from ${CONCEPT_LIMITS.minPlayers} to ${CONCEPT_LIMITS.maxPlayers}, min not more than max.`,
     `- "phases": a list of ${CONCEPT_LIMITS.minPhases} to ${CONCEPT_LIMITS.maxPhases} phases, in the order a Match goes through them. Each phase is an object:`,
-    '  - "id": lower-case letters only, different for each phase;',
+    `  - "id": 1 to ${CONCEPT_LIMITS.phaseId} lower-case letters only, different for each phase;`,
     `  - "name": at most ${CONCEPT_LIMITS.phaseName} characters;`,
     `  - "screen": what the Screen shows during it, at most ${CONCEPT_LIMITS.phaseScreen} characters;`,
     `  - "phone": what each Player does on their phone during it, at most ${CONCEPT_LIMITS.phasePhone} characters;`,
     `  - "ends": what ends it (everyone has acted, a timer, a choice), at most ${CONCEPT_LIMITS.phaseEnds} characters.`,
     `- "scoring": { "kind": "none", "points" or "winner", "how": text at most ${CONCEPT_LIMITS.scoringHow} characters }. "none" is a real choice: add points or a winner only when the idea asks for them.`,
     `- "length": how long a Match takes, at most ${CONCEPT_LIMITS.length} characters.`,
-    '- "look": the Game\'s own colours, typeface and corners, as the SDK\'s Look type below. Its text colour must be easy to read on its background.',
+    '- "look": the Game\'s own colours, typeface and corners, as the SDK\'s Look type below, which says how readable its colours must be.',
     "",
     lookTypesText(),
     "",
@@ -190,7 +204,8 @@ export function conceptMessages(idea: string, redraft?: { readonly previous: Con
 function retryMessages(first: readonly ChatMessage[], answer: string, problems: readonly string[]): ChatMessage[] {
   return [
     ...first,
-    { role: "assistant", content: answer },
+    // The answer without its thinking: only what it said goes back, which keeps the conversation short.
+    { role: "assistant", content: withoutThinking(answer) },
     { role: "user", content: `That Concept can't be used. Fix every one of these problems and answer with the whole Concept again, as one JSON object:\n${problems.map((problem) => `- ${problem}`).join("\n")}` },
   ];
 }

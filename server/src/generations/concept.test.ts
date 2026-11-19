@@ -51,19 +51,23 @@ describe("checking a Concept, field by field", () => {
   test("phases: 1 to 8, each id lower-case letters and different, each field within its length", () => {
     expect(problemsOf(withField("phases", []))).toEqual(["phases must be a list of 1 to 8 phases."]);
     expect(problemsOf(withField("phases", Array.from({ length: 9 }, (_, n) => ({ ...GOOD.phases[0], id: "p".repeat(n + 1) }))))).toEqual(["phases must be a list of 1 to 8 phases."]);
-    expect(problemsOf(withPhase({ id: "Price" }))).toEqual(['phases[0].id must be lower-case letters only, such as "vote".']);
-    expect(problemsOf(withPhase({ id: "round2" }))).toEqual(['phases[0].id must be lower-case letters only, such as "vote".']);
+    const idRule = 'phases[0].id must be 1 to 30 lower-case letters only, such as "vote".';
+    expect(problemsOf(withPhase({ id: "Price" }))).toEqual([idRule]);
+    expect(problemsOf(withPhase({ id: "round2" }))).toEqual([idRule]);
+    expect(problemsOf(withPhase({ id: "x".repeat(31) }))).toEqual([idRule]);
     expect(problemsOf(withPhase({ id: "buy" }))).toEqual(['phases[1].id "buy" is used by another phase: each id must be different.']);
     expect(problemsOf(withPhase({ name: "x".repeat(41) }))).toEqual(["phases[0].name must be at most 40 characters (it is 41)."]);
     expect(problemsOf(withPhase({ screen: "x".repeat(301) }))[0]).toMatch(/^phases\[0\]\.screen must be at most 300/);
     expect(problemsOf(withPhase({ phone: "" }))).toEqual(["phases[0].phone must be text, and not empty."]);
     expect(problemsOf(withPhase({ ends: "x".repeat(201) }))[0]).toMatch(/^phases\[0\]\.ends must be at most 200/);
-    expect(problemsOf(withPhase({ colour: "red" }))).toEqual(["phases[0].colour is not a field of a phase: leave it out."]);
+    expect(problemsOf(withPhase({ colour: "red" }))).toEqual(['phases[0]."colour" is not a field of a phase: leave it out.']);
+    expect(problemsOf({ ...GOOD, phases: ["vote", GOOD.phases[1]] })).toEqual(["phases[0] must be an object with the fields id, name, screen, phone and ends."]);
   });
 
   test("scoring: none, points or winner, with how; none is a real choice", () => {
     expect(problemsOf(withField("scoring", { kind: "none", how: "Nobody scores: it's about the moment." }))).toEqual([]);
-    expect(problemsOf(withField("scoring", { kind: "stars", how: "x" }))).toEqual(['scoring must be { "kind": "none", "points" or "winner", "how": text }.']);
+    expect(problemsOf(withField("scoring", { kind: "stars", how: "x" }))).toEqual(['scoring.kind must be "none", "points" or "winner".']);
+    expect(problemsOf(withField("scoring", "points"))).toEqual(['scoring must be { "kind": "none", "points" or "winner", "how": text }.']);
     expect(problemsOf(withField("scoring", { kind: "winner", how: "x".repeat(401) }))[0]).toMatch(/^scoring\.how must be at most 400/);
   });
 
@@ -76,8 +80,33 @@ describe("checking a Concept, field by field", () => {
   });
 
   test("every problem at once, and fields it doesn't know named", () => {
-    expect(problemsOf({ ...GOOD, title: "", length: "", tags: ["x"] })).toEqual(["tags is not a field of a Concept: leave it out.", "title must be text, and not empty.", "length must be text, and not empty."]);
+    expect(problemsOf({ ...GOOD, title: "", length: "", tags: ["x"] })).toEqual(['"tags" is not a field of a Concept: leave it out.', "title must be text, and not empty.", "length must be text, and not empty."]);
     expect(problemsOf([GOOD])).toEqual(["The Concept must be one JSON object with the fields title, pitch, players, phases, scoring, length and look."]);
+  });
+
+  test("lengths are counted in characters, as a person counts them, not in UTF-16 units", () => {
+    expect(problemsOf(withField("title", "🎲".repeat(CONCEPT_LIMITS.title)))).toEqual([]);
+    expect(problemsOf(withField("title", "🎲".repeat(CONCEPT_LIMITS.title + 1)))).toEqual([`title must be at most ${CONCEPT_LIMITS.title} characters (it is ${CONCEPT_LIMITS.title + 1}).`]);
+  });
+
+  test("a missing Look is refused (the SDK's checkLook), and fields inside players or scoring it doesn't know are named, not dropped", () => {
+    const { look: _look, ...noLook } = GOOD;
+    expect(problemsOf(noLook)[0]).toMatch(/^look/);
+    expect(problemsOf(withField("players", { min: 3, max: 8, ideal: 5 }))).toEqual(['players."ideal" is not a field of players: leave it out.']);
+    expect(problemsOf(withField("scoring", { kind: "points", how: "x", points: 3 }))).toEqual(['scoring."points" is not a field of scoring: leave it out.']);
+  });
+
+  test("one answer can fix everything: a bad scoring kind and a bad how, too many phases and a bad phase, all listed at once", () => {
+    expect(problemsOf(withField("scoring", { kind: "stars", how: "" }))).toEqual(['scoring.kind must be "none", "points" or "winner".', "scoring.how must be text, and not empty."]);
+    const tooMany = Array.from({ length: 9 }, (_, n) => ({ ...GOOD.phases[0], id: "p".repeat(n + 1) }));
+    expect(problemsOf(withField("phases", [{ ...tooMany[0], name: "" }, ...tooMany.slice(1)]))).toEqual(["phases must be a list of 1 to 8 phases.", "phases[0].name must be text, and not empty."]);
+  });
+
+  test("an answer full of junk gets a short list back", () => {
+    const junk = Object.fromEntries(Array.from({ length: 80 }, (_, n) => [`junk${n}`, n]));
+    const problems = problemsOf({ ...GOOD, ...junk });
+    expect(problems).toHaveLength(50);
+    expect(problems.at(-1)).toBe("...and 31 more problems. Fix these first.");
   });
 
   test("an edit that breaks a rule is refused with the rule named", () => {
@@ -107,7 +136,11 @@ describe("drafting", () => {
     expect(heard).toEqual([["title must be text, and not empty."], ["players.min must not be more than players.max."], []]);
     const third = model.calls[2]?.messages ?? [];
     expect(third.at(-1)?.content).toContain("- players.min must not be more than players.max.");
-    expect(third.map((message) => message.content).join("\n")).not.toContain("title must be text, and not empty.");
+    // Only the latest answer and its problems: not the first answer, nor its problems.
+    const sent = third.map((message) => message.content).join("\n");
+    expect(sent).not.toContain("title must be text, and not empty.");
+    expect(sent).not.toContain('"title":""');
+    expect(sent).toContain('"max":2');
   });
 
   test(`${MAX_INVALID_CONCEPTS} invalid answers fail, with a reason a person can read`, async () => {
@@ -117,6 +150,13 @@ describe("drafting", () => {
     expect(model.calls).toHaveLength(MAX_INVALID_CONCEPTS);
     if (draft.kind !== "invalid") return;
     expect(invalidConceptsReason(draft.attempts)).toBe(`The AI couldn't write a usable Concept in ${MAX_INVALID_CONCEPTS} tries. The last one's problems: The answer holds no JSON object. Answer with the Concept as one JSON object.`);
+  });
+
+  test("what goes back is the answer without its thinking", async () => {
+    const model = new ScriptedModel([`<think>${"long thoughts ".repeat(50)}</think>\nNo JSON.`, JSON.stringify(GOOD)]);
+    await draftConcept(ask(model), "An idea");
+    const resent = model.calls[1]?.messages.find((message) => message.role === "assistant")?.content;
+    expect(resent).toBe("No JSON.");
   });
 
   test("a model that fails ends the draft with how", async () => {
@@ -134,11 +174,28 @@ describe("the prompt", () => {
   test("names the Kit's Parts from the SDK's own types, with where each can be shown", () => {
     const parts = kitParts();
     expect(parts.map((part) => part.kind).sort()).toEqual(["button", "drawing", "drawingPad", "picture", "playerList", "scoreboard", "text", "textInput", "timer"]);
-    expect(parts.find((part) => part.kind === "button")).toEqual({ kind: "button", purpose: "A button.", on: "phone only" });
-    expect(parts.find((part) => part.kind === "scoreboard")?.on).toBe("screen and phone");
+    // Where each can be shown, as the Kit says: the Screen has no inputs.
+    expect(Object.fromEntries(parts.map((part) => [part.kind, part.on]))).toEqual({
+      text: "screen and phone",
+      timer: "screen and phone",
+      scoreboard: "screen and phone",
+      playerList: "screen and phone",
+      drawing: "screen and phone",
+      picture: "screen and phone",
+      button: "phone only",
+      textInput: "phone only",
+      drawingPad: "phone only",
+    });
+    // Each with what it is for, whole: picture is the way out, for whatever the other Parts can't show.
+    for (const part of parts) expect(part.purpose.length).toBeGreaterThan(5);
+    expect(parts.find((part) => part.kind === "picture")?.purpose).toContain("whatever the other Parts can't show");
     const system = conceptMessages("An idea")[0]?.content ?? "";
     for (const part of parts) expect(system).toContain(`- ${part.kind} (${part.on}): ${part.purpose}`);
     expect(system).toContain("export interface Look {");
+    // The Look's own rules come with it, and the colour names a picture may use don't.
+    expect(system).toContain('A colour as hex: "#1d3557" or "#fa3".');
+    expect(system).toContain("at least 4.5 to 1");
+    expect(system).not.toContain("export type LookColor");
   });
 
   test("holds no example Concept and no example Game", () => {
