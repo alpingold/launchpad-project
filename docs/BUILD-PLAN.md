@@ -1203,19 +1203,23 @@ the first problem, and an eval that began at Build. The eval set (Step 35) is wh
 
 ### The data
 
-Two new migration files. Shipped files are never edited.
+Three new migration files. 0005 and 0006 shipped with `fd5863d`; 0007 came after. Shipped files
+are never edited: a change is a new file (a test in `server/src/db/database.test.ts` pins each
+shipped file's hash).
 
 - `0005-genai-keys.sql`: `genai_keys`, one row per account: the encrypted key, what the decryption
   needs (nonce, tag), its last 4 characters, when saved.
 - `0006-generations.sql`:
   - `generations`: id, account, kind (`generation` or `revision`), the Game (none until a Build
     passes, for a Generation), the idea or the request, its state, the Concept (JSON), the latest
-    Build's code, how many Builds and model calls it has used (and busy calls given back), the Version it produced, why it
+    Build's code, how many Builds and model calls it has used, the Version it produced, why it
     failed, a notice (waiting on GenAI Studio until a time), when made and when last changed.
   - `generation_steps`: one row per thing the pipeline did (a Concept draft, a Build, a type fix, a
     Playtest): which Generation, its number, what kind, when it began and ended, how it came out,
     and every problem found. This is what makes a restart resume, what the Track shows, and what
     the eval reads. (The experiment kept none of it, so nobody can say why its Builds failed.)
+- `0007-busy-retries.sql`: `generations.busy_retries`, the busy calls given back (Step 32), 0 for
+  rows from before it.
 - `versions.made_by` gains `generation` and `revision` (the row schema checks the value, so no
   table changes).
 

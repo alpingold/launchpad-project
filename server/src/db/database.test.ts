@@ -1,14 +1,16 @@
 // The database: the real migration files, applied to a database in memory and to real files, as
 // the server applies them at start.
+import { createHash } from "node:crypto";
 import { cpSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { IN_MEMORY, KEPT_COPIES, MIGRATIONS, openDatabase, transaction, type Database } from "./database.js";
+import { beginStep, endBusyStep, generationById, stepsOf } from "./generations.js";
 
 const TABLES = ["accounts", "games", "genai_keys", "generation_steps", "generations", "migrations", "plays", "sessions", "sign_in_links", "versions"];
 /** Every migration in server/migrations, in order. A test's own extra ones are numbered 0099 and up, after them all. */
-const ALL_MIGRATIONS = ["0001-accounts.sql", "0002-games.sql", "0003-takedowns.sql", "0004-plays.sql", "0005-genai-keys.sql", "0006-generations.sql"];
+const ALL_MIGRATIONS = ["0001-accounts.sql", "0002-games.sql", "0003-takedowns.sql", "0004-plays.sql", "0005-genai-keys.sql", "0006-generations.sql", "0007-busy-retries.sql"];
 const quiet = () => undefined;
 
 let folder: string;
@@ -77,7 +79,7 @@ test("a database one migration behind gets only the missing one, and a copy of t
 
   const lines: string[] = [];
   const db = openDatabase({ file, now: () => 1_800_000_000_000, log: (line) => lines.push(line) });
-  expect(lines.filter((line) => line.startsWith("Database: applied"))).toEqual(["Database: applied 0002-games.sql", "Database: applied 0003-takedowns.sql", "Database: applied 0004-plays.sql", "Database: applied 0005-genai-keys.sql", "Database: applied 0006-generations.sql"]);
+  expect(lines.filter((line) => line.startsWith("Database: applied"))).toEqual(["Database: applied 0002-games.sql", "Database: applied 0003-takedowns.sql", "Database: applied 0004-plays.sql", "Database: applied 0005-genai-keys.sql", "Database: applied 0006-generations.sql", "Database: applied 0007-busy-retries.sql"]);
   expect(Object.keys(tables(db))).toEqual(TABLES);
   expect(db.prepare("SELECT email FROM accounts").all()).toEqual([expect.objectContaining({ email: "ada@purdue.edu" })]);
   db.close();
@@ -134,6 +136,48 @@ test("a database with a migration this release doesn't know still opens, as afte
   openDatabase({ file, migrations: migrations(undefined, { "0099-newer.sql": "CREATE TABLE newer (x INTEGER) STRICT;" }), log: quiet }).close();
   const db = openDatabase({ file, log: quiet });
   expect(applied(db)).toEqual([...ALL_MIGRATIONS, "0099-newer.sql"]);
+  db.close();
+});
+
+/**
+ * The sha256 of every migration that has shipped, as the live database recorded it: the file with
+ * each \r\n made \n, as openDatabase reads it. A new file's hash is added here once it has shipped
+ * (a push to `rewrite` is a deploy). Taken from the files at fd5863d, the release 0001 to 0006 went
+ * out in.
+ */
+const SHIPPED: Readonly<Record<string, string>> = {
+  "0001-accounts.sql": "53250b38fe8c32f2620f5d6144672816a062e426a5ab2a263bfb5e613465a543",
+  "0002-games.sql": "84f05d215eb5d280233dbb4fa89d0b478cd65d8c1418110dbf2a938cebb65ec5",
+  "0003-takedowns.sql": "88ca4585d4ccadfe3f7e1e0c38b7ab2b4cda970423aee81917fea64251e8e098",
+  "0004-plays.sql": "9d59bd2f161d9334ca56b9395a486d1d5f83aa86ff02bce4bea983cd4d44fb89",
+  "0005-genai-keys.sql": "4348ca265f9a24b15a1afdf0517ecb7c4f2167309f2bea9f7331ce3baefb27a0",
+  "0006-generations.sql": "d151c1615235ec78930c02d21ace2b8e503d6962d186d58c10caa05cd71d614d",
+};
+
+test("a shipped migration is never edited: each file the live database has applied is byte for byte what shipped", () => {
+  // Every test builds a fresh database, so none would see an edit; the live one would refuse to start.
+  const now = Object.fromEntries(
+    Object.keys(SHIPPED).map((name) => [name, createHash("sha256").update(readFileSync(join(MIGRATIONS, name), "utf8").replaceAll("\r\n", "\n")).digest("hex")]),
+  );
+  expect(now).toEqual(SHIPPED);
+});
+
+test("a database made by the release with 0001 to 0006, holding a Generation, opens with every migration: the busy count starts at 0 and works", () => {
+  const file = join(folder, "site.db");
+  const old = openDatabase({ file, migrations: migrations("0006-generations.sql"), log: quiet });
+  old.prepare("INSERT INTO accounts (id, email, created_at) VALUES (?, ?, ?)").run("a1", "ada@purdue.edu", 1);
+  old.prepare("INSERT INTO generations (id, account_id, kind, idea, state, model_calls, created_at, updated_at) VALUES (?, ?, 'generation', 'taps', 'concept', 1, 1, 1)").run("g1", "a1");
+  old.close();
+
+  const lines: string[] = [];
+  const db = openDatabase({ file, log: (line) => lines.push(line) });
+  expect(lines.filter((line) => line.startsWith("Database: applied"))).toEqual(["Database: applied 0007-busy-retries.sql"]);
+  expect(applied(db)).toEqual(ALL_MIGRATIONS);
+  expect(generationById(db, "g1")).toMatchObject({ modelCalls: 1, busyRetries: 0 });
+  const step = beginStep(db, "g1", "concept", 2);
+  expect(endBusyStep(db, "g1", step, 12, 3)).toBe(true);
+  expect(generationById(db, "g1")).toMatchObject({ modelCalls: 0, busyRetries: 1 });
+  expect(stepsOf(db, "g1").map((each) => each.outcome)).toEqual(["rateLimited"]);
   db.close();
 });
 

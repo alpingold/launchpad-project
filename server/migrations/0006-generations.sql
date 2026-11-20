@@ -27,11 +27,8 @@ CREATE TABLE generations (
   code TEXT,
   builds INTEGER NOT NULL DEFAULT 0 CHECK (builds >= 0),
   type_fixes INTEGER NOT NULL DEFAULT 0 CHECK (type_fixes >= 0),
-  -- Every call made to the model with the Creator's key, written before each call is made. A call
-  -- GenAI Studio turned away as busy at once is given back (taken off here) when its step ends.
+  -- Every call made to the model with the Creator's key, written before each call is made.
   model_calls INTEGER NOT NULL DEFAULT 0 CHECK (model_calls >= 0),
-  -- The calls given back so: they have a cap of their own, so a busy GenAI Studio can't keep one going without end.
-  busy_retries INTEGER NOT NULL DEFAULT 0 CHECK (busy_retries >= 0),
   -- The Version it made, once ready.
   version_id TEXT REFERENCES versions (id),
   -- Why it failed or was cancelled, for the Creator; in review, why a new draft it asked for didn't come.
