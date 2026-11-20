@@ -1,7 +1,7 @@
 /**
- * The queries about Generations and their steps (migrations/0006-generations.sql, and
- * 0007-busy-retries.sql). With database.ts, the only file with SQL about them. Every value goes in as
- * a parameter; every row read is parsed.
+ * The queries about Generations and their steps (migrations/0006-generations.sql,
+ * 0007-busy-retries.sql and 0008-generations-counted.sql). With database.ts, the only file with SQL
+ * about them. Every value goes in as a parameter; every row read is parsed.
  *
  * A state changes only from the state the caller last saw (`from`): a Generation the Creator
  * cancelled meanwhile stays cancelled, and the pipeline sees that its write did nothing.

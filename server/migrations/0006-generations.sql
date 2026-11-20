@@ -31,11 +31,8 @@ CREATE TABLE generations (
   model_calls INTEGER NOT NULL DEFAULT 0 CHECK (model_calls >= 0),
   -- The Version it made, once ready.
   version_id TEXT REFERENCES versions (id),
-  -- Why it failed or was cancelled, for the Creator; in review, why a new draft it asked for didn't come.
+  -- Why it failed or was cancelled, for the Creator.
   reason TEXT,
-  -- Whether it counts against its account's daily limit: 0 only for one that failed for nothing its
-  -- Creator did (GenAI Studio busy or down, the site's own check or code failing).
-  counted INTEGER NOT NULL DEFAULT 1 CHECK (counted IN (0, 1)),
   -- While GenAI Studio is busy or down: why ('rateLimited' or 'unavailable') and until when it waits.
   waiting_why TEXT CHECK (waiting_why IS NULL OR waiting_why IN ('rateLimited', 'unavailable')),
   waiting_until INTEGER,
@@ -43,15 +40,12 @@ CREATE TABLE generations (
   updated_at INTEGER NOT NULL,
   CHECK ((state = 'ready') = (version_id IS NOT NULL)),
   CHECK (state NOT IN ('failed', 'cancelled') OR reason IS NOT NULL),
-  CHECK (counted = 1 OR state = 'failed'),
   CHECK (kind = 'generation' OR (game_id IS NOT NULL AND base_version_id IS NOT NULL)),
   CHECK ((waiting_why IS NULL) = (waiting_until IS NULL))
 ) STRICT;
 
 CREATE INDEX generations_by_account ON generations (account_id, created_at);
 CREATE INDEX generations_by_state ON generations (state);
--- The Generation or Revision that made a Version: the Concept a Revision of it is held to.
-CREATE INDEX generations_by_version ON generations (version_id);
 
 -- Ready, failed and cancelled are final.
 CREATE TRIGGER generations_end_is_final

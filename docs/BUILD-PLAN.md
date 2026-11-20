@@ -35,6 +35,8 @@ begins with a design session with the owner that this plan does not replace.
 - **A push is a deploy.** Since milestone 1, a push to `rewrite` that passes CI goes live within
   minutes, and the restart closes every open Room. So never push: tell the owner what is ready,
   and the owner decides when it goes out.
+- **A migration has shipped once it has been pushed**, whether or not anyone thinks the release
+  came up. From then on it is never edited: a change is a new file.
 - **Done means checked.** A step is finished when `npm run typecheck`, `npm run build` and
   `npm test` pass from the root and its "Done when" list holds. Say plainly what you could not check.
 - **Tests check behaviour, not insides.** A test should survive a rewrite of the module that keeps
@@ -1203,9 +1205,10 @@ the first problem, and an eval that began at Build. The eval set (Step 35) is wh
 
 ### The data
 
-Three new migration files. 0005 and 0006 shipped with `fd5863d`; 0007 came after. Shipped files
-are never edited: a change is a new file (a test in `server/src/db/database.test.ts` pins each
-shipped file's hash).
+Four new migration files. 0005 and 0006 shipped with `19ab53f`; 0007 and 0008 came after. Shipped
+files are never edited: a change is a new file (a test in `server/src/db/database.test.ts` pins each
+shipped file's hash). 0006 was edited after it shipped, so no release after `19ab53f` could start;
+0008 now holds what that edit added.
 
 - `0005-genai-keys.sql`: `genai_keys`, one row per account: the encrypted key, what the decryption
   needs (nonce, tag), its last 4 characters, when saved.
@@ -1214,12 +1217,16 @@ shipped file's hash).
     passes, for a Generation), the idea or the request, its state, the Concept (JSON), the latest
     Build's code, how many Builds and model calls it has used, the Version it produced, why it
     failed, a notice (waiting on GenAI Studio until a time), when made and when last changed.
+    (Whether it counts against the daily limit came in 0008.)
   - `generation_steps`: one row per thing the pipeline did (a Concept draft, a Build, a type fix, a
     Playtest): which Generation, its number, what kind, when it began and ended, how it came out,
     and every problem found. This is what makes a restart resume, what the Track shows, and what
     the eval reads. (The experiment kept none of it, so nobody can say why its Builds failed.)
 - `0007-busy-retries.sql`: `generations.busy_retries`, the busy calls given back (Step 32), 0 for
   rows from before it.
+- `0008-generations-counted.sql`: `generations.counted`, whether it counts against its account's
+  daily limit (0 only for a failed one, and only when it failed for nothing its Creator did; 1 for
+  rows from before it), and the index `generations_by_version` (the Generation that made a Version).
 - `versions.made_by` gains `generation` and `revision` (the row schema checks the value, so no
   table changes).
 

@@ -6,11 +6,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { IN_MEMORY, KEPT_COPIES, MIGRATIONS, openDatabase, transaction, type Database } from "./database.js";
-import { beginStep, endBusyStep, generationById, stepsOf } from "./generations.js";
+import { beginStep, endBusyStep, generationById, moveGeneration, stepsOf } from "./generations.js";
 
 const TABLES = ["accounts", "games", "genai_keys", "generation_steps", "generations", "migrations", "plays", "sessions", "sign_in_links", "versions"];
 /** Every migration in server/migrations, in order. A test's own extra ones are numbered 0099 and up, after them all. */
-const ALL_MIGRATIONS = ["0001-accounts.sql", "0002-games.sql", "0003-takedowns.sql", "0004-plays.sql", "0005-genai-keys.sql", "0006-generations.sql", "0007-busy-retries.sql"];
+const ALL_MIGRATIONS = ["0001-accounts.sql", "0002-games.sql", "0003-takedowns.sql", "0004-plays.sql", "0005-genai-keys.sql", "0006-generations.sql", "0007-busy-retries.sql", "0008-generations-counted.sql"];
 const quiet = () => undefined;
 
 let folder: string;
@@ -79,7 +79,7 @@ test("a database one migration behind gets only the missing one, and a copy of t
 
   const lines: string[] = [];
   const db = openDatabase({ file, now: () => 1_800_000_000_000, log: (line) => lines.push(line) });
-  expect(lines.filter((line) => line.startsWith("Database: applied"))).toEqual(["Database: applied 0002-games.sql", "Database: applied 0003-takedowns.sql", "Database: applied 0004-plays.sql", "Database: applied 0005-genai-keys.sql", "Database: applied 0006-generations.sql", "Database: applied 0007-busy-retries.sql"]);
+  expect(lines.filter((line) => line.startsWith("Database: applied"))).toEqual(["Database: applied 0002-games.sql", "Database: applied 0003-takedowns.sql", "Database: applied 0004-plays.sql", "Database: applied 0005-genai-keys.sql", "Database: applied 0006-generations.sql", "Database: applied 0007-busy-retries.sql", "Database: applied 0008-generations-counted.sql"]);
   expect(Object.keys(tables(db))).toEqual(TABLES);
   expect(db.prepare("SELECT email FROM accounts").all()).toEqual([expect.objectContaining({ email: "ada@purdue.edu" })]);
   db.close();
@@ -140,10 +140,11 @@ test("a database with a migration this release doesn't know still opens, as afte
 });
 
 /**
- * The sha256 of every migration that has shipped, as the live database recorded it: the file with
- * each \r\n made \n, as openDatabase reads it. A new file's hash is added here once it has shipped
- * (a push to `rewrite` is a deploy). Taken from the files at fd5863d, the release 0001 to 0006 went
- * out in.
+ * The sha256 of every migration that has shipped: the file with each \r\n made \n, as openDatabase
+ * reads it. 0001 to 0006 are what the live database recorded, read from it on 2026-11-20 (it applied
+ * 0005 and 0006 from release 19ab53f). 0007 was pushed with 4630fcc, which never started there, but
+ * a pushed file can start at any push after it, so it is held to the same rule. A new file's hash is
+ * added here once it has been pushed (BUILD-PLAN, "Rules"), whether or not the release came up.
  */
 const SHIPPED: Readonly<Record<string, string>> = {
   "0001-accounts.sql": "53250b38fe8c32f2620f5d6144672816a062e426a5ab2a263bfb5e613465a543",
@@ -151,7 +152,8 @@ const SHIPPED: Readonly<Record<string, string>> = {
   "0003-takedowns.sql": "88ca4585d4ccadfe3f7e1e0c38b7ab2b4cda970423aee81917fea64251e8e098",
   "0004-plays.sql": "9d59bd2f161d9334ca56b9395a486d1d5f83aa86ff02bce4bea983cd4d44fb89",
   "0005-genai-keys.sql": "4348ca265f9a24b15a1afdf0517ecb7c4f2167309f2bea9f7331ce3baefb27a0",
-  "0006-generations.sql": "d151c1615235ec78930c02d21ace2b8e503d6962d186d58c10caa05cd71d614d",
+  "0006-generations.sql": "d44a0d757ee64949553be78738e47e47df5d8a9ab973e9553a4029761e726cc4",
+  "0007-busy-retries.sql": "cd056c9a7fbbb3769de7178d64774d2c8d2c298b3d25ed0cdfc40904c43d66cc",
 };
 
 test("a shipped migration is never edited: each file the live database has applied is byte for byte what shipped", () => {
@@ -162,7 +164,8 @@ test("a shipped migration is never edited: each file the live database has appli
   expect(now).toEqual(SHIPPED);
 });
 
-test("a database made by the release with 0001 to 0006, holding a Generation, opens with every migration: the busy count starts at 0 and works", () => {
+test("a database made by the release with 0001 to 0006, holding a Generation, opens with every migration: the busy count and counted start right and work", () => {
+  // The live database's state: 0006 as release 19ab53f had it, with no busy count and no counted.
   const file = join(folder, "site.db");
   const old = openDatabase({ file, migrations: migrations("0006-generations.sql"), log: quiet });
   old.prepare("INSERT INTO accounts (id, email, created_at) VALUES (?, ?, ?)").run("a1", "ada@purdue.edu", 1);
@@ -171,13 +174,19 @@ test("a database made by the release with 0001 to 0006, holding a Generation, op
 
   const lines: string[] = [];
   const db = openDatabase({ file, log: (line) => lines.push(line) });
-  expect(lines.filter((line) => line.startsWith("Database: applied"))).toEqual(["Database: applied 0007-busy-retries.sql"]);
+  expect(lines.filter((line) => line.startsWith("Database: applied"))).toEqual(["Database: applied 0007-busy-retries.sql", "Database: applied 0008-generations-counted.sql"]);
   expect(applied(db)).toEqual(ALL_MIGRATIONS);
-  expect(generationById(db, "g1")).toMatchObject({ modelCalls: 1, busyRetries: 0 });
+  expect(generationById(db, "g1")).toMatchObject({ modelCalls: 1, busyRetries: 0, counted: true });
   const step = beginStep(db, "g1", "concept", 2);
   expect(endBusyStep(db, "g1", step, 12, 3)).toBe(true);
   expect(generationById(db, "g1")).toMatchObject({ modelCalls: 0, busyRetries: 1 });
   expect(stepsOf(db, "g1").map((each) => each.outcome)).toEqual(["rateLimited"]);
+
+  // Only a failed one may be uncounted: the rule 0008 put on the column holds on a row from before it.
+  expect(() => moveGeneration(db, "g1", ["concept"], "build", { counted: false }, 4)).toThrow(/CHECK/);
+  expect(generationById(db, "g1")).toMatchObject({ state: "concept", counted: true });
+  expect(moveGeneration(db, "g1", ["concept"], "failed", { reason: "GenAI Studio was busy.", counted: false }, 5)).toBe(true);
+  expect(generationById(db, "g1")).toMatchObject({ state: "failed", counted: false });
   db.close();
 });
 
